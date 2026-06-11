@@ -249,7 +249,7 @@ def _settlement_markup(world: World) -> tuple[str, str]:
         rows.append(
             f'<div class="town" data-x="{s.x}" data-y="{s.y}">'
             f'<b>{_esc(s.name)}</b> <i>{s.kind}</i>'
-            f'<span>pop. {s.population:,} · founded {s.founded}</span>'
+            f'<span>pop. {s.population:,} · founded AF {s.founded}</span>'
             f'<em>{_esc(s.note)}</em></div>'
         )
     return "".join(marks), "".join(rows)
@@ -382,10 +382,10 @@ function applyVB() {
   svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
 }
 function clientToMap(ev) {
-  const pt = new DOMPoint(ev.clientX, ev.clientY);
+  if (typeof DOMPoint === "undefined" || !svg.getScreenCTM) return null;
   const m = svg.getScreenCTM();
   if (!m) return null;
-  const p = pt.matrixTransform(m.inverse());
+  const p = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m.inverse());
   return { x: p.x, y: p.y };
 }
 
@@ -394,11 +394,11 @@ let drag = null;
 wrap.addEventListener("pointerdown", (ev) => {
   drag = { sx: ev.clientX, sy: ev.clientY, vx: vb.x, vy: vb.y, moved: false };
   wrap.classList.add("dragging");
-  wrap.setPointerCapture(ev.pointerId);
+  wrap.setPointerCapture?.(ev.pointerId);
 });
 wrap.addEventListener("pointermove", (ev) => {
   if (drag) {
-    const scale = vb.w / wrap.clientWidth;
+    const scale = vb.w / (wrap.clientWidth || 1);
     const dx = (ev.clientX - drag.sx) * scale, dy = (ev.clientY - drag.sy) * scale;
     if (Math.abs(dx) + Math.abs(dy) > 0.01) drag.moved = true;
     vb.x = drag.vx - dx; vb.y = drag.vy - dy;
@@ -436,7 +436,7 @@ document.getElementById("layer-buttons").addEventListener("click", (ev) => {
 });
 
 // --- inspector ---
-function unpack(key, i) { return parseInt(PACKED[key].substr(i * 2, 2), 16); }
+function unpack(key, i) { return parseInt(PACKED[key].slice(i * 2, i * 2 + 2), 16); }
 const nameEl = document.querySelector("#inspect .biome-name");
 const valsEl = document.querySelector("#inspect .vals");
 function inspect(ev) {
@@ -452,9 +452,14 @@ function inspect(ev) {
   const meters = Math.round((elev - META.seaLevel) * 4200);
   const celsius = Math.round(-12 + t * 40);
   nameEl.textContent = biome;
-  valsEl.textContent =
-    `(${cx}, ${cy}) · ${meters >= 0 ? meters + " m" : Math.abs(meters) + " m deep"}` +
-    ` · ${celsius}°C · rainfall ${(m * 100).toFixed(0)}%`;
+  if (biome === "lake") {
+    valsEl.textContent = `(${cx}, ${cy}) · fresh water · ${meters} m`;
+  } else if (biome === "ocean" || biome === "shallows") {
+    valsEl.textContent = `(${cx}, ${cy}) · open water · ${Math.max(0, -meters)} m deep`;
+  } else {
+    valsEl.textContent =
+      `(${cx}, ${cy}) · ${meters} m · ${celsius}°C · rainfall ${(m * 100).toFixed(0)}%`;
+  }
 }
 
 // --- gazetteer: click a town to fly to it ---

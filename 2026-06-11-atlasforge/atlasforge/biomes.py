@@ -69,7 +69,8 @@ def classify_cell(
         return GLACIER if temperature < 0.35 else ALPINE
     if near_coast and alt < 0.04 and moisture < 0.75 and temperature > 0.3:
         return BEACH
-    if alt < 0.06 and moisture > 0.82 and temperature > 0.3:
+    # Marsh is an accent biome: very low, very wet, and touching water.
+    if near_coast and alt < 0.04 and moisture > 0.9 and temperature > 0.3:
         return MARSH
     if temperature < 0.3:
         return TUNDRA if moisture < 0.4 else TAIGA
@@ -103,7 +104,7 @@ def classify(
     lake: list[bool],
 ) -> list[str]:
     n = width * height
-    is_water = [elevation[i] <= sea_level for i in range(n)]
+    is_water = [elevation[i] <= sea_level or lake[i] for i in range(n)]
     near_coast = [False] * n
     for i in range(n):
         if is_water[i]:

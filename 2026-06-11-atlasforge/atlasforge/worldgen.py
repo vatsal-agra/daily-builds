@@ -46,12 +46,12 @@ def generate(
     width: int = 160,
     height: int = 160,
     land_fraction: float = 0.38,
-    with_settlements: bool = False,  # flipped on once settlements ship (phase 4)
+    with_settlements: bool = True,
 ) -> World:
     if width < 16 or height < 16:
         raise ValueError("map size must be at least 16x16")
-    if width * height > 1_500_000:
-        raise ValueError("map size too large (max ~1.5M cells)")
+    if width * height > 1_048_576:
+        raise ValueError("map size too large (max 1,048,576 cells = 1024x1024)")
     elevation = generate_elevation(width, height, seed)
     sea_level = sea_level_for_land_fraction(elevation, land_fraction)
     temperature = generate_temperature(width, height, elevation, sea_level, seed)

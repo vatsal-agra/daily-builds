@@ -37,7 +37,9 @@ def world_to_dict(world: World) -> dict:
     }
 
 
-def positive_int(limit: int):
+def dimension(limit: int):
+    """Validator for a grid dimension in [16, limit] cells."""
+
     def parse(text: str) -> int:
         try:
             v = int(text)
@@ -68,9 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--seed", type=int, default=None,
                    help="world seed (default: random)")
-    p.add_argument("--width", type=positive_int(1024), default=160,
+    p.add_argument("--width", type=dimension(1024), default=160,
                    help="grid width in cells (16-1024, default 160)")
-    p.add_argument("--height", type=positive_int(1024), default=160,
+    p.add_argument("--height", type=dimension(1024), default=160,
                    help="grid height in cells (16-1024, default 160)")
     p.add_argument("--land", type=land_fraction, default=0.38, metavar="FRAC",
                    help="target land fraction 0.05-0.95 (default 0.38)")
@@ -96,6 +98,8 @@ def main(argv: list[str] | None = None) -> int:
 
     t0 = time.time()
     say(f"⬢ atlasforge: generating world (seed={seed}, {args.width}x{args.height})")
+    if args.width * args.height > 90_000:
+        say("  large map: generation is O(cells), this may take a minute…")
     try:
         world = generate(
             seed=seed,

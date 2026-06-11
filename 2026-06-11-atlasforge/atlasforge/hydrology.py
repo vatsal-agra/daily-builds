@@ -117,7 +117,9 @@ def compute_hydrology(
         if d >= 0:
             accumulation[d] += accumulation[i]
 
-    # River sources: strongest land cells whose upstream isn't already a river.
+    # River sources: strongest land cells whose upstream isn't already a
+    # river. The threshold tracks the top ~n/60 accumulation cells, so small
+    # or single-basin maps legitimately get few (but never dangling) rivers.
     hydro = Hydrology(filled, flow_dir, accumulation, lake)
     land = [i for i in range(n) if elevation[i] > sea_level and not lake[i]]
     if not land:
