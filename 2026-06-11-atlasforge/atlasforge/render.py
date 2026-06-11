@@ -188,9 +188,10 @@ def render_html(world: World, title: str | None = None) -> str:
         for x1, y1, x2, y2, sw in river_segments(world)
     )
     settlements_svg, gazetteer_html = _settlement_markup(world)
+    present = sorted(set(world.biome), key=ALL_BIOMES.index)
     legend_html = "".join(
         f'<div class="key"><span style="background:rgb{BIOME_COLORS[b]}"></span>{b}</div>'
-        for b in stats["biomes"]
+        for b in present
     )
     images_svg = "".join(
         f'<image id="layer-{name}" href="{uri}" x="0" y="0" '
@@ -298,6 +299,13 @@ _TEMPLATE = r"""<!DOCTYPE html>
     font-size: 2.6px; fill: #fdf8ec; text-anchor: middle;
     paint-order: stroke; stroke: rgba(10, 14, 20, .85); stroke-width: .55px;
     font-family: Georgia, serif; letter-spacing: .08px;
+    transition: opacity .25s; pointer-events: none;
+  }
+  .settle.village text { font-size: 2px; opacity: 0; }
+  svg.zoomed .settle.village text { opacity: 1; }
+  #compass {
+    position: absolute; top: 14px; left: 14px; width: 44px; height: 44px;
+    color: #cdd8ea; opacity: .85; pointer-events: none;
   }
   aside {
     width: 280px; border-left: 1px solid var(--line); background: var(--panel);
@@ -329,6 +337,10 @@ _TEMPLATE = r"""<!DOCTYPE html>
   #gazetteer .town em { display: block; color: #aab6cc; font-size: 11.5px; font-style: italic; }
   #gazetteer .empty { color: var(--muted); font-size: 12.5px; }
   footer { padding: 6px 18px; color: var(--muted); font-size: 11.5px; border-top: 1px solid var(--line); background: var(--panel); }
+  kbd {
+    background: var(--panel2); border: 1px solid var(--line); border-radius: 4px;
+    padding: 0 5px; font: 10.5px ui-monospace, monospace; color: var(--ink);
+  }
   #crosshair { fill: none; stroke: #fff; stroke-width: .14; opacity: 0; }
 </style>
 </head>
@@ -345,6 +357,12 @@ _TEMPLATE = r"""<!DOCTYPE html>
       <g id="rivers">__RIVERS__</g>
       <g id="settlements">__SETTLEMENTS__</g>
       <rect id="crosshair" width="1" height="1"/>
+    </svg>
+    <svg id="compass" viewBox="0 0 40 40">
+      <circle cx="20" cy="20" r="17" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <path d="M20 6 L24 22 L20 18 L16 22 Z" fill="currentColor"/>
+      <text x="20" y="33" text-anchor="middle" font-size="9" fill="currentColor"
+        font-family="Georgia, serif">N</text>
     </svg>
   </div>
   <aside>
@@ -366,7 +384,7 @@ _TEMPLATE = r"""<!DOCTYPE html>
     <section id="gazetteer"><h2>Gazetteer</h2>__GAZETTEER__</section>
   </aside>
 </main>
-<footer>Drag to pan · scroll to zoom · double-click to reset · generated offline by Atlasforge (pure Python, zero deps)</footer>
+<footer>Drag to pan · scroll to zoom · double-click or <kbd>0</kbd> to reset · keys <kbd>1</kbd>–<kbd>4</kbd> switch layers · zoom in to reveal village names · generated offline by Atlasforge (pure Python, zero deps)</footer>
 <script>
 "use strict";
 const META = __META__;
@@ -380,6 +398,7 @@ let vb = { ...HOME };
 
 function applyVB() {
   svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  svg.classList.toggle("zoomed", vb.w < W / 2.5);
 }
 function clientToMap(ev) {
   if (typeof DOMPoint === "undefined" || !svg.getScreenCTM) return null;
@@ -425,14 +444,23 @@ wrap.addEventListener("wheel", (ev) => {
 wrap.addEventListener("dblclick", () => { vb = { ...HOME }; applyVB(); });
 
 // --- layers ---
+const LAYERS = ["biome", "elevation", "temperature", "moisture"];
+function setLayer(layer) {
+  for (const b of document.querySelectorAll("#layer-buttons button"))
+    b.classList.toggle("active", b.dataset.layer === layer);
+  for (const name of LAYERS)
+    document.getElementById("layer-" + name)
+      .setAttribute("opacity", name === layer ? 1 : 0);
+}
 document.getElementById("layer-buttons").addEventListener("click", (ev) => {
   const btn = ev.target.closest("button");
-  if (!btn) return;
-  for (const b of btn.parentElement.children) b.classList.toggle("active", b === btn);
-  for (const name of ["biome", "elevation", "temperature", "moisture"]) {
-    document.getElementById("layer-" + name)
-      .setAttribute("opacity", name === btn.dataset.layer ? 1 : 0);
-  }
+  if (btn) setLayer(btn.dataset.layer);
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.target.tagName === "INPUT" || ev.metaKey || ev.ctrlKey) return;
+  const k = LAYERS[+ev.key - 1];
+  if (k) setLayer(k);
+  if (ev.key === "0") { vb = { ...HOME }; applyVB(); }
 });
 
 // --- inspector ---

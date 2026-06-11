@@ -117,8 +117,14 @@ def main(argv: list[str] | None = None) -> int:
         f"  land {stats['land_pct']}% · {stats['rivers']} rivers · "
         f"{len(stats['biomes'])} biomes · {len(world.settlements)} settlements"
     )
+    title = args.title
+    if not title:
+        from .settlements import NameForge
+
+        realm = NameForge(random.Random(seed ^ 0xA77A5)).make()
+        title = f"The Realm of {realm}"
     try:
-        write_html(world, args.output, title=args.title)
+        write_html(world, args.output, title=title)
     except OSError as exc:
         print(f"error: cannot write {args.output!r}: {exc}", file=sys.stderr)
         return 2
