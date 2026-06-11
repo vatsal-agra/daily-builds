@@ -31,7 +31,7 @@ python3 -m atlasforge.cli --seed 1337 --land 0.22 -o archipelago.html   # island
 python3 -m atlasforge.cli --width 240 --height 120 --land 0.55 \
         --title "The Sundered Reach" -o continent.html                  # wide continent
 python3 -m atlasforge.cli --seed 42 --json world.json -o world.html     # machine-readable export
-./demo.sh        # runs the test suite, then generates three showcase worlds
+bash demo.sh     # runs the test suite, then generates three showcase worlds
 ```
 
 Tests: `python3 -m unittest discover -s tests` (31 tests). The optional DOM
