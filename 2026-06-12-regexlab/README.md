@@ -6,7 +6,7 @@ A regex engine built from scratch in pure Python (parser → Thompson NFA →
 Pike VM with captures → minimized DFA), plus an interactive single-file HTML
 visualizer that steps through the engine's execution character by character.
 
-**Status:** Phase 2 (core build) complete.
+**Status:** Phase 3 (adversarial review) complete — see [REVIEW.md](REVIEW.md) for the 12 issues found & fixed (search scanning, `\D` negation, brace parsing, `re`’s empty-match must-advance rule, `\B` quirk, class-range errors, viz UX) and the documented deliberate divergences.
 
 - ✅ Parser + Thompson NFA: literals, `.`, escapes, classes, greedy/lazy
   quantifiers incl. `{m,n}`, alternation, groups, anchors, `\b`/`\B`

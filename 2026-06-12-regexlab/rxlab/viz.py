@@ -508,8 +508,7 @@ function recompute(){
   const mode=$('mode').value;
   state.trace=runNFA(DATA.prog, 2*(DATA.ngroups+1), state.chars, mode);
   state.dtrace=DATA.dfa.error?null:runDFA(DATA.dfa, state.chars);
-  state.step=Math.min(state.step, state.trace.steps.length-1);
-  state.step=state.trace.steps.length-1;  // jump to end on new input
+  state.step=0;  /* verdict is precomputed; start stepping from the top */
   paint();
 }
 
@@ -570,15 +569,18 @@ function paint(){
       }
       html+='</table>';
     }
+    if(state.dtrace && $('mode').value==='fullmatch'){
+      html+=`<div style="color:var(--dim);font-size:.85rem;margin-top:6px">`+
+        `DFA fullmatch: ${state.dtrace.verdict?'accept':'reject'} — `+
+        `${state.dtrace.verdict?'agrees with':'DISAGREES with'} the NFA</div>`;
+    }
     v.innerHTML=html; v.className='ok';
   }else{
     v.innerHTML='<span class="big">NO MATCH</span>'+
-      (state.dtrace && !DATA.dfa.error ?
-        ` — DFA verdict: ${state.dtrace.verdict?'accept':'reject'}`:'');
+      (state.dtrace ?
+        ` <span style="color:var(--dim);font-size:.85rem">· DFA fullmatch: `+
+        `${state.dtrace.verdict?'accept':'reject'}</span>`:'');
     v.className='no';
-  }
-  if(state.dtrace && tr.matched){
-    /* nothing extra: DFA agreement shown only for fullmatch mode */
   }
   $('bp').disabled = state.step===0;
   $('b0').disabled = state.step===0;
@@ -590,7 +592,7 @@ function play(){
   if(state.playTimer){clearInterval(state.playTimer);state.playTimer=null;
     $('bplay').innerHTML='&#9654;&#9654; play';return;}
   if(state.step>=state.trace.steps.length-1) setStep(0);
-  $('bplay').textContent='⏸ pause';
+  $('bplay').innerHTML='&#9208; pause';
   state.playTimer=setInterval(()=>{
     if(state.step>=state.trace.steps.length-1) play();
     else setStep(state.step+1);

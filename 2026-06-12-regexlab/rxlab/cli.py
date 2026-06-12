@@ -98,16 +98,13 @@ def cmd_dfa(args):
     print(f"minimized DFA  {d.n_states}")
     print(f"alphabet       {d.n_classes} character class(es)")
     if args.table:
+        from .nfa import format_ranges
         print("\nstate table (missing entries reject):")
         for q in range(len(d.trans)):
             acc = " (accept)" if d.accept[q] else ""
             print(f"  q{q}{acc}")
             for c, t in sorted(d.trans[q].items()):
-                lo, hi = d.class_ranges[c]
-                rng = (chr(lo) if lo == hi
-                       else f"{chr(lo)}-{chr(hi)}" if hi < 0x110000
-                       else f"{chr(lo)}-…")
-                print(f"    --[{rng}]--> q{t}")
+                print(f"    --[{format_ranges((d.class_ranges[c],))}]--> q{t}")
     if args.text is not None:
         ok = d.fullmatch(args.text)
         print(f"\nfullmatch({args.text!r}) = {ok}")
@@ -124,7 +121,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(
         prog="rxlab",
         description="RegexLab: a from-scratch regex engine "
-                    "(NFA, Pike VM, DFA) with an interactive visualizer.")
+                    "(NFA, Pike VM, DFA) with an interactive visualizer.",
+        epilog="If a pattern starts with '-', separate it with '--', e.g.: "
+               "rxlab search -- '-\\d+' 'x-42'")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("parse", help="dump the pattern AST")

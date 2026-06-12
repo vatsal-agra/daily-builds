@@ -142,9 +142,29 @@ def _pretty_char(ch):
                 "\v": "\\v", "\x08": "\\b", "\0": "\\0", " ": "␣"}
     if ch in specials:
         return specials[ch]
-    if ord(ch) < 32 or ord(ch) == 127:
-        return f"\\x{ord(ch):02x}"
+    cp = ord(ch)
+    if cp < 32 or cp == 127:
+        return f"\\x{cp:02x}"
+    if 0xD800 <= cp <= 0xDFFF or cp > 0xFFFF and not ch.isprintable():
+        return f"U+{cp:04X}"
     return ch
+
+
+def format_ranges(ranges):
+    """Human-readable label for a set of codepoint ranges, e.g. 'a-z 0-9'."""
+    if not ranges:
+        return "∅"
+    if ranges == ((0, 0x10FFFF),):
+        return "any"
+    parts = []
+    for lo, hi in ranges:
+        if lo == hi:
+            parts.append(_pretty_char(chr(lo)))
+        elif hi >= 0x10FFFF:
+            parts.append(f"{_pretty_char(chr(lo))}-∞")
+        else:
+            parts.append(f"{_pretty_char(chr(lo))}-{_pretty_char(chr(hi))}")
+    return " ".join(parts)
 
 
 def compile_pattern(pattern):

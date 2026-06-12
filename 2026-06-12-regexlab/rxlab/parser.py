@@ -234,9 +234,13 @@ class Parser:
             if self.s.peek(1) == ":":
                 self.s.next()
                 self.s.next()
+            elif self.s.peek(1) == "":
+                self.s.error("unexpected end of pattern", start)
             else:
                 self.s.error(
-                    f"unsupported group extension '(?{self.s.peek(1)}'", start)
+                    f"unsupported group extension '(?{self.s.peek(1)}' "
+                    "(RegexLab is strictly regular: no lookarounds or "
+                    "named groups)", start)
         else:
             self.ngroups += 1
             index = self.ngroups
@@ -316,8 +320,13 @@ class Parser:
         return CharClass(tuple(items), negated, label)
 
     def _class_item(self, class_start):
+        item_start = self.s.pos
         lo = self._class_char()
         if lo is None:  # a predefined class like \d — no ranges allowed off it
+            if self.s.peek() == "-" and self.s.peek(1) not in ("]", ""):
+                self.s.error(
+                    f"bad character range (cannot start at "
+                    f"{self.s.text[item_start:self.s.pos]})", item_start)
             return self._last_class_ranges
         if self.s.peek() == "-" and self.s.peek(1) not in ("]", ""):
             dash_pos = self.s.pos
