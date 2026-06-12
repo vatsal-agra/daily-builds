@@ -6,7 +6,15 @@ A regex engine built from scratch in pure Python (parser → Thompson NFA →
 Pike VM with captures → minimized DFA), plus an interactive single-file HTML
 visualizer that steps through the engine's execution character by character.
 
-**Status:** Phase 4 (stretch + polish) complete — see [REVIEW.md](REVIEW.md) for the 12 issues found & fixed in the adversarial review and the documented deliberate divergences.
+**Status:** Phase 5 (verification) complete — 50-test suite green
+(`python3 -m unittest discover -s tests`): parser AST/error battery, VM
+semantics vs `re`, DFA≡NFA (incl. exhaustive small-alphabet enumeration and
+an independent Moore-minimizer cross-check of Hopcroft), explain/gen/fuzz,
+CLI exit codes, and a headless-Chromium parity test proving the in-page JS
+VM gives identical verdicts/spans/groups to the Python engine. `bash demo.sh`
+exercises every feature.
+
+Phase 4 (stretch + polish) complete — see [REVIEW.md](REVIEW.md) for the 12 issues found & fixed in the adversarial review and the documented deliberate divergences.
 
 All three stretch features shipped:
 

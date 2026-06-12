@@ -247,6 +247,8 @@ class Parser:
         child = self._alt()
         if not self.s.accept(")"):
             self.s.error("missing ), unterminated group", start)
+        if index is None:
+            return child  # non-capturing groups only affect parsing
         return Group(child, index)
 
     def _escape_atom(self):
