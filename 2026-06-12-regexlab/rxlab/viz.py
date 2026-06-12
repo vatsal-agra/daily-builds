@@ -129,6 +129,13 @@ nav.tabs button.on{background:var(--panel);color:var(--acc);
 .pane .note{padding:18px;color:var(--dim)}
 footer{padding:12px 22px;color:var(--dim);font-size:.8rem;
   border-top:1px solid var(--line);margin-top:18px}
+#legend{display:flex;gap:18px;flex-wrap:wrap;align-items:center;
+  margin-top:10px;color:var(--dim);font-size:.78rem}
+#legend .sw{display:inline-block;width:13px;height:13px;border-radius:50%;
+  border:2px solid var(--line);background:var(--panel2);
+  vertical-align:-2px;margin-right:5px}
+#legend .sw.dash{border-style:dashed;border-color:#3d4757}
+#tape .hint{color:var(--dim);font-size:.85rem;padding:0 6px}
 /* SVG */
 .node circle,.node rect{fill:var(--panel2);stroke:var(--line);
   stroke-width:1.4}
@@ -187,6 +194,15 @@ footer{padding:12px 22px;color:var(--dim);font-size:.8rem;
   </nav>
   <div class="pane" id="pane-nfa"></div>
   <div class="pane" id="pane-dfa" style="display:none"></div>
+  <div id="legend">
+    <span><i class="sw" style="border-color:var(--char)"></i> consume char</span>
+    <span><i class="sw" style="border-color:var(--save)"></i> capture save</span>
+    <span><i class="sw" style="border-color:var(--assert)"></i> assertion</span>
+    <span><i class="sw dash"></i> ε (no input)</span>
+    <span><i class="sw" style="border-color:var(--active);background:#473f10"></i> live thread / current state</span>
+    <span><i class="sw" style="border-color:var(--good)"></i> accept</span>
+    <span style="margin-left:auto">keys: ←/→ step · space play · Home/End</span>
+  </div>
 </main>
 <footer>RegexLab — a from-scratch regex engine. The NFA view shows the
 compiled Thompson program (every node is a VM instruction); highlighted
@@ -488,8 +504,11 @@ function renderDFA(container, dfa){
     el('circle',{cx:p.x,cy:p.y,r:17},g);
     if(dfa.accept[i]) el('circle',{cx:p.x,cy:p.y,r:13,fill:'none'},g);
     el('text',{x:p.x,y:p.y},g).textContent='q'+i;
-    if(i===0)
-      el('text',{x:p.x,y:p.y-27,class:'idx'},g).textContent='start';
+    if(i===0){  /* entry arrow from the left */
+      el('path',{d:`M ${p.x-46} ${p.y} L ${p.x-20} ${p.y}`,
+        class:'edge','marker-end':'url(#dar)'},svg);
+      el('text',{x:p.x-43,y:p.y+13,class:'idx'},g).textContent='start';
+    }
     nodeEls.push(g);
   }
   return nodeEls;
@@ -521,6 +540,12 @@ function paint(){
   const tr=state.trace, st=tr.steps[state.step];
   /* tape */
   const tape=$('tape'); tape.innerHTML='';
+  if(!state.chars.length){
+    const h=document.createElement('span');
+    h.className='hint';
+    h.textContent='empty input — only the end-of-input position:';
+    tape.appendChild(h);
+  }
   const span = tr.matched ? [tr.matched[0],tr.matched[1]] : null;
   state.chars.forEach((ch,i)=>{
     const c=document.createElement('div');
@@ -629,6 +654,15 @@ $('tab-nfa').onclick=()=>{
 $('tab-dfa').onclick=()=>{
   $('pane-dfa').style.display=''; $('pane-nfa').style.display='none';
   $('tab-dfa').classList.add('on'); $('tab-nfa').classList.remove('on');};
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT') return;
+  if(e.key==='ArrowRight'){setStep(state.step+1);e.preventDefault();}
+  else if(e.key==='ArrowLeft'){setStep(state.step-1);e.preventDefault();}
+  else if(e.key===' '){play();e.preventDefault();}
+  else if(e.key==='Home'){setStep(0);e.preventDefault();}
+  else if(e.key==='End'){setStep(state.trace.steps.length-1);
+    e.preventDefault();}
+});
 recompute();
 </script>
 </body>

@@ -6,7 +6,21 @@ A regex engine built from scratch in pure Python (parser → Thompson NFA →
 Pike VM with captures → minimized DFA), plus an interactive single-file HTML
 visualizer that steps through the engine's execution character by character.
 
-**Status:** Phase 3 (adversarial review) complete — see [REVIEW.md](REVIEW.md) for the 12 issues found & fixed (search scanning, `\D` negation, brace parsing, `re`’s empty-match must-advance rule, `\B` quirk, class-range errors, viz UX) and the documented deliberate divergences.
+**Status:** Phase 4 (stretch + polish) complete — see [REVIEW.md](REVIEW.md) for the 12 issues found & fixed in the adversarial review and the documented deliberate divergences.
+
+All three stretch features shipped:
+
+- ✅ `rxlab explain PATTERN` — indented plain-English breakdown (literal runs
+  collapsed, classes described, lazy/greedy spelled out)
+- ✅ `rxlab gen PATTERN -n 10 --seed S` — random *verified* matching strings
+  (rejection-sampled against the engine, so contradictory anchors are
+  detected and reported as likely-unsatisfiable)
+- ✅ `rxlab fuzz -n 2000 --seed S` — built-in differential fuzzer vs
+  Python's `re` (all five APIs + DFA≡NFA), exits non-zero on divergence
+
+Polish: `viz` pre-fills the test string with a generated match; the page has
+a color legend, keyboard shortcuts (←/→/space/Home/End), DFA entry arrow,
+empty-input hint, and a properly labeled "DFA fullmatch" verdict line.
 
 - ✅ Parser + Thompson NFA: literals, `.`, escapes, classes, greedy/lazy
   quantifiers incl. `{m,n}`, alternation, groups, anchors, `\b`/`\B`

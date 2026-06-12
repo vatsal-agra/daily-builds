@@ -112,9 +112,48 @@ def cmd_dfa(args):
 
 def cmd_viz(args):
     from .viz import write_html
-    path = write_html(args.pattern, args.out, sample=args.text or "")
+    sample = args.text
+    if sample is None:
+        # pre-fill the page with a generated matching string when possible
+        try:
+            from .gen import generate
+            samples, _ = generate(args.pattern, n=1, seed=0)
+            sample = samples[0] if samples else ""
+        except RegexError:
+            sample = ""
+    path = write_html(args.pattern, args.out, sample=sample)
     print(f"wrote {path}")
     print("open it in a browser; no network or dependencies needed")
+
+
+def cmd_explain(args):
+    from .explain import explain
+    print(explain(args.pattern))
+
+
+def cmd_gen(args):
+    from .gen import generate
+    samples, rejected = generate(args.pattern, n=args.n, seed=args.seed)
+    for s in samples:
+        print(repr(s) if args.repr else s)
+    if rejected:
+        print(f"({rejected} candidate(s) rejected by verification)",
+              file=sys.stderr)
+
+
+def cmd_fuzz(args):
+    from .fuzz import run_fuzz
+    print(f"fuzzing {args.n} random patterns vs Python re "
+          f"(seed={args.seed}) …")
+    checked, diffs = run_fuzz(n=args.n, seed=args.seed, verbose=True)
+    if diffs:
+        print(f"\n{len(diffs)} DIVERGENCE(S) over {checked} patterns:")
+        for d in diffs:
+            print("  " + d)
+        return 1
+    print(f"OK: {checked} patterns × (search, match, fullmatch, findall, "
+          "finditer, DFA≡NFA) — no divergences")
+    return 0
 
 
 def main(argv=None):
@@ -160,8 +199,28 @@ def main(argv=None):
     p = sub.add_parser("viz", help="emit the interactive HTML visualizer")
     p.add_argument("pattern")
     p.add_argument("-o", "--out", default="regexlab.html")
-    p.add_argument("--text", help="pre-filled test string")
+    p.add_argument("--text", help="pre-filled test string "
+                                  "(default: a generated match)")
     p.set_defaults(fn=cmd_viz)
+
+    p = sub.add_parser("explain", help="plain-English pattern breakdown")
+    p.add_argument("pattern")
+    p.set_defaults(fn=cmd_explain)
+
+    p = sub.add_parser("gen", help="generate random strings that match")
+    p.add_argument("pattern")
+    p.add_argument("-n", type=int, default=10, help="how many (default 10)")
+    p.add_argument("--seed", type=int, help="RNG seed for reproducibility")
+    p.add_argument("--repr", action="store_true",
+                   help="print samples as Python literals")
+    p.set_defaults(fn=cmd_gen)
+
+    p = sub.add_parser("fuzz",
+                       help="differential fuzz this engine vs Python's re")
+    p.add_argument("-n", type=int, default=2000,
+                   help="number of patterns (default 2000)")
+    p.add_argument("--seed", type=int, help="RNG seed")
+    p.set_defaults(fn=cmd_fuzz)
 
     args = ap.parse_args(argv)
     try:
