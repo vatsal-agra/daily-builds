@@ -1,0 +1,634 @@
+"""Interactive visualizer: emits a single self-contained HTML file.
+
+The page embeds the compiled NFA program (and the minimized DFA tables when
+available) as JSON, plus a JavaScript mirror of the Pike VM.  Type any test
+string in the browser and step through execution: active automaton states
+light up, the input tape shows the cursor, and the verdict panel reports the
+match span and capture groups.  No network, no dependencies.
+"""
+
+import json
+
+from .lexer import RegexCompileError
+from .nfa import compile_pattern
+
+MAX_VIZ_STATES = 600
+
+
+def build_data(pattern, sample=""):
+    """Compile `pattern` and serialize everything the page needs."""
+    prog, ngroups = compile_pattern(pattern)
+    if len(prog) > MAX_VIZ_STATES:
+        raise RegexCompileError(
+            f"pattern compiles to {len(prog)} states; the visualizer caps at "
+            f"{MAX_VIZ_STATES} (try smaller repeat counts)")
+    prog_json = [{
+        "op": i.op, "x": i.x, "y": i.y, "slot": i.slot, "kind": i.kind,
+        "ranges": list(map(list, i.ranges)), "label": i.label,
+    } for i in prog]
+    from .dfa import DFA
+    try:
+        d = DFA(prog, minimize=True)
+        dfa_json = {
+            "trans": [{str(c): t for c, t in row.items()} for row in d.trans],
+            "accept": d.accept,
+            "classRanges": list(map(list, d.class_ranges)),
+            "starts": d._starts,
+            "intervalClass": d._interval_class,
+            "nSubset": d.n_subset,
+        }
+    except RegexCompileError as e:
+        dfa_json = {"error": str(e)}
+    return {
+        "pattern": pattern,
+        "sample": sample,
+        "ngroups": ngroups,
+        "prog": prog_json,
+        "dfa": dfa_json,
+    }
+
+
+def render_html(pattern, sample=""):
+    data = build_data(pattern, sample)
+    blob = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    return _TEMPLATE.replace("__DATA__", blob)
+
+
+def write_html(pattern, path, sample=""):
+    html = render_html(pattern, sample)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html)
+    return path
+
+
+_TEMPLATE = r"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RegexLab</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2d3646;
+  --fg:#e6edf3; --dim:#8b97a8; --acc:#58a6ff; --good:#3fb950;
+  --bad:#f85149; --warn:#d29922; --save:#3fb950; --assert:#d29922;
+  --char:#58a6ff; --active:#ffd33d;
+  font-size:15px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:1rem/1.5 "SF Mono",ui-monospace,Menlo,Consolas,monospace}
+header{padding:14px 22px;border-bottom:1px solid var(--line);
+  display:flex;gap:18px;align-items:baseline;flex-wrap:wrap}
+header h1{font-size:1.05rem;margin:0;letter-spacing:.12em;color:var(--dim)}
+header h1 b{color:var(--acc)}
+#pat{color:var(--fg);background:var(--panel);padding:3px 10px;
+  border-radius:6px;border:1px solid var(--line);font-size:1.05rem}
+main{padding:16px 22px;max-width:1280px;margin:0 auto}
+.row{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:10px 0}
+label{color:var(--dim);font-size:.85rem}
+input[type=text],select{background:var(--panel);color:var(--fg);
+  border:1px solid var(--line);border-radius:6px;padding:7px 10px;
+  font:inherit}
+input[type=text]{min-width:320px}
+input[type=text]:focus,select:focus{outline:none;border-color:var(--acc)}
+button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+  border-radius:6px;padding:6px 13px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button:disabled{opacity:.35;cursor:default}
+#tape{display:flex;gap:3px;flex-wrap:wrap;min-height:44px;align-items:center;
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:8px 10px;margin:12px 0}
+.cell{min-width:26px;height:32px;display:flex;align-items:center;
+  justify-content:center;border-radius:5px;border:1px solid var(--line);
+  background:var(--panel2);padding:0 4px}
+.cell.done{opacity:.45}
+.cell.cur{border-color:var(--active);box-shadow:0 0 0 1px var(--active);
+  background:#2b2a18}
+.cell.inmatch{border-color:var(--good)}
+.cell.endmark{border-style:dashed;color:var(--dim)}
+#status{color:var(--dim);font-size:.85rem;min-height:1.4em}
+#verdict{padding:10px 14px;border-radius:8px;border:1px solid var(--line);
+  background:var(--panel);margin:10px 0}
+#verdict.ok{border-color:var(--good)}
+#verdict.no{border-color:var(--bad)}
+#verdict .big{font-weight:bold}
+#verdict.ok .big{color:var(--good)}
+#verdict.no .big{color:var(--bad)}
+table.groups{border-collapse:collapse;margin-top:6px;font-size:.9rem}
+table.groups td,table.groups th{border:1px solid var(--line);
+  padding:3px 10px;text-align:left}
+table.groups th{color:var(--dim);font-weight:normal}
+nav.tabs{display:flex;gap:6px;margin:14px 0 0}
+nav.tabs button{border-radius:8px 8px 0 0;border-bottom:none}
+nav.tabs button.on{background:var(--panel);color:var(--acc);
+  border-color:var(--acc)}
+.pane{border:1px solid var(--line);border-radius:0 8px 8px 8px;
+  background:var(--panel);overflow:auto;max-height:560px}
+.pane svg{display:block}
+.pane .note{padding:18px;color:var(--dim)}
+footer{padding:12px 22px;color:var(--dim);font-size:.8rem;
+  border-top:1px solid var(--line);margin-top:18px}
+/* SVG */
+.node circle,.node rect{fill:var(--panel2);stroke:var(--line);
+  stroke-width:1.4}
+.node text{fill:var(--fg);font:13px ui-monospace,Menlo,monospace;
+  text-anchor:middle;dominant-baseline:central}
+.node .idx{fill:var(--dim);font-size:9px}
+.node.kchar circle{stroke:var(--char)}
+.node.ksave circle{stroke:var(--save)}
+.node.kassert circle{stroke:var(--assert)}
+.node.kmatch circle{stroke:var(--good);stroke-width:2.4}
+.node.active circle,.node.active rect{fill:#473f10;stroke:var(--active);
+  stroke-width:2.6}
+.node.dfacur circle{fill:#473f10;stroke:var(--active);stroke-width:2.6}
+.node.accept circle{stroke:var(--good)}
+.edge{fill:none;stroke:#3d4757;stroke-width:1.3}
+.edge.echar{stroke:var(--char);stroke-width:1.8}
+.edge.esave{stroke:var(--save)}
+.edge.eassert{stroke:var(--assert)}
+.edge.eeps{stroke-dasharray:4 3}
+.elabel{fill:var(--dim);font:11px ui-monospace,monospace;
+  text-anchor:middle}
+.elabel.lchar{fill:var(--char);font-size:12.5px}
+.elabel.lsave{fill:var(--save)}
+.elabel.lassert{fill:var(--assert)}
+</style>
+</head>
+<body>
+<header>
+  <h1>REGEX<b>LAB</b></h1>
+  <code id="pat"></code>
+  <span id="stats" style="color:var(--dim);font-size:.8rem"></span>
+</header>
+<main>
+  <div class="row">
+    <label>test string <input type="text" id="text" spellcheck="false"
+      placeholder="type a test string…"></label>
+    <label>mode <select id="mode">
+      <option value="search">search</option>
+      <option value="match">match (anchored start)</option>
+      <option value="fullmatch">fullmatch</option>
+    </select></label>
+  </div>
+  <div id="tape"></div>
+  <div class="row">
+    <button id="b0" title="reset">&#9198;</button>
+    <button id="bp" title="step back">&#9664;</button>
+    <button id="bn" title="step forward">&#9654;</button>
+    <button id="be" title="to end">&#9197;</button>
+    <button id="bplay">&#9654;&#9654; play</button>
+    <span id="status"></span>
+  </div>
+  <div id="verdict"></div>
+  <nav class="tabs">
+    <button id="tab-nfa" class="on">NFA — Pike VM</button>
+    <button id="tab-dfa">DFA — minimized</button>
+  </nav>
+  <div class="pane" id="pane-nfa"></div>
+  <div class="pane" id="pane-dfa" style="display:none"></div>
+</main>
+<footer>RegexLab — a from-scratch regex engine. The NFA view shows the
+compiled Thompson program (every node is a VM instruction); highlighted
+nodes are live threads, in priority order. The DFA view shows the
+Hopcroft-minimized automaton (fullmatch semantics; missing edges reject).
+</footer>
+<script>
+"use strict";
+const DATA = __DATA__;
+
+/* ---------------- engine (mirror of rxlab/vm.py) ---------------- */
+const WORD = [[48,57],[65,90],[95,95],[97,122]];
+function inRanges(cp, ranges){
+  let lo=0, hi=ranges.length-1;
+  while(lo<=hi){const m=(lo+hi)>>1;
+    if(cp<ranges[m][0]) hi=m-1;
+    else if(cp>ranges[m][1]) lo=m+1;
+    else return true;}
+  return false;
+}
+const isWord = ch => ch!==undefined && inRanges(ch.codePointAt(0), WORD);
+function assertOk(kind, pos, chars){
+  if(kind==='^') return pos===0;
+  if(kind==='$') return pos===chars.length;
+  const w1 = pos>0 && isWord(chars[pos-1]);
+  const w2 = pos<chars.length && isWord(chars[pos]);
+  if(kind==='b') return w1!==w2;
+  return w1===w2 && chars.length>0;  /* \B never matches in '' (as in re) */
+}
+function addThread(list, visited, prog, pc0, saves0, pos, chars){
+  const stack=[[pc0,saves0]];
+  while(stack.length){
+    const [pc,saves]=stack.pop();
+    if(visited.has(pc)) continue;
+    visited.add(pc);
+    const inst=prog[pc];
+    if(inst.op==='jmp') stack.push([inst.x,saves]);
+    else if(inst.op==='split'){
+      stack.push([inst.y,saves]); stack.push([inst.x,saves]);
+    }else if(inst.op==='save'){
+      const ns=saves.slice(); ns[inst.slot]=pos; stack.push([inst.x,ns]);
+    }else if(inst.op==='assert'){
+      if(assertOk(inst.kind,pos,chars)) stack.push([inst.x,saves]);
+    }else list.push([pc,saves]);
+  }
+}
+function runNFA(prog, nslots, chars, mode){
+  let matched=null, matchStep=-1;
+  const steps=[];
+  let clist=[], visited=new Set();
+  addThread(clist,visited,prog,0,new Array(nslots).fill(null),0,chars);
+  let pos=0; const n=chars.length;
+  for(;;){
+    steps.push({pos, pcs:clist.map(t=>t[0])});
+    const nlist=[], nvisited=new Set();
+    const ch = pos<n ? chars[pos].codePointAt(0) : null;
+    for(const [pc,saves] of clist){
+      const inst=prog[pc];
+      if(inst.op==='char'){
+        if(ch!==null && inRanges(ch,inst.ranges))
+          addThread(nlist,nvisited,prog,pc+1,saves,pos+1,chars);
+      }else{ /* match */
+        if(mode==='fullmatch' && pos!==n) continue;
+        matched=saves; matchStep=steps.length-1; break;
+      }
+    }
+    if(pos>=n) break;
+    pos++;
+    if(mode==='search' && matched===null)
+      addThread(nlist,nvisited,prog,0,new Array(nslots).fill(null),pos,chars);
+    else if(!nlist.length) break;
+    clist=nlist; visited=nvisited;
+  }
+  return {steps, matched, matchStep};
+}
+function classOf(dfa, cp){
+  const s=dfa.starts;
+  let lo=0, hi=s.length-1, i=0;
+  while(lo<=hi){const m=(lo+hi)>>1;
+    if(s[m]<=cp){i=m;lo=m+1;} else hi=m-1;}
+  return dfa.intervalClass[i];
+}
+function runDFA(dfa, chars){
+  const states=[0]; let q=0;
+  for(let i=0;i<chars.length;i++){
+    const c=classOf(dfa, chars[i].codePointAt(0));
+    const t = c<0 ? undefined : dfa.trans[q][String(c)];
+    if(t===undefined) return {states, deadAt:i, verdict:false};
+    q=t; states.push(q);
+  }
+  return {states, deadAt:-1, verdict: !!dfa.accept[q]};
+}
+
+/* ---------------- layout ---------------- */
+function progGraph(prog){
+  const edges=[];
+  prog.forEach((inst,i)=>{
+    if(inst.op==='char')
+      edges.push({u:i,v:i+1,type:'char',label:inst.label});
+    else if(inst.op==='split'){
+      edges.push({u:i,v:inst.x,type:'eps',label:''});
+      edges.push({u:i,v:inst.y,type:'eps',label:''});
+    }else if(inst.op==='jmp')
+      edges.push({u:i,v:inst.x,type:'eps',label:''});
+    else if(inst.op==='save')
+      edges.push({u:i,v:inst.x,type:'save',label:inst.label});
+    else if(inst.op==='assert')
+      edges.push({u:i,v:inst.x,type:'assert',
+                  label:{'^':'^','$':'$','b':'\\b','B':'\\B'}[inst.kind]});
+  });
+  return edges;
+}
+function layerLayout(n, edges, gapX, gapY){
+  const layer=new Array(n).fill(-1); layer[0]=0;
+  const out=Array.from({length:n},()=>[]);
+  edges.forEach(e=>out[e.u].push(e.v));
+  for(let i=0;i<n;i++){
+    if(layer[i]<0) layer[i]= i>0 ? layer[i-1]+1 : 0;
+    for(const v of out[i]) if(v>i)
+      layer[v]=Math.max(layer[v], layer[i]+1);
+  }
+  const byLayer={};
+  for(let i=0;i<n;i++) (byLayer[layer[i]] ??= []).push(i);
+  const maxRows=Math.max(...Object.values(byLayer).map(a=>a.length));
+  const H=Math.max(140, maxRows*gapY+60);
+  const pos={};
+  for(const L of Object.keys(byLayer)){
+    const ids=byLayer[L];
+    ids.forEach((id,k)=>{
+      pos[id]={x:46+(+L)*gapX, y:H/2+(k-(ids.length-1)/2)*gapY};
+    });
+  }
+  const W=46+Math.max(...layer)*gapX+60;
+  return {pos, W, H};
+}
+function bfsLayout(n, adj, gapX, gapY){
+  const layer=new Array(n).fill(-1); layer[0]=0;
+  const q=[0];
+  while(q.length){const u=q.shift();
+    for(const v of adj[u]) if(layer[v]<0){layer[v]=layer[u]+1;q.push(v);}}
+  for(let i=0;i<n;i++) if(layer[i]<0) layer[i]=0;
+  const byLayer={};
+  for(let i=0;i<n;i++) (byLayer[layer[i]] ??= []).push(i);
+  const maxRows=Math.max(...Object.values(byLayer).map(a=>a.length));
+  const H=Math.max(160, maxRows*gapY+70);
+  const pos={};
+  for(const L of Object.keys(byLayer)){
+    const ids=byLayer[L];
+    ids.forEach((id,k)=>{
+      pos[id]={x:60+(+L)*gapX, y:H/2+(k-(ids.length-1)/2)*gapY};
+    });
+  }
+  const W=60+Math.max(...layer)*gapX+80;
+  return {pos, W, H};
+}
+
+/* ---------------- SVG rendering ---------------- */
+const SVGNS="http://www.w3.org/2000/svg";
+function el(name, attrs, parent){
+  const e=document.createElementNS(SVGNS,name);
+  for(const k in attrs) e.setAttribute(k,attrs[k]);
+  if(parent) parent.appendChild(e);
+  return e;
+}
+function edgePath(p1, p2, idx, back){
+  const dx=p2.x-p1.x, dy=p2.y-p1.y;
+  if(back){
+    const drop=34+Math.min(70, Math.abs(dx)*0.12)+(idx%3)*9;
+    return `M ${p1.x} ${p1.y+10} C ${p1.x} ${p1.y+drop},`+
+           ` ${p2.x} ${p2.y+drop}, ${p2.x} ${p2.y+10}`;
+  }
+  if(Math.abs(dy)<1 && Math.abs(dx)<=96)
+    return `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+  const mx=p1.x+dx*0.5;
+  return `M ${p1.x} ${p1.y} C ${mx} ${p1.y}, ${mx} ${p2.y},`+
+         ` ${p2.x} ${p2.y}`;
+}
+function midOf(p1,p2,back){
+  if(back){
+    const drop=34+Math.min(70,Math.abs(p2.x-p1.x)*0.12);
+    return {x:(p1.x+p2.x)/2, y:Math.max(p1.y,p2.y)+drop*0.8};
+  }
+  return {x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2-7};
+}
+
+function renderNFA(container, prog){
+  const edges=progGraph(prog);
+  const {pos,W,H}=layerLayout(prog.length, edges, 88, 64);
+  const svg=el('svg',{width:W,height:H,viewBox:`0 0 ${W} ${H}`},container);
+  const defs=el('defs',{},svg);
+  for(const [id,color] of [['ar','#3d4757'],['arc','#58a6ff'],
+      ['ars','#3fb950'],['ara','#d29922']]){
+    const m=el('marker',{id,viewBox:'0 0 10 10',refX:9,refY:5,
+      markerWidth:7,markerHeight:7,orient:'auto-start-reverse'},defs);
+    el('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:color},m);
+  }
+  edges.forEach((e,i)=>{
+    const back=e.v<=e.u;
+    const p1=pos[e.u], p2=pos[e.v];
+    const cls={char:'echar',save:'esave',assert:'eassert',eps:'eeps'}[e.type];
+    const marker={char:'arc',save:'ars',assert:'ara',eps:'ar'}[e.type];
+    el('path',{d:edgePath(p1,p2,i,back),
+      class:`edge ${cls}`,'marker-end':`url(#${marker})`},svg);
+    if(e.label){
+      const m=midOf(p1,p2,back);
+      const lcls={char:'lchar',save:'lsave',assert:'lassert'}[e.type]||'';
+      el('text',{x:m.x,y:m.y,class:`elabel ${lcls}`},svg)
+        .textContent=e.label;
+    }
+  });
+  const nodeEls=[];
+  prog.forEach((inst,i)=>{
+    const p=pos[i];
+    const kind={char:'kchar',save:'ksave',assert:'kassert',
+                match:'kmatch'}[inst.op]||'keps';
+    const g=el('g',{class:`node ${kind}`,'data-pc':i},svg);
+    const r= inst.op==='char'?13 : inst.op==='match'?12 : 8;
+    el('circle',{cx:p.x,cy:p.y,r},g);
+    if(inst.op==='match'){
+      el('circle',{cx:p.x,cy:p.y,r:r-3.5,fill:'none'},g);
+      el('text',{x:p.x,y:p.y-r-9,class:'idx'},g).textContent='match';
+    }
+    el('text',{x:p.x,y:p.y+r+10,class:'idx'},g).textContent=i;
+    nodeEls.push(g);
+  });
+  return nodeEls;
+}
+
+function dfaEdgeLabel(dfa, classes){
+  // merge the class ranges, then compact
+  let rs=[];
+  classes.forEach(c=>{rs=rs.concat(dfa.classRanges[c]
+      ? [dfa.classRanges[c]] : []);});
+  rs.sort((a,b)=>a[0]-b[0]);
+  const merged=[];
+  for(const r of rs){
+    if(merged.length && r[0]<=merged[merged.length-1][1]+1)
+      merged[merged.length-1][1]=Math.max(merged[merged.length-1][1],r[1]);
+    else merged.push(r.slice());
+  }
+  const pretty=cp=>{
+    if(cp===10) return '\\n'; if(cp===9) return '\\t';
+    if(cp===13) return '\\r'; if(cp===32) return '␣';
+    if(cp<32||cp===127) return '\\x'+cp.toString(16).padStart(2,'0');
+    return String.fromCodePoint(cp);
+  };
+  let parts=merged.map(([a,b])=>{
+    if(a===b) return pretty(a);
+    if(a===0 && b===0x10FFFF) return 'any';
+    if(b>=0x10FFFF) return pretty(a)+'-∞';
+    return pretty(a)+'-'+pretty(b);
+  });
+  let s=parts.join(' ');
+  if(s.length>14) s=s.slice(0,13)+'…';
+  return s;
+}
+function renderDFA(container, dfa){
+  const n=dfa.trans.length;
+  // merge parallel edges by target
+  const merged=[]; // {u,v,classes}
+  const adj=Array.from({length:n},()=>[]);
+  for(let u=0;u<n;u++){
+    const byTarget={};
+    for(const c in dfa.trans[u]){
+      const v=dfa.trans[u][c];
+      (byTarget[v] ??= []).push(+c);
+    }
+    for(const v in byTarget){
+      merged.push({u,v:+v,classes:byTarget[v]});
+      adj[u].push(+v);
+    }
+  }
+  const {pos,W,H}=bfsLayout(n, adj, 150, 84);
+  const svg=el('svg',{width:W,height:H,viewBox:`0 0 ${W} ${H}`},container);
+  const defs=el('defs',{},svg);
+  const m=el('marker',{id:'dar',viewBox:'0 0 10 10',refX:9,refY:5,
+    markerWidth:7,markerHeight:7,orient:'auto-start-reverse'},defs);
+  el('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'#58a6ff'},m);
+  merged.forEach((e,i)=>{
+    const p1=pos[e.u], p2=pos[e.v];
+    let d, lp;
+    if(e.u===e.v){
+      d=`M ${p1.x-9} ${p1.y-14} C ${p1.x-26} ${p1.y-52},`+
+        ` ${p1.x+26} ${p1.y-52}, ${p1.x+9} ${p1.y-14}`;
+      lp={x:p1.x, y:p1.y-48};
+    }else{
+      const back=e.v<e.u;
+      d=edgePath(p1,p2,i,back);
+      lp=midOf(p1,p2,back);
+    }
+    el('path',{d,class:'edge echar','marker-end':'url(#dar)'},svg);
+    el('text',{x:lp.x,y:lp.y,class:'elabel lchar'},svg)
+      .textContent=dfaEdgeLabel(dfa,e.classes);
+  });
+  const nodeEls=[];
+  for(let i=0;i<n;i++){
+    const p=pos[i];
+    const g=el('g',{class:'node'+(dfa.accept[i]?' accept':'')},svg);
+    el('circle',{cx:p.x,cy:p.y,r:17},g);
+    if(dfa.accept[i]) el('circle',{cx:p.x,cy:p.y,r:13,fill:'none'},g);
+    el('text',{x:p.x,y:p.y},g).textContent='q'+i;
+    if(i===0)
+      el('text',{x:p.x,y:p.y-27,class:'idx'},g).textContent='start';
+    nodeEls.push(g);
+  }
+  return nodeEls;
+}
+
+/* ---------------- UI ---------------- */
+const $=id=>document.getElementById(id);
+const state={step:0, trace:null, dtrace:null, chars:[], playTimer:null};
+
+function esc(s){return s.replace(/[&<>]/g,
+  c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+function recompute(){
+  const text=$('text').value;
+  state.chars=Array.from(text);
+  const mode=$('mode').value;
+  state.trace=runNFA(DATA.prog, 2*(DATA.ngroups+1), state.chars, mode);
+  state.dtrace=DATA.dfa.error?null:runDFA(DATA.dfa, state.chars);
+  state.step=Math.min(state.step, state.trace.steps.length-1);
+  state.step=state.trace.steps.length-1;  // jump to end on new input
+  paint();
+}
+
+function setStep(k){
+  state.step=Math.max(0,Math.min(k,state.trace.steps.length-1));
+  paint();
+}
+
+function paint(){
+  const tr=state.trace, st=tr.steps[state.step];
+  /* tape */
+  const tape=$('tape'); tape.innerHTML='';
+  const span = tr.matched ? [tr.matched[0],tr.matched[1]] : null;
+  state.chars.forEach((ch,i)=>{
+    const c=document.createElement('div');
+    c.className='cell';
+    if(i<st.pos) c.classList.add('done');
+    if(i===st.pos) c.classList.add('cur');
+    if(span && i>=span[0] && i<span[1]) c.classList.add('inmatch');
+    c.textContent=ch===' '?'␣':ch;
+    tape.appendChild(c);
+  });
+  const end=document.createElement('div');
+  end.className='cell endmark'+(st.pos>=state.chars.length?' cur':'');
+  end.textContent='⌀';
+  tape.appendChild(end);
+  /* status */
+  $('status').textContent=
+    `step ${state.step+1}/${tr.steps.length} · pos ${st.pos} · `+
+    `${st.pcs.length} live thread${st.pcs.length===1?'':'s'} `+
+    `[${st.pcs.join(', ')}]`;
+  /* nfa highlights */
+  nfaNodes.forEach((g,pc)=>{
+    g.classList.toggle('active', st.pcs.includes(pc));
+  });
+  /* dfa highlights */
+  if(dfaNodes && state.dtrace){
+    const di=Math.min(st.pos, state.dtrace.states.length-1);
+    const dead=state.dtrace.deadAt>=0 && st.pos>state.dtrace.deadAt;
+    dfaNodes.forEach((g,q)=>{
+      g.classList.toggle('dfacur', !dead && q===state.dtrace.states[di]);
+    });
+  }
+  /* verdict */
+  const v=$('verdict');
+  if(tr.matched){
+    const [s,e]=[tr.matched[0],tr.matched[1]];
+    let html=`<span class="big">MATCH</span> span (${s}, ${e}) — `+
+      `<code>${esc(state.chars.slice(s,e).join(''))||'(empty)'}</code>`;
+    if(DATA.ngroups>0){
+      html+='<table class="groups"><tr><th>group</th><th>span</th>'+
+            '<th>text</th></tr>';
+      for(let g=1;g<=DATA.ngroups;g++){
+        const a=tr.matched[2*g], b=tr.matched[2*g+1];
+        html+=`<tr><td>${g}</td><td>${a===null||b===null?'—':
+          `(${a}, ${b})`}</td><td>${a===null||b===null?'—':
+          '<code>'+esc(state.chars.slice(a,b).join(''))+'</code>'}</td></tr>`;
+      }
+      html+='</table>';
+    }
+    v.innerHTML=html; v.className='ok';
+  }else{
+    v.innerHTML='<span class="big">NO MATCH</span>'+
+      (state.dtrace && !DATA.dfa.error ?
+        ` — DFA verdict: ${state.dtrace.verdict?'accept':'reject'}`:'');
+    v.className='no';
+  }
+  if(state.dtrace && tr.matched){
+    /* nothing extra: DFA agreement shown only for fullmatch mode */
+  }
+  $('bp').disabled = state.step===0;
+  $('b0').disabled = state.step===0;
+  $('bn').disabled = state.step===tr.steps.length-1;
+  $('be').disabled = state.step===tr.steps.length-1;
+}
+
+function play(){
+  if(state.playTimer){clearInterval(state.playTimer);state.playTimer=null;
+    $('bplay').innerHTML='&#9654;&#9654; play';return;}
+  if(state.step>=state.trace.steps.length-1) setStep(0);
+  $('bplay').textContent='⏸ pause';
+  state.playTimer=setInterval(()=>{
+    if(state.step>=state.trace.steps.length-1) play();
+    else setStep(state.step+1);
+  }, 600);
+}
+
+/* boot */
+$('pat').textContent='/'+DATA.pattern+'/';
+const nfaNodes=renderNFA($('pane-nfa'), DATA.prog);
+let dfaNodes=null;
+if(DATA.dfa.error){
+  const note=document.createElement('div');
+  note.className='note';
+  note.textContent='DFA unavailable: '+DATA.dfa.error;
+  $('pane-dfa').appendChild(note);
+}else{
+  dfaNodes=renderDFA($('pane-dfa'), DATA.dfa);
+}
+$('stats').textContent=
+  `${DATA.prog.length} NFA states`+
+  (DATA.dfa.error?'':` · ${DATA.dfa.nSubset} DFA states → `+
+   `${DATA.dfa.trans.length} minimized`);
+$('text').value=DATA.sample;
+$('text').addEventListener('input',recompute);
+$('mode').addEventListener('change',recompute);
+$('b0').onclick=()=>setStep(0);
+$('bp').onclick=()=>setStep(state.step-1);
+$('bn').onclick=()=>setStep(state.step+1);
+$('be').onclick=()=>setStep(state.trace.steps.length-1);
+$('bplay').onclick=play;
+$('tab-nfa').onclick=()=>{
+  $('pane-nfa').style.display=''; $('pane-dfa').style.display='none';
+  $('tab-nfa').classList.add('on'); $('tab-dfa').classList.remove('on');};
+$('tab-dfa').onclick=()=>{
+  $('pane-dfa').style.display=''; $('pane-nfa').style.display='none';
+  $('tab-dfa').classList.add('on'); $('tab-nfa').classList.remove('on');};
+recompute();
+</script>
+</body>
+</html>
+"""
