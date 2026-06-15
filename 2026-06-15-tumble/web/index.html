@@ -297,16 +297,23 @@ Drag to pull · Cut to slice · everything is just particles and distance constr
   });
   function endDrag(){
     down=false;
-    if(dragIdx>=0){ world.particles[dragIdx].inv_mass=dragMass; dragIdx=-1; }
+    // restore mass; guard against the world having been reset mid-drag
+    if(dragIdx>=0 && dragIdx<world.particles.length){
+      world.particles[dragIdx].inv_mass=dragMass;
+    }
+    dragIdx=-1;
   }
   cv.addEventListener("pointerup", endDrag);
   cv.addEventListener("pointercancel", endDrag);
 
-  // hold the dragged particle exactly at the cursor (zero velocity)
+  // Hold the dragged particle at the cursor. We move prev->old position and
+  // pos->cursor, so the implicit velocity (pos-prev) tracks the cursor — that
+  // lets you *fling* a body by releasing while moving.
   function applyDrag(){
-    if(dragIdx>=0 && mouse){
+    if(dragIdx>=0 && dragIdx<world.particles.length && mouse){
       const p=world.particles[dragIdx];
-      p.x=mouse.x; p.y=mouse.y; p.px=mouse.x; p.py=mouse.y;
+      p.px=p.x; p.py=p.y;       // previous = where it was last frame
+      p.x=mouse.x; p.y=mouse.y; // now = cursor
     }
   }
 
