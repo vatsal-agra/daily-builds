@@ -61,6 +61,7 @@ def run_chaos(seed: int = 0, n: int = 5, ticks: int = 1200,
         config=Config(election_min=8, election_max=16, heartbeat_interval=1),
         net_config=NetConfig(latency_min=1, latency_max=4,
                              loss_prob=loss_prob, dup_prob=dup_prob),
+        snapshot_threshold=20,  # exercise log compaction + InstallSnapshot
     )
     ids = list(range(n))
     faults = 0

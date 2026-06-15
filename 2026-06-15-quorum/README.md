@@ -3,8 +3,8 @@
 A deterministic **Raft consensus simulator** with an adversarial network, fault
 injection, and machine-checked safety invariants. Daily build, 2026-06-15.
 
-> Status: **Phase 2 — core build complete.** All 4 required features work
-> end-to-end. Adversarial review, stretch features, and polish still to come.
+> Status: **Phase 4 — stretch + polish complete.** All 4 required features plus
+> all 3 stretch features work end-to-end. Verification suite next.
 
 ## Quick start
 ```bash
@@ -29,5 +29,16 @@ python3 -m quorum.cli scenario split_brain
    randomized chaos generator. 40+ seeds run clean: zero safety violations,
    fully linearizable client histories.
 
-See [PLAN.md](./PLAN.md) for architecture and the full feature list (including
-stretch features still in progress).
+## Stretch features (all three done)
+5. **Linearizability checker** — Wing & Gong search verifies the committed client
+   history is linearizable against a sequential KV spec (catches stale reads /
+   split-brain writes). Validated against known-bad histories.
+6. **Live ASCII dashboard** — `python3 -m quorum.cli dashboard` animates the
+   cluster: per-node role, term, log bar (committed vs pending), commit index,
+   partition group, and a rolling fault feed.
+7. **Log compaction / snapshots** — nodes auto-compact their logs into snapshots;
+   a far-behind or restarted follower is caught up via `InstallSnapshot`.
+   Exercised continuously under chaos.
+
+See [PLAN.md](./PLAN.md) for architecture and [REVIEW.md](./REVIEW.md) for the
+adversarial review.

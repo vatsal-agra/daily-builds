@@ -30,8 +30,14 @@ class ClientOp:
 class Cluster:
     def __init__(self, n: int = 5, seed: int = 0,
                  config: Optional[Config] = None,
-                 net_config: Optional[NetConfig] = None):
+                 net_config: Optional[NetConfig] = None,
+                 snapshot_threshold: Optional[int] = None):
+        if n < 1:
+            raise ValueError(f"cluster needs at least 1 node, got {n}")
         self.n = n
+        # When set, a node auto-compacts its log into a snapshot once the number
+        # of in-memory (un-snapshotted) entries exceeds this threshold.
+        self.snapshot_threshold = snapshot_threshold
         self.rng = random.Random(seed)
         # Independent RNG streams keep node timers and network choices from
         # interfering, while staying fully seeded/deterministic.
@@ -151,11 +157,20 @@ class Cluster:
                     op.return_time = t
                     del self._pending[key]
 
-        # 5. Detect ops whose slot was overwritten by a different entry
+        # 5. Auto-compact logs into snapshots when they grow too large. This
+        #    keeps memory bounded and continuously exercises InstallSnapshot.
+        if self.snapshot_threshold is not None:
+            for nid in self.alive:
+                node = self.nodes[nid]
+                in_memory = node.last_log_index() - node.base_index
+                if in_memory > self.snapshot_threshold:
+                    node.take_snapshot()
+
+        # 6. Detect ops whose slot was overwritten by a different entry
         #    (they definitively did not commit).
         self._reap_lost_ops()
 
-        # 6. Global safety check.
+        # 7. Global safety check.
         self.monitor.check(self.nodes, self.alive)
 
     def _reap_lost_ops(self):

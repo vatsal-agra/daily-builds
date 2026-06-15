@@ -217,10 +217,31 @@ def build_parser():
     return p
 
 
+def _validate(args):
+    if getattr(args, "nodes", 1) < 1:
+        raise ValueError("--nodes must be >= 1")
+    if getattr(args, "runs", 1) < 1:
+        raise ValueError("--runs must be >= 1")
+    if getattr(args, "ticks", 1) < 1:
+        raise ValueError("--ticks must be >= 1")
+    loss = getattr(args, "loss", 0.0)
+    dup = getattr(args, "dup", 0.0)
+    if not (0.0 <= loss <= 1.0) or not (0.0 <= dup <= 1.0):
+        raise ValueError("--loss/--dup must be in [0, 1]")
+
+
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        _validate(args)
+        return args.func(args)
+    except ValueError as e:
+        print(f"{RED}error:{RESET} {e}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("\ninterrupted", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":
