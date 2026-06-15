@@ -83,6 +83,7 @@
       this.tearing = !!opts.tearing;
       this.tear_strain = opts.tear_strain === undefined ? 0.6 : +opts.tear_strain;
       this.cell_size = opts.cell_size === undefined ? 40.0 : +opts.cell_size;
+      if (this.cell_size <= 0.0) this.cell_size = 1.0;
       this.particles = [];
       this.constraints = [];
       this.segments = [];

@@ -5,9 +5,10 @@ Dynamics** — with an interactive browser playground, a Python reference engine
 a headless SVG renderer/CLI, and a JS engine that is verified **bit-for-bit
 identical** to the Python one.
 
-> Status: **Phase 2 (core build) complete.** Required features 1–4 implemented:
-> the Verlet/PBD core, collisions & containment, composite bodies (rope/cloth/
-> box/blob), and the interactive HTML/Canvas playground.
+> Status: **Phase 4 (stretch + polish) complete.** Required features 1–4 plus
+> stretch features: tearable cloth, JSON scene save/load + presets, headless
+> SVG renderer & CLI `check`, in-playground SVG snapshot download, motion
+> trails, velocity-preserving drag, and validated/hardened scene import.
 
 ## Quick start
 

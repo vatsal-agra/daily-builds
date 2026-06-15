@@ -114,6 +114,8 @@ class World:
         self.tearing = bool(tearing)
         self.tear_strain = float(tear_strain)
         self.cell_size = float(cell_size)
+        if self.cell_size <= 0.0:
+            self.cell_size = 1.0
         self.particles = []
         self.constraints = []
         self.segments = []

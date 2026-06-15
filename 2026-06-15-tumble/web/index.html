@@ -32,7 +32,8 @@
     position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;
     box-shadow:0 18px 50px #0008, inset 0 0 0 1px #ffffff08;background:#0b0f16;
   }
-  canvas{display:block;touch-action:none;cursor:crosshair}
+  canvas{display:block;touch-action:none;cursor:crosshair;max-width:100%;height:auto}
+  .stage{max-width:100%}
   .hud{
     position:absolute;left:12px;top:12px;display:flex;gap:8px;flex-wrap:wrap;
     pointer-events:none;
@@ -162,6 +163,8 @@
         <span class="switch"><input type="checkbox" id="collChk"><span class="sl"></span></span></div>
       <div class="toggle">Show constraints
         <span class="switch"><input type="checkbox" id="showCons" checked><span class="sl"></span></span></div>
+      <div class="toggle">Motion trails
+        <span class="switch"><input type="checkbox" id="trailChk"><span class="sl"></span></span></div>
     </div>
 
     <div class="group">
@@ -169,6 +172,8 @@
       <div class="btns">
         <button id="exportBtn" class="ghost">Export</button>
         <button id="importBtn" class="ghost">Import</button>
+        <button id="snapBtn" class="ghost">📷 SVG</button>
+        <button id="clearBtn" class="ghost">Clear</button>
       </div>
       <textarea id="ioArea" placeholder="scene JSON appears here / paste to import" spellcheck="false"></textarea>
     </div>
@@ -327,11 +332,17 @@ Drag to pull · Cut to slice · everything is just particles and distance constr
     return `rgb(${(120-60*t)|0},${(120-20*t)|0},${(120+100*t)|0})`;
   }
   function draw(){
-    ctx.clearRect(0,0,cv.width,cv.height);
-    // subtle grid
-    ctx.strokeStyle="#161c27"; ctx.lineWidth=1;
-    for(let x=0;x<=cv.width;x+=45){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,cv.height);ctx.stroke();}
-    for(let y=0;y<=cv.height;y+=45){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(cv.width,y);ctx.stroke();}
+    if($("trailChk").checked){
+      // fade the previous frame instead of clearing -> motion trails
+      ctx.fillStyle="rgba(11,15,22,0.18)";
+      ctx.fillRect(0,0,cv.width,cv.height);
+    } else {
+      ctx.clearRect(0,0,cv.width,cv.height);
+      // subtle grid (skipped under trails so it doesn't smear)
+      ctx.strokeStyle="#161c27"; ctx.lineWidth=1;
+      for(let x=0;x<=cv.width;x+=45){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,cv.height);ctx.stroke();}
+      for(let y=0;y<=cv.height;y+=45){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(cv.width,y);ctx.stroke();}
+    }
 
     // segments
     ctx.lineCap="round";
@@ -421,10 +432,62 @@ Drag to pull · Cut to slice · everything is just particles and distance constr
 
   $("exportBtn").onclick=()=>{ $("ioArea").value=JSON.stringify(world.toDict());
     toast("scene exported to the box"); };
+
+  function validateWorldDict(d){
+    if(!d || typeof d!=="object") throw new Error("not an object");
+    if(!Array.isArray(d.particles)) throw new Error("missing particles[]");
+    const n=d.particles.length;
+    for(const p of d.particles){
+      for(const k of ["x","y"]) if(typeof p[k]!=="number"||!isFinite(p[k]))
+        throw new Error("bad particle "+k);
+    }
+    for(const c of (d.constraints||[])){
+      if(!(c.i>=0&&c.i<n&&c.j>=0&&c.j<n)) throw new Error("constraint index out of range");
+    }
+    return d;
+  }
   $("importBtn").onclick=()=>{
-    try{ world=T.World.fromDict(JSON.parse($("ioArea").value)); syncControlsToWorld();
-      toast("scene imported"); }
-    catch(err){ toast("import failed: "+err.message); }
+    try{
+      const d=validateWorldDict(JSON.parse($("ioArea").value));
+      world=T.World.fromDict(d); dragIdx=-1; syncControlsToWorld();
+      toast("scene imported ("+world.particles.length+" particles)");
+    }catch(err){ toast("import failed: "+err.message); }
+  };
+
+  // Snapshot the current frame to a standalone SVG (mirrors tumble/render_svg.py)
+  function frameSVG(){
+    const w=world, parts=[];
+    parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w.width}" height="${w.height}" viewBox="0 0 ${w.width} ${w.height}">`);
+    parts.push(`<rect width="${w.width}" height="${w.height}" fill="#0d1117"/>`);
+    for(const s of w.segments)
+      parts.push(`<line x1="${s.ax}" y1="${s.ay}" x2="${s.bx}" y2="${s.by}" stroke="#8b949e" stroke-width="${Math.max(2,s.radius*2)}" stroke-linecap="round"/>`);
+    for(const c of w.constraints){
+      if(!c.active) continue;
+      const a=w.particles[c.i], b=w.particles[c.j];
+      const dx=b.x-a.x, dy=b.y-a.y, d=Math.sqrt(dx*dx+dy*dy);
+      const stress=c.rest>0?(d-c.rest)/c.rest:0;
+      parts.push(`<line x1="${a.x.toFixed(2)}" y1="${a.y.toFixed(2)}" x2="${b.x.toFixed(2)}" y2="${b.y.toFixed(2)}" stroke="${stressColor(stress)}" stroke-width="2"/>`);
+    }
+    for(const p of w.particles){
+      const col=p.inv_mass===0?"#f0883e":"#58a6ff";
+      parts.push(`<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${p.radius.toFixed(2)}" fill="${col}"/>`);
+    }
+    parts.push("</svg>");
+    return parts.join("\n");
+  }
+  $("snapBtn").onclick=()=>{
+    const blob=new Blob([frameSVG()],{type:"image/svg+xml"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="tumble-"+sel.value+"-"+Date.now()+".svg";
+    a.click(); URL.revokeObjectURL(a.href);
+    toast("snapshot saved");
+  };
+  $("clearBtn").onclick=()=>{
+    world=new T.World({width:world.width,height:world.height,gravity:[world.gx,world.gy],
+      iterations:world.iterations,damping:world.damping,tearing:world.tearing,
+      self_collision:world.self_collision,tear_strain:world.tear_strain});
+    dragIdx=-1; toast("cleared — use the Spawn tool to add bodies");
   };
 
   // keyboard
