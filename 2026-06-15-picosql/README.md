@@ -4,9 +4,11 @@ A relational database engine written from scratch in pure Python 3 (stdlib only)
 SQL text → tokenizer → parser → planner → executor over a **durable, paged B+tree**
 on disk.
 
-> Status: **Phase 4 (stretch + polish) complete.** All 4 required features plus
-> all 3 stretch features are in: interactive REPL, query planner with index
-> selection + EXPLAIN, and transactions with a crash-safe rollback journal.
+> Status: **Phase 5 (verification) complete.** 22-test suite green — including a
+> 4000-op B+tree oracle, crash-recovery of the rollback journal, and a 21-query
+> differential suite cross-checked against the stdlib `sqlite3`. Run the suite
+> with `python3 -m unittest discover tests` or the full feature tour with
+> `bash demo.sh`. All 4 required + 3 stretch features are in.
 
 ### Quick start
 ```bash
