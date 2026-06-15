@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from . import ast_nodes as A
-from .btree import BTree
+from .btree import BTree, RowTooLarge
 from .catalog import Catalog, Column, TableSchema
 from .executor import Result, eval_expr, run_select
 from .parser import parse
@@ -175,7 +175,13 @@ class Database:
         schema = self.require_table(stmt.table)
         target_idxs = self._resolve_insert_columns(schema, stmt)
         tree = self._tree(schema)
-        count = 0
+
+        # Pass 1: validate + encode every row before writing anything, so an
+        # error on row K leaves the table unchanged (statement-level atomicity,
+        # even inside an explicit transaction).
+        pending = []  # (rowid, blob)
+        next_rowid = schema.next_rowid
+        batch_pks = set()
         for row_exprs in stmt.rows:
             if len(row_exprs) != len(target_idxs):
                 raise DBError(
@@ -185,31 +191,42 @@ class Database:
             values = [None] * len(schema.columns)
             for slot, expr in zip(target_idxs, row_exprs):
                 values[slot] = eval_expr(expr, [])
-            # determine rowid
             if schema.pk_col is not None:
                 pkv = values[schema.pk_col]
                 if pkv is None:
-                    rowid = schema.next_rowid
+                    rowid = next_rowid
                     values[schema.pk_col] = rowid
                 else:
                     if not isinstance(pkv, int) or isinstance(pkv, bool):
                         raise DBError("PRIMARY KEY value must be an integer")
                     rowid = pkv
-                    if tree.search(rowid) is not None:
+                    if rowid in batch_pks or tree.search(rowid) is not None:
                         raise DBError(f"duplicate PRIMARY KEY value {rowid}")
             else:
-                rowid = schema.next_rowid
-            # coerce to declared types
+                rowid = next_rowid
             try:
                 coerced = [coerce(v, schema.columns[i].type) for i, v in enumerate(values)]
             except TypeError_ as e:
                 raise DBError(str(e))
-            tree.insert(rowid, encode_row(coerced))
-            schema.next_rowid = max(schema.next_rowid, rowid + 1)
-            count += 1
+            blob = encode_row(coerced)
+            if len(blob) > 4000:  # leave room for cell header within a page
+                raise DBError(
+                    f"row of {len(blob)} bytes is too large for a 4 KB page"
+                )
+            batch_pks.add(rowid)
+            pending.append((rowid, blob))
+            next_rowid = max(next_rowid, rowid + 1)
+
+        # Pass 2: all rows valid — write them.
+        try:
+            for rowid, blob in pending:
+                tree.insert(rowid, blob)
+        except RowTooLarge as e:
+            raise DBError(str(e))
+        schema.next_rowid = next_rowid
         schema.root_page = tree.root
         self.catalog.save(schema)
-        return ExecResult(message=f"INSERT {count}", rowcount=count)
+        return ExecResult(message=f"INSERT {len(pending)}", rowcount=len(pending))
 
     def _update(self, stmt: A.Update) -> ExecResult:
         schema = self.require_table(stmt.table)

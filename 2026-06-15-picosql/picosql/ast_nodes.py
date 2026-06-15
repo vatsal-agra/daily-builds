@@ -54,6 +54,13 @@ class IsNull(Expr):
         self.negated = negated
 
 
+class InList(Expr):
+    def __init__(self, operand: Expr, items: List[Expr], negated: bool = False):
+        self.operand = operand
+        self.items = items
+        self.negated = negated
+
+
 class FuncCall(Expr):
     def __init__(self, name: str, args: List[Expr], star: bool = False):
         self.name = name.upper()

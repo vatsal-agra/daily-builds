@@ -96,6 +96,27 @@ def eval_expr(expr: A.Expr, bindings: BindingList, agg_values=None):
         if expr.op == "-":
             return -v
         return +v
+    if isinstance(expr, A.InList):
+        left = eval_expr(expr.operand, bindings, agg_values)
+        if left is None:
+            return None
+        has_null = False
+        matched = False
+        for item in expr.items:
+            v = eval_expr(item, bindings, agg_values)
+            if v is None:
+                has_null = True
+                continue
+            if _compare(left, v) == 0:
+                matched = True
+                break
+        if matched:
+            result = True
+        elif has_null:
+            return None  # unknown
+        else:
+            result = False
+        return (not result) if expr.negated else result
     if isinstance(expr, A.BinaryOp):
         return _eval_binary(expr, bindings, agg_values)
     if isinstance(expr, A.FuncCall):
@@ -353,6 +374,10 @@ def _collect_aggregates(expr, out):
         _collect_aggregates(expr.operand, out)
     elif isinstance(expr, A.IsNull):
         _collect_aggregates(expr.operand, out)
+    elif isinstance(expr, A.InList):
+        _collect_aggregates(expr.operand, out)
+        for it in expr.items:
+            _collect_aggregates(it, out)
 
 
 def _agg_init(name):
@@ -458,7 +483,14 @@ def run_select(db, select: A.Select, source: Op, relations) -> Result:
     alias_map = {name.lower(): expr for expr, name in specs}
     resolved_order = []
     for e, d in select.order_by:
-        if isinstance(e, A.ColumnRef) and e.table is None and e.name.lower() in alias_map:
+        if isinstance(e, A.Literal) and isinstance(e.value, int) and not isinstance(e.value, bool):
+            # positional: ORDER BY N -> N-th output column (1-based)
+            n = e.value
+            if 1 <= n <= len(specs):
+                resolved_order.append((specs[n - 1][0], d))
+            else:
+                raise ExecError(f"ORDER BY position {n} is out of range")
+        elif isinstance(e, A.ColumnRef) and e.table is None and e.name.lower() in alias_map:
             resolved_order.append((alias_map[e.name.lower()], d))
         else:
             resolved_order.append((e, d))

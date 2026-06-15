@@ -342,16 +342,30 @@ class Parser:
             self.advance()
             right = self._additive()
             return A.BinaryOp("LIKE", left, right)
+        if self.at_kw("IN"):
+            self.advance()
+            return A.InList(left, self._in_list(), negated=False)
         if self.at_kw("NOT"):
-            # NOT LIKE
+            # NOT LIKE / NOT IN
             save = self.i
             self.advance()
             if self.at_kw("LIKE"):
                 self.advance()
                 right = self._additive()
                 return A.UnaryOp("NOT", A.BinaryOp("LIKE", left, right))
+            if self.at_kw("IN"):
+                self.advance()
+                return A.InList(left, self._in_list(), negated=True)
             self.i = save
         return left
+
+    def _in_list(self):
+        self.eat_op("(")
+        items = [self._expr()]
+        while self.maybe_op(","):
+            items.append(self._expr())
+        self.eat_op(")")
+        return items
 
     def _additive(self) -> A.Expr:
         left = self._multiplicative()
