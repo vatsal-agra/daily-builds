@@ -201,6 +201,10 @@ class Node:
         self.votes_granted = {self.id}
         self.election_elapsed = 0
         self.election_timeout = self._rand_timeout()
+        # Single-node cluster: a self-vote is already a majority, so win at once
+        # (no RequestVoteResp will ever arrive to trigger the check otherwise).
+        if len(self.votes_granted) >= self._majority():
+            return self._become_leader()
         out = []
         for p in self.peers:
             out.append(
@@ -233,6 +237,10 @@ class Node:
     # ------------------------------------------------------------------ #
     def tick(self) -> list[Envelope]:
         if self.role == Role.LEADER:
+            # A leader is its own majority of one; advance commit here too so a
+            # single-node cluster (which receives no AppendEntries responses) and
+            # freshly-appended entries make progress.
+            self._maybe_advance_commit()
             self.heartbeat_elapsed += 1
             if self.heartbeat_elapsed >= self.cfg.heartbeat_interval:
                 self.heartbeat_elapsed = 0

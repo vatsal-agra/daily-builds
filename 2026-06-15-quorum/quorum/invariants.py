@@ -81,19 +81,30 @@ class SafetyMonitor:
     def _leader_append_only(self, nodes, alive):
         for nid, n in nodes.items():
             if n.role == Role.LEADER and nid in alive:
-                snap = tuple(
-                    (n.term_at(i), n.entry_at(i).command if n.entry_at(i) else None)
+                # Map absolute index -> (term, command) for the in-memory log.
+                snap = {
+                    i: (n.term_at(i),
+                        n.entry_at(i).command if n.entry_at(i) else None)
                     for i in range(n.base_index + 1, n.last_log_index() + 1)
-                )
+                }
                 key = (n.current_term, nid)
                 prev = self._leader_log_snapshot.get(key)
-                if prev is not None and snap[: len(prev)] != prev:
-                    raise SafetyViolation(
-                        "LeaderAppendOnly",
-                        f"leader {nid} (term {n.current_term}) mutated an existing "
-                        f"log prefix",
-                    )
-                self._leader_log_snapshot[key] = snap
+                if prev is not None:
+                    # Any index present in both snapshots must be unchanged. (A
+                    # snapshot may trim a committed prefix — that is not a
+                    # mutation — so we compare only the overlapping indices.)
+                    for i, val in prev.items():
+                        if i in snap and snap[i] != val:
+                            raise SafetyViolation(
+                                "LeaderAppendOnly",
+                                f"leader {nid} (term {n.current_term}) changed the "
+                                f"entry at index {i} from {val!r} to {snap[i]!r}",
+                            )
+                    merged = dict(prev)
+                    merged.update(snap)
+                    self._leader_log_snapshot[key] = merged
+                else:
+                    self._leader_log_snapshot[key] = snap
 
     # --- record committed entries (helper for properties 4 & 5) ---
     def _record_committed(self, nodes):
