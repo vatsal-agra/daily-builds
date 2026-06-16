@@ -270,3 +270,15 @@ def pigeonhole_encode(m_pigeons: int, n_holes: int) -> Tuple[CNF, dict]:
                 cnf.add_clause([-p(i1, j), -p(i2, j)])
     cnf.nvars = max(cnf.nvars, m_pigeons * n_holes)
     return cnf, {"m": m_pigeons, "n": n_holes, "p": p}
+
+
+def pigeonhole_decode(model: Dict[int, bool], meta: dict) -> List[int]:
+    """Return ``hole_of_pigeon[i]`` for each pigeon (only meaningful when SAT)."""
+    m, n, p = meta["m"], meta["n"], meta["p"]
+    out = [-1] * m
+    for i in range(m):
+        for j in range(n):
+            if model.get(p(i, j)):
+                out[i] = j
+                break
+    return out

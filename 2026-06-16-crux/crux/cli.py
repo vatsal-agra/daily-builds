@@ -40,8 +40,12 @@ def _print_stats(stats, prefix="c "):
 def cmd_solve(args) -> int:
     cnf = _read_cnf(args.file)
     sol = Solver(cnf, restart_base=args.restart, record_proof=False)
-    r = sol.solve()
+    r = sol.solve(max_conflicts=args.max_conflicts)
     _print_stats(r.stats)
+    if r.sat is None:
+        print("s UNKNOWN")
+        print(f"c conflict budget ({args.max_conflicts}) exhausted")
+        return 0
     if r.sat:
         print("s SATISFIABLE")
         lits = r.assignment()
@@ -137,7 +141,9 @@ def cmd_decode(args) -> int:
         cols = enc.graph_coloring_decode(r.model, meta)
         print("c colouring:", cols)
     elif kind == "pigeonhole":
-        print("c (pigeonhole is satisfiable only when pigeons <= holes)")
+        holes = enc.pigeonhole_decode(r.model, meta)
+        for i, h in enumerate(holes):
+            print(f"c pigeon {i} -> hole {h}")
     assert cnf.is_satisfied_by(r.model)
     return 10
 
@@ -188,7 +194,7 @@ def cmd_fuzz(args) -> int:
                 lits.append(v if random.random() < 0.5 else -v)
             cnf.add_clause(lits)
         cnf.nvars = nv
-        r = Solver(cnf, rng_seed=t).solve()
+        r = Solver(cnf, restart_base=1 + (t % 100)).solve()
         b = brute_is_sat(cnf)
         if r.sat != b:
             mism += 1
@@ -265,6 +271,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("solve", help="solve a DIMACS CNF")
     s.add_argument("file", nargs="?", help="DIMACS file (default stdin)")
     s.add_argument("--restart", type=int, default=100)
+    s.add_argument("--max-conflicts", type=int, default=None,
+                   dest="max_conflicts", help="budget; print UNKNOWN if exceeded")
     s.set_defaults(func=cmd_solve)
 
     c = sub.add_parser("check", help="verify a model against a DIMACS formula")

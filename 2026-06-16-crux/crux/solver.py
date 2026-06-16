@@ -75,10 +75,16 @@ class Stats:
 
 @dataclass
 class Result:
-    sat: bool
+    sat: Optional[bool]  # True=SAT, False=UNSAT, None=UNKNOWN (budget hit)
     model: Optional[Dict[int, bool]]  # var -> bool, only when sat
     stats: Stats
     proof: Optional[List[List[int]]] = None  # learned-clause + deletion trace
+
+    @property
+    def status(self) -> str:
+        if self.sat is None:
+            return "UNKNOWN"
+        return "SAT" if self.sat else "UNSAT"
 
     def assignment(self) -> Optional[List[int]]:
         """Model as a sorted list of signed literals (DIMACS style)."""
@@ -107,7 +113,6 @@ class Solver:
         var_decay: float = 0.95,
         clause_decay: float = 0.999,
         restart_base: int = 100,
-        rng_seed: int = 1,
         record_proof: bool = False,
         trace: Optional[Callable[[str, dict], None]] = None,
     ):
@@ -225,6 +230,7 @@ class Solver:
 
     def _attach(self, cl: Clause):
         # watch the negation of the first two literals
+        assert len(cl.lits) >= 2, "watched clauses must have >= 2 literals"
         self.watches[-cl.lits[0]].append(cl)
         self.watches[-cl.lits[1]].append(cl)
 
@@ -288,7 +294,7 @@ class Solver:
                 if lits[0] == false_lit:
                     lits[0], lits[1] = lits[1], lits[0]
                 first = lits[0]
-                if first != lits[1] and self._lit_value(first) is TRUE:
+                if self._lit_value(first) is TRUE:
                     # clause already satisfied; keep this watch
                     watchers[keep] = cl
                     keep += 1
@@ -338,6 +344,17 @@ class Solver:
             self.var_inc *= 1e-100
         import heapq
         heapq.heappush(self.order, (-self.activity[v], v))
+        # F1: the order heap accumulates stale entries (one per bump). Cap its
+        # growth so memory stays O(nvars): rebuild from the live unassigned set.
+        if len(self.order) > 30 * (self.nvars + 1) + 1024:
+            self._rebuild_order()
+
+    def _rebuild_order(self):
+        import heapq
+        self.order = [(-self.activity[v], v)
+                      for v in range(1, self.nvars + 1)
+                      if self.value[v] is UNASSIGNED]
+        heapq.heapify(self.order)
 
     def _var_decay(self):
         self.var_inc /= self.var_decay
@@ -512,12 +529,16 @@ class Solver:
         self.learnts = keep
 
     # --------------------------------------------------------------- solve
-    def solve(self, assumptions: Optional[Sequence[int]] = None) -> Result:
+    def solve(self, assumptions: Optional[Sequence[int]] = None,
+              max_conflicts: Optional[int] = None) -> Result:
         """Run CDCL. ``assumptions`` are literals forced true at the bottom.
 
         Each assumption occupies its own bottom decision level, so we never
         backjump past them; if an assumption is falsified the result is UNSAT
         *under those assumptions* (the formula itself may still be SAT).
+
+        ``max_conflicts`` (optional) bounds the search; if reached, the result
+        has ``sat=None`` (UNKNOWN) instead of looping forever.
         """
         if not self.ok:
             return self._unsat_result()
@@ -557,6 +578,10 @@ class Solver:
                 self._cla_decay_step()
                 if self.stats.max_decision_level < self.decision_level:
                     self.stats.max_decision_level = self.decision_level
+                if max_conflicts is not None and self.stats.conflicts >= max_conflicts:
+                    self._cancel_until(n_assump)
+                    return Result(None, None, self.stats,
+                                  self.proof if self.record_proof else None)
             else:
                 # restart? (never past the assumption floor)
                 if conflict_count >= conflicts_until_restart:

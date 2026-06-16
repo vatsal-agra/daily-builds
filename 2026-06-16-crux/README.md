@@ -2,8 +2,15 @@
 
 A from-scratch **CDCL SAT solver** in pure Python.
 
-> Status: **Phase 2 (CORE BUILD) complete.** All 4 required features work
-> end-to-end. See [PLAN.md](PLAN.md) for the full concept and feature list.
+> Status: **Phase 3 (ADVERSARIAL REVIEW) complete.** Six findings fixed (incl. a
+> 1883× VSIDS heap blow-up and a dead, misleading `rng_seed` param); see
+> [REVIEW.md](REVIEW.md). Engine re-fuzzed clean. See [PLAN.md](PLAN.md) for the
+> concept and feature list.
+
+### Output conventions
+`crux solve` follows the SAT-competition format: `s SATISFIABLE` / `s UNSATISFIABLE`
+/ `s UNKNOWN`, a `v <literals> 0` model line when SAT, and exit codes **10** (SAT),
+**20** (UNSAT), **0** (UNKNOWN). The `--max-conflicts N` budget bounds the search.
 
 ## Try it (current)
 ```bash
