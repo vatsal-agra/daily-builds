@@ -304,6 +304,7 @@ class Solver:
             # pick the next literal to resolve: latest on the trail that is seen
             while not seen[abs(self.trail[index])]:
                 index -= 1
+                assert index >= 0, "analyze invariant broken: no UIP on trail"
             p = self.trail[index]
             seen[abs(p)] = False
             counter -= 1
@@ -381,6 +382,10 @@ class Solver:
     # -- main loop --------------------------------------------------------
     def solve(self) -> bool:
         if not self.ok:
+            # decided UNSAT during clause loading; the empty clause is RUP from
+            # the original units, so log it for a verifiable proof.
+            if self.log_proof and not self.proof:
+                self.proof.append([])
             return False
         # propagate top-level units first
         if self.propagate() is not None:

@@ -6,9 +6,10 @@ brute-force differential oracle, problem encoders (Sudoku / N-Queens / graph
 coloring / pigeonhole), DRUP UNSAT-proof checking, and an interactive
 implication-graph visualizer.
 
-> **Status:** Phase 2 (core build) complete — CDCL engine, encoders, DRUP proofs
-> and the visualizer all run end-to-end. See [PLAN.md](./PLAN.md) for the design.
-> Adversarial review, polish, tests and final docs follow.
+> **Status:** Phase 3 (adversarial review) complete — found and fixed a proof-
+> soundness bug on trivial UNSAT, a crash in `check`, and dead viz code; see
+> [REVIEW.md](./REVIEW.md). All 3 stretch features are already in. Polish,
+> tests, and final docs follow.
 
 ## Try it
 ```bash

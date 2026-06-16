@@ -84,8 +84,14 @@ def cmd_gen(args) -> int:
 
 def cmd_check(args) -> int:
     cnf = _load_cnf(args.file)
-    toks = _read(args.model).split()
-    model = [int(t) for t in toks if t not in ("0", "v", "s", "SATISFIABLE")]
+    model = []
+    for t in _read(args.model).split():
+        try:
+            v = int(t)
+        except ValueError:
+            continue  # skip 'v', 's', 'SATISFIABLE', comments, etc.
+        if v != 0:
+            model.append(v)
     ok = cnf.is_satisfied_by(model)
     print("VALID — model satisfies all clauses" if ok else "INVALID — model fails")
     return 0 if ok else 1

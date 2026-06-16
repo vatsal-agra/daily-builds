@@ -87,9 +87,8 @@ def render_html(cg: dict, title: str = "Resolvent — implication graph") -> str
         x2, y2 = pos[dst]
         x1 += 46
         x2 -= 46
-        on_cut = (abs(src) in learnt_vars) and (dst == "K" or True)
         cls = "edge cut" if (abs(src) in learnt_vars) else "edge"
-        cl_txt = " ".join(_lit_label(l) if False else str(l) for l in clause)
+        cl_txt = " ".join(str(l) for l in clause)
         svg_edges.append(
             f'<g class="{cls}" data-from="{src}"><path d="M{x1:.0f},{y1:.0f} '
             f'C{(x1+x2)/2:.0f},{y1:.0f} {(x1+x2)/2:.0f},{y2:.0f} {x2:.0f},{y2:.0f}" '
