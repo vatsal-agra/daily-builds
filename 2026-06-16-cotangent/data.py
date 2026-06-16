@@ -67,8 +67,13 @@ def circles(n: int = 200, noise: float = 0.08, seed: int = 0):
     return _shuffle(X, y, rng)
 
 
-def spiral(n: int = 200, noise: float = 0.15, turns: float = 1.5, seed: int = 0):
-    """Two interleaved spiral arms — the classic hard 2-class problem."""
+def spiral(n: int = 200, noise: float = 0.10, turns: float = 1.0, seed: int = 0):
+    """Two interleaved spiral arms — the classic hard 2-class problem.
+
+    Defaults (one revolution per arm, modest noise) make the set genuinely
+    non-linear yet learnable by a small MLP in a few minutes of pure-Python
+    training. Pass larger ``turns`` for a harder problem.
+    """
     rng = random.Random(seed)
     X, y = [], []
     half = n // 2

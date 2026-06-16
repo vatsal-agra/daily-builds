@@ -36,7 +36,7 @@ echo "      (moons = fast; spiral = the hard two-arm case, ~4 min, reaches ~95%)
 $PY cotangent.py viz --dataset moons --hidden 16,16 --epochs 60 \
     --n 140 --frames 20 --out "$OUT/playground_moons.html"
 $PY cotangent.py viz --dataset spiral --hidden 24,24 --epochs 120 \
-    --n 140 --lr 0.05 --frames 24 --out "$OUT/playground_spiral.html"
+    --lr 0.05 --frames 24 --out "$OUT/playground_spiral.html"
 
 echo
 echo ">> 6. Full test suite"

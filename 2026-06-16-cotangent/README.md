@@ -83,4 +83,26 @@ Python).
 `engine.py` (autodiff) · `gradcheck.py` · `nn.py` · `losses.py` · `optim.py` ·
 `data.py` · `train.py` · `viz.py` · `cotangent.py` (CLI) · `tests/` · `demo.sh`
 
-> **Status:** Phase 4 (stretch + polish) complete. Verification & ship next.
+## Verification
+`python3 tests/test_cotangent.py` runs ~60 checks: finite-difference gradient checks
+for every engine op and all three losses (worst rel-error ~5e-11), backprop
+semantics (shared subexpressions, idempotent `backward()`), numerical stability at
+extreme logits, clear domain/empty-input errors, optimizer convergence and state,
+dataset shape/determinism, end-to-end training convergence (≥95% on xor/moons/
+circles), self-contained HTML emission, and CLI smoke. All green.
+
+## Where a human could take this next
+- **Tensors & broadcasting.** The engine is scalar-valued (clear, but O(params) graph
+  nodes per example). A `ndarray`-backed `Tensor` with vectorized ops would make it
+  orders of magnitude faster and able to train real networks.
+- **More ops & layers.** Convolutions, batch/layer norm, dropout, embeddings,
+  attention — each is just a forward formula plus a local backward rule.
+- **A `@` differentiable-function decorator / tape** for arbitrary user code, and
+  forward-mode (JVP) alongside reverse-mode for full Jacobian products.
+- **Graph viz at scale.** The layered layout is fine for small expressions; an MLP's
+  graph needs collapsing/grouping (per-layer super-nodes) to stay readable.
+- **Export to ONNX / a tiny inference runtime**, or a notebook tutorial that walks
+  the chain rule node-by-node using the graph visualizer.
+
+## Provenance
+Daily build for 2026-06-16. Pure Python 3 standard library, no third-party deps.
