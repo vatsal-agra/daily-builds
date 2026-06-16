@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tumble — 2D Verlet/PBD physics sandbox</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#283041;
+    --ink:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --accent2:#f0883e;
+    --good:#3fb950; --bad:#f85149;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:radial-gradient(1200px 700px at 70% -10%, #16203050, #0d1117 60%);
+    color:var(--ink);
+    font:14px/1.45 ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+    display:flex;flex-direction:column;min-height:100%;
+  }
+  header{
+    display:flex;align-items:center;gap:14px;padding:12px 18px;
+    border-bottom:1px solid var(--line);background:#0d1117cc;backdrop-filter:blur(6px);
+    position:sticky;top:0;z-index:5;
+  }
+  header h1{font-size:18px;margin:0;letter-spacing:.3px;font-weight:650}
+  header h1 .dot{color:var(--accent2)}
+  header .sub{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  main{display:flex;gap:16px;padding:16px;align-items:flex-start;flex-wrap:wrap}
+  .stage{
+    position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    box-shadow:0 18px 50px #0008, inset 0 0 0 1px #ffffff08;background:#0b0f16;
+  }
+  canvas{display:block;touch-action:none;cursor:crosshair;max-width:100%;height:auto}
+  .stage{max-width:100%}
+  .hud{
+    position:absolute;left:12px;top:12px;display:flex;gap:8px;flex-wrap:wrap;
+    pointer-events:none;
+  }
+  .chip{
+    background:#0d1117c9;border:1px solid var(--line);border-radius:8px;
+    padding:4px 9px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;
+  }
+  .chip b{color:var(--ink);font-weight:600}
+  aside{
+    width:300px;background:linear-gradient(180deg,var(--panel),#0f141c);
+    border:1px solid var(--line);border-radius:14px;padding:14px;
+    display:flex;flex-direction:column;gap:14px;
+  }
+  .group{display:flex;flex-direction:column;gap:9px}
+  .group h2{font-size:11px;text-transform:uppercase;letter-spacing:.12em;
+    color:var(--muted);margin:0 0 2px}
+  .row{display:flex;gap:8px;align-items:center}
+  .btns{display:flex;gap:8px;flex-wrap:wrap}
+  button,select{
+    font:inherit;color:var(--ink);background:var(--panel2);
+    border:1px solid var(--line);border-radius:9px;padding:8px 12px;cursor:pointer;
+    transition:.12s border-color,.12s background,.12s transform;
+  }
+  button:hover,select:hover{border-color:#3a4761}
+  button:active{transform:translateY(1px)}
+  button.primary{background:linear-gradient(180deg,#1f6feb,#1158c7);border-color:#1f6feb;color:#fff}
+  button.primary:hover{filter:brightness(1.08)}
+  button.ghost{background:transparent}
+  .seg{display:flex;background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:3px;gap:3px}
+  .seg button{flex:1;padding:7px 6px;border:1px solid transparent;background:transparent;border-radius:7px}
+  .seg button.on{background:#1f6feb22;border-color:#1f6feb88;color:#cfe2ff}
+  label.field{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted)}
+  label.field .val{color:var(--ink);font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .toggle{display:flex;align-items:center;justify-content:space-between;
+    font-size:13px;color:var(--ink);gap:10px}
+  .switch{position:relative;width:42px;height:24px}
+  .switch input{display:none}
+  .switch .sl{position:absolute;inset:0;background:#30363d;border-radius:99px;transition:.15s}
+  .switch .sl::before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;
+    background:#fff;border-radius:50%;transition:.15s}
+  .switch input:checked + .sl{background:#1f6feb}
+  .switch input:checked + .sl::before{transform:translateX(18px)}
+  .hint{font-size:11.5px;color:var(--muted);line-height:1.5}
+  .hint kbd{background:#0d1117;border:1px solid var(--line);border-bottom-width:2px;
+    border-radius:5px;padding:0 5px;font-size:10.5px;color:var(--ink)}
+  textarea{width:100%;height:120px;background:#0b0f16;color:var(--ink);
+    border:1px solid var(--line);border-radius:9px;padding:8px;font:12px ui-monospace,monospace;resize:vertical}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);
+    background:#161b22;border:1px solid var(--line);border-radius:10px;padding:10px 16px;
+    color:var(--ink);box-shadow:0 12px 30px #000a;opacity:0;pointer-events:none;transition:.2s;z-index:9}
+  .toast.show{opacity:1}
+  footer{color:var(--muted);font-size:11.5px;text-align:center;padding:10px 0 20px}
+  a{color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Tumble<span class="dot">.</span></h1>
+  <span class="sub">from-scratch 2D Verlet / Position-Based-Dynamics sandbox</span>
+  <div class="spacer"></div>
+  <div class="btns">
+    <button id="playBtn" class="primary">⏸ Pause</button>
+    <button id="stepBtn" class="ghost" title="Advance one frame">⏭ Step</button>
+    <button id="resetBtn" class="ghost">↺ Reset</button>
+  </div>
+</header>
+
+<main>
+  <div class="stage">
+    <canvas id="cv" width="900" height="600"></canvas>
+    <div class="hud">
+      <span class="chip">particles <b id="mParts">0</b></span>
+      <span class="chip">constraints <b id="mCons">0</b></span>
+      <span class="chip">KE <b id="mKE">0</b></span>
+      <span class="chip">fps <b id="mFps">0</b></span>
+    </div>
+  </div>
+
+  <aside>
+    <div class="group">
+      <h2>Scene</h2>
+      <div class="row">
+        <select id="sceneSel" style="flex:1"></select>
+        <button id="loadScene">Load</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Tool</h2>
+      <div class="seg" id="toolSeg">
+        <button data-tool="drag" class="on">Drag</button>
+        <button data-tool="cut">Cut</button>
+        <button data-tool="pin">Pin</button>
+        <button data-tool="spawn">Spawn</button>
+      </div>
+      <div class="row" id="spawnRow" style="display:none">
+        <select id="spawnSel" style="flex:1">
+          <option value="rope">Rope</option>
+          <option value="cloth">Cloth</option>
+          <option value="box">Box</option>
+          <option value="blob">Blob</option>
+        </select>
+      </div>
+      <div class="hint" id="toolHint"></div>
+    </div>
+
+    <div class="group">
+      <h2>Forces</h2>
+      <label class="field">Gravity <span class="val" id="gVal"></span>
+        <input id="grav" type="range" min="0" max="2200" step="20" value="980"></label>
+      <label class="field">Wind X <span class="val" id="wVal"></span>
+        <input id="wind" type="range" min="-400" max="400" step="10" value="0"></label>
+      <label class="field">Solver iterations <span class="val" id="itVal"></span>
+        <input id="iters" type="range" min="1" max="24" step="1" value="8"></label>
+      <label class="field">Tear strain <span class="val" id="tsVal"></span>
+        <input id="tstrain" type="range" min="0.1" max="2" step="0.05" value="0.6"></label>
+    </div>
+
+    <div class="group">
+      <h2>Options</h2>
+      <div class="toggle">Tearing
+        <span class="switch"><input type="checkbox" id="tearChk"><span class="sl"></span></span></div>
+      <div class="toggle">Particle collisions
+        <span class="switch"><input type="checkbox" id="collChk"><span class="sl"></span></span></div>
+      <div class="toggle">Show constraints
+        <span class="switch"><input type="checkbox" id="showCons" checked><span class="sl"></span></span></div>
+      <div class="toggle">Motion trails
+        <span class="switch"><input type="checkbox" id="trailChk"><span class="sl"></span></span></div>
+    </div>
+
+    <div class="group">
+      <h2>Save / Load</h2>
+      <div class="btns">
+        <button id="exportBtn" class="ghost">Export</button>
+        <button id="importBtn" class="ghost">Import</button>
+        <button id="snapBtn" class="ghost">📷 SVG</button>
+        <button id="clearBtn" class="ghost">Clear</button>
+      </div>
+      <textarea id="ioArea" placeholder="scene JSON appears here / paste to import" spellcheck="false"></textarea>
+    </div>
+  </aside>
+</main>
+
+<footer>Tumble — pure-JS engine mirrored bit-for-bit from a Python reference.
+Drag to pull · Cut to slice · everything is just particles and distance constraints.</footer>
+
+<div class="toast" id="toast"></div>
+
+<script src="engine.js"></script>
+<script>
+(function(){
+  const T = window.Tumble;
+  const cv = document.getElementById("cv");
+  const ctx = cv.getContext("2d");
+  const $ = (id)=>document.getElementById(id);
+
+  let world = T.buildScene("cloth");
+  let playing = true;
+  let tool = "drag";
+
+  // ---- scene list ----
+  const sel = $("sceneSel");
+  T.sceneNames().forEach(n=>{
+    const o=document.createElement("option"); o.value=n; o.textContent=n; sel.appendChild(o);
+  });
+  sel.value = "cloth";
+
+  function toast(msg){
+    const t=$("toast"); t.textContent=msg; t.classList.add("show");
+    clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove("show"),1400);
+  }
+
+  function syncControlsToWorld(){
+    $("grav").value = world.gy;
+    $("wind").value = world.wx;
+    $("iters").value = world.iterations;
+    $("tstrain").value = world.tear_strain;
+    $("tearChk").checked = world.tearing;
+    $("collChk").checked = world.self_collision;
+    refreshLabels();
+  }
+  function refreshLabels(){
+    $("gVal").textContent = world.gy.toFixed(0);
+    $("wVal").textContent = world.wx.toFixed(0);
+    $("itVal").textContent = world.iterations;
+    $("tsVal").textContent = world.tear_strain.toFixed(2);
+  }
+
+  function loadScene(name){
+    world = T.buildScene(name);
+    syncControlsToWorld();
+    toast("loaded scene: " + name);
+  }
+
+  // ---- coordinate mapping (canvas CSS size vs world size) ----
+  function toWorld(ev){
+    const r = cv.getBoundingClientRect();
+    const x = (ev.clientX - r.left) * (cv.width / r.width);
+    const y = (ev.clientY - r.top) * (cv.height / r.height);
+    return {x, y};
+  }
+  function nearest(pt, maxd){
+    let best=-1, bd=maxd*maxd;
+    for(let i=0;i<world.particles.length;i++){
+      const p=world.particles[i];
+      const dx=p.x-pt.x, dy=p.y-pt.y, d=dx*dx+dy*dy;
+      if(d<bd){bd=d;best=i;}
+    }
+    return best;
+  }
+
+  // ---- interaction state ----
+  let dragIdx=-1, dragMass=1.0, mouse=null, lastMouse=null, down=false;
+
+  function segIntersect(a,b,c,d){
+    function ccw(p,q,r){return (r.y-p.y)*(q.x-p.x) > (q.y-p.y)*(r.x-p.x);}
+    return ccw(a,c,d)!==ccw(b,c,d) && ccw(a,b,c)!==ccw(a,b,d);
+  }
+  function cutAlong(p0,p1){
+    let n=0;
+    for(let i=world.constraints.length-1;i>=0;i--){
+      const c=world.constraints[i];
+      if(!c.active) continue;
+      const A=world.particles[c.i], B=world.particles[c.j];
+      if(segIntersect(p0,p1,{x:A.x,y:A.y},{x:B.x,y:B.y})){
+        world.constraints.splice(i,1); n++;
+      }
+    }
+    return n;
+  }
+
+  function spawnAt(pt){
+    const kind=$("spawnSel").value;
+    if(kind==="rope") T.builders.rope(world, pt.x, pt.y, pt.x, pt.y+160,{segments:12,pin_start:true});
+    else if(kind==="cloth") T.builders.cloth(world, pt.x-110, pt.y-40, 12, 9,{spacing:20,pin_top:true});
+    else if(kind==="box") T.builders.box(world, pt.x, pt.y, 80, 70,{});
+    else if(kind==="blob") T.builders.blob(world, pt.x, pt.y, 46,{n:14});
+    toast("spawned " + kind);
+  }
+
+  cv.addEventListener("pointerdown", (ev)=>{
+    cv.setPointerCapture(ev.pointerId);
+    down=true; mouse=toWorld(ev); lastMouse=mouse;
+    if(tool==="drag"){
+      dragIdx=nearest(mouse, 28);
+      if(dragIdx>=0){ dragMass=world.particles[dragIdx].inv_mass; world.particles[dragIdx].inv_mass=0; }
+    } else if(tool==="pin"){
+      const i=nearest(mouse, 28);
+      if(i>=0){ const p=world.particles[i];
+        if(p.inv_mass===0){p.inv_mass=1.0; toast("unpinned");}
+        else{p.inv_mass=0; p.px=p.x; p.py=p.y; toast("pinned");} }
+    } else if(tool==="spawn"){
+      spawnAt(mouse);
+    } else if(tool==="cut"){
+      /* cut happens on move */
+    }
+  });
+  cv.addEventListener("pointermove", (ev)=>{
+    mouse=toWorld(ev);
+    if(!down){ lastMouse=mouse; return; }
+    if(tool==="cut"){ cutAlong(lastMouse, mouse); }
+    lastMouse=mouse;
+  });
+  function endDrag(){
+    down=false;
+    // restore mass; guard against the world having been reset mid-drag
+    if(dragIdx>=0 && dragIdx<world.particles.length){
+      world.particles[dragIdx].inv_mass=dragMass;
+    }
+    dragIdx=-1;
+  }
+  cv.addEventListener("pointerup", endDrag);
+  cv.addEventListener("pointercancel", endDrag);
+
+  // Hold the dragged particle at the cursor. We move prev->old position and
+  // pos->cursor, so the implicit velocity (pos-prev) tracks the cursor — that
+  // lets you *fling* a body by releasing while moving.
+  function applyDrag(){
+    if(dragIdx>=0 && dragIdx<world.particles.length && mouse){
+      const p=world.particles[dragIdx];
+      p.px=p.x; p.py=p.y;       // previous = where it was last frame
+      p.x=mouse.x; p.y=mouse.y; // now = cursor
+    }
+  }
+
+  // ---- rendering ----
+  function stressColor(s){
+    // slack(blue) -> rest(grey) -> taut(red)
+    s=Math.max(-1,Math.min(1.2,s));
+    if(s>=0){const t=Math.min(1,s);
+      return `rgb(${(120+135*t)|0},${(120-90*t)|0},${(120-90*t)|0})`;}
+    const t=Math.min(1,-s);
+    return `rgb(${(120-60*t)|0},${(120-20*t)|0},${(120+100*t)|0})`;
+  }
+  function draw(){
+    if($("trailChk").checked){
+      // fade the previous frame instead of clearing -> motion trails
+      ctx.fillStyle="rgba(11,15,22,0.18)";
+      ctx.fillRect(0,0,cv.width,cv.height);
+    } else {
+      ctx.clearRect(0,0,cv.width,cv.height);
+      // subtle grid (skipped under trails so it doesn't smear)
+      ctx.strokeStyle="#161c27"; ctx.lineWidth=1;
+      for(let x=0;x<=cv.width;x+=45){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,cv.height);ctx.stroke();}
+      for(let y=0;y<=cv.height;y+=45){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(cv.width,y);ctx.stroke();}
+    }
+
+    // segments
+    ctx.lineCap="round";
+    for(const s of world.segments){
+      ctx.strokeStyle="#8b949e"; ctx.lineWidth=Math.max(3,s.radius*2);
+      ctx.beginPath();ctx.moveTo(s.ax,s.ay);ctx.lineTo(s.bx,s.by);ctx.stroke();
+    }
+
+    // constraints
+    if($("showCons").checked){
+      ctx.lineWidth=2;
+      for(const c of world.constraints){
+        if(!c.active) continue;
+        const a=world.particles[c.i], b=world.particles[c.j];
+        const dx=b.x-a.x, dy=b.y-a.y;
+        const d=Math.sqrt(dx*dx+dy*dy);
+        const stress=c.rest>0?(d-c.rest)/c.rest:0;
+        ctx.strokeStyle=stressColor(stress);
+        ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+      }
+    }
+
+    // particles
+    for(let i=0;i<world.particles.length;i++){
+      const p=world.particles[i];
+      ctx.beginPath();ctx.arc(p.x,p.y,p.radius,0,Math.PI*2);
+      if(p.inv_mass===0){ ctx.fillStyle="#f0883e"; }
+      else if(i===dragIdx){ ctx.fillStyle="#3fb950"; }
+      else { ctx.fillStyle="#58a6ff"; }
+      ctx.fill();
+    }
+
+    // cut tool stroke preview
+    if(tool==="cut" && down && lastMouse && mouse){
+      ctx.strokeStyle="#f85149aa"; ctx.lineWidth=2; ctx.setLineDash([6,5]);
+      ctx.beginPath();ctx.moveTo(lastMouse.x,lastMouse.y);ctx.lineTo(mouse.x,mouse.y);ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // ---- main loop ----
+  let fps=0, frames=0, fpsT=performance.now();
+  function loop(){
+    if(playing){ world.step(); applyDrag(); }
+    else { applyDrag(); }
+    draw();
+    frames++;
+    const now=performance.now();
+    if(now-fpsT>500){ fps=Math.round(frames*1000/(now-fpsT)); frames=0; fpsT=now; }
+    $("mParts").textContent=world.particles.length;
+    $("mCons").textContent=world.activeConstraints()+"/"+world.constraints.length;
+    $("mKE").textContent=world.kineticEnergy().toFixed(1);
+    $("mFps").textContent=fps;
+    requestAnimationFrame(loop);
+  }
+
+  // ---- controls wiring ----
+  $("playBtn").onclick=()=>{playing=!playing;
+    $("playBtn").textContent=playing?"⏸ Pause":"▶ Play";};
+  $("stepBtn").onclick=()=>{playing=false;$("playBtn").textContent="▶ Play";world.step();};
+  $("resetBtn").onclick=()=>loadScene(sel.value);
+  $("loadScene").onclick=()=>loadScene(sel.value);
+  sel.onchange=()=>loadScene(sel.value);
+
+  document.querySelectorAll("#toolSeg button").forEach(b=>{
+    b.onclick=()=>{
+      document.querySelectorAll("#toolSeg button").forEach(x=>x.classList.remove("on"));
+      b.classList.add("on"); tool=b.dataset.tool;
+      $("spawnRow").style.display = tool==="spawn"?"flex":"none";
+      const hints={
+        drag:"Click & hold a particle to pull it around.",
+        cut:"Drag across links to slice them.",
+        pin:"Click a particle to pin/unpin it (orange = pinned).",
+        spawn:"Click on the canvas to drop the selected body."
+      };
+      $("toolHint").textContent=hints[tool];
+    };
+  });
+  $("toolHint").textContent="Click & hold a particle to pull it around.";
+
+  $("grav").oninput=e=>{world.gy=+e.target.value;refreshLabels();};
+  $("wind").oninput=e=>{world.wx=+e.target.value;refreshLabels();};
+  $("iters").oninput=e=>{world.iterations=+e.target.value;refreshLabels();};
+  $("tstrain").oninput=e=>{world.tear_strain=+e.target.value;refreshLabels();};
+  $("tearChk").onchange=e=>{world.tearing=e.target.checked;};
+  $("collChk").onchange=e=>{world.self_collision=e.target.checked;};
+
+  $("exportBtn").onclick=()=>{ $("ioArea").value=JSON.stringify(world.toDict());
+    toast("scene exported to the box"); };
+
+  function validateWorldDict(d){
+    if(!d || typeof d!=="object") throw new Error("not an object");
+    if(!Array.isArray(d.particles)) throw new Error("missing particles[]");
+    const n=d.particles.length;
+    for(const p of d.particles){
+      for(const k of ["x","y"]) if(typeof p[k]!=="number"||!isFinite(p[k]))
+        throw new Error("bad particle "+k);
+    }
+    for(const c of (d.constraints||[])){
+      if(!(c.i>=0&&c.i<n&&c.j>=0&&c.j<n)) throw new Error("constraint index out of range");
+    }
+    return d;
+  }
+  $("importBtn").onclick=()=>{
+    try{
+      const d=validateWorldDict(JSON.parse($("ioArea").value));
+      world=T.World.fromDict(d); dragIdx=-1; syncControlsToWorld();
+      toast("scene imported ("+world.particles.length+" particles)");
+    }catch(err){ toast("import failed: "+err.message); }
+  };
+
+  // Snapshot the current frame to a standalone SVG (mirrors tumble/render_svg.py)
+  function frameSVG(){
+    const w=world, parts=[];
+    parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w.width}" height="${w.height}" viewBox="0 0 ${w.width} ${w.height}">`);
+    parts.push(`<rect width="${w.width}" height="${w.height}" fill="#0d1117"/>`);
+    for(const s of w.segments)
+      parts.push(`<line x1="${s.ax}" y1="${s.ay}" x2="${s.bx}" y2="${s.by}" stroke="#8b949e" stroke-width="${Math.max(2,s.radius*2)}" stroke-linecap="round"/>`);
+    for(const c of w.constraints){
+      if(!c.active) continue;
+      const a=w.particles[c.i], b=w.particles[c.j];
+      const dx=b.x-a.x, dy=b.y-a.y, d=Math.sqrt(dx*dx+dy*dy);
+      const stress=c.rest>0?(d-c.rest)/c.rest:0;
+      parts.push(`<line x1="${a.x.toFixed(2)}" y1="${a.y.toFixed(2)}" x2="${b.x.toFixed(2)}" y2="${b.y.toFixed(2)}" stroke="${stressColor(stress)}" stroke-width="2"/>`);
+    }
+    for(const p of w.particles){
+      const col=p.inv_mass===0?"#f0883e":"#58a6ff";
+      parts.push(`<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${p.radius.toFixed(2)}" fill="${col}"/>`);
+    }
+    parts.push("</svg>");
+    return parts.join("\n");
+  }
+  $("snapBtn").onclick=()=>{
+    const blob=new Blob([frameSVG()],{type:"image/svg+xml"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="tumble-"+sel.value+"-"+Date.now()+".svg";
+    a.click(); URL.revokeObjectURL(a.href);
+    toast("snapshot saved");
+  };
+  $("clearBtn").onclick=()=>{
+    world=new T.World({width:world.width,height:world.height,gravity:[world.gx,world.gy],
+      iterations:world.iterations,damping:world.damping,tearing:world.tearing,
+      self_collision:world.self_collision,tear_strain:world.tear_strain});
+    dragIdx=-1; toast("cleared — use the Spawn tool to add bodies");
+  };
+
+  // keyboard
+  window.addEventListener("keydown",(e)=>{
+    if(e.target.tagName==="TEXTAREA"||e.target.tagName==="SELECT") return;
+    if(e.code==="Space"){e.preventDefault();$("playBtn").click();}
+    else if(e.key==="s"){$("stepBtn").click();}
+    else if(e.key==="r"){$("resetBtn").click();}
+    else if(e.key==="1"){document.querySelector('[data-tool=drag]').click();}
+    else if(e.key==="2"){document.querySelector('[data-tool=cut]').click();}
+    else if(e.key==="3"){document.querySelector('[data-tool=pin]').click();}
+    else if(e.key==="4"){document.querySelector('[data-tool=spawn]').click();}
+  });
+
+  syncControlsToWorld();
+  loop();
+})();
+</script>
+</body>
+</html>
