@@ -1,4 +1,3 @@
-
 # Daily Build Ledger
 
 ## 2026-06-11 — Atlasforge
@@ -12,6 +11,24 @@
 - **Stack:** Pure Python 3 stdlib; generated HTML embeds a JS mirror of the Pike VM (no deps); Playwright/Chromium for browser tests only.
 - **Features shipped:** full parser w/ positioned errors (greedy+lazy quantifiers, classes, anchors, `\b`); `match/fullmatch/search/finditer/findall` w/ groups — differentially fuzzed vs `re`, zero diffs incl. the 3.7 must-advance rule; subset-construction DFA + Hopcroft (Moore-cross-checked, textbook 4-state `(a|b)*abb`); interactive viz (tape, transport, keyboard, NFA+DFA views, capture table); `explain`, verified `gen`, first-class `fuzz` CLI; linear-time — `(a+)+$` ReDoS case in <1 ms.
 - **Verdict:** Shipped. 4/4 required + 3/3 stretch; adversarial review found 12 issues (worst: search died at dead spots, `\D` lost negation) — all fixed; 50/50 tests green incl. headless-Chromium JS≡Python parity.
+
+## 2026-06-15 — PicoSQL
+- **What:** A relational database engine from scratch in pure Python: SQL text → tokenizer → recursive-descent parser → planner → Volcano executor, running over a durable, paged B+tree in a single on-disk file (data survives restart in a hand-rolled binary format). Ships an interactive SQL shell.
+- **Stack:** Pure Python 3 stdlib only (no deps); `sqlite3` used in tests for differential cross-checking.
+- **Features shipped:** 4 KB-page storage w/ write-back cache, fsync, and a crash-safe rollback journal; B+tree w/ real leaf+internal node splits and leaf-linked range scans; type-tagged row encoding; durable table catalog; SQL parser w/ positioned caret errors (CREATE/INSERT/SELECT/UPDATE/DELETE/DROP); SELECT w/ projection, 3-valued-NULL WHERE, multi-key+positional ORDER BY, LIMIT/OFFSET, DISTINCT, IN/LIKE, scalar fns; GROUP BY + COUNT/SUM/AVG/MIN/MAX + HAVING + inner JOIN; query planner w/ PK index seek/range selection + EXPLAIN; BEGIN/COMMIT/ROLLBACK (byte-identical rollback); interactive REPL w/ box-drawn tables, .tables/.schema/.import(CSV)/.dump; statement-level atomicity.
+- **Verdict:** Shipped. 4/4 required + 3/3 stretch; adversarial review found 4 bugs (worst: `ORDER BY <int>` silently mis-sorted) — all fixed; 22/22 tests green incl. 4000-op B+tree oracle, simulated-crash recovery, and a 21-query differential suite vs sqlite3 (zero diffs).
+
+## 2026-06-15 — Quorum
+- **What:** A deterministic Raft consensus simulator — a cluster of from-scratch Raft nodes inside a seeded discrete-event network, with fault injection (crashes, partitions, loss/dup/reorder), a global safety-invariant monitor, and a linearizability checker. Same seed replays byte-for-byte, so any bug is 100% reproducible.
+- **Stack:** Pure Python 3 stdlib (`dataclasses`, `heapq`, `random`, `argparse`, `unittest`); no threads/sockets/wall-clock, no third-party deps; ~2,350 LOC.
+- **Features shipped:** correct Raft engine (election w/ up-to-date-log vote restriction, log replication w/ conflict backtrack, current-term commit rule + election no-op, term demotion); deterministic adversarial network w/ partitions checked at delivery time; runtime monitor for all 5 safety properties (Election Safety, Leader Append-Only, Log Matching, Leader Completeness, State Machine Safety); randomized chaos driver (100-seed sweep clean); Wing&Gong linearizability checker; live ASCII dashboard; log compaction + InstallSnapshot catch-up (exercised under chaos); 4 scripted hard-case scenarios; validated CLI. Mutation tests prove the monitor isn't vacuous.
+- **Verdict:** Shipped. 4/4 required + 3/3 stretch; adversarial review caught a real single-node election/commit bug, a snapshot-vs-append-only false positive, and a test gap where random chaos under-exercised the commit rule (added a deterministic Figure-8 regression) — all fixed; 27/27 tests green, 100-seed chaos sweep with zero safety violations and fully linearizable histories.
+
+## 2026-06-15 — Tumble
+- **What:** From-scratch 2D physics engine (Verlet integration + Position-Based Dynamics) with an interactive single-file Canvas playground — ropes, cloth, soft blobs and rigid boxes built from particles + distance constraints, draggable/cuttable/tearable in real time.
+- **Stack:** Pure Python 3 stdlib (engine, CLI, SVG renderer, tests); a JavaScript mirror of the engine for the browser; Node for headless parity tests (no browser dependency).
+- **Features shipped:** Verlet/PBD core (inverse-mass-weighted distance constraints, stiffness, pinning, fixed-step determinism); collisions (particle↔particle via uniform-grid broadphase, static segments, bounds w/ restitution+friction); composite bodies (rope/cloth/box/blob); interactive playground (drag-fling/cut/pin/spawn, sliders, stress-coloured links, HUD, trails); tearable cloth; JSON save/load + 8 presets; headless SVG renderer + `check` CLI; in-app SVG snapshot download.
+- **Verdict:** Shipped. 4/4 required + 4 stretch; adversarial review fixed a zero-velocity drag + a reset-mid-drag crash; 27/27 tests green incl. free-fall vs analytic Verlet (exact), pendulum length <0.1%, box rigidity ~1e-4 px, and JS≡Python parity (max diff 0.0, bit-identical) across all 8 scenes.
 
 ## 2026-06-16 — Cotangent
 - **What:** From-scratch reverse-mode automatic differentiation engine (scalar `Value` DAG + topological backprop) with a neural-net library, optimizers, synthetic datasets, finite-difference gradient checking, and two interactive single-file HTML visualizers (computation graph + live training playground).
