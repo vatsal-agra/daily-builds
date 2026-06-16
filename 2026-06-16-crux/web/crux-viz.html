@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crux — CDCL conflict analysis</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c232d; --ink:#e6edf3;
+    --muted:#8b949e; --line:#30363d; --accent:#58a6ff; --gold:#f2cc60;
+    --red:#ff6b6b; --green:#3fb950; --learn:#a371f7;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{padding:18px 24px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#11161d,#0e1116)}
+  header h1{margin:0;font-size:20px;letter-spacing:.2px}
+  header .sub{color:var(--muted);margin-top:4px;font-size:13px}
+  .wrap{display:flex;height:calc(100vh - 78px);min-height:480px}
+  .left{flex:1 1 auto;position:relative;overflow:auto}
+  .right{flex:0 0 360px;border-left:1px solid var(--line);
+    background:var(--panel);overflow:auto;padding:18px}
+  svg{display:block}
+  .controls{position:sticky;top:0;z-index:5;display:flex;gap:10px;
+    align-items:center;padding:10px 16px;background:rgba(14,17,22,.85);
+    backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+  button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+    border-radius:7px;padding:6px 12px;cursor:pointer;font-size:13px}
+  button:hover{border-color:var(--accent)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  input[type=range]{flex:1 1 auto;accent-color:var(--accent)}
+  .pill{font-size:12px;color:var(--muted);white-space:nowrap}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;
+    color:var(--muted);margin:18px 0 8px}
+  .clause{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:7px;
+    padding:8px 10px;margin:6px 0;word-break:break-word}
+  .lit{display:inline-block;padding:1px 6px;border-radius:5px;margin:1px;
+    background:#23303f;border:1px solid #2d3b4d}
+  .lit.uip{background:#4a3c12;border-color:var(--gold);color:var(--gold);font-weight:700}
+  .lit.learn{background:#2c2050;border-color:var(--learn);color:#cfb6ff}
+  .kv{display:flex;justify-content:space-between;padding:3px 0;
+    border-bottom:1px dashed var(--line)}
+  .kv span:first-child{color:var(--muted)}
+  .legend{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;
+    align-items:center;font-size:12px;color:var(--muted);margin-top:8px}
+  .swatch{width:16px;height:16px;border-radius:4px;border:1px solid var(--line)}
+  .empty{padding:40px;color:var(--muted);text-align:center}
+  .statbar{display:flex;flex-wrap:wrap;gap:14px;padding:10px 24px;
+    border-bottom:1px solid var(--line);color:var(--muted);font-size:12px;
+    background:var(--panel)}
+  .statbar b{color:var(--ink);font-weight:600}
+  code{font-family:ui-monospace,Menlo,monospace}
+  .node-label{font:600 12px ui-monospace,Menlo,monospace}
+  .tip{font-size:12px;color:var(--muted);margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Crux — CDCL conflict analysis</h1>
+  <div class="sub" id="subtitle"></div>
+</header>
+<div class="statbar" id="statbar"></div>
+<div class="wrap">
+  <div class="left">
+    <div class="controls">
+      <button id="prev">◀ Prev</button>
+      <span class="pill" id="conflbl">conflict –</span>
+      <button id="next">Next ▶</button>
+      <input type="range" id="slider" min="0" max="0" value="0">
+      <span class="pill" id="kpill"></span>
+    </div>
+    <svg id="graph" width="1200" height="600"></svg>
+  </div>
+  <div class="right">
+    <div id="panel"></div>
+  </div>
+</div>
+<script>
+const DATA = {"title":"Crux \u2014 CDCL conflict analysis","subtitle":"20 vars \u00b7 45 clauses \u00b7 result UNSAT \u00b7 33 conflicts","nvars":20,"nclauses":45,"status":"UNSAT","stats":{"decisions":44,"propagations":326,"conflicts":33,"learned":32,"restarts":0,"removed_clauses":0,"max_decision_level":4},"snaps":[{"index":0,"decision_level":3,"conflict":[-12,-8],"trail":[{"lit":1,"level":1,"reason":null},{"lit":-5,"level":1,"reason":[-5,-1]},{"lit":-9,"level":1,"reason":[-9,-1]},{"lit":-13,"level":1,"reason":[-13,-1]},{"lit":-17,"level":1,"reason":[-17,-1]},{"lit":2,"level":2,"reason":null},{"lit":-6,"level":2,"reason":[-6,-2]},{"lit":-10,"level":2,"reason":[-10,-2]},{"lit":-14,"level":2,"reason":[-14,-2]},{"lit":-18,"level":2,"reason":[-18,-2]},{"lit":3,"level":3,"reason":null},{"lit":-7,"level":3,"reason":[-7,-3]},{"lit":-11,"level":3,"reason":[-11,-3]},{"lit":-15,"level":3,"reason":[-15,-3]},{"lit":-19,"level":3,"reason":[-19,-3]},{"lit":8,"level":3,"reason":[8,7,5,6]},{"lit":12,"level":3,"reason":[12,11,9,10]},{"lit":16,"level":3,"reason":[16,15,13,14]},{"lit":20,"level":3,"reason":[20,19,17,18]},{"lit":-4,"level":3,"reason":[-4,-8]}],"learned":[-3,10,9,5,6],"uip":3,"btlevel":2},{"index":1,"decision_level":3,"conflict":[-15,-11],"trail":[{"lit":1,"level":1,"reason":null},{"lit":-5,"level":1,"reason":[-5,-1]},{"lit":-9,"level":1,"reason":[-9,-1]},{"lit":-13,"level":1,"reason":[-13,-1]},{"lit":-17,"level":1,"reason":[-17,-1]},{"lit":2,"level":2,"reason":null},{"lit":-6,"level":2,"reason":[-6,-2]},{"lit":-10,"level":2,"reason":[-10,-2]},{"lit":-14,"level":2,"reason":[-14,-2]},{"lit":-18,"level":2,"reason":[-18,-2]},{"lit":-3,"level":2,"reason":[-3,10,9,5,6]},{"lit":-7,"level":3,"reason":null},{"lit":8,"level":3,"reason":[8,7,5,6]},{"lit":-4,"level":3,"reason":[-4,-8]},{"lit":-12,"level":3,"reason":[-12,-8]},{"lit":-16,"level":3,"reason":[-16,-8]},{"lit":-20,"level":3,"reason":[-20,-8]},{"lit":11,"level":3,"reason":[11,12,9,10]},{"lit":15,"level":3,"reason":[15,16,13,14]},{"lit":19,"level":3,"reason":[19,20,17,18]}],"learned":[-8,14,13,9,10],"uip":8,"btlevel":2},{"index":2,"decision_level":2,"conflict":[-16,-12],"trail":[{"lit":1,"level":1,"reason":null},{"lit":-5,"level":1,"reason":[-5,-1]},{"lit":-9,"level":1,"reason":[-9,-1]},{"lit":-13,"level":1,"reason":[-13,-1]},{"lit":-17,"level":1,"reason":[-17,-1]},{"lit":2,"level":2,"reason":null},{"lit":-6,"level":2,"reason":[-6,-2]},{"lit":-10,"level":2,"reason":[-10,-2]},{"lit":-14,"level":2,"reason":[-14,-2]},{"lit":-18,"level":2,"reason":[-18,-2]},{"lit":-3,"level":2,"reason":[-3,10,9,5,6]},{"lit":-8,"level":2,"reason":[-8,14,13,9,10]},{"lit":7,"level":2,"reason":[7,8,5,6]},{"lit":-11,"level":2,"reason":[-11,-7]},{"lit":-15,"level":2,"reason":[-15,-7]},{"lit":-19,"level":2,"reason":[-19,-7]},{"lit":12,"level":2,"reason":[12,11,9,10]},{"lit":16,"level":2,"reason":[16,15,13,14]},{"lit":20,"level":2,"reason":[20,19,17,18]},{"lit":-4,"level":2,"reason":[-4,-12]}],"learned":[-2,13,9,5],"uip":2,"btlevel":1},{"index":3,"decision_level":5,"conflict":[-18,-6],"trail":[{"lit":1,"level":1,"reason":null},{"lit":-5,"level":1,"reason":[-5,-1]},{"lit":-9,"level":1,"reason":[-9,-1]},{"lit":-13,"level":1,"reason":[-13,-1]},{"lit":-17,"level":1,"reason":[-17,-1]},{"lit":-2,"level":1,"reason":[-2,13,9,5]},{"lit":-8,"level":2,"reason":null},{"lit":-10,"level":3,"reason":null},{"lit":-11,"level":4,"reason":null},{"lit":12,"level":4,"reason":[12,11,9,10]},{"lit":-4,"level":4,"reason":[-4,-12]},{"lit":-16,"level":4,"reason":[-16,-12]},{"lit":-20,"level":4,"reason":[-20,-12]},{"lit":-14,"level":5,"reason":null},{"lit":15,"level":5,"reason":[15,14,13,16]},{"lit":-3,"level":5,"reason":[-3,-15]},{"lit":-7,"level":5,"reason":[-7,-15]},{"lit":-19,"level":5,"reason":[-19,-15]},{"lit":6,"level":5,"reason":[6,7,5,8]},{"lit":18,"level":5,"reason":[18,19,17,20]}],"learned":[-15,20,17,5,8],"uip":15,"btlevel":4},{"index":4,"decision_level":4,"conflict":[-19,-7],"trail":[{"lit":1,"level":1,"reason":null},{"lit":-5,"level":1,"reason":[-5,-1]},{"lit":-9,"level":1,"reason":[-9,-1]},{"lit":-13,"level":1,"reason":[-13,-1]},{"lit":-17,"level":1,"reason":[-17,-1]},{"lit":-2,"level":1,"reason":[-2,13,9,5]},{"lit":-8,"level":2,"reason":null},{"lit":-10,"level":3,"reason":null},{"lit":-11,"level":4,"reason":null},{"lit":12,"level":4,"reason":[12,11,9,10]},{"lit":-4,"level":4,"reason":[-4,-12]},{"lit":-16,"level":4,"reason":[-16,-12]},{"lit":-20,"level":4,"reason":[-20,-12]},{"lit":-15,"level":4,"reason":[-15,20,17,5,8]},{"lit":14,"level":4,"reason":[14,15,13,16]},{"lit":-6,"level":4,"reason":[-6,-14]},{"lit":-18,"level":4,"reason":[-18,-14]},{"lit":7,"level":4,"reason":[7,6,5,8]},{"lit":-3,"level":4,"reason":[-3,6,9,5,10]},{"lit":19,"level":4,"reason":[19,18,17,20]}],"learned":[-12,8,5,17,13],"uip":12,"btlevel":2},{"index":5,"decision_level":4,"conflict":[-20,-16],"trail":[{"lit":1,"level":1,"reason":null},{"lit":-5,"level":1,"reason":[-5,-1]},{"lit":-9,"level":1,"reason":[-9,-1]},{"lit":-13,"level":1,"reason":[-13,-1]},{"lit":-17,"level":1,"reason":[-17,-1]},{"lit":-2,"level":1,"reason":[-2,13,9,5]},{"lit":-8,"level":2,"reason":null},{"lit":-12,"level":2,"reason":[-12,8,5,17,13]},{"lit":-15,"level":3,"reason":null},{"lit":-6,"level":4,"reason":null},{"lit":7,"level":4,"reason":[7,6,5,8]},{"lit":-3,"level":4,"reason":[-3,-7]},{"lit":-11,"level":4,"reason":[-11,-7]},{"lit":-19,"level":4,"reason":[-19,-7]},{"lit":10,"level":4,"reason":[10,11,9,12]},{"lit":-14,"level":4,"reason":[-14,-10]},{"lit":-18,"level":4,"reason":[-18,-10]},{"lit":16,"level":4,"reason":[16,14,13,15]},{"lit":20,"level":4,"reason":[20,18,17,19]},{"lit":-4,"level":4,"reason":[-4,-16]}],"learned":[-7,15,13,17,9,12],"uip":7,"btlevel":3},{"index":6,"decision_level":3,"conflict":[20,19,17,18],"trail":[{"lit":1,"level":1,"reason":null},{"lit":-5,"level":1,"reason":[-5,-1]},{"lit":-9,"level":1,"reason":[-9,-1]},{"lit":-13,"level":1,"reason":[-13,-1]},{"lit":-17,"level":1,"reason":[-17,-1]},{"lit":-2,"level":1,"reason":[-2,13,9,5]},{"lit":-8,"level":2,"reason":null},{"lit":-12,"level":2,"reason":[-12,8,5,17,13]},{"lit":-15,"level":3,"reason":null},{"lit":-7,"level":3,"reason":[-7,15,13,17,9,12]},{"lit":6,"level":3,"reason":[6,7,5,8]},{"lit":-10,"level":3,"reason":[-10,-6]},{"lit":-14,"level":3,"reason":[-14,-6]},{"lit":-18,"level":3,"reason":[-18,-6]},{"lit":11,"level":3,"reason":[11,10,9,12]},{"lit":16,"level":3,"reason":[16,14,13,15]},{"lit":-3,"level":3,"reason":[-3,-11]},{"lit":-19,"level":3,"reason":[-19,-11]},{"lit":-4,"level":3,"reason":[-4,-16]},{"lit":-20,"level":3,"reason":[-20,-16]}],"learned":[15,8,13,9,5,17],"uip":-15,"btlevel":2},{"index":7,"decision_level":2,"conflict":[-10,-6],"trail":[{"lit":1,"level":1,"reason":null},{"lit":-5,"level":1,"reason":[-5,-1]},{"lit":-9,"level":1,"reason":[-9,-1]},{"lit":-13,"level":1,"reason":[-13,-1]},{"lit":-17,"level":1,"reason":[-17,-1]},{"lit":-2,"level":1,"reason":[-2,13,9,5]},{"lit":-8,"level":2,"reason":null},{"lit":-12,"level":2,"reason":[-12,8,5,17,13]},{"lit":15,"level":2,"reason":[15,8,13,9,5,17]},{"lit":-3,"level":2,"reason":[-3,-15]},{"lit":-7,"level":2,"reason":[-7,-15]},{"lit":-11,"level":2,"reason":[-11,-15]},{"lit":-19,"level":2,"reason":[-19,-15]},{"lit":20,"level":2,"reason":[20,-15,17,5,8]},{"lit":6,"level":2,"reason":[6,7,5,8]},{"lit":10,"level":2,"reason":[10,11,9,12]},{"lit":-4,"level":2,"reason":[-4,-20]},{"lit":-16,"level":2,"reason":[-16,-20]}],"learned":[8,9,5,13,17],"uip":-8,"btlevel":1},{"index":8,"decision_level":2,"conflict":[-18,-10],"trail":[{"lit":1,"level":1,"reason":null},{"lit":-5,"level":1,"reason":[-5,-1]},{"lit":-9,"level":1,"reason":[-9,-1]},{"lit":-13,"level":1,"reason":[-13,-1]},{"lit":-17,"level":1,"reason":[-17,-1]},{"lit":-2,"level":1,"reason":[-2,13,9,5]},{"lit":8,"level":1,"reason":[8,9,5,13,17]},{"lit":-4,"level":1,"reason":[-4,-8]},{"lit":-12,"level":1,"reason":[-12,-8]},{"lit":-16,"level":1,"reason":[-16,-8]},{"lit":-20,"level":1,"reason":[-20,-8]},{"lit":15,"level":2,"reason":null},{"lit":-3,"level":2,"reason":[-3,-15]},{"lit":-7,"level":2,"reason":[-7,-15]},{"lit":-11,"level":2,"reason":[-11,-15]},{"lit":-19,"level":2,"reason":[-19,-15]},{"lit":10,"level":2,"reason":[10,11,9,12]},{"lit":18,"level":2,"reason":[18,19,17,20]},{"lit":-6,"level":2,"reason":[-6,-10]},{"lit":-14,"level":2,"reason":[-14,-10]}],"learned":[-15,17,20,9,12],"uip":15,"btlevel":1},{"index":9,"decision_level":1,"conflict":[-19,-11],"trail":[{"lit":1,"level":1,"reason":null},{"lit":-5,"level":1,"reason":[-5,-1]},{"lit":-9,"level":1,"reason":[-9,-1]},{"lit":-13,"level":1,"reason":[-13,-1]},{"lit":-17,"level":1,"reason":[-17,-1]},{"lit":-2,"level":1,"reason":[-2,13,9,5]},{"lit":8,"level":1,"reason":[8,9,5,13,17]},{"lit":-4,"level":1,"reason":[-4,-8]},{"lit":-12,"level":1,"reason":[-12,-8]},{"lit":-16,"level":1,"reason":[-16,-8]},{"lit":-20,"level":1,"reason":[-20,-8]},{"lit":-15,"level":1,"reason":[-15,17,20,9,12]},{"lit":-7,"level":1,"reason":[-7,15,13,17,9,12]},{"lit":14,"level":1,"reason":[14,15,13,16]},{"lit":-6,"level":1,"reason":[-6,-14]},{"lit":-10,"level":1,"reason":[-10,-14]},{"lit":-18,"level":1,"reason":[-18,-14]},{"lit":-3,"level":1,"reason":[-3,6,9,5,10]},{"lit":11,"level":1,"reason":[11,10,9,12]},{"lit":19,"level":1,"reason":[19,18,17,20]}],"learned":[-1],"uip":1,"btlevel":0},{"index":10,"decision_level":5,"conflict":[-17,-13],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-12,"level":2,"reason":null},{"lit":-9,"level":3,"reason":null},{"lit":-10,"level":4,"reason":null},{"lit":11,"level":4,"reason":[11,10,9,12]},{"lit":-3,"level":4,"reason":[-3,-11]},{"lit":-7,"level":4,"reason":[-7,-11]},{"lit":-19,"level":4,"reason":[-19,-11]},{"lit":8,"level":5,"reason":null},{"lit":-4,"level":5,"reason":[-4,-8]},{"lit":-16,"level":5,"reason":[-16,-8]},{"lit":-20,"level":5,"reason":[-20,-8]},{"lit":2,"level":5,"reason":[2,4,1,3]},{"lit":-6,"level":5,"reason":[-6,-2]},{"lit":-14,"level":5,"reason":[-14,-2]},{"lit":-18,"level":5,"reason":[-18,-2]},{"lit":13,"level":5,"reason":[13,14,10,9,-8]},{"lit":17,"level":5,"reason":[17,18,19,20]},{"lit":-5,"level":5,"reason":[-5,-13]}],"learned":[-8,19,10,9,3],"uip":8,"btlevel":4},{"index":11,"decision_level":5,"conflict":[-16,-4],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-12,"level":2,"reason":null},{"lit":-9,"level":3,"reason":null},{"lit":-10,"level":4,"reason":null},{"lit":11,"level":4,"reason":[11,10,9,12]},{"lit":-3,"level":4,"reason":[-3,-11]},{"lit":-7,"level":4,"reason":[-7,-11]},{"lit":-19,"level":4,"reason":[-19,-11]},{"lit":-8,"level":4,"reason":[-8,19,10,9,3]},{"lit":17,"level":5,"reason":null},{"lit":-5,"level":5,"reason":[-5,-17]},{"lit":-13,"level":5,"reason":[-13,-17]},{"lit":6,"level":5,"reason":[6,5,8,7]},{"lit":-2,"level":5,"reason":[-2,13,9,5]},{"lit":-14,"level":5,"reason":[-14,-6]},{"lit":-18,"level":5,"reason":[-18,-6]},{"lit":4,"level":5,"reason":[4,2,1,3]},{"lit":16,"level":5,"reason":[16,14,15,13]}],"learned":[-17,3,15,9,8,7],"uip":17,"btlevel":4},{"index":12,"decision_level":6,"conflict":[-18,-2],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-12,"level":2,"reason":null},{"lit":-9,"level":3,"reason":null},{"lit":-10,"level":4,"reason":null},{"lit":11,"level":4,"reason":[11,10,9,12]},{"lit":-3,"level":4,"reason":[-3,-11]},{"lit":-7,"level":4,"reason":[-7,-11]},{"lit":-19,"level":4,"reason":[-19,-11]},{"lit":-8,"level":4,"reason":[-8,19,10,9,3]},{"lit":-17,"level":4,"reason":[-17,3,15,9,8,7]},{"lit":-13,"level":5,"reason":null},{"lit":5,"level":5,"reason":[5,13,15,9,8,17]},{"lit":-14,"level":6,"reason":null},{"lit":16,"level":6,"reason":[16,14,15,13]},{"lit":-4,"level":6,"reason":[-4,-16]},{"lit":-20,"level":6,"reason":[-20,-16]},{"lit":2,"level":6,"reason":[2,4,1,3]},{"lit":18,"level":6,"reason":[18,20,19,17]},{"lit":-6,"level":6,"reason":[-6,-2]}],"learned":[-16,19,17,3],"uip":16,"btlevel":4},{"index":13,"decision_level":5,"conflict":[-20,-4],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-12,"level":2,"reason":null},{"lit":-9,"level":3,"reason":null},{"lit":-10,"level":4,"reason":null},{"lit":11,"level":4,"reason":[11,10,9,12]},{"lit":-3,"level":4,"reason":[-3,-11]},{"lit":-7,"level":4,"reason":[-7,-11]},{"lit":-19,"level":4,"reason":[-19,-11]},{"lit":-8,"level":4,"reason":[-8,19,10,9,3]},{"lit":-17,"level":4,"reason":[-17,3,15,9,8,7]},{"lit":-16,"level":4,"reason":[-16,19,17,3]},{"lit":-13,"level":5,"reason":null},{"lit":5,"level":5,"reason":[5,13,15,9,8,17]},{"lit":14,"level":5,"reason":[14,13,15,16]},{"lit":-2,"level":5,"reason":[-2,-14]},{"lit":-6,"level":5,"reason":[-6,-14]},{"lit":-18,"level":5,"reason":[-18,-14]},{"lit":4,"level":5,"reason":[4,2,1,3]},{"lit":20,"level":5,"reason":[20,18,19,17]}],"learned":[-14,19,17,3],"uip":14,"btlevel":4},{"index":14,"decision_level":4,"conflict":[-20,-4],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-12,"level":2,"reason":null},{"lit":-9,"level":3,"reason":null},{"lit":-10,"level":4,"reason":null},{"lit":11,"level":4,"reason":[11,10,9,12]},{"lit":-3,"level":4,"reason":[-3,-11]},{"lit":-7,"level":4,"reason":[-7,-11]},{"lit":-19,"level":4,"reason":[-19,-11]},{"lit":-8,"level":4,"reason":[-8,19,10,9,3]},{"lit":-17,"level":4,"reason":[-17,3,15,9,8,7]},{"lit":-16,"level":4,"reason":[-16,19,17,3]},{"lit":-14,"level":4,"reason":[-14,19,17,3]},{"lit":13,"level":4,"reason":[13,14,15,16]},{"lit":-5,"level":4,"reason":[-5,-13]},{"lit":6,"level":4,"reason":[6,5,8,7]},{"lit":-2,"level":4,"reason":[-2,-6]},{"lit":-18,"level":4,"reason":[-18,-6]},{"lit":4,"level":4,"reason":[4,2,1,3]},{"lit":20,"level":4,"reason":[20,18,19,17]}],"learned":[10,9,15,12],"uip":-10,"btlevel":3},{"index":15,"decision_level":5,"conflict":[5,7,6,8],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-12,"level":2,"reason":null},{"lit":-9,"level":3,"reason":null},{"lit":10,"level":3,"reason":[10,9,15,12]},{"lit":-2,"level":3,"reason":[-2,-10]},{"lit":-6,"level":3,"reason":[-6,-10]},{"lit":-14,"level":3,"reason":[-14,-10]},{"lit":-18,"level":3,"reason":[-18,-10]},{"lit":-17,"level":4,"reason":null},{"lit":-19,"level":5,"reason":null},{"lit":20,"level":5,"reason":[20,19,18,17]},{"lit":-4,"level":5,"reason":[-4,-20]},{"lit":-8,"level":5,"reason":[-8,-20]},{"lit":-16,"level":5,"reason":[-16,-20]},{"lit":3,"level":5,"reason":[3,4,1,2]},{"lit":13,"level":5,"reason":[13,16,15,14]},{"lit":-7,"level":5,"reason":[-7,-3]},{"lit":-11,"level":5,"reason":[-11,-3]},{"lit":-5,"level":5,"reason":[-5,-13]}],"learned":[-20,6,15,14,2],"uip":20,"btlevel":3},{"index":16,"decision_level":4,"conflict":[-13,-5],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-12,"level":2,"reason":null},{"lit":-9,"level":3,"reason":null},{"lit":10,"level":3,"reason":[10,9,15,12]},{"lit":-2,"level":3,"reason":[-2,-10]},{"lit":-6,"level":3,"reason":[-6,-10]},{"lit":-14,"level":3,"reason":[-14,-10]},{"lit":-18,"level":3,"reason":[-18,-10]},{"lit":-20,"level":3,"reason":[-20,6,15,14,2]},{"lit":-17,"level":4,"reason":null},{"lit":19,"level":4,"reason":[19,17,18,20]},{"lit":-3,"level":4,"reason":[-3,-19]},{"lit":-7,"level":4,"reason":[-7,-19]},{"lit":-11,"level":4,"reason":[-11,-19]},{"lit":4,"level":4,"reason":[4,3,1,2]},{"lit":-8,"level":4,"reason":[-8,-4]},{"lit":-16,"level":4,"reason":[-16,-4]},{"lit":5,"level":4,"reason":[5,8,6,7]},{"lit":13,"level":4,"reason":[13,16,15,14]}],"learned":[-19,14,15,6,2],"uip":19,"btlevel":3},{"index":17,"decision_level":3,"conflict":[-7,-3],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-12,"level":2,"reason":null},{"lit":-9,"level":3,"reason":null},{"lit":10,"level":3,"reason":[10,9,15,12]},{"lit":-2,"level":3,"reason":[-2,-10]},{"lit":-6,"level":3,"reason":[-6,-10]},{"lit":-14,"level":3,"reason":[-14,-10]},{"lit":-18,"level":3,"reason":[-18,-10]},{"lit":-20,"level":3,"reason":[-20,6,15,14,2]},{"lit":-19,"level":3,"reason":[-19,14,15,6,2]},{"lit":17,"level":3,"reason":[17,19,18,20]},{"lit":-5,"level":3,"reason":[-5,-17]},{"lit":-13,"level":3,"reason":[-13,-17]},{"lit":16,"level":3,"reason":[16,13,15,14]},{"lit":-4,"level":3,"reason":[-4,-16]},{"lit":-8,"level":3,"reason":[-8,-16]},{"lit":3,"level":3,"reason":[3,4,1,2]},{"lit":7,"level":3,"reason":[7,8,6,5]}],"learned":[-10,15],"uip":10,"btlevel":1},{"index":18,"decision_level":5,"conflict":[7,6,8,5],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-10,"level":1,"reason":[-10,15]},{"lit":-8,"level":2,"reason":null},{"lit":-14,"level":3,"reason":null},{"lit":-13,"level":4,"reason":null},{"lit":16,"level":4,"reason":[16,13,15,14]},{"lit":-4,"level":4,"reason":[-4,-16]},{"lit":-12,"level":4,"reason":[-12,-16]},{"lit":-20,"level":4,"reason":[-20,-16]},{"lit":9,"level":4,"reason":[9,12,15,10]},{"lit":-5,"level":4,"reason":[-5,-9]},{"lit":-17,"level":4,"reason":[-17,-9]},{"lit":-19,"level":5,"reason":null},{"lit":18,"level":5,"reason":[18,19,17,20]},{"lit":3,"level":5,"reason":[3,19,-16,17]},{"lit":-2,"level":5,"reason":[-2,-18]},{"lit":-6,"level":5,"reason":[-6,-18]},{"lit":-7,"level":5,"reason":[-7,-3]},{"lit":-11,"level":5,"reason":[-11,-3]}],"learned":[19,5,8,-16,17],"uip":-19,"btlevel":4},{"index":19,"decision_level":4,"conflict":[-6,-2],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-10,"level":1,"reason":[-10,15]},{"lit":-8,"level":2,"reason":null},{"lit":-14,"level":3,"reason":null},{"lit":-13,"level":4,"reason":null},{"lit":16,"level":4,"reason":[16,13,15,14]},{"lit":-4,"level":4,"reason":[-4,-16]},{"lit":-12,"level":4,"reason":[-12,-16]},{"lit":-20,"level":4,"reason":[-20,-16]},{"lit":9,"level":4,"reason":[9,12,15,10]},{"lit":-5,"level":4,"reason":[-5,-9]},{"lit":-17,"level":4,"reason":[-17,-9]},{"lit":19,"level":4,"reason":[19,5,8,-16,17]},{"lit":-3,"level":4,"reason":[-3,-19]},{"lit":-7,"level":4,"reason":[-7,-19]},{"lit":-11,"level":4,"reason":[-11,-19]},{"lit":2,"level":4,"reason":[2,3,1,4]},{"lit":6,"level":4,"reason":[6,7,8,5]}],"learned":[-16,8,15],"uip":16,"btlevel":2},{"index":20,"decision_level":5,"conflict":[9,12,15,10],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-10,"level":1,"reason":[-10,15]},{"lit":-8,"level":2,"reason":null},{"lit":-16,"level":2,"reason":[-16,8,15]},{"lit":-17,"level":3,"reason":null},{"lit":19,"level":4,"reason":null},{"lit":-3,"level":4,"reason":[-3,-19]},{"lit":-7,"level":4,"reason":[-7,-19]},{"lit":-11,"level":4,"reason":[-11,-19]},{"lit":-5,"level":5,"reason":null},{"lit":6,"level":5,"reason":[6,5,8,7]},{"lit":-2,"level":5,"reason":[-2,-6]},{"lit":-14,"level":5,"reason":[-14,-6]},{"lit":-18,"level":5,"reason":[-18,-6]},{"lit":4,"level":5,"reason":[4,2,1,3]},{"lit":13,"level":5,"reason":[13,14,15,16]},{"lit":-12,"level":5,"reason":[-12,-4]},{"lit":-20,"level":5,"reason":[-20,-4]},{"lit":-9,"level":5,"reason":[-9,-13]}],"learned":[-6,3,16,15],"uip":6,"btlevel":4},{"index":21,"decision_level":4,"conflict":[2,4,1,3],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-10,"level":1,"reason":[-10,15]},{"lit":-8,"level":2,"reason":null},{"lit":-16,"level":2,"reason":[-16,8,15]},{"lit":-17,"level":3,"reason":null},{"lit":19,"level":4,"reason":null},{"lit":-3,"level":4,"reason":[-3,-19]},{"lit":-7,"level":4,"reason":[-7,-19]},{"lit":-11,"level":4,"reason":[-11,-19]},{"lit":-6,"level":4,"reason":[-6,3,16,15]},{"lit":5,"level":4,"reason":[5,6,8,7]},{"lit":-9,"level":4,"reason":[-9,-5]},{"lit":-13,"level":4,"reason":[-13,-5]},{"lit":12,"level":4,"reason":[12,9,15,10]},{"lit":14,"level":4,"reason":[14,13,15,16]},{"lit":-4,"level":4,"reason":[-4,-12]},{"lit":-20,"level":4,"reason":[-20,-12]},{"lit":-2,"level":4,"reason":[-2,-14]},{"lit":-18,"level":4,"reason":[-18,-14]}],"learned":[-19,8,15],"uip":19,"btlevel":2},{"index":22,"decision_level":5,"conflict":[-14,17,19,3],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-10,"level":1,"reason":[-10,15]},{"lit":-8,"level":2,"reason":null},{"lit":-16,"level":2,"reason":[-16,8,15]},{"lit":-19,"level":2,"reason":[-19,8,15]},{"lit":-6,"level":3,"reason":null},{"lit":-3,"level":4,"reason":null},{"lit":5,"level":5,"reason":null},{"lit":-9,"level":5,"reason":[-9,-5]},{"lit":-13,"level":5,"reason":[-13,-5]},{"lit":-17,"level":5,"reason":[-17,-5]},{"lit":12,"level":5,"reason":[12,9,15,10]},{"lit":14,"level":5,"reason":[14,13,15,16]}],"learned":[-5,3,19,15,16],"uip":5,"btlevel":4},{"index":23,"decision_level":5,"conflict":[12,9,15,10],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-10,"level":1,"reason":[-10,15]},{"lit":-8,"level":2,"reason":null},{"lit":-16,"level":2,"reason":[-16,8,15]},{"lit":-19,"level":2,"reason":[-19,8,15]},{"lit":-6,"level":3,"reason":null},{"lit":-3,"level":4,"reason":null},{"lit":-5,"level":4,"reason":[-5,3,19,15,16]},{"lit":7,"level":4,"reason":[7,5,8,6]},{"lit":-11,"level":4,"reason":[-11,-7]},{"lit":14,"level":5,"reason":null},{"lit":-2,"level":5,"reason":[-2,-14]},{"lit":-18,"level":5,"reason":[-18,-14]},{"lit":17,"level":5,"reason":[17,-14,19,3]},{"lit":4,"level":5,"reason":[4,2,1,3]},{"lit":-9,"level":5,"reason":[-9,-17]},{"lit":-13,"level":5,"reason":[-13,-17]},{"lit":-12,"level":5,"reason":[-12,-4]},{"lit":-20,"level":5,"reason":[-20,-4]}],"learned":[-14,3,15,19],"uip":14,"btlevel":4},{"index":24,"decision_level":4,"conflict":[-18,-2],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-10,"level":1,"reason":[-10,15]},{"lit":-8,"level":2,"reason":null},{"lit":-16,"level":2,"reason":[-16,8,15]},{"lit":-19,"level":2,"reason":[-19,8,15]},{"lit":-6,"level":3,"reason":null},{"lit":-3,"level":4,"reason":null},{"lit":-5,"level":4,"reason":[-5,3,19,15,16]},{"lit":7,"level":4,"reason":[7,5,8,6]},{"lit":-11,"level":4,"reason":[-11,-7]},{"lit":-14,"level":4,"reason":[-14,3,15,19]},{"lit":13,"level":4,"reason":[13,14,15,16]},{"lit":-9,"level":4,"reason":[-9,-13]},{"lit":-17,"level":4,"reason":[-17,-13]},{"lit":12,"level":4,"reason":[12,9,15,10]},{"lit":-4,"level":4,"reason":[-4,-12]},{"lit":-20,"level":4,"reason":[-20,-12]},{"lit":2,"level":4,"reason":[2,4,1,3]},{"lit":18,"level":4,"reason":[18,20,19,17]}],"learned":[3,19,15,16],"uip":-3,"btlevel":2},{"index":25,"decision_level":3,"conflict":[20,18,19,17],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-10,"level":1,"reason":[-10,15]},{"lit":-8,"level":2,"reason":null},{"lit":-16,"level":2,"reason":[-16,8,15]},{"lit":-19,"level":2,"reason":[-19,8,15]},{"lit":3,"level":2,"reason":[3,19,15,16]},{"lit":-7,"level":2,"reason":[-7,-3]},{"lit":-11,"level":2,"reason":[-11,-3]},{"lit":-14,"level":3,"reason":null},{"lit":13,"level":3,"reason":[13,14,15,16]},{"lit":-5,"level":3,"reason":[-5,-13]},{"lit":-9,"level":3,"reason":[-9,-13]},{"lit":-17,"level":3,"reason":[-17,-13]},{"lit":6,"level":3,"reason":[6,5,8,7]},{"lit":12,"level":3,"reason":[12,9,15,10]},{"lit":-2,"level":3,"reason":[-2,-6]},{"lit":-18,"level":3,"reason":[-18,-6]},{"lit":-4,"level":3,"reason":[-4,-12]},{"lit":-20,"level":3,"reason":[-20,-12]}],"learned":[-13,8,15,7],"uip":13,"btlevel":2},{"index":26,"decision_level":2,"conflict":[-20,-12],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-10,"level":1,"reason":[-10,15]},{"lit":-8,"level":2,"reason":null},{"lit":-16,"level":2,"reason":[-16,8,15]},{"lit":-19,"level":2,"reason":[-19,8,15]},{"lit":3,"level":2,"reason":[3,19,15,16]},{"lit":-7,"level":2,"reason":[-7,-3]},{"lit":-11,"level":2,"reason":[-11,-3]},{"lit":-13,"level":2,"reason":[-13,8,15,7]},{"lit":14,"level":2,"reason":[14,13,15,16]},{"lit":-2,"level":2,"reason":[-2,-14]},{"lit":-6,"level":2,"reason":[-6,-14]},{"lit":-18,"level":2,"reason":[-18,-14]},{"lit":5,"level":2,"reason":[5,6,8,7]},{"lit":-9,"level":2,"reason":[-9,-5]},{"lit":-17,"level":2,"reason":[-17,-5]},{"lit":12,"level":2,"reason":[12,9,15,10]},{"lit":20,"level":2,"reason":[20,17,19,18]},{"lit":-4,"level":2,"reason":[-4,-12]}],"learned":[8,15],"uip":-8,"btlevel":1},{"index":27,"decision_level":1,"conflict":[-19,-3],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":-15,"level":1,"reason":null},{"lit":-10,"level":1,"reason":[-10,15]},{"lit":8,"level":1,"reason":[8,15]},{"lit":-4,"level":1,"reason":[-4,-8]},{"lit":-12,"level":1,"reason":[-12,-8]},{"lit":-16,"level":1,"reason":[-16,-8]},{"lit":-20,"level":1,"reason":[-20,-8]},{"lit":9,"level":1,"reason":[9,12,15,10]},{"lit":-5,"level":1,"reason":[-5,-9]},{"lit":-13,"level":1,"reason":[-13,-9]},{"lit":-17,"level":1,"reason":[-17,-9]},{"lit":14,"level":1,"reason":[14,13,15,16]},{"lit":-2,"level":1,"reason":[-2,-14]},{"lit":-6,"level":1,"reason":[-6,-14]},{"lit":-18,"level":1,"reason":[-18,-14]},{"lit":3,"level":1,"reason":[3,2,1,4]},{"lit":19,"level":1,"reason":[19,18,20,17]},{"lit":-7,"level":1,"reason":[-7,-3]},{"lit":-11,"level":1,"reason":[-11,-3]}],"learned":[15],"uip":-15,"btlevel":0},{"index":28,"decision_level":5,"conflict":[-18,-2],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":15,"level":0,"reason":null},{"lit":-3,"level":0,"reason":[-3,-15]},{"lit":-7,"level":0,"reason":[-7,-15]},{"lit":-11,"level":0,"reason":[-11,-15]},{"lit":-19,"level":0,"reason":[-19,-15]},{"lit":-17,"level":1,"reason":null},{"lit":-16,"level":1,"reason":[-16,17,19,3]},{"lit":-14,"level":1,"reason":[-14,17,3,19]},{"lit":-13,"level":2,"reason":null},{"lit":-10,"level":3,"reason":null},{"lit":9,"level":4,"reason":null},{"lit":-5,"level":4,"reason":[-5,-9]},{"lit":8,"level":5,"reason":null},{"lit":-4,"level":5,"reason":[-4,-8]},{"lit":-12,"level":5,"reason":[-12,-8]},{"lit":-20,"level":5,"reason":[-20,-8]},{"lit":2,"level":5,"reason":[2,4,1,3]},{"lit":18,"level":5,"reason":[18,20,19,17]},{"lit":-6,"level":5,"reason":[-6,-2]}],"learned":[-8,17],"uip":8,"btlevel":1},{"index":29,"decision_level":4,"conflict":[2,4,1,3],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":15,"level":0,"reason":null},{"lit":-3,"level":0,"reason":[-3,-15]},{"lit":-7,"level":0,"reason":[-7,-15]},{"lit":-11,"level":0,"reason":[-11,-15]},{"lit":-19,"level":0,"reason":[-19,-15]},{"lit":-17,"level":1,"reason":null},{"lit":-16,"level":1,"reason":[-16,17,19,3]},{"lit":-14,"level":1,"reason":[-14,17,3,19]},{"lit":-8,"level":1,"reason":[-8,17]},{"lit":-13,"level":2,"reason":null},{"lit":-10,"level":3,"reason":null},{"lit":9,"level":4,"reason":null},{"lit":-5,"level":4,"reason":[-5,-9]},{"lit":20,"level":4,"reason":[20,5,-15,17,8]},{"lit":6,"level":4,"reason":[6,5,8,7]},{"lit":-12,"level":4,"reason":[-12,5,8,13,17]},{"lit":-4,"level":4,"reason":[-4,-20]},{"lit":-2,"level":4,"reason":[-2,-6]},{"lit":-18,"level":4,"reason":[-18,-6]}],"learned":[5,17],"uip":-5,"btlevel":1},{"index":30,"decision_level":2,"conflict":[-10,-2],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":15,"level":0,"reason":null},{"lit":-3,"level":0,"reason":[-3,-15]},{"lit":-7,"level":0,"reason":[-7,-15]},{"lit":-11,"level":0,"reason":[-11,-15]},{"lit":-19,"level":0,"reason":[-19,-15]},{"lit":-17,"level":1,"reason":null},{"lit":-16,"level":1,"reason":[-16,17,19,3]},{"lit":-14,"level":1,"reason":[-14,17,3,19]},{"lit":-8,"level":1,"reason":[-8,17]},{"lit":5,"level":1,"reason":[5,17]},{"lit":-9,"level":1,"reason":[-9,-5]},{"lit":-13,"level":1,"reason":[-13,-5]},{"lit":20,"level":2,"reason":null},{"lit":-4,"level":2,"reason":[-4,-20]},{"lit":-12,"level":2,"reason":[-12,-20]},{"lit":2,"level":2,"reason":[2,4,1,3]},{"lit":10,"level":2,"reason":[10,12,9,11]},{"lit":-6,"level":2,"reason":[-6,-2]}],"learned":[-20,9],"uip":20,"btlevel":1},{"index":31,"decision_level":1,"conflict":[2,4,1,3],"trail":[{"lit":-1,"level":0,"reason":null},{"lit":15,"level":0,"reason":null},{"lit":-3,"level":0,"reason":[-3,-15]},{"lit":-7,"level":0,"reason":[-7,-15]},{"lit":-11,"level":0,"reason":[-11,-15]},{"lit":-19,"level":0,"reason":[-19,-15]},{"lit":-17,"level":1,"reason":null},{"lit":-16,"level":1,"reason":[-16,17,19,3]},{"lit":-14,"level":1,"reason":[-14,17,3,19]},{"lit":-8,"level":1,"reason":[-8,17]},{"lit":5,"level":1,"reason":[5,17]},{"lit":-9,"level":1,"reason":[-9,-5]},{"lit":-13,"level":1,"reason":[-13,-5]},{"lit":-20,"level":1,"reason":[-20,9]},{"lit":12,"level":1,"reason":[12,20,-15,17,9]},{"lit":18,"level":1,"reason":[18,20,19,17]},{"lit":-4,"level":1,"reason":[-4,-12]},{"lit":-2,"level":1,"reason":[-2,-18]},{"lit":-6,"level":1,"reason":[-6,-18]},{"lit":-10,"level":1,"reason":[-10,-18]}],"learned":[17],"uip":-17,"btlevel":0}]};
+const SVGNS = "http://www.w3.org/2000/svg";
+
+document.getElementById('title').textContent = DATA.title;
+document.getElementById('subtitle').textContent = DATA.subtitle;
+(function(){
+  const s = DATA.stats;
+  const bar = document.getElementById('statbar');
+  const items = [
+    ['result', DATA.status],['vars', DATA.nvars],['clauses', DATA.nclauses],
+    ['decisions', s.decisions],['conflicts', s.conflicts],
+    ['propagations', s.propagations],['learned', s.learned],
+    ['restarts', s.restarts],['max level', s.max_decision_level]
+  ];
+  bar.innerHTML = items.map(([k,v])=>`<span>${k}: <b>${v}</b></span>`).join('');
+})();
+
+const litLabel = (lit)=> (lit>0? "x"+lit : "¬x"+(-lit));
+// palette by decision level
+const LEVELS = ["#3fb950","#58a6ff","#d29922","#db61a2","#a371f7","#39c5bb",
+                "#f0883e","#6cb6ff","#e3b341","#ff7b72"];
+const levelColor = (lvl)=> LEVELS[lvl % LEVELS.length];
+
+function buildGraph(snap){
+  // map var -> trail entry {lit, level, reason}
+  const byVar = new Map();
+  snap.trail.forEach((t,i)=>{ byVar.set(Math.abs(t.lit), {...t, order:i}); });
+
+  // antecedents of a literal `lit` from its reason clause:
+  // reason = (lit OR -a OR -b ...) -> antecedents are a,b (true literals)
+  function antecedents(lit){
+    const e = byVar.get(Math.abs(lit));
+    if(!e || !e.reason) return [];
+    return e.reason.filter(q=>q!==lit).map(q=>-q);
+  }
+  // BFS the cone that feeds the conflict
+  const inGraph = new Set();
+  const queue = [];
+  // conflict node 'kappa' is fed by antecedents of the conflict clause
+  const confAnte = snap.conflict.map(q=>-q);
+  confAnte.forEach(l=>{ if(byVar.has(Math.abs(l))){ queue.push(l); }});
+  while(queue.length){
+    const l = queue.shift();
+    const v = Math.abs(l);
+    if(inGraph.has(v)) continue;
+    inGraph.add(v);
+    antecedents(l).forEach(a=>{ if(!inGraph.has(Math.abs(a))) queue.push(a); });
+  }
+  // nodes
+  const nodes = [];
+  inGraph.forEach(v=>{
+    const e = byVar.get(v);
+    nodes.push({v, lit:e.lit, level:e.level, order:e.order, reason:e.reason});
+  });
+  // edges
+  const edges = [];
+  nodes.forEach(n=>{
+    antecedents(n.lit).forEach(a=>{
+      if(inGraph.has(Math.abs(a))) edges.push({from:Math.abs(a), to:n.v});
+    });
+  });
+  // conflict edges -> kappa
+  confAnte.forEach(a=>{ if(inGraph.has(Math.abs(a))) edges.push({from:Math.abs(a), to:'K'}); });
+  return {nodes, edges, byVar};
+}
+
+function layout(graph, snap){
+  // x by decision level, y by trail order within level
+  const levels = {};
+  graph.nodes.forEach(n=>{ (levels[n.level] ||= []).push(n); });
+  const maxLevel = Math.max(0, ...graph.nodes.map(n=>n.level));
+  const colW = 200, rowH = 64, padX = 80, padY = 70;
+  const pos = new Map();
+  Object.keys(levels).forEach(lv=>{
+    levels[lv].sort((a,b)=>a.order-b.order);
+    levels[lv].forEach((n,i)=>{
+      pos.set(n.v, {x: padX + n.level*colW, y: padY + i*rowH, node:n});
+    });
+  });
+  // kappa to the far right, vertically centered on conflict antecedents
+  const confVars = snap.conflict.map(q=>Math.abs(q)).filter(v=>pos.has(v));
+  let ky = padY;
+  if(confVars.length){
+    ky = confVars.reduce((s,v)=>s+pos.get(v).y,0)/confVars.length;
+  }
+  pos.set('K', {x: padX + (maxLevel+1)*colW, y: ky, kappa:true});
+  const width = padX*2 + (maxLevel+1)*colW + 60;
+  let maxRows = 1;
+  Object.values(levels).forEach(a=>maxRows=Math.max(maxRows,a.length));
+  const height = padY*2 + Math.max(maxRows, confVars.length+1)*rowH;
+  return {pos, width, height, maxLevel};
+}
+
+function render(idx){
+  const snap = DATA.snaps[idx];
+  const svg = document.getElementById('graph');
+  svg.innerHTML = "";
+  if(!snap){ return; }
+  const graph = buildGraph(snap);
+  const lay = layout(graph, snap);
+  svg.setAttribute('width', lay.width);
+  svg.setAttribute('height', lay.height);
+
+  const learnSet = new Set(snap.learned.map(l=>Math.abs(l)));
+  const uipVar = Math.abs(snap.uip);
+
+  // defs: arrowheads
+  const defs = el('defs');
+  defs.appendChild(marker('arrow', '#5b6673'));
+  defs.appendChild(marker('arrowK', '#ff6b6b'));
+  defs.appendChild(marker('arrowL', '#a371f7'));
+  svg.appendChild(defs);
+
+  // level bands + labels
+  for(let lv=0; lv<=lay.maxLevel; lv++){
+    const x = 80 + lv*200;
+    const t = text(x, 30, "level "+lv, "#6b7686", 12);
+    t.setAttribute('text-anchor','middle');
+    svg.appendChild(t);
+    const ln = line(x, 44, x, lay.height-20, "#1f2630", 1);
+    ln.setAttribute('stroke-dasharray','3 6');
+    svg.appendChild(ln);
+  }
+
+  // edges
+  graph.edges.forEach(e=>{
+    const a = lay.pos.get(e.from), b = lay.pos.get(e.to);
+    if(!a||!b) return;
+    const toK = (e.to==='K');
+    const inLearn = learnSet.has(e.from) && (toK || learnSet.has(e.to));
+    const col = toK ? "#7d3b3b" : (inLearn? "#5a3f86" : "#39414d");
+    const mk = toK ? "arrowK" : (inLearn? "arrowL":"arrow");
+    const p = path(a.x+58, a.y, b.x-(toK?26:58), b.y, col, mk);
+    svg.appendChild(p);
+  });
+
+  // nodes
+  graph.nodes.forEach(n=>{
+    const p = lay.pos.get(n.v);
+    const g = el('g');
+    const w=116,h=34;
+    const r = rect(p.x-w/2, p.y-h/2, w, h, 9);
+    const isDecision = !n.reason;
+    r.setAttribute('fill', isDecision ? shade(levelColor(n.level),0.22)
+                                      : shade(levelColor(n.level),0.13));
+    r.setAttribute('stroke', n.v===uipVar ? "#f2cc60"
+                    : (learnSet.has(n.v) ? "#a371f7"
+                    : (isDecision? levelColor(n.level) : "#2c3744")));
+    r.setAttribute('stroke-width', n.v===uipVar ? 3 : (isDecision?2.4:1.4));
+    g.appendChild(r);
+    const lbl = text(p.x, p.y+4, litLabel(n.lit), "#e6edf3", 13);
+    lbl.setAttribute('text-anchor','middle');
+    lbl.setAttribute('class','node-label');
+    g.appendChild(lbl);
+    if(isDecision){
+      const d = text(p.x, p.y-h/2-5, "decision", "#6b7686", 10);
+      d.setAttribute('text-anchor','middle'); g.appendChild(d);
+    }
+    if(n.v===uipVar){
+      const d = text(p.x, p.y+h/2+13, "1-UIP", "#f2cc60", 10);
+      d.setAttribute('text-anchor','middle'); g.appendChild(d);
+    }
+    const tt = el('title');
+    tt.textContent = `${litLabel(n.lit)} @level ${n.level}` +
+      (n.reason? `\nreason: (${n.reason.map(litLabel).join(' ∨ ')})` : '\ndecision');
+    g.appendChild(tt);
+    svg.appendChild(g);
+  });
+
+  // kappa (conflict) node
+  const k = lay.pos.get('K');
+  const kg = el('g');
+  const kr = rect(k.x-26, k.y-26, 52, 52, 26);
+  kr.setAttribute('fill', '#3a1d1d'); kr.setAttribute('stroke', '#ff6b6b');
+  kr.setAttribute('stroke-width', 3);
+  kg.appendChild(kr);
+  const kt = text(k.x, k.y+7, "⊥", "#ff6b6b", 22);
+  kt.setAttribute('text-anchor','middle'); kg.appendChild(kt);
+  const kl = text(k.x, k.y+44, "conflict", "#ff6b6b", 11);
+  kl.setAttribute('text-anchor','middle'); kg.appendChild(kl);
+  svg.appendChild(kg);
+
+  renderPanel(idx, snap, graph);
+  // controls
+  document.getElementById('conflbl').textContent =
+    `conflict ${idx+1} / ${DATA.snaps.length}`;
+  document.getElementById('kpill').textContent =
+    `decision level ${snap.decision_level} → backjump to ${snap.btlevel}`;
+  document.getElementById('slider').value = idx;
+  document.getElementById('prev').disabled = idx<=0;
+  document.getElementById('next').disabled = idx>=DATA.snaps.length-1;
+}
+
+function renderPanel(idx, snap, graph){
+  const litSpan = (lit, cls)=>`<span class="lit ${cls||''}">${litLabel(lit)}</span>`;
+  const learnSet = new Set(snap.learned.map(Math.abs));
+  const conflictHtml = snap.conflict.map(l=>litSpan(l)).join(' ∨ ');
+  const learnedHtml = snap.learned.map(l=>{
+    const cls = (Math.abs(l)===Math.abs(snap.uip))? 'uip' : 'learn';
+    return litSpan(l, cls);
+  }).join(' ∨ ');
+  const decisions = graph.nodes.filter(n=>!n.reason)
+    .sort((a,b)=>a.level-b.level)
+    .map(n=>`L${n.level}: ${litLabel(n.lit)}`).join(' &nbsp;·&nbsp; ') || '—';
+  document.getElementById('panel').innerHTML = `
+    <h2>This conflict</h2>
+    <div class="kv"><span>conflict #</span><span>${idx+1} of ${DATA.snaps.length}</span></div>
+    <div class="kv"><span>decision level</span><span>${snap.decision_level}</span></div>
+    <div class="kv"><span>graph nodes</span><span>${graph.nodes.length}</span></div>
+    <div class="kv"><span>backjump to</span><span>level ${snap.btlevel}</span></div>
+
+    <h2>Conflicting clause</h2>
+    <div class="clause">${conflictHtml}</div>
+    <div class="tip">Every literal here is false under the current trail — that's
+      the contradiction (⊥).</div>
+
+    <h2>Decisions on the path</h2>
+    <div class="clause">${decisions}</div>
+
+    <h2>1-UIP learned clause</h2>
+    <div class="clause">${learnedHtml}</div>
+    <div class="tip">The single literal at the current decision level is the
+      <b style="color:var(--gold)">1-UIP</b>. After backjumping to level
+      ${snap.btlevel}, this clause becomes unit and forces
+      ${litLabel(snap.learned[0])}.</div>
+
+    <h2>Legend</h2>
+    <div class="legend">
+      <span class="swatch" style="border-color:var(--gold);border-width:2px"></span><span>1-UIP variable</span>
+      <span class="swatch" style="border-color:var(--learn)"></span><span>in learned clause</span>
+      <span class="swatch" style="background:#3a1d1d;border-color:var(--red)"></span><span>⊥ conflict node</span>
+      <span class="swatch" style="border-width:2px;border-color:#58a6ff"></span><span>decision (thick border)</span>
+    </div>
+  `;
+}
+
+// ---- tiny SVG helpers -------------------------------------------------
+function el(n){return document.createElementNS(SVGNS,n);}
+function rect(x,y,w,h,r){const e=el('rect');e.setAttribute('x',x);e.setAttribute('y',y);
+  e.setAttribute('width',w);e.setAttribute('height',h);e.setAttribute('rx',r);return e;}
+function text(x,y,t,fill,size){const e=el('text');e.setAttribute('x',x);e.setAttribute('y',y);
+  e.setAttribute('fill',fill);e.setAttribute('font-size',size||12);e.textContent=t;return e;}
+function line(x1,y1,x2,y2,stroke,w){const e=el('line');e.setAttribute('x1',x1);
+  e.setAttribute('y1',y1);e.setAttribute('x2',x2);e.setAttribute('y2',y2);
+  e.setAttribute('stroke',stroke);e.setAttribute('stroke-width',w||1);return e;}
+function path(x1,y1,x2,y2,stroke,marker){
+  const dx=Math.max(40,(x2-x1)*0.5);
+  const d=`M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}`;
+  const e=el('path');e.setAttribute('d',d);e.setAttribute('fill','none');
+  e.setAttribute('stroke',stroke);e.setAttribute('stroke-width',1.8);
+  e.setAttribute('marker-end',`url(#${marker})`);return e;}
+function marker(id,color){const m=el('marker');m.setAttribute('id',id);
+  m.setAttribute('viewBox','0 0 10 10');m.setAttribute('refX','9');m.setAttribute('refY','5');
+  m.setAttribute('markerWidth','7');m.setAttribute('markerHeight','7');
+  m.setAttribute('orient','auto-start-reverse');
+  const p=el('path');p.setAttribute('d','M 0 0 L 10 5 L 0 10 z');p.setAttribute('fill',color);
+  m.appendChild(p);return m;}
+function shade(hex,a){const c=hex.replace('#','');
+  const r=parseInt(c.slice(0,2),16),g=parseInt(c.slice(2,4),16),b=parseInt(c.slice(4,6),16);
+  return `rgba(${r},${g},${b},${a})`;}
+
+// ---- controls ---------------------------------------------------------
+let cur = 0;
+const slider = document.getElementById('slider');
+if(DATA.snaps.length===0){
+  document.querySelector('.left').innerHTML =
+    '<div class="empty">This instance produced no conflicts — it was solved by '+
+    'pure unit propagation (or was trivially UNSAT). Try a harder instance, e.g. '+
+    '<code>crux viz --problem pigeonhole -m 5 -n 4</code>.</div>';
+  document.getElementById('panel').innerHTML =
+    '<h2>No conflicts</h2><div class="tip">Nothing to analyze — the search never '+
+    'hit a contradiction.</div>';
+} else {
+  slider.max = DATA.snaps.length-1;
+  document.getElementById('prev').onclick=()=>{ if(cur>0){cur--;render(cur);} };
+  document.getElementById('next').onclick=()=>{ if(cur<DATA.snaps.length-1){cur++;render(cur);} };
+  slider.oninput=(e)=>{ cur=+e.target.value; render(cur); };
+  document.addEventListener('keydown',(e)=>{
+    if(e.key==='ArrowLeft'&&cur>0){cur--;render(cur);}
+    if(e.key==='ArrowRight'&&cur<DATA.snaps.length-1){cur++;render(cur);}
+  });
+  render(0);
+}
+</script>
+</body>
+</html>

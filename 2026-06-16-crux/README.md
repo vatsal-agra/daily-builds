@@ -2,10 +2,28 @@
 
 A from-scratch **CDCL SAT solver** in pure Python.
 
-> Status: **Phase 3 (ADVERSARIAL REVIEW) complete.** Six findings fixed (incl. a
-> 1883× VSIDS heap blow-up and a dead, misleading `rng_seed` param); see
-> [REVIEW.md](REVIEW.md). Engine re-fuzzed clean. See [PLAN.md](PLAN.md) for the
-> concept and feature list.
+> Status: **Phase 4 (STRETCH + POLISH) complete.** All 3 stretch features shipped:
+> an interactive conflict-analysis **visualizer**, **DRUP/RUP UNSAT proofs** with an
+> independent checker, and exact **#SAT model counting**. See [REVIEW.md](REVIEW.md)
+> for the adversarial review and [PLAN.md](PLAN.md) for the concept.
+
+### Stretch features
+```bash
+# exact model count, cross-checked against brute force
+python3 -m crux gen --vars 8 --clauses 20 | python3 -m crux count --verify
+
+# prove UNSAT and independently verify the certificate
+python3 -m crux encode pigeonhole -m 6 -n 5 | python3 -m crux proof
+
+# generate the interactive conflict-analysis visualizer (open the HTML)
+python3 -m crux viz --problem pigeonhole -m 5 -n 4 --out web/crux-viz.html
+
+# guided tour of every feature
+python3 -m crux demo
+```
+The visualizer (`web/crux-viz.html`) embeds the solver's *real* recorded conflicts
+and draws each implication graph: decision nodes, propagations, the ⊥ conflict
+node, the highlighted **1-UIP**, and the learned clause — steppable with ◀/▶.
 
 ### Output conventions
 `crux solve` follows the SAT-competition format: `s SATISFIABLE` / `s UNSATISFIABLE`

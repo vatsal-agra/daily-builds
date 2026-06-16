@@ -114,6 +114,8 @@ class Solver:
         clause_decay: float = 0.999,
         restart_base: int = 100,
         record_proof: bool = False,
+        record_conflicts: bool = False,
+        max_conflict_snaps: int = 60,
         trace: Optional[Callable[[str, dict], None]] = None,
     ):
         self.nvars = 0
@@ -150,6 +152,11 @@ class Solver:
         self.proof: List[List[int]] = []      # ('a', clause) adds; ('d', clause) deletes
         self._trace = trace
         self.max_learnts = 0
+
+        # conflict snapshots for the visualizer
+        self.record_conflicts = record_conflicts
+        self.max_conflict_snaps = max_conflict_snaps
+        self.conflict_snaps: List[dict] = []
 
         if cnf is not None:
             self.add_cnf(cnf)
@@ -571,6 +578,9 @@ class Solver:
                             self.proof.append(["a"])  # derived empty clause
                     return self._unsat_result()
                 learnt, btlevel = self._analyze(confl)
+                if (self.record_conflicts
+                        and len(self.conflict_snaps) < self.max_conflict_snaps):
+                    self._snapshot_conflict(confl, learnt, btlevel)
                 btlevel = max(btlevel, n_assump)
                 self._cancel_until(btlevel)
                 self._record_learnt(learnt)
@@ -618,6 +628,32 @@ class Solver:
                 self.stats.decisions += 1
                 self._new_decision_level()
                 self._enqueue(next_lit, None)
+
+    def _snapshot_conflict(self, confl: Clause, learnt: List[int], btlevel: int):
+        """Capture the implication graph at a conflict for the visualizer.
+
+        Records the full trail (literal, level, antecedents) as it stands at the
+        moment of conflict, the conflicting clause, the learned clause, the 1-UIP
+        literal and the backjump level. Pure data — no rendering here.
+        """
+        trail = []
+        for lit in self.trail:
+            v = abs(lit)
+            r = self.reason[v]
+            trail.append({
+                "lit": lit,
+                "level": self.level[v],
+                "reason": list(r.lits) if r is not None else None,
+            })
+        self.conflict_snaps.append({
+            "index": len(self.conflict_snaps),
+            "decision_level": self.decision_level,
+            "conflict": list(confl.lits),
+            "trail": trail,
+            "learned": list(learnt),
+            "uip": -learnt[0],
+            "btlevel": btlevel,
+        })
 
     def _unsat_result(self) -> Result:
         return Result(False, None, self.stats,
