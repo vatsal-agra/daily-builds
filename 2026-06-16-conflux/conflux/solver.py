@@ -50,8 +50,7 @@ class Stats:
 
 class Solver:
     def __init__(self, num_vars: int = 0, record_proof: bool = False,
-                 var_decay: float = 0.95, restart_base: int = 100,
-                 rng_seed: Optional[int] = None):
+                 var_decay: float = 0.95, restart_base: int = 100):
         self.num_vars = num_vars
         # value[v] in {None, True, False}; index 0 unused
         self.val: List[Optional[bool]] = [None] * (num_vars + 1)
@@ -367,8 +366,7 @@ class Solver:
         return True
 
     # ---- main search -----------------------------------------------------
-    def solve(self, assumptions: Optional[List[int]] = None,
-              max_conflicts: Optional[int] = None) -> str:
+    def solve(self, max_conflicts: Optional[int] = None) -> str:
         if not self.ok:
             if self.record_proof:
                 self.proof.append([])  # empty clause

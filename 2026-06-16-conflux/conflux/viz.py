@@ -140,8 +140,8 @@ _TEMPLATE = r"""<!DOCTYPE html>
 
     <div id="p-rand">
       <div class="row">
-        <div><label>vars n</label><input id="r-n" type="number" value="14" min="2" max="60"></div>
-        <div><label>ratio m/n</label><input id="r-ratio" type="number" value="4.0" step="0.1" min="1" max="8"></div>
+        <div><label>vars n</label><input id="r-n" type="number" value="16" min="2" max="60"></div>
+        <div><label>ratio m/n</label><input id="r-ratio" type="number" value="3.2" step="0.1" min="1" max="8"></div>
       </div>
       <label>seed</label><input id="r-seed" type="number" value="7">
     </div>

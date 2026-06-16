@@ -75,7 +75,7 @@ def cmd_sudoku(args):
     res, s, dt = _solve_cnf(cnf)
     _print_stats(s, dt)
     if res != SAT:
-        print(f"s {res} — this sudoku has no solution")
+        print("s UNSATISFIABLE — this sudoku has no solution")
         return 1
     grid = E.decode_sudoku(s.model(), meta)
     ok, msg = E.validate_sudoku(grid, grid_in, n)
@@ -143,6 +143,11 @@ def cmd_color(args):
         V, edges = BUILTIN_GRAPHS[args.graph]
     else:
         V = args.vertices
+        if V <= 0:
+            raise ValueError(
+                f"unknown graph {args.graph!r}; use a builtin "
+                f"({', '.join(BUILTIN_GRAPHS)}) or pass --vertices N "
+                f"[--edges \"0-1,1-2\"]")
         edges = _parse_edges(args.edges or "")
     cnf, meta = E.encode_coloring(V, edges, args.colors)
     res, s, dt = _solve_cnf(cnf, proof=True)
@@ -307,7 +312,11 @@ def build_parser():
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args) or 0
+    try:
+        return args.func(args) or 0
+    except (ValueError, FileNotFoundError, IsADirectoryError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

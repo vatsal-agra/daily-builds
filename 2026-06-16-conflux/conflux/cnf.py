@@ -48,7 +48,7 @@ class CNF:
         declared_vars = None
         declared_clauses = None
         tokens: List[int] = []
-        for raw in text.splitlines():
+        for lineno, raw in enumerate(text.splitlines(), 1):
             line = raw.strip()
             if not line:
                 continue
@@ -59,13 +59,23 @@ class CNF:
                 parts = line.split()
                 # p cnf <vars> <clauses>
                 if len(parts) >= 4 and parts[1] == "cnf":
-                    declared_vars = int(parts[2])
-                    declared_clauses = int(parts[3])
+                    try:
+                        declared_vars = int(parts[2])
+                        declared_clauses = int(parts[3])
+                    except ValueError:
+                        raise ValueError(
+                            f"line {lineno}: malformed problem line: {line!r}")
                 continue
             if line.startswith("%"):  # some DIMACS files end with a % line
                 break
             for tok in line.split():
-                tokens.append(int(tok))
+                try:
+                    tokens.append(int(tok))
+                except ValueError:
+                    raise ValueError(
+                        f"line {lineno}: expected an integer literal, got "
+                        f"{tok!r} (DIMACS clauses are space-separated ints "
+                        f"terminated by 0)")
         # tokens are clauses separated by 0
         cur: List[int] = []
         for t in tokens:

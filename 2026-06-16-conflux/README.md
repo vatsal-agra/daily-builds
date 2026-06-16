@@ -4,9 +4,9 @@ A from-scratch **CDCL SAT solver** in pure Python (no dependencies), with an
 interactive single-file HTML visualizer of the conflict-driven clause-learning
 loop.
 
-> **Status:** Phase 2 (core build) complete — CDCL engine, DIMACS I/O, DRAT
-> proof checker, problem encoders, interactive visualizer, phase-transition
-> sweep, and `explain` mode all working. See [PLAN.md](PLAN.md) for the design.
+> **Status:** Phase 3 (adversarial review) complete — fuzzed against a
+> brute-force oracle (3000 instances, 0 mismatches) and hardened the I/O surface
+> (clean errors on bad input). See [REVIEW.md](REVIEW.md) for findings & fixes.
 
 ## What it is (planned)
 - A modern SAT solver: two-watched-literal propagation, VSIDS, 1-UIP conflict
