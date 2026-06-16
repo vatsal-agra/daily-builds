@@ -6,10 +6,9 @@ brute-force differential oracle, problem encoders (Sudoku / N-Queens / graph
 coloring / pigeonhole), DRUP UNSAT-proof checking, and an interactive
 implication-graph visualizer.
 
-> **Status:** Phase 3 (adversarial review) complete — found and fixed a proof-
-> soundness bug on trivial UNSAT, a crash in `check`, and dead viz code; see
-> [REVIEW.md](./REVIEW.md). All 3 stretch features are already in. Polish,
-> tests, and final docs follow.
+> **Status:** Phase 4 (stretch + polish) complete — all 3 stretch features in
+> (encoders+decoder, DRUP proof checker, implication-graph viz); CLI now reports
+> bad input with clean, exit-coded errors. Tests and final docs follow.
 
 ## Try it
 ```bash

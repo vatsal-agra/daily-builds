@@ -15,11 +15,22 @@ from . import proof as proofmod
 from . import viz as vizmod
 
 
+class CliError(Exception):
+    """A user-facing error that should print cleanly (no traceback)."""
+
+
 def _read(path: str) -> str:
     if path == "-":
         return sys.stdin.read()
-    with open(path, "r") as f:
-        return f.read()
+    try:
+        with open(path, "r") as f:
+            return f.read()
+    except FileNotFoundError:
+        raise CliError(f"file not found: {path}")
+    except IsADirectoryError:
+        raise CliError(f"expected a file, got a directory: {path}")
+    except OSError as e:
+        raise CliError(f"could not read {path}: {e}")
 
 
 def _load_cnf(path: str) -> CNF:
@@ -70,7 +81,10 @@ def cmd_solve(args) -> int:
 
 
 def cmd_gen(args) -> int:
-    cnf = random_ksat(args.vars, args.clauses, k=args.k, seed=args.seed)
+    try:
+        cnf = random_ksat(args.vars, args.clauses, k=args.k, seed=args.seed)
+    except ValueError as e:
+        raise CliError(str(e))
     out = cnf.to_dimacs(comment=f"random {args.k}-SAT  vars={args.vars} "
                                 f"clauses={args.clauses} seed={args.seed}")
     if args.out:
@@ -149,17 +163,23 @@ def cmd_bench(args) -> int:
 
 def _build_encoding(args) -> encoders.Encoding:
     kind = args.problem
-    if kind == "queens":
-        return encoders.encode_queens(args.n)
-    if kind == "pigeonhole":
-        return encoders.encode_pigeonhole(args.holes, args.pigeons)
-    if kind == "sudoku":
-        text = _read(args.sudoku) if args.sudoku else _DEFAULT_SUDOKU
-        return encoders.encode_sudoku(text)
-    if kind == "color":
-        n, edges = encoders.parse_graph(_read(args.graph))
-        return encoders.encode_coloring(n, edges, args.colors)
-    raise ValueError(kind)
+    try:
+        if kind == "queens":
+            return encoders.encode_queens(args.n)
+        if kind == "pigeonhole":
+            return encoders.encode_pigeonhole(args.holes, args.pigeons)
+        if kind == "sudoku":
+            text = _read(args.sudoku) if args.sudoku else _DEFAULT_SUDOKU
+            return encoders.encode_sudoku(text)
+        if kind == "color":
+            if not args.graph:
+                raise CliError("color requires --graph <file> "
+                               "(first line: vertex count; then one 'u v' edge per line)")
+            n, edges = encoders.parse_graph(_read(args.graph))
+            return encoders.encode_coloring(n, edges, args.colors)
+    except ValueError as e:
+        raise CliError(f"{kind}: {e}")
+    raise CliError(f"unknown problem: {kind}")
 
 
 def cmd_encode(args) -> int:
@@ -321,7 +341,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: List[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except CliError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    except BrokenPipeError:
+        return 0
+    except KeyboardInterrupt:
+        print("\ninterrupted", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":
