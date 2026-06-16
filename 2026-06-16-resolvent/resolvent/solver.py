@@ -325,7 +325,7 @@ class Solver:
             confl = self.reason[abs(p)]
         learnt[0] = -p                 # the 1-UIP asserting literal
 
-        learnt = self._minimize(learnt, seen)
+        learnt = self._minimize(learnt)
         # move the highest-level literal (after the asserting one) to position 1
         if len(learnt) > 1:
             max_i = 1
@@ -338,7 +338,7 @@ class Solver:
             btlevel = 0
         return learnt, btlevel
 
-    def _minimize(self, learnt: List[int], seen: List[bool]) -> List[int]:
+    def _minimize(self, learnt: List[int]) -> List[int]:
         """Self-subsuming resolution: drop a literal if all of its reason's
         literals are already in the learnt clause (recursively)."""
         # mark current learnt literals
@@ -375,25 +375,36 @@ class Solver:
     # reduceDB                                                           #
     # ------------------------------------------------------------------ #
     def _reduce_db(self) -> None:
-        """Remove ~half of the low-activity learned clauses. Only called at
-        decision level 0 so no clause is currently a reason (locked)."""
-        learned_idx = [i for i in range(self.n_original, len(self.clauses))
-                       if self.learned_flag[i] and len(self.clauses[i]) > 2]
-        if len(learned_idx) < 50:
+        """Remove ~half of the low-activity learned clauses, then renumber the
+        clause database and rewrite every reference into it.
+
+        Only called at decision level 0. Because the clause list is rebuilt and
+        reindexed, we must (a) never delete a clause that is currently a reason
+        for an assigned variable (a "locked" clause), and (b) remap every
+        ``self.reason[v]`` index from the old numbering to the new one.
+        """
+        learnable = [i for i in range(len(self.clauses))
+                     if self.learned_flag[i] and len(self.clauses[i]) > 2]
+        if len(learnable) < 50:
             return
-        learned_idx.sort(key=lambda i: self.cla_activity[i])
-        remove = set(learned_idx[: len(learned_idx) // 2])
+        # clauses currently serving as a reason are locked (cannot be removed)
+        locked = set(r for r in self.reason if r is not None)
+        candidates = [i for i in learnable if i not in locked]
+        candidates.sort(key=lambda i: self.cla_activity[i])
+        remove = set(candidates[: len(candidates) // 2])
         if not remove:
             return
         new_clauses: List[List[int]] = []
         new_learned: List[bool] = []
         new_act: List[float] = []
+        remap: Dict[int, int] = {}
         for i, c in enumerate(self.clauses):
             if i in remove:
                 if self.record_proof:
-                    self.proof.append(("d", c))
+                    self.proof.append(("d", list(c)))
                 self.stats.removed_clauses += 1
                 continue
+            remap[i] = len(new_clauses)
             new_clauses.append(c)
             new_learned.append(self.learned_flag[i])
             new_act.append(self.cla_activity[i])
@@ -401,6 +412,11 @@ class Solver:
         self.learned_flag = new_learned
         self.cla_activity = new_act
         self.n_original = sum(1 for f in new_learned if not f)
+        # remap every reason pointer into the new numbering
+        for v in range(1, self.n + 1):
+            r = self.reason[v]
+            if r is not None:
+                self.reason[v] = remap[r]   # locked clauses are guaranteed to survive
         # rebuild watches from scratch (safe at level 0)
         for lit in self.watches:
             self.watches[lit] = []
