@@ -2,8 +2,34 @@
 
 A from-scratch **CDCL SAT solver** in pure Python.
 
-> Status: **Phase 1 (PLAN) complete.** See [PLAN.md](PLAN.md) for the full
-> concept, architecture, and feature list.
+> Status: **Phase 2 (CORE BUILD) complete.** All 4 required features work
+> end-to-end. See [PLAN.md](PLAN.md) for the full concept and feature list.
+
+## Try it (current)
+```bash
+# solve a random instance
+python3 -m crux gen --vars 30 --clauses 120 --seed 1 | python3 -m crux solve
+
+# solve a real 9x9 Sudoku and print the grid
+python3 -m crux decode sudoku examples/sudoku_hard.txt
+
+# 8-queens, graph colouring, pigeonhole (UNSAT)
+python3 -m crux decode queens -n 8
+python3 -m crux encode pigeonhole -m 6 -n 5 | python3 -m crux solve
+
+# prove the engine correct against brute force
+python3 -m crux fuzz --trials 2000
+```
+
+### What works now
+- **CDCL engine** — two-watched-literals BCP, 1-UIP learning, non-chronological
+  backjumping, VSIDS + decay, phase saving, Luby restarts, clause deletion, clause
+  minimization. Reports a verified model and full search statistics.
+- **DIMACS I/O + model checking** — tolerant parser, `check` verifies any model.
+- **Differential oracle** — `fuzz` cross-checks Crux vs an exhaustive brute solver
+  (2000+ random formulas, zero disagreements; every model re-verified).
+- **Encoders/decoders** — Sudoku, graph k-colouring, N-Queens, pigeonhole, with
+  an efficient Sinz sequential at-most-one encoding.
 
 Crux is a modern conflict-driven clause-learning SAT solver (two-watched-literals
 BCP, 1-UIP learning, non-chronological backjumping, VSIDS, Luby restarts) plus the
