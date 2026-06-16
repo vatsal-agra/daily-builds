@@ -100,6 +100,8 @@ def get(name: str, **kw):
 
 def bounds(X, pad: float = 0.3):
     """Axis-aligned bounding box of X, padded — used for plotting grids."""
+    if not X:
+        raise ValueError("bounds() needs at least one point")
     xs = [p[0] for p in X]
     ys = [p[1] for p in X]
     return (min(xs) - pad, max(xs) + pad, min(ys) - pad, max(ys) + pad)

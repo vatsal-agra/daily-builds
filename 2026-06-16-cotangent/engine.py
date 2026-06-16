@@ -67,6 +67,9 @@ class Value:
         # via exp/log composition if a base is a Value.
         if isinstance(other, Value):
             # a ** b  =  exp(b * log(a))   (requires a > 0)
+            if self.data <= 0:
+                raise ValueError(
+                    f"Value ** Value requires a positive base, got base={self.data}")
             return (other * self.log()).exp()
         out = Value(self.data ** other, (self,), f"**{other}")
 
@@ -117,6 +120,9 @@ class Value:
         return out
 
     def log(self) -> "Value":
+        if self.data <= 0:
+            raise ValueError(
+                f"log() domain error: log of non-positive value {self.data}")
         out = Value(math.log(self.data), (self,), "log")
 
         def _backward():

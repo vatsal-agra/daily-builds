@@ -11,6 +11,8 @@ from engine import Value
 
 def mse(pred: list[Value], target: list[float]) -> Value:
     """Mean squared error over a batch of scalar predictions."""
+    if not pred:
+        raise ValueError("mse needs at least one element")
     if len(pred) != len(target):
         raise ValueError("pred/target length mismatch")
     total = Value(0.0)
@@ -26,6 +28,8 @@ def binary_cross_entropy(logits: list[Value], target: list[float]) -> Value:
     For label y in {0,1} and logit z:  loss = softplus(z) - y*z
     where softplus(z) = log(1+exp(z)) computed stably as max(z,0)+log(1+exp(-|z|)).
     """
+    if not logits:
+        raise ValueError("binary_cross_entropy needs at least one element")
     if len(logits) != len(target):
         raise ValueError("logits/target length mismatch")
     total = Value(0.0)

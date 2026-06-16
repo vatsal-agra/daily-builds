@@ -6,6 +6,7 @@ decision-boundary snapshots for the visualizer.
 
 from __future__ import annotations
 
+import math
 import random
 from typing import Callable
 
@@ -24,9 +25,7 @@ def predict_logit(model: MLP, point: list[float]) -> float:
 def predict_prob(model: MLP, point: list[float]) -> float:
     z = predict_logit(model, point)
     if z >= 0:
-        import math
         return 1.0 / (1.0 + math.exp(-z))
-    import math
     e = math.exp(z)
     return e / (1.0 + e)
 

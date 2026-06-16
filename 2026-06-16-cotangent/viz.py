@@ -294,14 +294,16 @@ function drawBoard(k){
   });
   const ep=D.snapshot_epochs[k];
   epEl.textContent=`epoch ${ep}`;
-  // metrics up to this epoch
-  const li=Math.min(ep, D.loss.length-1);
+  // metrics arrays are 0-indexed by COMPLETED epoch: loss[0] is epoch 1.
+  // epoch 0 is the pre-training snapshot, which has no recorded metric.
+  const li = ep>=1 ? Math.min(ep-1, D.loss.length-1) : -1;
   drawCurve(li);
-  const acc=(D.acc[li]*100).toFixed(1), loss=D.loss[li].toFixed(4);
+  const acc = li>=0 ? (D.acc[li]*100).toFixed(1)+'%' : '—';
+  const loss = li>=0 ? D.loss[li].toFixed(4) : '— (pre-training)';
   document.getElementById('stats').innerHTML=
     `<div class="stat"><span>epoch</span><span>${ep}</span></div>`+
     `<div class="stat"><span>loss</span><span>${loss}</span></div>`+
-    `<div class="stat"><span>accuracy</span><span>${acc}%</span></div>`+
+    `<div class="stat"><span>accuracy</span><span>${acc}</span></div>`+
     `<div class="stat"><span>final accuracy</span><span>${(D.acc[D.acc.length-1]*100).toFixed(1)}%</span></div>`;
 }
 function drawCurve(upto){

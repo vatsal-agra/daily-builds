@@ -16,6 +16,7 @@ import sys
 
 import data
 import gradcheck as gc
+import losses
 import train as trainer
 from engine import Value
 from nn import MLP
@@ -42,6 +43,11 @@ def _gradcheck_suite():
         ("composite",  lambda x: (x[0] * x[1] + x[0].tanh()).sigmoid()
                                  * (x[1].exp() + 1.0),              [0.6, 0.9]),
         ("neg+rsub",   lambda x: 2.0 - (-x[0]) + 3.0 * x[1],        [1.1, 2.2]),
+        ("loss:mse",   lambda x: losses.mse(x, [1.0, 2.0]),         [0.3, 2.5]),
+        ("loss:bce",   lambda x: losses.binary_cross_entropy(x, [1.0, 0.0]),
+                                                                    [0.7, -1.1]),
+        ("loss:softmax_ce",
+                       lambda x: losses.softmax_cross_entropy(x, 1), [0.5, -0.3, 1.2]),
     ]
     return suite
 
