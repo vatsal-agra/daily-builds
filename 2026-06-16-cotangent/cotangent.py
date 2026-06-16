@@ -108,6 +108,34 @@ def cmd_viz(args):
     return 0
 
 
+def cmd_compare(args):
+    """Train identical nets with Adam and SGD; report convergence side by side."""
+    X, y = data.get(args.dataset, n=args.n, seed=args.data_seed)
+    hidden = [int(h) for h in args.hidden.split(",") if h.strip()]
+    sizes = [2] + hidden + [1]
+    results = {}
+    for opt in ("adam", "sgd"):
+        model = MLP(sizes, hidden_act=args.activation, out_act="linear",
+                    seed=args.seed)
+        hist = trainer.train(model, X, y, epochs=args.epochs, batch_size=args.batch,
+                             optimizer=opt, lr=args.lr, seed=args.seed)
+        results[opt] = hist
+    print(f"dataset={args.dataset}  sizes={sizes}  epochs={args.epochs}\n")
+    print(f"{'epoch':>6} | {'adam loss':>10} {'adam acc':>9} | "
+          f"{'sgd loss':>10} {'sgd acc':>9}")
+    print("-" * 56)
+    step = max(1, args.epochs // 10)
+    marks = sorted(set(list(range(0, args.epochs, step)) + [args.epochs - 1]))
+    for e in marks:
+        a, s = results["adam"], results["sgd"]
+        print(f"{e+1:>6} | {a['loss'][e]:>10.4f} {a['acc'][e]:>9.3f} | "
+              f"{s['loss'][e]:>10.4f} {s['acc'][e]:>9.3f}")
+    print("-" * 56)
+    print(f"final accuracy:  adam={results['adam']['acc'][-1]:.3f}  "
+          f"sgd={results['sgd']['acc'][-1]:.3f}")
+    return 0
+
+
 def cmd_graph(args):
     # Build a small illustrative expression with named leaves.
     a = Value(args.a, label="a")
@@ -177,6 +205,10 @@ def build_parser():
     v.add_argument("--frames", type=int, default=24, help="number of snapshots")
     v.add_argument("--res", type=int, default=36, help="boundary grid resolution")
     v.set_defaults(func=cmd_viz)
+
+    c = sub.add_parser("compare", parents=[common_model],
+                       help="train Adam vs SGD side by side")
+    c.set_defaults(func=cmd_compare)
 
     gr = sub.add_parser("graph", help="emit a computation-graph HTML")
     gr.add_argument("--a", type=float, default=1.5)

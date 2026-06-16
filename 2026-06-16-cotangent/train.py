@@ -71,6 +71,10 @@ def train(model: MLP, X, y, *, epochs: int = 100, batch_size: int = 32,
     If ``snapshot_every > 0`` and ``snapshot_box`` is given, decision-boundary
     grids are captured for the visualizer.
     """
+    if not X:
+        raise ValueError("train() needs a non-empty dataset")
+    if len(X) != len(y):
+        raise ValueError("X and y length mismatch")
     rng = random.Random(seed)
     opt = make_optimizer(optimizer, model.parameters(), lr)
     history = {"loss": [], "acc": [], "snapshots": [], "snapshot_epochs": []}
