@@ -2,10 +2,12 @@
 
 A from-scratch **CDCL SAT solver** in pure Python.
 
-> Status: **Phase 4 (STRETCH + POLISH) complete.** All 3 stretch features shipped:
-> an interactive conflict-analysis **visualizer**, **DRUP/RUP UNSAT proofs** with an
-> independent checker, and exact **#SAT model counting**. See [REVIEW.md](REVIEW.md)
-> for the adversarial review and [PLAN.md](PLAN.md) for the concept.
+> Status: **Phase 5 (VERIFICATION) complete.** 27-test suite green (incl. a
+> 2500-formula differential fuzz, all 4 encoders validated, proof checking,
+> model counting, the visualizer, and review-fix regressions) plus a `demo.sh`
+> exercising every feature. See [REVIEW.md](REVIEW.md) and [PLAN.md](PLAN.md).
+>
+> Run everything: `./demo.sh`  ·  Tests only: `python3 -m unittest discover -s tests`
 
 ### Stretch features
 ```bash
