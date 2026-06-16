@@ -6,9 +6,9 @@ brute-force differential oracle, problem encoders (Sudoku / N-Queens / graph
 coloring / pigeonhole), DRUP UNSAT-proof checking, and an interactive
 implication-graph visualizer.
 
-> **Status:** Phase 4 (stretch + polish) complete — all 3 stretch features in
-> (encoders+decoder, DRUP proof checker, implication-graph viz); CLI now reports
-> bad input with clean, exit-coded errors. Tests and final docs follow.
+> **Status:** Phase 5 (verification) complete — 29-test suite (incl. a 1500-case
+> brute-force differential gate) all green; `demo.sh` runs every feature
+> end-to-end. Final ship docs follow.
 
 ## Try it
 ```bash
