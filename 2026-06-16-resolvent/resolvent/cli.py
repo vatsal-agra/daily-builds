@@ -213,21 +213,25 @@ def cmd_verify(args) -> int:
 
 def cmd_viz(args) -> int:
     from . import viz
+    names = None
     if args.puzzle == "php":
         m, n = args.a, args.b
-        cnf = pigeonhole.Pigeonhole(m, n).model.cnf
+        puz = pigeonhole.Pigeonhole(m, n)
+        cnf, names = puz.model.cnf, puz.model.names
         title = f"Pigeonhole PHP({m},{n})"
     elif args.puzzle == "queens":
-        cnf = nqueens.NQueens(args.a).model.cnf
+        puz = nqueens.NQueens(args.a)
+        cnf, names = puz.model.cnf, puz.model.names
         title = f"{args.a}-Queens"
     elif args.puzzle == "color":
         n, edges = coloring.parse_graph(_read(args.file))
-        cnf = coloring.Coloring(n, edges, args.k).model.cnf
+        puz = coloring.Coloring(n, edges, args.k)
+        cnf, names = puz.model.cnf, puz.model.names
         title = f"{args.k}-coloring"
     else:  # dimacs file
         cnf = CNF.from_dimacs(_read(args.file))
         title = args.file
-    html = viz.render_report(cnf, title=title)
+    html = viz.render_report(cnf, title=title, names=names)
     with open(args.out, "w") as f:
         f.write(html)
     print(f"c wrote {args.out}", file=sys.stderr)
@@ -321,7 +325,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except FileNotFoundError as e:
+        print(f"error: file not found: {e.filename}", file=sys.stderr)
+        return 2
+    except (ValueError, KeyboardInterrupt) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

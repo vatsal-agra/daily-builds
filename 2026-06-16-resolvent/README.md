@@ -4,9 +4,9 @@ A from-scratch **CDCL SAT solver** in pure Python, with a constraint-modeling
 layer, puzzle compilers, an independent UNSAT proof checker, and an interactive
 implication-graph visualizer.
 
-> **Status:** Phase 3 (adversarial review) complete — 7 findings fixed,
-> incl. a `reduceDB` clause-reindexing landmine. 2,500-instance differential is
-> clean and 974 UNSAT proofs verify. See `REVIEW.md`.
+> **Status:** Phase 4 (stretch + polish) complete — interactive HTML
+> implication-graph visualizer added (render-tested over SAT & UNSAT runs),
+> plus graceful error handling. See `REVIEW.md`.
 
 Quick taste:
 ```
