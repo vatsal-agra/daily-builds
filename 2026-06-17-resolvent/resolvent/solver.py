@@ -461,6 +461,28 @@ class Solver:
                 self._new_decision_level()
                 self._enqueue(lit, None)
 
+    # ---- introspection for the visualizer ---------------------------------
+    def run_to_first_conflict(self) -> Optional[Clause]:
+        """Drive the search (decisions + propagation, no learning/backtracking)
+        until the first conflict is hit. Returns the conflicting clause, or None
+        if the formula was solved with no conflict at all. The solver is left
+        frozen at the conflict so the implication graph can be inspected."""
+        if not self.ok:
+            return None
+        conflict = self._propagate()
+        while conflict is None:
+            lit = self._pick_branch()
+            if lit is None:
+                return None  # satisfied without any conflict
+            self.stats.decisions += 1
+            self._new_decision_level()
+            self._enqueue(lit, None)
+            conflict = self._propagate()
+        return conflict
+
+    def assigned_literal(self, var: int) -> int:
+        return var if self.value[var] == TRUE else -var
+
     # ---- result extraction -------------------------------------------------
     def model(self) -> Dict[int, bool]:
         """Return a full variable->bool assignment. Only valid after solve()

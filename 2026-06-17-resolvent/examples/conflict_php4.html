@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Resolvent — conflict implication graph</title>
+<style>
+  body { margin:0; background:#0f172a; color:#e2e8f0;
+         font-family: ui-monospace, Menlo, monospace; }
+  header { padding:28px 36px 8px; }
+  h1 { margin:0 0 6px; font-size:22px; color:#f8fafc; }
+  .sub { color:#94a3b8; font-size:14px; }
+  .panel { margin:18px 36px; background:#f8fafc; color:#0f172a;
+            border-radius:14px; padding:18px; overflow:auto; }
+  .legend { display:flex; gap:18px; flex-wrap:wrap; margin:8px 36px 0;
+             font-size:13px; color:#cbd5e1; }
+  .legend span { display:inline-flex; align-items:center; gap:7px; }
+  .sw { width:16px; height:16px; border-radius:4px; display:inline-block; }
+  p { line-height:1.5; }
+  code { background:#e2e8f0; padding:2px 6px; border-radius:5px; }
+  footer { color:#64748b; font-size:12px; padding:8px 36px 30px; }
+</style></head>
+<body>
+<header>
+  <h1>Resolvent · conflict implication graph</h1>
+  <div class="sub">20 variables · 45 clauses</div>
+</header>
+<div class="legend">
+  <span><span class="sw" style="background:#e9d5ff;border:2px solid #7c3aed"></span>decision</span>
+  <span><span class="sw" style="background:#e2e8f0;border:2px solid #64748b"></span>implied</span>
+  <span><span class="sw" style="background:#dbeafe;border:2px solid #2563eb"></span>in learned clause</span>
+  <span><span class="sw" style="background:#fde68a;border:2px solid #d97706"></span>1-UIP</span>
+  <span><span class="sw" style="background:#fecaca;border:2px solid #dc2626;border-radius:50%"></span>conflict κ</span>
+</div>
+<div class="panel">
+  <p>First conflict reached at decision level <b>6</b> after 6 decisions. The conflicting clause (all literals false) is <code>¬x17 ∨ ¬x13</code>.</p><p>Conflict analysis resolves backward to the first unique implication point and learns the clause <code>¬x10 ∨ x19 ∨ x20 ∨ x15 ∨ x16</code>, which the solver adds before backjumping.</p>
+  <svg viewBox="0 0 1450 630" width="1450" height="630" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, Menlo, monospace">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L9,3 L0,6 Z" fill="#7c8aa5"/></marker></defs>
+<text x="110" y="42" fill="#6b7a99" font-size="13" text-anchor="middle">level 1</text>
+<text x="310" y="42" fill="#6b7a99" font-size="13" text-anchor="middle">level 2</text>
+<text x="510" y="42" fill="#6b7a99" font-size="13" text-anchor="middle">level 3</text>
+<text x="710" y="42" fill="#6b7a99" font-size="13" text-anchor="middle">level 4</text>
+<text x="910" y="42" fill="#6b7a99" font-size="13" text-anchor="middle">level 5</text>
+<text x="1110" y="42" fill="#6b7a99" font-size="13" text-anchor="middle">level 6</text>
+<line x1="1144" y1="540" x2="1276" y2="90" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="1144" y1="450" x2="1276" y2="90" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="1144" y1="270" x2="1076" y2="450" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="944" y1="360" x2="1076" y2="450" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="544" y1="450" x2="1076" y2="450" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="544" y1="180" x2="476" y2="450" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="544" y1="90" x2="476" y2="180" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="144" y1="90" x2="476" y2="180" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="344" y1="90" x2="476" y2="180" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="944" y1="180" x2="876" y2="360" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="944" y1="90" x2="876" y2="180" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="744" y1="90" x2="876" y2="180" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="544" y1="270" x2="876" y2="180" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="544" y1="180" x2="476" y2="270" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="1144" y1="180" x2="1076" y2="270" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="1144" y1="90" x2="1076" y2="180" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="944" y1="270" x2="1076" y2="180" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="544" y1="360" x2="1076" y2="180" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="544" y1="180" x2="476" y2="360" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="944" y1="180" x2="876" y2="270" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="1144" y1="360" x2="1076" y2="540" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="944" y1="450" x2="1076" y2="540" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="544" y1="540" x2="1076" y2="540" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="544" y1="180" x2="476" y2="540" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="944" y1="180" x2="876" y2="450" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<line x1="1144" y1="180" x2="1076" y2="360" stroke="#7c8aa5" stroke-width="1.6" marker-end="url(#arrow)" opacity="0.8"/>
+<rect x="1070" y="516" width="80" height="48" rx="10" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+<text x="1110" y="545" text-anchor="middle" font-size="16" fill="#0f172a">x17</text>
+<rect x="1070" y="426" width="80" height="48" rx="10" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+<text x="1110" y="455" text-anchor="middle" font-size="16" fill="#0f172a">x13</text>
+<rect x="1070" y="246" width="80" height="48" rx="10" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+<text x="1110" y="275" text-anchor="middle" font-size="16" fill="#0f172a">¬x14</text>
+<rect x="870" y="336" width="80" height="48" rx="10" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<text x="910" y="365" text-anchor="middle" font-size="16" fill="#0f172a">¬x15</text>
+<rect x="470" y="426" width="80" height="48" rx="10" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<text x="510" y="455" text-anchor="middle" font-size="16" fill="#0f172a">¬x16</text>
+<rect x="470" y="156" width="80" height="48" rx="10" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+<text x="510" y="185" text-anchor="middle" font-size="16" fill="#0f172a">x4</text>
+<polygon points="510,60 554,90 510,120 466,90" fill="#e9d5ff" stroke="#7c3aed" stroke-width="2"/>
+<text x="510" y="95" text-anchor="middle" font-size="16" fill="#0f172a">¬x3</text>
+<polygon points="110,60 154,90 110,120 66,90" fill="#e9d5ff" stroke="#7c3aed" stroke-width="2"/>
+<text x="110" y="95" text-anchor="middle" font-size="16" fill="#0f172a">¬x1</text>
+<polygon points="310,60 354,90 310,120 266,90" fill="#e9d5ff" stroke="#7c3aed" stroke-width="2"/>
+<text x="310" y="95" text-anchor="middle" font-size="16" fill="#0f172a">¬x2</text>
+<rect x="870" y="156" width="80" height="48" rx="10" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+<text x="910" y="185" text-anchor="middle" font-size="16" fill="#0f172a">x7</text>
+<polygon points="910,60 954,90 910,120 866,90" fill="#e9d5ff" stroke="#7c3aed" stroke-width="2"/>
+<text x="910" y="95" text-anchor="middle" font-size="16" fill="#0f172a">¬x6</text>
+<polygon points="710,60 754,90 710,120 666,90" fill="#e9d5ff" stroke="#7c3aed" stroke-width="2"/>
+<text x="710" y="95" text-anchor="middle" font-size="16" fill="#0f172a">¬x5</text>
+<rect x="470" y="246" width="80" height="48" rx="10" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+<text x="510" y="275" text-anchor="middle" font-size="16" fill="#0f172a">¬x8</text>
+<rect x="1070" y="156" width="80" height="48" rx="10" fill="#fde68a" stroke="#d97706" stroke-width="2"/>
+<text x="1110" y="185" text-anchor="middle" font-size="16" fill="#0f172a">x10</text>
+<text x="1110" y="144" text-anchor="middle" font-size="11" fill="#b45309">1-UIP</text>
+<polygon points="1110,60 1154,90 1110,120 1066,90" fill="#e9d5ff" stroke="#7c3aed" stroke-width="2"/>
+<text x="1110" y="95" text-anchor="middle" font-size="16" fill="#0f172a">¬x9</text>
+<rect x="870" y="246" width="80" height="48" rx="10" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+<text x="910" y="275" text-anchor="middle" font-size="16" fill="#0f172a">¬x11</text>
+<rect x="470" y="336" width="80" height="48" rx="10" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+<text x="510" y="365" text-anchor="middle" font-size="16" fill="#0f172a">¬x12</text>
+<rect x="1070" y="336" width="80" height="48" rx="10" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+<text x="1110" y="365" text-anchor="middle" font-size="16" fill="#0f172a">¬x18</text>
+<rect x="870" y="426" width="80" height="48" rx="10" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<text x="910" y="455" text-anchor="middle" font-size="16" fill="#0f172a">¬x19</text>
+<rect x="470" y="516" width="80" height="48" rx="10" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+<text x="510" y="545" text-anchor="middle" font-size="16" fill="#0f172a">¬x20</text>
+<circle cx="1310" cy="90" r="30" fill="#fecaca" stroke="#dc2626" stroke-width="2.5"/>
+<text x="1310" y="97" text-anchor="middle" font-size="22" fill="#991b1b">κ</text>
+</svg>
+</div>
+<footer>Generated by Resolvent — a from-scratch CDCL SAT solver.</footer>
+</body></html>

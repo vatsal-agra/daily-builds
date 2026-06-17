@@ -110,14 +110,25 @@ def cmd_fuzz(args) -> int:
 
 def cmd_encode(args) -> int:
     from . import encoders
-    f, _meta = encoders.build(args.problem, args.params)
+    try:
+        f, _meta = encoders.build(args.problem, args.params)
+    except (ValueError, IndexError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     sys.stdout.write(f.to_dimacs())
     return 0
 
 
 def cmd_decode(args) -> int:
     from . import encoders
-    return encoders.solve_and_print(args.problem, args.params, args.file)
+    try:
+        return encoders.solve_and_print(args.problem, args.params, args.file)
+    except (ValueError, IndexError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    except OSError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
 
 
 def cmd_verify(args) -> int:
