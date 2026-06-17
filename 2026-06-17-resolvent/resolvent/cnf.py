@@ -91,6 +91,7 @@ class CNF:
         current: List[int] = []
         header_seen = False
         max_var = 0
+        max_var_line = 0
 
         for line_no, raw in enumerate(text.splitlines(), start=1):
             line = raw.strip()
@@ -127,13 +128,15 @@ class CNF:
                     v = abs(n)
                     if v > max_var:
                         max_var = v
+                        max_var_line = line_no
                     current.append(n)
         if current:
             # Trailing clause without a terminating 0.
             clauses.append(current)
 
         if declared_vars is not None and max_var > declared_vars:
-            raise DimacsError(0, f"variable {max_var} exceeds declared count {declared_vars}")
+            raise DimacsError(max_var_line,
+                              f"variable {max_var} exceeds declared count {declared_vars}")
 
         nvars = declared_vars if declared_vars is not None else max_var
         f = cls(nvars)
