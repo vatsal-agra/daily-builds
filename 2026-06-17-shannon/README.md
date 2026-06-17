@@ -2,9 +2,10 @@
 
 A from-scratch lossless **data-compression toolkit** in pure Python (stdlib only).
 
-> **Status:** Phase 2 (CORE BUILD) complete — all four required codecs work
-> end-to-end through the CLI and round-trip with CRC verification.
-> See [PLAN.md](PLAN.md) for the full design.
+> **Status:** Phase 3 (ADVERSARIAL REVIEW) complete — hardened the decoder
+> against corrupt input (fixed an OOM decompression-bomb and uncaught
+> exceptions; see [REVIEW.md](REVIEW.md)). 6,000-case fuzz green across all
+> codecs. See [PLAN.md](PLAN.md) for the full design.
 
 ## Quick start
 ```sh

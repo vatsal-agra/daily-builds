@@ -23,6 +23,11 @@ from . import codecs
 MAGIC = b"SHZ1"
 VERSION = 1
 
+# Hard ceiling on decompressed size. A few corrupted header bytes can otherwise
+# encode a multi-gigabyte length/count and turn decompression into an OOM bomb;
+# refusing absurd sizes up front keeps a corrupt stream cheap to reject.
+MAX_DECOMPRESSED = 1 << 30  # 1 GiB
+
 
 def _write_varint(value: int) -> bytes:
     out = bytearray()
@@ -69,11 +74,21 @@ def unpack(blob: bytes) -> bytes:
     if version != VERSION:
         raise ValueError(f"unsupported .shz version {version}")
     method_id = blob[5]
-    orig_len, pos = _read_varint(blob, 6)
+    try:
+        orig_len, pos = _read_varint(blob, 6)
+    except IndexError:
+        raise ValueError("truncated .shz header")
+    if orig_len > MAX_DECOMPRESSED:
+        raise ValueError(f"declared size {orig_len} exceeds the {MAX_DECOMPRESSED}-byte limit")
     crc = int.from_bytes(blob[pos:pos + 4], "little")
     pos += 4
     payload = blob[pos:]
-    data = codecs.decode_by_id(method_id, payload, orig_len)
+    # Any structural damage in the payload surfaces here as one of a handful of
+    # low-level errors; normalize them all to a single ValueError.
+    try:
+        data = codecs.decode_by_id(method_id, payload, orig_len)
+    except (IndexError, KeyError, OverflowError, MemoryError, RecursionError) as e:
+        raise ValueError(f"corrupt .shz payload ({type(e).__name__})")
     if len(data) != orig_len:
         raise ValueError("length mismatch after decompression (corrupt stream)")
     if zlib.crc32(data) != crc:

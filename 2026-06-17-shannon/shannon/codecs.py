@@ -104,8 +104,16 @@ def _bwt_encode(data: bytes) -> bytes:
 def _bwt_decode(payload: bytes, orig_len: int) -> bytes:
     r = BitReader(payload)
     nblocks = r.read_varint()
+    # nblocks is fully determined by orig_len; a mismatch means corruption (and
+    # an absurd value would otherwise drive a huge allocation loop below).
+    expected = (orig_len + BWT_BLOCK - 1) // BWT_BLOCK if orig_len else 0
+    if nblocks != expected:
+        raise ValueError("corrupt .shz payload (block count mismatch)")
     sent_positions = [r.read_varint() for _ in range(nblocks)]
     huff_count = r.read_varint()
+    # RLE can expand by at most ~5/4; cap generously to bound the decode loop.
+    if huff_count > orig_len * 2 + 64:
+        raise ValueError("corrupt .shz payload (implausible symbol count)")
     rle = huffman.decompress_bytes(r, huff_count)
     transformed = T.rle_decode(rle)
 
