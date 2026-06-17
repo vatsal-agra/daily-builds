@@ -1,0 +1,7 @@
+c A small satisfiable 3-SAT instance.
+p cnf 4 5
+1 -2 3 0
+-1 2 0
+-3 4 0
+2 3 -4 0
+-1 -2 -3 0

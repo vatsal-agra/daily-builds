@@ -1,0 +1,6 @@
+c All four clauses over 2 vars: unsatisfiable.
+p cnf 2 4
+1 2 0
+1 -2 0
+-1 2 0
+-1 -2 0
