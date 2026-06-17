@@ -37,7 +37,7 @@ def _solve_and_report(cnf: CNF, args, what: str = "instance"):
 
 
 def cmd_solve(args):
-    text = sys.stdin.read() if args.file == "-" else open(args.file).read()
+    text = _read_text(args.file)
     cnf = parse_dimacs(text)
     s, result = _solve_and_report(cnf, args, args.file)
     if args.viz:
@@ -48,7 +48,7 @@ def cmd_solve(args):
 def cmd_sudoku(args):
     sk = Sudoku(args.size)
     if args.file:
-        text = sys.stdin.read() if args.file == "-" else open(args.file).read()
+        text = _read_text(args.file)
         grid = sk.parse_grid(text, args.size)
     else:
         grid = sk.parse_grid(_DEFAULT_SUDOKU, 9)
@@ -113,7 +113,7 @@ def cmd_gen(args):
     cnf = random_ksat(args.vars, args.clauses, args.k, random.Random(args.seed))
     text = cnf.to_dimacs()
     if args.out:
-        open(args.out, "w").write(text)
+        _write_text(args.out, text)
         print(f"wrote {args.out} ({cnf.num_vars} vars, {cnf.num_clauses} clauses)")
     else:
         sys.stdout.write(text)
@@ -122,7 +122,7 @@ def cmd_gen(args):
 
 def cmd_count(args):
     if args.file:
-        text = sys.stdin.read() if args.file == "-" else open(args.file).read()
+        text = _read_text(args.file)
         cnf = parse_dimacs(text)
     else:
         random.seed(args.seed)
@@ -208,7 +208,7 @@ def cmd_phase(args):
 
 def cmd_viz(args):
     if args.kind == "dimacs":
-        text = sys.stdin.read() if args.file == "-" else open(args.file).read()
+        text = _read_text(args.file)
         cnf = parse_dimacs(text)
         title = f"DIMACS {args.file}"
     elif args.kind == "color":
@@ -230,10 +230,21 @@ def cmd_viz(args):
 
 
 # --------------------------------------------------------------------------
+def _read_text(path: str) -> str:
+    if path == "-":
+        return sys.stdin.read()
+    with open(path) as f:
+        return f.read()
+
+
+def _write_text(path: str, text: str) -> None:
+    with open(path, "w") as f:
+        f.write(text)
+
+
 def _write_viz(cnf: CNF, path: str, title: str):
     bundle = build_bundle(cnf, title)
-    html = generate_html(bundle)
-    open(path, "w").write(html)
+    _write_text(path, generate_html(bundle))
     print(f"  wrote visualizer → {path}  "
           f"({bundle['result']}, {len(bundle['events'])} steps)")
 
