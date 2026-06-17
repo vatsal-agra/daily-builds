@@ -2,7 +2,18 @@
 
 A from-scratch lossless **data-compression toolkit** in pure Python (stdlib only).
 
-> **Status:** Phase 1 (PLAN) complete. See [PLAN.md](PLAN.md) for the full design.
+> **Status:** Phase 2 (CORE BUILD) complete — all four required codecs work
+> end-to-end through the CLI and round-trip with CRC verification.
+> See [PLAN.md](PLAN.md) for the full design.
+
+## Quick start
+```sh
+python3 cli.py compress PLAN.md --best      # smallest of all codecs -> PLAN.md.shz
+python3 cli.py info       PLAN.md.shz        # codec, sizes, ratio, integrity
+python3 cli.py decompress PLAN.md.shz -o out # restores the original, byte-identical
+```
+Codecs: `store`, `huffman`, `arith0`, `arith1` (order-1 arithmetic), `lz77`
+(deflate-lite), `bwt` (bzip-lite: BWT→MTF→RLE→Huffman).
 
 Shannon implements the three pillars of real compressors — entropy coding
 (Huffman + arithmetic), dictionary coding (LZ77/LZSS), and reversible transforms
