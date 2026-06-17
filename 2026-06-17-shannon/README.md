@@ -2,12 +2,10 @@
 
 A from-scratch lossless **data-compression toolkit** in pure Python (stdlib only).
 
-> **Status:** Phase 4 (STRETCH + POLISH) complete — added the entropy/codec
-> comparison report (`analyze`) and a self-contained interactive HTML
-> visualizer (`viz`), plus graceful error handling for missing files, bad
-> codecs, corrupt archives, and empty/binary inputs.
-> See [PLAN.md](PLAN.md) for the full design and [REVIEW.md](REVIEW.md) for the
-> adversarial review.
+> **Status:** Phase 5 (VERIFICATION) complete — 28-test suite (round-trips,
+> Kraft equality, entropy-bound, BWT/MTF/RLE, corruption/bomb rejection, CLI)
+> all green, plus `shannon demo` and `./demo.sh` exercise every feature
+> end-to-end. See [PLAN.md](PLAN.md) and [REVIEW.md](REVIEW.md).
 
 ![overview](docs/overview.png)
 ![huffman tree](docs/huffman-tree.png)
