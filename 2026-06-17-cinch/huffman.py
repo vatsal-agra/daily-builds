@@ -177,8 +177,10 @@ def encode(data: bytes) -> bytes:
     return bytes(out)
 
 
-def decode(blob: bytes) -> bytes:
+def decode(blob: bytes, limit: int | None = None) -> bytes:
     n, pos = read_uvarint(blob, 0)
+    if limit is not None and n > limit:
+        raise ValueError("declared length exceeds expected length")
     if n == 0:
         return b""
     lengths_arr, pos = decode_code_lengths(blob, pos, 256)

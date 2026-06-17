@@ -139,7 +139,7 @@ def encode_order0(data: bytes) -> bytes:
     return enc.finish()
 
 
-def decode_order0(blob: bytes) -> bytes:
+def decode_order0(blob: bytes, limit: int | None = None) -> bytes:
     dec = _Decoder(blob)
     model = _Model()
     out = bytearray()
@@ -150,6 +150,10 @@ def decode_order0(blob: bytes) -> bytes:
         if sym == EOF:
             break
         out.append(sym)
+        # Corrupt data may never emit EOF; bound the output so we fail instead
+        # of looping forever over the decoder's infinite zero padding.
+        if limit is not None and len(out) > limit:
+            raise ValueError("range stream exceeded expected length")
         model.update(sym)
     return bytes(out)
 
@@ -173,7 +177,7 @@ def encode_order1(data: bytes) -> bytes:
     return enc.finish()
 
 
-def decode_order1(blob: bytes) -> bytes:
+def decode_order1(blob: bytes, limit: int | None = None) -> bytes:
     dec = _Decoder(blob)
     models: dict[int, _Model] = {}
     out = bytearray()
@@ -188,6 +192,8 @@ def decode_order1(blob: bytes) -> bytes:
         if sym == EOF:
             break
         out.append(sym)
+        if limit is not None and len(out) > limit:
+            raise ValueError("range stream exceeded expected length")
         model.update(sym)
         ctx = sym
     return bytes(out)

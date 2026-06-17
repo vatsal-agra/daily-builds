@@ -24,8 +24,10 @@ MAGIC = b"CINCH"
 VERSION = 1
 
 # method id -> (name, encode, decode)
+# decode signature is dec(payload, limit) where limit bounds output size so
+# corrupt input fails fast instead of looping / over-allocating.
 METHODS = {
-    0: ("store", lambda d: d, lambda b: b),
+    0: ("store", lambda d: d, lambda b, limit=None: b),
     1: ("huffman", huffman.encode, huffman.decode),
     2: ("lz77", lz77.encode, lz77.decode),
     3: ("deflate", deflate.encode, deflate.decode),
@@ -77,11 +79,14 @@ def decompress(blob: bytes) -> bytes:
     if mid not in METHODS:
         raise CinchError(f"unknown method id {mid}")
     want_crc = int.from_bytes(blob[7:11], "big")
-    origlen, pos = read_uvarint(blob, 11)
+    try:
+        origlen, pos = read_uvarint(blob, 11)
+    except ValueError as exc:
+        raise CinchError(f"malformed header: {exc}") from exc
     payload = blob[pos:]
     _name, _enc, dec = METHODS[mid]
     try:
-        data = dec(payload)
+        data = dec(payload, origlen)
     except (EOFError, ValueError, IndexError) as exc:
         raise CinchError(f"corrupt payload: {exc}") from exc
     if len(data) != origlen:
@@ -98,7 +103,10 @@ def inspect(blob: bytes) -> dict:
     mid = blob[6]
     name = METHODS[mid][0] if mid in METHODS else f"?{mid}"
     crc = int.from_bytes(blob[7:11], "big")
-    origlen, pos = read_uvarint(blob, 11)
+    try:
+        origlen, pos = read_uvarint(blob, 11)
+    except ValueError as exc:
+        raise CinchError(f"malformed header: {exc}") from exc
     comp_len = len(blob)
     ratio = comp_len / origlen if origlen else float("nan")
     return {

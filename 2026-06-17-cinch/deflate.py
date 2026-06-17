@@ -116,8 +116,10 @@ def encode(data: bytes, max_chain: int = 128) -> bytes:
     return bytes(out)
 
 
-def decode(blob: bytes) -> bytes:
+def decode(blob: bytes, limit: int | None = None) -> bytes:
     n, pos = read_uvarint(blob, 0)
+    if limit is not None and n > limit:
+        raise ValueError("declared length exceeds expected length")
     if n == 0:
         return b""
     litlen_arr, pos = decode_code_lengths(blob, pos, LITLEN_ALPHABET)
@@ -152,6 +154,8 @@ def decode(blob: bytes) -> bytes:
             raise ValueError("corrupt stream: distance before start")
         for k in range(length):
             out.append(out[start + k])
+        if limit is not None and len(out) > limit:
+            raise ValueError("output exceeded expected length")
     if len(out) != n:
         raise ValueError(f"decoded length {len(out)} != expected {n}")
     return bytes(out)

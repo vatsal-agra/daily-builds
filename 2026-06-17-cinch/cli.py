@@ -226,7 +226,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except FileNotFoundError as e:
+        print(f"error: no such file: {e.filename}", file=sys.stderr)
+        return 2
+    except IsADirectoryError as e:
+        print(f"error: is a directory: {e.filename}", file=sys.stderr)
+        return 2
+    except BrokenPipeError:
+        return 0
+    except KeyboardInterrupt:
+        return 130
 
 
 if __name__ == "__main__":

@@ -165,8 +165,10 @@ def encode(data: bytes, max_chain: int = 128) -> bytes:
     return bytes(out)
 
 
-def decode(blob: bytes) -> bytes:
+def decode(blob: bytes, limit: int | None = None) -> bytes:
     n, pos = read_uvarint(blob, 0)
+    if limit is not None and n > limit:
+        raise ValueError("declared length exceeds expected length")
     if n == 0:
         return b""
     ntokens, pos = read_uvarint(blob, pos)
@@ -192,4 +194,6 @@ def decode(blob: bytes) -> bytes:
             start = len(out) - dist
             for k in range(length):
                 out.append(out[start + k])
+        if limit is not None and len(out) > limit:
+            raise ValueError("output exceeded expected length")
     return bytes(out)
