@@ -2,10 +2,16 @@
 
 A from-scratch lossless **data-compression toolkit** in pure Python (stdlib only).
 
-> **Status:** Phase 3 (ADVERSARIAL REVIEW) complete — hardened the decoder
-> against corrupt input (fixed an OOM decompression-bomb and uncaught
-> exceptions; see [REVIEW.md](REVIEW.md)). 6,000-case fuzz green across all
-> codecs. See [PLAN.md](PLAN.md) for the full design.
+> **Status:** Phase 4 (STRETCH + POLISH) complete — added the entropy/codec
+> comparison report (`analyze`) and a self-contained interactive HTML
+> visualizer (`viz`), plus graceful error handling for missing files, bad
+> codecs, corrupt archives, and empty/binary inputs.
+> See [PLAN.md](PLAN.md) for the full design and [REVIEW.md](REVIEW.md) for the
+> adversarial review.
+
+![overview](docs/overview.png)
+![huffman tree](docs/huffman-tree.png)
+![lz77 tokens](docs/lz77-tokens.png)
 
 ## Quick start
 ```sh
