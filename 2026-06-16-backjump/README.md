@@ -4,9 +4,10 @@ A from-scratch **CDCL SAT solver** (conflict-driven clause learning) in pure Pyt
 with verified UNSAT proofs, real puzzle encoders, and an interactive
 implication-graph visualizer.
 
-> **Status: Phase 2 complete — core build working.** All four required features
-> are implemented and verified end-to-end. Adversarial review, polish, and full
-> verification still to come. See [PLAN.md](PLAN.md).
+> **Status: Phase 4 complete — reviewed, hardened, and polished.** All four
+> required features plus all three stretch features work end-to-end; the
+> adversarial review (see [REVIEW.md](REVIEW.md)) found 7 issues, all fixed.
+> Verification suite and final docs next. See [PLAN.md](PLAN.md).
 
 ## Quick start
 ```bash

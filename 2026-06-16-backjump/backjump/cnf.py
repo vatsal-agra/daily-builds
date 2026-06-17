@@ -75,7 +75,10 @@ def parse_dimacs(text: str) -> CNF:
 
     cur: List[int] = []
     for tok in tokens:
-        n = int(tok)
+        try:
+            n = int(tok)
+        except ValueError:
+            raise ValueError(f"not valid DIMACS: expected an integer literal, got {tok!r}")
         if n == 0:
             cnf.add_clause(cur)
             cur = []

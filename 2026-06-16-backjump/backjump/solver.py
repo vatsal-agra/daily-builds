@@ -153,7 +153,23 @@ class Solver:
     ):
         self.n = cnf.num_vars
         # clauses are mutable lists; watched literals kept at index 0 and 1.
-        self.clauses: List[List[int]] = [list(c) for c in cnf.clauses]
+        # Normalise: drop duplicate literals (which would otherwise put a clause
+        # in a watch list twice) and discard tautologies (always satisfied).
+        self.clauses: List[List[int]] = []
+        for c in cnf.clauses:
+            seen_lits = set()
+            taut = False
+            lits: List[int] = []
+            for l in c:
+                if -l in seen_lits:
+                    taut = True
+                    break
+                if l not in seen_lits:
+                    seen_lits.add(l)
+                    lits.append(l)
+            if taut:
+                continue
+            self.clauses.append(lits)
         self.num_originals = len(self.clauses)
 
         # assignment state (1-indexed; index 0 unused)
@@ -392,15 +408,20 @@ class Solver:
             self.proof.append(list(learnt))
         return ci
 
+    def _conclude_unsat(self) -> str:
+        self.status = UNSAT
+        if self.emit_proof:
+            self.proof.append([])
+        if self.record_trace:
+            self.trace.append({"type": "unsat"})
+        return UNSAT
+
     # ----- main loop -----------------------------------------------------
     def solve(self) -> str:
         # empty clause present → trivially UNSAT
         for c in self.clauses:
             if len(c) == 0:
-                self.status = UNSAT
-                if self.emit_proof:
-                    self.proof.append([])
-                return UNSAT
+                return self._conclude_unsat()
 
         restart_no = 1
         conflicts_until_restart = self.restart_base * luby(restart_no)
@@ -412,10 +433,7 @@ class Solver:
                 lit = clause[0]
                 cur = self.value_lit(lit)
                 if cur is False:
-                    self.status = UNSAT  # contradictory units
-                    if self.emit_proof:
-                        self.proof.append([])
-                    return UNSAT
+                    return self._conclude_unsat()  # contradictory units
                 if cur is None:
                     self.enqueue(lit, ci)
                     if self.record_trace:
@@ -427,10 +445,7 @@ class Solver:
         # initial propagation of any top-level units
         confl = self.propagate()
         if confl is not None:
-            self.status = UNSAT
-            if self.emit_proof:
-                self.proof.append([])
-            return UNSAT
+            return self._conclude_unsat()
 
         while True:
             confl = self.propagate()
@@ -438,10 +453,7 @@ class Solver:
                 self.stats.conflicts += 1
                 conflict_count_since_restart += 1
                 if self.decision_level() == 0:
-                    self.status = UNSAT
-                    if self.emit_proof:
-                        self.proof.append([])
-                    return UNSAT
+                    return self._conclude_unsat()
                 learnt, btlevel = self.analyze(confl)
                 if self.record_trace:
                     self.trace.append({

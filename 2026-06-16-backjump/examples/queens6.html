@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backjump — 6-Queens</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#30363d;
+    --ink:#e6edf3; --dim:#8b949e; --accent:#58a6ff; --true:#3fb950; --false:#f85149;
+    --uip:#e3b341; --learn:#bc8cff; --restart:#ff9bce;
+    --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    font-size:14px;line-height:1.45}
+  header{padding:14px 20px;border-bottom:1px solid var(--line);
+    display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;font-weight:650;letter-spacing:.2px}
+  header .sub{color:var(--dim);font-size:13px}
+  .pill{font-family:var(--mono);font-size:12px;padding:2px 9px;border-radius:999px;
+    border:1px solid var(--line);background:var(--panel2);color:var(--dim)}
+  .pill.sat{color:var(--true);border-color:#1f6f37}
+  .pill.unsat{color:var(--false);border-color:#7d2622}
+  .wrap{display:grid;grid-template-columns:1fr 330px;gap:0;height:calc(100vh - 58px)}
+  .main{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line)}
+  .graphbox{flex:1 1 auto;position:relative;overflow:hidden;background:
+    radial-gradient(circle at 30% 20%, #131a24 0, var(--bg) 70%)}
+  svg{width:100%;height:100%;display:block}
+  .trailbox{height:168px;border-top:1px solid var(--line);background:var(--panel);
+    padding:10px 14px;overflow:auto}
+  .trailbox h3,.side h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;
+    letter-spacing:.7px;color:var(--dim);font-weight:600}
+  .levels{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start}
+  .level{border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--panel2);min-width:64px}
+  .level .lvtag{font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:5px}
+  .chip{font-family:var(--mono);font-size:12px;padding:3px 7px;border-radius:5px;
+    margin:2px;display:inline-block;border:1px solid transparent}
+  .chip.t{background:rgba(63,185,80,.14);color:#7ee787;border-color:#23703a}
+  .chip.f{background:rgba(248,81,73,.14);color:#ff9a93;border-color:#7d2622}
+  .chip.dec{box-shadow:0 0 0 2px var(--accent) inset;font-weight:700}
+  .chip.new{outline:2px solid var(--uip);outline-offset:1px}
+  .side{background:var(--panel);overflow:auto;padding:12px 14px}
+  .controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  button{font:inherit;background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+    border-radius:7px;padding:6px 11px;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button:disabled{opacity:.4;cursor:default}
+  button.primary{background:var(--accent);color:#0d1117;border-color:var(--accent);font-weight:650}
+  input[type=range]{width:100%}
+  .scrub{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .scrub .pos{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap}
+  .statgrid{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;font-family:var(--mono);font-size:12px}
+  .statgrid b{color:var(--accent);font-weight:600}
+  .evt{font-family:var(--mono);font-size:12px;padding:7px 9px;border-radius:7px;
+    background:var(--panel2);border:1px solid var(--line);margin-bottom:10px;min-height:20px}
+  .evt .k{color:var(--dim)}
+  .clausebox{max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:6px;background:var(--panel2)}
+  .cl{font-family:var(--mono);font-size:11px;padding:2px 4px;border-radius:4px;white-space:nowrap}
+  .cl.learn{background:rgba(188,140,255,.16);color:#d2b3ff}
+  .cl.confl{background:rgba(248,81,73,.18);color:#ff9a93}
+  .acts{display:flex;flex-direction:column;gap:3px;margin-top:4px}
+  .actrow{display:grid;grid-template-columns:38px 1fr;gap:6px;align-items:center;font-family:var(--mono);font-size:11px}
+  .bar{height:9px;background:var(--accent);border-radius:3px;min-width:1px;transition:width .15s}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:6px;font-size:11px;color:var(--dim)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+  .hint{color:var(--dim);font-size:11px;margin:4px 0 10px}
+  .section{margin-bottom:16px}
+  /* graph */
+  .node circle{stroke-width:2}
+  .edge{stroke:#586273;stroke-width:1.6;marker-end:url(#arrow);fill:none;opacity:.85}
+  .edge.confl{stroke:var(--false);opacity:.95}
+  .edge.cut{stroke:var(--learn);stroke-width:2.4}
+  .nlabel{font-family:var(--mono);font-size:11px;fill:var(--ink);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+  .lvline{stroke:#222b38;stroke-width:1}
+  .lvtxt{fill:#475061;font-family:var(--mono);font-size:11px;text-anchor:middle}
+  .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dim);font-style:italic}
+</style>
+</head>
+<body>
+<header>
+  <h1>Backjump</h1>
+  <span class="sub" id="subtitle"></span>
+  <span class="pill" id="resultpill"></span>
+  <span class="pill" id="varpill"></span>
+</header>
+<div class="wrap">
+  <div class="main">
+    <div class="graphbox">
+      <svg id="graph"><defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#586273"></path>
+        </marker>
+        <marker id="arrowc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#f85149"></path>
+        </marker>
+      </defs></svg>
+      <div class="empty" id="graphempty">decision level 0 — make a decision to grow the implication graph</div>
+    </div>
+    <div class="trailbox">
+      <h3>Assignment trail &nbsp;·&nbsp; grouped by decision level</h3>
+      <div class="levels" id="trail"></div>
+    </div>
+  </div>
+  <div class="side">
+    <div class="section">
+      <h3>Replay</h3>
+      <div class="controls">
+        <button id="reset">⏮ reset</button>
+        <button id="prev">◀ step</button>
+        <button id="play" class="primary">▶ play</button>
+        <button id="next">step ▶</button>
+      </div>
+      <div class="scrub">
+        <input type="range" id="seek" min="0" value="0">
+        <span class="pos" id="pos">0/0</span>
+      </div>
+      <div class="scrub">
+        <span class="pos">speed</span>
+        <input type="range" id="speed" min="1" max="30" value="9">
+      </div>
+    </div>
+    <div class="section">
+      <h3>Current step</h3>
+      <div class="evt" id="evt">—</div>
+    </div>
+    <div class="section">
+      <h3>Statistics</h3>
+      <div class="statgrid" id="stats"></div>
+    </div>
+    <div class="section">
+      <h3>Clause database</h3>
+      <div class="hint">originals + learned clauses (newest learned at top)</div>
+      <div class="clausebox" id="clauses"></div>
+    </div>
+    <div class="section">
+      <h3>VSIDS activity</h3>
+      <div class="hint">branching scores at the last decision</div>
+      <div class="acts" id="acts"></div>
+    </div>
+    <div class="section">
+      <h3>Legend</h3>
+      <div class="legend">
+        <span><i style="background:#3fb950"></i>true</span>
+        <span><i style="background:#f85149"></i>false</span>
+        <span><i style="background:#58a6ff"></i>decision</span>
+        <span><i style="background:#e3b341"></i>1-UIP</span>
+        <span><i style="background:#bc8cff"></i>learned cut</span>
+        <span><i style="background:#f85149"></i>κ conflict</span>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const DATA = {"title":"6-Queens","num_vars":36,"clauses":[[1,2,3,4,5,6],[-1,-2],[-1,-3],[-1,-4],[-1,-5],[-1,-6],[-2,-3],[-2,-4],[-2,-5],[-2,-6],[-3,-4],[-3,-5],[-3,-6],[-4,-5],[-4,-6],[-5,-6],[7,8,9,10,11,12],[-7,-8],[-7,-9],[-7,-10],[-7,-11],[-7,-12],[-8,-9],[-8,-10],[-8,-11],[-8,-12],[-9,-10],[-9,-11],[-9,-12],[-10,-11],[-10,-12],[-11,-12],[13,14,15,16,17,18],[-13,-14],[-13,-15],[-13,-16],[-13,-17],[-13,-18],[-14,-15],[-14,-16],[-14,-17],[-14,-18],[-15,-16],[-15,-17],[-15,-18],[-16,-17],[-16,-18],[-17,-18],[19,20,21,22,23,24],[-19,-20],[-19,-21],[-19,-22],[-19,-23],[-19,-24],[-20,-21],[-20,-22],[-20,-23],[-20,-24],[-21,-22],[-21,-23],[-21,-24],[-22,-23],[-22,-24],[-23,-24],[25,26,27,28,29,30],[-25,-26],[-25,-27],[-25,-28],[-25,-29],[-25,-30],[-26,-27],[-26,-28],[-26,-29],[-26,-30],[-27,-28],[-27,-29],[-27,-30],[-28,-29],[-28,-30],[-29,-30],[31,32,33,34,35,36],[-31,-32],[-31,-33],[-31,-34],[-31,-35],[-31,-36],[-32,-33],[-32,-34],[-32,-35],[-32,-36],[-33,-34],[-33,-35],[-33,-36],[-34,-35],[-34,-36],[-35,-36],[-1,-7],[-1,-13],[-1,-19],[-1,-25],[-1,-31],[-7,-13],[-7,-19],[-7,-25],[-7,-31],[-13,-19],[-13,-25],[-13,-31],[-19,-25],[-19,-31],[-25,-31],[-2,-8],[-2,-14],[-2,-20],[-2,-26],[-2,-32],[-8,-14],[-8,-20],[-8,-26],[-8,-32],[-14,-20],[-14,-26],[-14,-32],[-20,-26],[-20,-32],[-26,-32],[-3,-9],[-3,-15],[-3,-21],[-3,-27],[-3,-33],[-9,-15],[-9,-21],[-9,-27],[-9,-33],[-15,-21],[-15,-27],[-15,-33],[-21,-27],[-21,-33],[-27,-33],[-4,-10],[-4,-16],[-4,-22],[-4,-28],[-4,-34],[-10,-16],[-10,-22],[-10,-28],[-10,-34],[-16,-22],[-16,-28],[-16,-34],[-22,-28],[-22,-34],[-28,-34],[-5,-11],[-5,-17],[-5,-23],[-5,-29],[-5,-35],[-11,-17],[-11,-23],[-11,-29],[-11,-35],[-17,-23],[-17,-29],[-17,-35],[-23,-29],[-23,-35],[-29,-35],[-6,-12],[-6,-18],[-6,-24],[-6,-30],[-6,-36],[-12,-18],[-12,-24],[-12,-30],[-12,-36],[-18,-24],[-18,-30],[-18,-36],[-24,-30],[-24,-36],[-30,-36],[-1,-8],[-1,-15],[-1,-22],[-1,-29],[-1,-36],[-8,-15],[-8,-22],[-8,-29],[-8,-36],[-15,-22],[-15,-29],[-15,-36],[-22,-29],[-22,-36],[-29,-36],[-2,-9],[-2,-16],[-2,-23],[-2,-30],[-9,-16],[-9,-23],[-9,-30],[-16,-23],[-16,-30],[-23,-30],[-3,-10],[-3,-17],[-3,-24],[-10,-17],[-10,-24],[-17,-24],[-4,-11],[-4,-18],[-11,-18],[-5,-12],[-7,-14],[-7,-21],[-7,-28],[-7,-35],[-14,-21],[-14,-28],[-14,-35],[-21,-28],[-21,-35],[-28,-35],[-13,-20],[-13,-27],[-13,-34],[-20,-27],[-20,-34],[-27,-34],[-19,-26],[-19,-33],[-26,-33],[-25,-32],[-2,-7],[-3,-8],[-3,-13],[-8,-13],[-4,-9],[-4,-14],[-4,-19],[-9,-14],[-9,-19],[-14,-19],[-5,-10],[-5,-15],[-5,-20],[-5,-25],[-10,-15],[-10,-20],[-10,-25],[-15,-20],[-15,-25],[-20,-25],[-6,-11],[-6,-16],[-6,-21],[-6,-26],[-6,-31],[-11,-16],[-11,-21],[-11,-26],[-11,-31],[-16,-21],[-16,-26],[-16,-31],[-21,-26],[-21,-31],[-26,-31],[-12,-17],[-12,-22],[-12,-27],[-12,-32],[-17,-22],[-17,-27],[-17,-32],[-22,-27],[-22,-32],[-27,-32],[-18,-23],[-18,-28],[-18,-33],[-23,-28],[-23,-33],[-28,-33],[-24,-29],[-24,-34],[-29,-34],[-30,-35]],"events":[{"type":"decision","lit":-1,"level":1,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-36,"level":2,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-35,"level":3,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-34,"level":4,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-33,"level":5,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-32,"level":6,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":31,"reason":[31,32,33,34,35,36],"level":6},{"type":"propagate","lit":-7,"reason":[-7,-31],"level":6},{"type":"propagate","lit":-13,"reason":[-13,-31],"level":6},{"type":"propagate","lit":-19,"reason":[-19,-31],"level":6},{"type":"propagate","lit":-25,"reason":[-25,-31],"level":6},{"type":"propagate","lit":-6,"reason":[-6,-31],"level":6},{"type":"propagate","lit":-11,"reason":[-11,-31],"level":6},{"type":"propagate","lit":-16,"reason":[-16,-31],"level":6},{"type":"propagate","lit":-21,"reason":[-21,-31],"level":6},{"type":"propagate","lit":-26,"reason":[-26,-31],"level":6},{"type":"decision","lit":-30,"level":7,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-29,"level":8,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-28,"level":9,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":27,"reason":[27,28,25,26,29,30],"level":9},{"type":"propagate","lit":-3,"reason":[-3,-27],"level":9},{"type":"propagate","lit":-9,"reason":[-9,-27],"level":9},{"type":"propagate","lit":-15,"reason":[-15,-27],"level":9},{"type":"propagate","lit":-20,"reason":[-20,-27],"level":9},{"type":"propagate","lit":-12,"reason":[-12,-27],"level":9},{"type":"propagate","lit":-17,"reason":[-17,-27],"level":9},{"type":"propagate","lit":-22,"reason":[-22,-27],"level":9},{"type":"decision","lit":-24,"level":10,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":23,"reason":[23,24,21,19,20,22],"level":10},{"type":"propagate","lit":-5,"reason":[-5,-23],"level":10},{"type":"propagate","lit":-2,"reason":[-2,-23],"level":10},{"type":"propagate","lit":-18,"reason":[-18,-23],"level":10},{"type":"propagate","lit":4,"reason":[4,2,1,3,5,6],"level":10},{"type":"propagate","lit":14,"reason":[14,18,13,16,17,15],"level":10},{"type":"propagate","lit":-10,"reason":[-10,-4],"level":10},{"type":"conflict","clause":[-14,-4]},{"type":"learn","clause":[-23,13,16,17,15,1,3,6],"btlevel":9,"uip":-23},{"type":"backjump","level":9},{"type":"propagate","lit":-23,"reason":[-23,13,16,17,15,1,3,6],"level":9},{"type":"propagate","lit":24,"reason":[24,23,21,19,20,22],"level":9},{"type":"propagate","lit":-18,"reason":[-18,-24],"level":9},{"type":"propagate","lit":-10,"reason":[-10,-24],"level":9},{"type":"propagate","lit":14,"reason":[14,18,13,16,17,15],"level":9},{"type":"propagate","lit":8,"reason":[8,10,7,9,11,12],"level":9},{"type":"propagate","lit":-2,"reason":[-2,-14],"level":9},{"type":"conflict","clause":[-8,-14]},{"type":"learn","clause":[-27,7,11,13,16,21,19,1,6],"btlevel":6,"uip":-27},{"type":"backjump","level":6},{"type":"propagate","lit":-27,"reason":[-27,7,11,13,16,21,19,1,6],"level":6},{"type":"decision","lit":14,"level":7,"activity":[2.052632,1.0,2.052632,1.0,1.0,2.052632,1.052632,1.052632,1.052632,1.052632,1.052632,1.052632,2.052632,2.052632,2.052632,2.052632,2.052632,2.052632,1.052632,1.052632,1.052632,1.052632,2.052632,1.052632,0.0,0.0,1.052632,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":-15,"reason":[-15,-14],"level":7},{"type":"propagate","lit":-17,"reason":[-17,-14],"level":7},{"type":"propagate","lit":-18,"reason":[-18,-14],"level":7},{"type":"propagate","lit":-2,"reason":[-2,-14],"level":7},{"type":"propagate","lit":-8,"reason":[-8,-14],"level":7},{"type":"propagate","lit":-20,"reason":[-20,-14],"level":7},{"type":"propagate","lit":-28,"reason":[-28,-14],"level":7},{"type":"propagate","lit":-4,"reason":[-4,-14],"level":7},{"type":"propagate","lit":-9,"reason":[-9,-14],"level":7},{"type":"decision","lit":-23,"level":8,"activity":[2.052632,1.0,2.052632,1.0,1.0,2.052632,1.052632,1.052632,1.052632,1.052632,1.052632,1.052632,2.052632,2.052632,2.052632,2.052632,2.052632,2.052632,1.052632,1.052632,1.052632,1.052632,2.052632,1.052632,0.0,0.0,1.052632,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-3,"level":9,"activity":[2.052632,1.0,2.052632,1.0,1.0,2.052632,1.052632,1.052632,1.052632,1.052632,1.052632,1.052632,2.052632,2.052632,2.052632,2.052632,2.052632,2.052632,1.052632,1.052632,1.052632,1.052632,2.052632,1.052632,0.0,0.0,1.052632,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":5,"reason":[5,3,1,2,4,6],"level":9},{"type":"propagate","lit":-29,"reason":[-29,-5],"level":9},{"type":"propagate","lit":-12,"reason":[-12,-5],"level":9},{"type":"propagate","lit":-10,"reason":[-10,-5],"level":9},{"type":"propagate","lit":30,"reason":[30,29,25,26,27,28],"level":9},{"type":"conflict","clause":[10,12,7,9,11,8]},{"type":"learn","clause":[-5,7,9,11,8],"btlevel":7,"uip":-5},{"type":"backjump","level":7},{"type":"propagate","lit":-5,"reason":[-5,7,9,11,8],"level":7},{"type":"propagate","lit":3,"reason":[3,5,1,2,4,6],"level":7},{"type":"propagate","lit":-10,"reason":[-10,-3],"level":7},{"type":"propagate","lit":-24,"reason":[-24,-3],"level":7},{"type":"propagate","lit":12,"reason":[12,10,7,9,11,8],"level":7},{"type":"propagate","lit":-30,"reason":[-30,-12],"level":7},{"type":"propagate","lit":-22,"reason":[-22,-12],"level":7},{"type":"propagate","lit":29,"reason":[29,30,25,26,27,28],"level":7},{"type":"propagate","lit":23,"reason":[23,22,21,19,20,24],"level":7},{"type":"conflict","clause":[-23,-29]},{"type":"learn","clause":[-14,21,19,25,26,27,7,11,1,6],"btlevel":6,"uip":-14},{"type":"backjump","level":6},{"type":"propagate","lit":-14,"reason":[-14,21,19,25,26,27,7,11,1,6],"level":6},{"type":"decision","lit":12,"level":7,"activity":[3.218982,2.166351,3.218982,2.166351,3.274384,3.218982,3.327016,3.327016,3.327016,3.327016,3.327016,3.327016,2.052632,3.218982,2.052632,2.052632,2.052632,2.052632,2.218982,2.218982,2.218982,2.218982,3.218982,2.218982,1.166351,1.166351,2.218982,1.166351,1.166351,1.166351,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":-8,"reason":[-8,-12],"level":7},{"type":"propagate","lit":-9,"reason":[-9,-12],"level":7},{"type":"propagate","lit":-10,"reason":[-10,-12],"level":7},{"type":"propagate","lit":-18,"reason":[-18,-12],"level":7},{"type":"propagate","lit":-24,"reason":[-24,-12],"level":7},{"type":"propagate","lit":-30,"reason":[-30,-12],"level":7},{"type":"propagate","lit":-5,"reason":[-5,-12],"level":7},{"type":"propagate","lit":-17,"reason":[-17,-12],"level":7},{"type":"propagate","lit":-22,"reason":[-22,-12],"level":7},{"type":"propagate","lit":15,"reason":[15,17,13,16,14,18],"level":7},{"type":"propagate","lit":-3,"reason":[-3,-15],"level":7},{"type":"propagate","lit":-29,"reason":[-29,-15],"level":7},{"type":"propagate","lit":-20,"reason":[-20,-15],"level":7},{"type":"propagate","lit":28,"reason":[28,29,25,26,27,30],"level":7},{"type":"propagate","lit":23,"reason":[23,20,21,19,22,24],"level":7},{"type":"propagate","lit":-4,"reason":[-4,-28],"level":7},{"type":"conflict","clause":[-23,-28]},{"type":"learn","clause":[-12,21,19,25,26,27,13,16,14],"btlevel":6,"uip":-12},{"type":"backjump","level":6},{"type":"propagate","lit":-12,"reason":[-12,21,19,25,26,27,13,16,14],"level":6},{"type":"decision","lit":23,"level":7,"activity":[3.218982,2.166351,3.218982,2.166351,3.274384,3.218982,3.327016,3.327016,3.327016,3.327016,3.327016,4.554753,3.280369,4.44672,3.280369,3.280369,3.280369,3.280369,3.44672,3.44672,3.44672,3.44672,4.44672,3.44672,2.394088,2.394088,3.44672,2.394088,2.394088,2.394088,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":-20,"reason":[-20,-23],"level":7},{"type":"propagate","lit":-22,"reason":[-22,-23],"level":7},{"type":"propagate","lit":-24,"reason":[-24,-23],"level":7},{"type":"propagate","lit":-5,"reason":[-5,-23],"level":7},{"type":"propagate","lit":-17,"reason":[-17,-23],"level":7},{"type":"propagate","lit":-29,"reason":[-29,-23],"level":7},{"type":"propagate","lit":-2,"reason":[-2,-23],"level":7},{"type":"propagate","lit":-9,"reason":[-9,-23],"level":7},{"type":"propagate","lit":-30,"reason":[-30,-23],"level":7},{"type":"propagate","lit":-18,"reason":[-18,-23],"level":7},{"type":"propagate","lit":-28,"reason":[-28,-23],"level":7},{"type":"propagate","lit":15,"reason":[15,17,13,16,14,18],"level":7},{"type":"conflict","clause":[28,29,25,26,27,30]},{"type":"learn","clause":[-23,25,26,27],"btlevel":6,"uip":-23},{"type":"backjump","level":6},{"type":"propagate","lit":-23,"reason":[-23,25,26,27],"level":6},{"type":"decision","lit":-29,"level":7,"activity":[3.218982,2.166351,3.218982,2.166351,3.274384,3.218982,3.327016,3.327016,3.327016,3.327016,3.327016,4.554753,3.280369,4.44672,3.280369,3.280369,3.280369,3.280369,3.44672,3.44672,3.44672,3.44672,5.739075,3.44672,3.686444,3.686444,4.739075,3.686444,3.686444,3.686444,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-30,"level":8,"activity":[3.218982,2.166351,3.218982,2.166351,3.274384,3.218982,3.327016,3.327016,3.327016,3.327016,3.327016,4.554753,3.280369,4.44672,3.280369,3.280369,3.280369,3.280369,3.44672,3.44672,3.44672,3.44672,5.739075,3.44672,3.686444,3.686444,4.739075,3.686444,3.686444,3.686444,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":28,"reason":[28,30,25,26,27,29],"level":8},{"type":"propagate","lit":-4,"reason":[-4,-28],"level":8},{"type":"propagate","lit":-10,"reason":[-10,-28],"level":8},{"type":"propagate","lit":-22,"reason":[-22,-28],"level":8},{"type":"propagate","lit":-18,"reason":[-18,-28],"level":8},{"type":"decision","lit":-24,"level":9,"activity":[3.218982,2.166351,3.218982,2.166351,3.274384,3.218982,3.327016,3.327016,3.327016,3.327016,3.327016,4.554753,3.280369,4.44672,3.280369,3.280369,3.280369,3.280369,3.44672,3.44672,3.44672,3.44672,5.739075,3.44672,3.686444,3.686444,4.739075,3.686444,3.686444,3.686444,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":20,"reason":[20,24,21,19,23,22],"level":9},{"type":"propagate","lit":-2,"reason":[-2,-20],"level":9},{"type":"propagate","lit":-8,"reason":[-8,-20],"level":9},{"type":"propagate","lit":-5,"reason":[-5,-20],"level":9},{"type":"propagate","lit":-15,"reason":[-15,-20],"level":9},{"type":"propagate","lit":9,"reason":[9,8,7,12,11,10],"level":9},{"type":"propagate","lit":3,"reason":[3,5,1,4,2,6],"level":9},{"type":"propagate","lit":17,"reason":[17,15,13,16,14,18],"level":9},{"type":"conflict","clause":[-3,-9]},{"type":"learn","clause":[-20,1,4,6,7,12,11,10],"btlevel":8,"uip":-20},{"type":"backjump","level":8},{"type":"propagate","lit":-20,"reason":[-20,1,4,6,7,12,11,10],"level":8},{"type":"propagate","lit":24,"reason":[24,20,21,19,23,22],"level":8},{"type":"propagate","lit":-3,"reason":[-3,-24],"level":8},{"type":"propagate","lit":-17,"reason":[-17,-24],"level":8},{"type":"propagate","lit":15,"reason":[15,17,13,16,14,18],"level":8},{"type":"propagate","lit":-9,"reason":[-9,-15],"level":8},{"type":"propagate","lit":-8,"reason":[-8,-15],"level":8},{"type":"propagate","lit":-5,"reason":[-5,-15],"level":8},{"type":"conflict","clause":[8,9,7,12,11,10]},{"type":"learn","clause":[-28,7,12,11,13,16,14,21,19,23,1,6],"btlevel":6,"uip":-28},{"type":"backjump","level":6},{"type":"propagate","lit":-28,"reason":[-28,7,12,11,13,16,14,21,19,23,1,6],"level":6},{"type":"decision","lit":-20,"level":7,"activity":[6.011329,3.526725,4.579357,4.958698,4.634758,6.011329,6.119363,6.119363,6.119363,6.119363,6.119363,7.3471,4.712342,5.878693,4.712342,4.712342,4.712342,4.712342,4.878693,6.239067,4.878693,4.878693,7.171048,4.878693,3.686444,3.686444,4.739075,5.118417,3.686444,3.686444,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-8,"level":8,"activity":[6.011329,3.526725,4.579357,4.958698,4.634758,6.011329,6.119363,6.119363,6.119363,6.119363,6.119363,7.3471,4.712342,5.878693,4.712342,4.712342,4.712342,4.712342,4.878693,6.239067,4.878693,4.878693,7.171048,4.878693,3.686444,3.686444,4.739075,5.118417,3.686444,3.686444,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-9,"level":9,"activity":[6.011329,3.526725,4.579357,4.958698,4.634758,6.011329,6.119363,6.119363,6.119363,6.119363,6.119363,7.3471,4.712342,5.878693,4.712342,4.712342,4.712342,4.712342,4.878693,6.239067,4.878693,4.878693,7.171048,4.878693,3.686444,3.686444,4.739075,5.118417,3.686444,3.686444,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":10,"reason":[10,9,7,12,11,8],"level":9},{"type":"propagate","lit":-4,"reason":[-4,-10],"level":9},{"type":"propagate","lit":-22,"reason":[-22,-10],"level":9},{"type":"propagate","lit":-3,"reason":[-3,-10],"level":9},{"type":"propagate","lit":-17,"reason":[-17,-10],"level":9},{"type":"propagate","lit":-24,"reason":[-24,-10],"level":9},{"type":"propagate","lit":-5,"reason":[-5,-10],"level":9},{"type":"propagate","lit":-15,"reason":[-15,-10],"level":9},{"type":"conflict","clause":[24,22,21,19,23,20]},{"type":"learn","clause":[-10,21,19,23,20],"btlevel":7,"uip":-10},{"type":"backjump","level":7},{"type":"propagate","lit":-10,"reason":[-10,21,19,23,20],"level":7},{"type":"decision","lit":-24,"level":8,"activity":[6.011329,3.526725,4.579357,4.958698,4.634758,6.011329,6.119363,6.119363,6.119363,7.626702,6.119363,7.3471,4.712342,5.878693,4.712342,4.712342,4.712342,4.712342,6.386033,7.746407,6.386033,6.386033,8.678388,6.386033,3.686444,3.686444,4.739075,5.118417,3.686444,3.686444,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":22,"reason":[22,24,21,19,23,20],"level":8},{"type":"propagate","lit":-4,"reason":[-4,-22],"level":8},{"type":"propagate","lit":-8,"reason":[-8,-22],"level":8},{"type":"propagate","lit":-15,"reason":[-15,-22],"level":8},{"type":"propagate","lit":-29,"reason":[-29,-22],"level":8},{"type":"propagate","lit":-17,"reason":[-17,-22],"level":8},{"type":"propagate","lit":9,"reason":[9,8,7,12,11,10],"level":8},{"type":"propagate","lit":30,"reason":[30,29,25,26,27,28],"level":8},{"type":"propagate","lit":18,"reason":[18,17,13,16,14,15],"level":8},{"type":"propagate","lit":-3,"reason":[-3,-9],"level":8},{"type":"propagate","lit":-2,"reason":[-2,-9],"level":8},{"type":"conflict","clause":[-30,-9]},{"type":"learn","clause":[-22,25,26,27,28,7,12,11,10],"btlevel":7,"uip":-22},{"type":"backjump","level":7},{"type":"propagate","lit":-22,"reason":[-22,25,26,27,28,7,12,11,10],"level":7},{"type":"propagate","lit":24,"reason":[24,22,21,19,23,20],"level":7},{"type":"propagate","lit":-18,"reason":[-18,-24],"level":7},{"type":"propagate","lit":-30,"reason":[-30,-24],"level":7},{"type":"propagate","lit":-3,"reason":[-3,-24],"level":7},{"type":"propagate","lit":-17,"reason":[-17,-24],"level":7},{"type":"propagate","lit":-29,"reason":[-29,-24],"level":7},{"type":"conflict","clause":[29,30,25,26,27,28]},{"type":"learn","clause":[-24,25,26,27,28],"btlevel":6,"uip":-24},{"type":"backjump","level":6},{"type":"propagate","lit":-24,"reason":[-24,25,26,27,28],"level":6},{"type":"decision","lit":-10,"level":7,"activity":[6.011329,3.526725,4.579357,4.958698,4.634758,6.011329,7.706036,7.706036,7.706036,9.213376,7.706036,8.933774,4.712342,5.878693,4.712342,4.712342,4.712342,4.712342,6.386033,7.746407,6.386033,7.972706,8.678388,8.056215,6.9433,6.9433,7.995931,8.375273,6.9433,6.9433,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-22,"level":8,"activity":[6.011329,3.526725,4.579357,4.958698,4.634758,6.011329,7.706036,7.706036,7.706036,9.213376,7.706036,8.933774,4.712342,5.878693,4.712342,4.712342,4.712342,4.712342,6.386033,7.746407,6.386033,7.972706,8.678388,8.056215,6.9433,6.9433,7.995931,8.375273,6.9433,6.9433,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":20,"reason":[20,22,21,19,23,24],"level":8},{"type":"propagate","lit":-2,"reason":[-2,-20],"level":8},{"type":"propagate","lit":-8,"reason":[-8,-20],"level":8},{"type":"propagate","lit":-5,"reason":[-5,-20],"level":8},{"type":"propagate","lit":-15,"reason":[-15,-20],"level":8},{"type":"propagate","lit":9,"reason":[9,8,7,12,11,10],"level":8},{"type":"propagate","lit":-3,"reason":[-3,-9],"level":8},{"type":"propagate","lit":-30,"reason":[-30,-9],"level":8},{"type":"propagate","lit":-4,"reason":[-4,-9],"level":8},{"type":"conflict","clause":[4,3,1,2,5,6]},{"type":"learn","clause":[-20,1,6,7,12,11,10],"btlevel":7,"uip":-20},{"type":"backjump","level":7},{"type":"propagate","lit":-20,"reason":[-20,1,6,7,12,11,10],"level":7},{"type":"propagate","lit":22,"reason":[22,20,21,19,23,24],"level":7},{"type":"propagate","lit":-4,"reason":[-4,-22],"level":7},{"type":"propagate","lit":-8,"reason":[-8,-22],"level":7},{"type":"propagate","lit":-15,"reason":[-15,-22],"level":7},{"type":"propagate","lit":-29,"reason":[-29,-22],"level":7},{"type":"propagate","lit":-17,"reason":[-17,-22],"level":7},{"type":"conflict","clause":[25,-22,26,27,28,7,12,11,10]},{"type":"learn","clause":[10,25,26,27,28,7,12,11,21,19,23,24,1,6],"btlevel":6,"uip":10},{"type":"backjump","level":6},{"type":"propagate","lit":10,"reason":[10,25,26,27,28,7,12,11,21,19,23,24,1,6],"level":6},{"type":"propagate","lit":-8,"reason":[-8,-10],"level":6},{"type":"propagate","lit":-9,"reason":[-9,-10],"level":6},{"type":"propagate","lit":-4,"reason":[-4,-10],"level":6},{"type":"propagate","lit":-22,"reason":[-22,-10],"level":6},{"type":"propagate","lit":-3,"reason":[-3,-10],"level":6},{"type":"propagate","lit":-17,"reason":[-17,-10],"level":6},{"type":"propagate","lit":-5,"reason":[-5,-10],"level":6},{"type":"propagate","lit":-15,"reason":[-15,-10],"level":6},{"type":"propagate","lit":-20,"reason":[-20,-10],"level":6},{"type":"conflict","clause":[21,-10,19,23,20]},{"type":"learn","clause":[-31,1],"btlevel":1,"uip":-31},{"type":"backjump","level":1},{"type":"propagate","lit":-31,"reason":[-31,1],"level":1},{"type":"decision","lit":10,"level":2,"activity":[11.568053,5.284812,6.337443,6.716785,6.392845,11.568053,13.262759,9.464123,9.464123,14.770099,13.262759,14.490497,6.660361,7.826712,4.712342,6.660361,4.712342,4.712342,10.184669,13.30313,10.184669,9.823324,12.477025,11.854852,10.741936,10.741936,11.794568,12.173909,6.9433,6.9433,1.948019,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":-7,"reason":[-7,-10],"level":2},{"type":"propagate","lit":-8,"reason":[-8,-10],"level":2},{"type":"propagate","lit":-9,"reason":[-9,-10],"level":2},{"type":"propagate","lit":-11,"reason":[-11,-10],"level":2},{"type":"propagate","lit":-12,"reason":[-12,-10],"level":2},{"type":"propagate","lit":-4,"reason":[-4,-10],"level":2},{"type":"propagate","lit":-16,"reason":[-16,-10],"level":2},{"type":"propagate","lit":-22,"reason":[-22,-10],"level":2},{"type":"propagate","lit":-28,"reason":[-28,-10],"level":2},{"type":"propagate","lit":-34,"reason":[-34,-10],"level":2},{"type":"propagate","lit":-3,"reason":[-3,-10],"level":2},{"type":"propagate","lit":-17,"reason":[-17,-10],"level":2},{"type":"propagate","lit":-24,"reason":[-24,-10],"level":2},{"type":"propagate","lit":-5,"reason":[-5,-10],"level":2},{"type":"propagate","lit":-15,"reason":[-15,-10],"level":2},{"type":"propagate","lit":-20,"reason":[-20,-10],"level":2},{"type":"propagate","lit":-25,"reason":[-25,-10],"level":2},{"type":"decision","lit":-23,"level":3,"activity":[11.568053,5.284812,6.337443,6.716785,6.392845,11.568053,13.262759,9.464123,9.464123,14.770099,13.262759,14.490497,6.660361,7.826712,4.712342,6.660361,4.712342,4.712342,10.184669,13.30313,10.184669,9.823324,12.477025,11.854852,10.741936,10.741936,11.794568,12.173909,6.9433,6.9433,1.948019,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-27,"level":4,"activity":[11.568053,5.284812,6.337443,6.716785,6.392845,11.568053,13.262759,9.464123,9.464123,14.770099,13.262759,14.490497,6.660361,7.826712,4.712342,6.660361,4.712342,4.712342,10.184669,13.30313,10.184669,9.823324,12.477025,11.854852,10.741936,10.741936,11.794568,12.173909,6.9433,6.9433,1.948019,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-6,"level":5,"activity":[11.568053,5.284812,6.337443,6.716785,6.392845,11.568053,13.262759,9.464123,9.464123,14.770099,13.262759,14.490497,6.660361,7.826712,4.712342,6.660361,4.712342,4.712342,10.184669,13.30313,10.184669,9.823324,12.477025,11.854852,10.741936,10.741936,11.794568,12.173909,6.9433,6.9433,1.948019,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":2,"reason":[2,6,1,4,5,3],"level":5},{"type":"propagate","lit":-14,"reason":[-14,-2],"level":5},{"type":"propagate","lit":-26,"reason":[-26,-2],"level":5},{"type":"propagate","lit":-32,"reason":[-32,-2],"level":5},{"type":"propagate","lit":-30,"reason":[-30,-2],"level":5},{"type":"propagate","lit":29,"reason":[29,30,25,26,27,28],"level":5},{"type":"propagate","lit":-35,"reason":[-35,-29],"level":5},{"type":"propagate","lit":-36,"reason":[-36,-29],"level":5},{"type":"propagate","lit":33,"reason":[33,35,31,34,32,36],"level":5},{"type":"propagate","lit":-21,"reason":[-21,-33],"level":5},{"type":"propagate","lit":-19,"reason":[-19,-33],"level":5},{"type":"propagate","lit":-18,"reason":[-18,-33],"level":5},{"type":"conflict","clause":[19,21,-10,23,20]},{"type":"learn","clause":[-33,-10,23,20],"btlevel":3,"uip":-33},{"type":"backjump","level":3},{"type":"propagate","lit":-33,"reason":[-33,-10,23,20],"level":3},{"type":"decision","lit":-19,"level":4,"activity":[11.568053,5.284812,6.337443,6.716785,6.392845,11.568053,13.262759,9.464123,9.464123,16.820645,13.262759,14.490497,6.660361,7.826712,4.712342,6.660361,4.712342,4.712342,12.235215,15.353676,12.235215,9.823324,14.527571,11.854852,10.741936,10.741936,11.794568,12.173909,6.9433,6.9433,1.948019,0.0,2.050546,0.0,0.0,0.0]},{"type":"propagate","lit":21,"reason":[21,19,-10,23,20],"level":4},{"type":"propagate","lit":-27,"reason":[-27,-21],"level":4},{"type":"propagate","lit":-14,"reason":[-14,-21],"level":4},{"type":"propagate","lit":-35,"reason":[-35,-21],"level":4},{"type":"propagate","lit":-6,"reason":[-6,-21],"level":4},{"type":"propagate","lit":-26,"reason":[-26,-21],"level":4},{"type":"propagate","lit":2,"reason":[2,6,1,4,5,3],"level":4},{"type":"propagate","lit":-32,"reason":[-32,-2],"level":4},{"type":"propagate","lit":-30,"reason":[-30,-2],"level":4},{"type":"propagate","lit":36,"reason":[36,32,31,34,33,35],"level":4},{"type":"propagate","lit":29,"reason":[29,30,25,26,27,28],"level":4},{"type":"propagate","lit":-18,"reason":[-18,-36],"level":4},{"type":"conflict","clause":[-29,-36]},{"type":"learn","clause":[-21,25,28,31,34,33,1,4,5,3],"btlevel":3,"uip":-21},{"type":"backjump","level":3},{"type":"propagate","lit":-21,"reason":[-21,25,28,31,34,33,1,4,5,3],"level":3},{"type":"propagate","lit":19,"reason":[19,21,-10,23,20],"level":3},{"type":"propagate","lit":-13,"reason":[-13,-19],"level":3},{"type":"propagate","lit":-26,"reason":[-26,-19],"level":3},{"type":"propagate","lit":-14,"reason":[-14,-19],"level":3},{"type":"propagate","lit":18,"reason":[18,13,17,16,14,15],"level":3},{"type":"propagate","lit":-6,"reason":[-6,-18],"level":3},{"type":"propagate","lit":-30,"reason":[-30,-18],"level":3},{"type":"propagate","lit":-36,"reason":[-36,-18],"level":3},{"type":"propagate","lit":2,"reason":[2,6,1,4,5,3],"level":3},{"type":"propagate","lit":-32,"reason":[-32,-2],"level":3},{"type":"propagate","lit":35,"reason":[35,32,31,34,33,36],"level":3},{"type":"propagate","lit":-29,"reason":[-29,-35],"level":3},{"type":"propagate","lit":27,"reason":[27,29,25,26,30,28],"level":3},{"type":"sat","model":[-1,2,-3,-4,-5,-6,-7,-8,-9,10,-11,-12,-13,-14,-15,-16,-17,18,19,-20,-21,-22,-23,-24,-25,-26,27,-28,-29,-30,-31,-32,-33,-34,35,-36]}],"result":"SAT","stats":{"decisions":29,"propagations":198,"conflicts":16,"learned":16,"restarts":0,"max_depth":10},"model":[-1,2,-3,-4,-5,-6,-7,-8,-9,10,-11,-12,-13,-14,-15,-16,-17,18,19,-20,-21,-22,-23,-24,-25,-26,27,-28,-29,-30,-31,-32,-33,-34,35,-36],"proof_len":0};
+const N = DATA.num_vars;
+const EV = DATA.events;
+const SVGNS = "http://www.w3.org/2000/svg";
+
+// ---- replay state reconstruction ---------------------------------------
+function litStr(lit){ return (lit<0?"¬x":"x") + Math.abs(lit); }
+
+function stateAt(idx){
+  // rebuild full state after applying events 0..idx (inclusive)
+  const assign = new Map();      // var -> {val,level,reason,order,decision}
+  let trail = [];                // {lit,var,level,decision}
+  let level = 0, order = 0;
+  let learned = [];              // [{clause, step}]
+  let conflict = null, learnt = null, restarts = 0;
+  let activity = null;
+  let last = null;
+  let result = null;
+  for(let i=0;i<=idx && i<EV.length;i++){
+    const e = EV[i]; last = e;
+    if(e.type==="decision"){
+      level = e.level; conflict=null; learnt=null;
+      const v=Math.abs(e.lit);
+      assign.set(v,{val:e.lit>0,level:level,reason:null,order:order++,decision:true});
+      trail.push({lit:e.lit,var:v,level:level,decision:true});
+      if(e.activity) activity=e.activity;
+    } else if(e.type==="propagate"){
+      const v=Math.abs(e.lit);
+      if(!assign.has(v)){
+        assign.set(v,{val:e.lit>0,level:e.level,reason:e.reason,order:order++,decision:false});
+        trail.push({lit:e.lit,var:v,level:e.level,decision:false});
+      }
+    } else if(e.type==="conflict"){
+      conflict = e.clause;
+    } else if(e.type==="learn"){
+      learnt = {clause:e.clause, uip:e.uip, btlevel:e.btlevel};
+      learned.unshift({clause:e.clause});
+    } else if(e.type==="backjump"){
+      level = e.level;
+      trail = trail.filter(t=>t.level<=e.level);
+      for(const [v,a] of [...assign]) if(a.level>e.level) assign.delete(v);
+    } else if(e.type==="restart"){
+      restarts++; level=0; conflict=null; learnt=null;
+      trail = trail.filter(t=>t.level<=0);
+      for(const [v,a] of [...assign]) if(a.level>0) assign.delete(v);
+    } else if(e.type==="sat"||e.type==="unsat"){
+      result = e.type;
+    }
+  }
+  return {assign,trail,level,learned,conflict,learnt,restarts,activity,last,result};
+}
+
+// running stats up to idx
+function statsAt(idx){
+  let dec=0,prop=0,conf=0,learn=0,res=0,depth=0;
+  for(let i=0;i<=idx && i<EV.length;i++){
+    const e=EV[i];
+    if(e.type==="decision"){dec++; depth=Math.max(depth,e.level);}
+    else if(e.type==="propagate") prop++;
+    else if(e.type==="conflict") conf++;
+    else if(e.type==="learn") learn++;
+    else if(e.type==="restart") res++;
+  }
+  return {decisions:dec,propagations:prop,conflicts:conf,learned:learn,restarts:res,max_depth:depth};
+}
+
+// ---- rendering ----------------------------------------------------------
+const graph=document.getElementById("graph");
+const graphempty=document.getElementById("graphempty");
+
+function clearGraph(){
+  [...graph.querySelectorAll(".node,.edge,.lvline,.lvtxt,.knode")].forEach(n=>n.remove());
+}
+
+function renderGraph(st){
+  clearGraph();
+  const W=graph.clientWidth||800, H=graph.clientHeight||400;
+  // assigned vars with level>=1 form the implication graph; level 0 facts shown in a column 0
+  const nodes=[...st.assign.entries()].map(([v,a])=>({v,a}));
+  if(nodes.length===0){ graphempty.style.display="flex"; return; }
+  graphempty.style.display="none";
+  const maxLevel=Math.max(1, st.level, ...nodes.map(n=>n.a.level));
+  const colW=Math.min(170,(W-90)/(maxLevel+1));
+  const pad=55;
+  // group by level, order within level by 'order'
+  const byLevel=new Map();
+  for(const n of nodes){ (byLevel.get(n.a.level)||byLevel.set(n.a.level,[]).get(n.a.level)).push(n); }
+  const pos=new Map();
+  for(const [lv,arr] of byLevel){
+    arr.sort((a,b)=>a.a.order-b.a.order);
+    const x=pad+lv*colW;
+    const gap=Math.min(46,(H-70)/Math.max(1,arr.length));
+    arr.forEach((n,i)=>{ pos.set(n.v,{x,y:40+i*gap+gap/2}); });
+  }
+  // level guide lines
+  for(let lv=0;lv<=maxLevel;lv++){
+    const x=pad+lv*colW;
+    const line=document.createElementNS(SVGNS,"line");
+    line.setAttribute("x1",x);line.setAttribute("x2",x);line.setAttribute("y1",24);line.setAttribute("y2",H-12);
+    line.setAttribute("class","lvline");graph.appendChild(line);
+    const t=document.createElementNS(SVGNS,"text");
+    t.setAttribute("x",x);t.setAttribute("y",16);t.setAttribute("class","lvtxt");
+    t.textContent="dl "+lv;graph.appendChild(t);
+  }
+  const cutVars = st.learnt? new Set(st.learnt.clause.map(l=>Math.abs(l))) : new Set();
+  const uipVar = st.learnt? Math.abs(st.learnt.uip): null;
+  // edges from reasons
+  function edge(fromV,toPt,cls){
+    const p=pos.get(fromV); if(!p) return;
+    const e=document.createElementNS(SVGNS,"path");
+    const dx=toPt.x-p.x;
+    const c=`M ${p.x} ${p.y} C ${p.x+dx*0.5} ${p.y}, ${toPt.x-dx*0.5} ${toPt.y}, ${toPt.x} ${toPt.y}`;
+    e.setAttribute("d",c); e.setAttribute("class","edge"+(cls?(" "+cls):""));
+    if(cls==="confl") e.setAttribute("marker-end","url(#arrowc)");
+    graph.appendChild(e);
+  }
+  for(const n of nodes){
+    if(n.a.reason){
+      const to=pos.get(n.v);
+      for(const l of n.a.reason){
+        const av=Math.abs(l);
+        if(av!==n.v && pos.has(av)){
+          const cut = cutVars.has(av)&&cutVars.has(n.v);
+          edge(av,to,cut?"cut":"");
+        }
+      }
+    }
+  }
+  // conflict node
+  if(st.conflict){
+    const kx=pad+(maxLevel+1)*colW*0.6 + Math.min(W-30, pad+maxLevel*colW+70)-Math.min(W-30,pad+maxLevel*colW+70);
+    const kpt={x:Math.min(W-34, pad+maxLevel*colW+72), y:H/2};
+    for(const l of st.conflict){
+      const av=Math.abs(l); if(pos.has(av)) edge(av,kpt,"confl");
+    }
+    const g=document.createElementNS(SVGNS,"g"); g.setAttribute("class","knode");
+    const c=document.createElementNS(SVGNS,"circle");
+    c.setAttribute("cx",kpt.x);c.setAttribute("cy",kpt.y);c.setAttribute("r",15);
+    c.setAttribute("fill","#2d1517");c.setAttribute("stroke","#f85149");c.setAttribute("stroke-width","2.5");
+    g.appendChild(c);
+    const t=document.createElementNS(SVGNS,"text");
+    t.setAttribute("x",kpt.x);t.setAttribute("y",kpt.y);t.setAttribute("class","nlabel");
+    t.setAttribute("fill","#ff9a93");t.textContent="κ";g.appendChild(t);
+    graph.appendChild(g);
+  }
+  // nodes
+  for(const n of nodes){
+    const p=pos.get(n.v);
+    const g=document.createElementNS(SVGNS,"g"); g.setAttribute("class","node");
+    const c=document.createElementNS(SVGNS,"circle");
+    c.setAttribute("cx",p.x);c.setAttribute("cy",p.y);c.setAttribute("r",n.a.decision?16:13);
+    const tv=n.a.val;
+    c.setAttribute("fill",tv?"#13301d":"#301516");
+    let stroke = tv?"#3fb950":"#f85149";
+    if(n.a.decision) stroke="#58a6ff";
+    if(uipVar===n.v) stroke="#e3b341";
+    c.setAttribute("stroke",stroke);
+    c.setAttribute("stroke-width",(uipVar===n.v||n.a.decision)?"3":"2");
+    if(cutVars.has(n.v)){ c.setAttribute("stroke-dasharray", uipVar===n.v?"":"3 2"); }
+    g.appendChild(c);
+    const t=document.createElementNS(SVGNS,"text");
+    t.setAttribute("x",p.x);t.setAttribute("y",p.y);t.setAttribute("class","nlabel");
+    t.textContent=(tv?"x":"¬x")+n.v;
+    g.appendChild(t);
+    graph.appendChild(g);
+  }
+}
+
+function renderTrail(st){
+  const box=document.getElementById("trail"); box.innerHTML="";
+  const maxL=Math.max(0,st.level,...[...st.assign.values()].map(a=>a.level));
+  for(let lv=0;lv<=maxL;lv++){
+    const items=st.trail.filter(t=>t.level===lv);
+    if(items.length===0 && lv!==0) continue;
+    const d=document.createElement("div"); d.className="level";
+    const tag=document.createElement("div"); tag.className="lvtag"; tag.textContent="dl "+lv; d.appendChild(tag);
+    items.forEach((t,i)=>{
+      const c=document.createElement("span");
+      c.className="chip "+(t.lit>0?"t":"f")+(t.decision?" dec":"");
+      // highlight the most-recent assignment
+      c.textContent=litStr(t.lit);
+      d.appendChild(c);
+    });
+    box.appendChild(d);
+  }
+}
+
+function renderClauses(st){
+  const box=document.getElementById("clauses"); box.innerHTML="";
+  const learntKey = st.learnt? JSON.stringify(st.learnt.clause):null;
+  st.learned.forEach((lc,i)=>{
+    const div=document.createElement("div");
+    const isCur = i===0 && learntKey===JSON.stringify(lc.clause);
+    div.className="cl learn";
+    div.textContent="L "+fmtClause(lc.clause);
+    if(isCur) div.style.outline="1px solid #bc8cff";
+    box.appendChild(div);
+  });
+  DATA.clauses.forEach((c)=>{
+    const div=document.createElement("div");
+    div.className="cl"+(st.conflict&&JSON.stringify(st.conflict)===JSON.stringify(c)?" confl":"");
+    div.textContent=fmtClause(c);
+    box.appendChild(div);
+  });
+}
+function fmtClause(c){ return "("+c.map(litStr).join(" ∨ ")+")"; }
+
+function renderActs(st){
+  const box=document.getElementById("acts"); box.innerHTML="";
+  const act=st.activity;
+  if(!act){ box.innerHTML='<div class="hint">no decision yet</div>'; return; }
+  const max=Math.max(1e-9,...act);
+  const order=act.map((a,i)=>[a,i+1]).sort((x,y)=>y[0]-x[0]).slice(0,10);
+  for(const [a,v] of order){
+    const row=document.createElement("div"); row.className="actrow";
+    const lab=document.createElement("span"); lab.textContent="x"+v;
+    const bar=document.createElement("div"); bar.className="bar";
+    bar.style.width=Math.max(2,(a/max)*100)+"%";
+    row.appendChild(lab); row.appendChild(bar); box.appendChild(row);
+  }
+}
+
+function renderEvt(st,idx){
+  const box=document.getElementById("evt");
+  const e=st.last;
+  if(!e || idx<0){ box.innerHTML='<span class="k">start</span>'; return; }
+  let h="";
+  if(e.type==="decision") h=`<span class="k">decide</span> ${litStr(e.lit)} &nbsp;<span class="k">@ dl</span> ${e.level}`;
+  else if(e.type==="propagate") h=`<span class="k">imply</span> ${litStr(e.lit)} &nbsp;<span class="k">by</span> ${fmtClause(e.reason)}`;
+  else if(e.type==="conflict") h=`<span class="k">⚡ conflict</span> in ${fmtClause(e.clause)}`;
+  else if(e.type==="learn") h=`<span class="k">learn</span> ${fmtClause(e.clause)} &nbsp;<span class="k">1-UIP</span> ${litStr(e.uip)} &nbsp;<span class="k">backjump→</span> dl ${e.btlevel}`;
+  else if(e.type==="backjump") h=`<span class="k">backjump to</span> dl ${e.level}`;
+  else if(e.type==="restart") h=`<span class="k">↻ restart</span>`;
+  else if(e.type==="sat") h=`<span class="k">result</span> SATISFIABLE`;
+  else if(e.type==="unsat") h=`<span class="k">result</span> UNSATISFIABLE`;
+  box.innerHTML=h;
+}
+
+function renderStats(st){
+  const s=statsAt(cur);
+  const box=document.getElementById("stats");
+  box.innerHTML=`
+    <span>decisions</span><b>${s.decisions}</b>
+    <span>propagations</span><b>${s.propagations}</b>
+    <span>conflicts</span><b>${s.conflicts}</b>
+    <span>learned</span><b>${s.learned}</b>
+    <span>restarts</span><b>${s.restarts}</b>
+    <span>max depth</span><b>${s.max_depth}</b>`;
+}
+
+// ---- controller ---------------------------------------------------------
+let cur=-1, playing=false, timer=null;
+const seek=document.getElementById("seek");
+seek.max=EV.length-1<0?0:EV.length-1;
+
+function render(){
+  const st=stateAt(cur);
+  renderGraph(st); renderTrail(st); renderClauses(st); renderActs(st);
+  renderEvt(st,cur); renderStats(st);
+  document.getElementById("pos").textContent=(cur+1)+"/"+EV.length;
+  seek.value=Math.max(0,cur);
+  document.getElementById("prev").disabled=cur<0;
+  document.getElementById("next").disabled=cur>=EV.length-1;
+}
+function step(d){ cur=Math.max(-1,Math.min(EV.length-1,cur+d)); render(); if(cur>=EV.length-1) stop(); }
+function play(){ if(cur>=EV.length-1) cur=-1; playing=true; document.getElementById("play").textContent="❚❚ pause";
+  const spd=document.getElementById("speed").value;
+  timer=setInterval(()=>{ if(cur>=EV.length-1){stop();return;} step(1); }, 620-spd*19);
+}
+function stop(){ playing=false; clearInterval(timer); document.getElementById("play").textContent="▶ play"; }
+document.getElementById("play").onclick=()=>{ playing?stop():play(); };
+document.getElementById("next").onclick=()=>{ stop(); step(1); };
+document.getElementById("prev").onclick=()=>{ stop(); step(-1); };
+document.getElementById("reset").onclick=()=>{ stop(); cur=-1; render(); };
+seek.oninput=()=>{ stop(); cur=parseInt(seek.value); render(); };
+document.getElementById("speed").oninput=()=>{ if(playing){stop();play();} };
+window.addEventListener("keydown",e=>{
+  if(e.key==="ArrowRight"){stop();step(1);} else if(e.key==="ArrowLeft"){stop();step(-1);}
+  else if(e.key===" "){e.preventDefault(); playing?stop():play();}
+});
+
+// header
+document.getElementById("subtitle").textContent=DATA.title;
+const rp=document.getElementById("resultpill");
+rp.textContent=DATA.result; rp.classList.add(DATA.result==="SAT"?"sat":"unsat");
+document.getElementById("varpill").textContent=N+" vars · "+DATA.clauses.length+" clauses";
+
+window.addEventListener("resize",render);
+render();
+</script>
+</body>
+</html>

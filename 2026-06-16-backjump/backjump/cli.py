@@ -330,7 +330,7 @@ def cmd_demo(args):
         print(f"  {n}-queens: {r} valid={ok} in {(time.time()-t0)*1000:.0f}ms  {s.stats}")
 
     print("\n[3] Pigeonhole PHP(p, p-1) is UNSAT — with a verified proof")
-    for p in (5, 7, 9):
+    for p in (5, 6, 7):
         ph = Pigeonhole(p, p - 1)
         c = ph.encode()
         s = Solver(c, emit_proof=True)
@@ -487,7 +487,19 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except FileNotFoundError as e:
+        print(f"error: file not found: {e.filename}", file=sys.stderr)
+        return 2
+    except (ValueError, OSError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    except BrokenPipeError:
+        return 0
+    except KeyboardInterrupt:
+        print("\ninterrupted", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":

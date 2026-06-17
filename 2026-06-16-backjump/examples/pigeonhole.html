@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backjump — Pigeonhole 4 pigeons, 3 holes (UNSAT)</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#30363d;
+    --ink:#e6edf3; --dim:#8b949e; --accent:#58a6ff; --true:#3fb950; --false:#f85149;
+    --uip:#e3b341; --learn:#bc8cff; --restart:#ff9bce;
+    --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    font-size:14px;line-height:1.45}
+  header{padding:14px 20px;border-bottom:1px solid var(--line);
+    display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;font-weight:650;letter-spacing:.2px}
+  header .sub{color:var(--dim);font-size:13px}
+  .pill{font-family:var(--mono);font-size:12px;padding:2px 9px;border-radius:999px;
+    border:1px solid var(--line);background:var(--panel2);color:var(--dim)}
+  .pill.sat{color:var(--true);border-color:#1f6f37}
+  .pill.unsat{color:var(--false);border-color:#7d2622}
+  .wrap{display:grid;grid-template-columns:1fr 330px;gap:0;height:calc(100vh - 58px)}
+  .main{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line)}
+  .graphbox{flex:1 1 auto;position:relative;overflow:hidden;background:
+    radial-gradient(circle at 30% 20%, #131a24 0, var(--bg) 70%)}
+  svg{width:100%;height:100%;display:block}
+  .trailbox{height:168px;border-top:1px solid var(--line);background:var(--panel);
+    padding:10px 14px;overflow:auto}
+  .trailbox h3,.side h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;
+    letter-spacing:.7px;color:var(--dim);font-weight:600}
+  .levels{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start}
+  .level{border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--panel2);min-width:64px}
+  .level .lvtag{font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:5px}
+  .chip{font-family:var(--mono);font-size:12px;padding:3px 7px;border-radius:5px;
+    margin:2px;display:inline-block;border:1px solid transparent}
+  .chip.t{background:rgba(63,185,80,.14);color:#7ee787;border-color:#23703a}
+  .chip.f{background:rgba(248,81,73,.14);color:#ff9a93;border-color:#7d2622}
+  .chip.dec{box-shadow:0 0 0 2px var(--accent) inset;font-weight:700}
+  .chip.new{outline:2px solid var(--uip);outline-offset:1px}
+  .side{background:var(--panel);overflow:auto;padding:12px 14px}
+  .controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  button{font:inherit;background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+    border-radius:7px;padding:6px 11px;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button:disabled{opacity:.4;cursor:default}
+  button.primary{background:var(--accent);color:#0d1117;border-color:var(--accent);font-weight:650}
+  input[type=range]{width:100%}
+  .scrub{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .scrub .pos{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap}
+  .statgrid{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;font-family:var(--mono);font-size:12px}
+  .statgrid b{color:var(--accent);font-weight:600}
+  .evt{font-family:var(--mono);font-size:12px;padding:7px 9px;border-radius:7px;
+    background:var(--panel2);border:1px solid var(--line);margin-bottom:10px;min-height:20px}
+  .evt .k{color:var(--dim)}
+  .clausebox{max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:7px;padding:6px;background:var(--panel2)}
+  .cl{font-family:var(--mono);font-size:11px;padding:2px 4px;border-radius:4px;white-space:nowrap}
+  .cl.learn{background:rgba(188,140,255,.16);color:#d2b3ff}
+  .cl.confl{background:rgba(248,81,73,.18);color:#ff9a93}
+  .acts{display:flex;flex-direction:column;gap:3px;margin-top:4px}
+  .actrow{display:grid;grid-template-columns:38px 1fr;gap:6px;align-items:center;font-family:var(--mono);font-size:11px}
+  .bar{height:9px;background:var(--accent);border-radius:3px;min-width:1px;transition:width .15s}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:6px;font-size:11px;color:var(--dim)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+  .hint{color:var(--dim);font-size:11px;margin:4px 0 10px}
+  .section{margin-bottom:16px}
+  /* graph */
+  .node circle{stroke-width:2}
+  .edge{stroke:#586273;stroke-width:1.6;marker-end:url(#arrow);fill:none;opacity:.85}
+  .edge.confl{stroke:var(--false);opacity:.95}
+  .edge.cut{stroke:var(--learn);stroke-width:2.4}
+  .nlabel{font-family:var(--mono);font-size:11px;fill:var(--ink);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+  .lvline{stroke:#222b38;stroke-width:1}
+  .lvtxt{fill:#475061;font-family:var(--mono);font-size:11px;text-anchor:middle}
+  .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dim);font-style:italic}
+</style>
+</head>
+<body>
+<header>
+  <h1>Backjump</h1>
+  <span class="sub" id="subtitle"></span>
+  <span class="pill" id="resultpill"></span>
+  <span class="pill" id="varpill"></span>
+</header>
+<div class="wrap">
+  <div class="main">
+    <div class="graphbox">
+      <svg id="graph"><defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#586273"></path>
+        </marker>
+        <marker id="arrowc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#f85149"></path>
+        </marker>
+      </defs></svg>
+      <div class="empty" id="graphempty">decision level 0 — make a decision to grow the implication graph</div>
+    </div>
+    <div class="trailbox">
+      <h3>Assignment trail &nbsp;·&nbsp; grouped by decision level</h3>
+      <div class="levels" id="trail"></div>
+    </div>
+  </div>
+  <div class="side">
+    <div class="section">
+      <h3>Replay</h3>
+      <div class="controls">
+        <button id="reset">⏮ reset</button>
+        <button id="prev">◀ step</button>
+        <button id="play" class="primary">▶ play</button>
+        <button id="next">step ▶</button>
+      </div>
+      <div class="scrub">
+        <input type="range" id="seek" min="0" value="0">
+        <span class="pos" id="pos">0/0</span>
+      </div>
+      <div class="scrub">
+        <span class="pos">speed</span>
+        <input type="range" id="speed" min="1" max="30" value="9">
+      </div>
+    </div>
+    <div class="section">
+      <h3>Current step</h3>
+      <div class="evt" id="evt">—</div>
+    </div>
+    <div class="section">
+      <h3>Statistics</h3>
+      <div class="statgrid" id="stats"></div>
+    </div>
+    <div class="section">
+      <h3>Clause database</h3>
+      <div class="hint">originals + learned clauses (newest learned at top)</div>
+      <div class="clausebox" id="clauses"></div>
+    </div>
+    <div class="section">
+      <h3>VSIDS activity</h3>
+      <div class="hint">branching scores at the last decision</div>
+      <div class="acts" id="acts"></div>
+    </div>
+    <div class="section">
+      <h3>Legend</h3>
+      <div class="legend">
+        <span><i style="background:#3fb950"></i>true</span>
+        <span><i style="background:#f85149"></i>false</span>
+        <span><i style="background:#58a6ff"></i>decision</span>
+        <span><i style="background:#e3b341"></i>1-UIP</span>
+        <span><i style="background:#bc8cff"></i>learned cut</span>
+        <span><i style="background:#f85149"></i>κ conflict</span>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const DATA = {"title":"Pigeonhole 4 pigeons, 3 holes (UNSAT)","num_vars":12,"clauses":[[1,2,3],[4,5,6],[7,8,9],[10,11,12],[-1,-4],[-1,-7],[-1,-10],[-4,-7],[-4,-10],[-7,-10],[-2,-5],[-2,-8],[-2,-11],[-5,-8],[-5,-11],[-8,-11],[-3,-6],[-3,-9],[-3,-12],[-6,-9],[-6,-12],[-9,-12]],"events":[{"type":"decision","lit":-1,"level":1,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-12,"level":2,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"decision","lit":-11,"level":3,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":10,"reason":[10,11,12],"level":3},{"type":"propagate","lit":-4,"reason":[-4,-10],"level":3},{"type":"propagate","lit":-7,"reason":[-7,-10],"level":3},{"type":"decision","lit":-9,"level":4,"activity":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]},{"type":"propagate","lit":8,"reason":[8,9,7],"level":4},{"type":"propagate","lit":-2,"reason":[-2,-8],"level":4},{"type":"propagate","lit":-5,"reason":[-5,-8],"level":4},{"type":"propagate","lit":3,"reason":[3,2,1],"level":4},{"type":"propagate","lit":6,"reason":[6,5,4],"level":4},{"type":"conflict","clause":[-6,-3]},{"type":"learn","clause":[-8,4,1],"btlevel":3,"uip":-8},{"type":"backjump","level":3},{"type":"propagate","lit":-8,"reason":[-8,4,1],"level":3},{"type":"propagate","lit":9,"reason":[9,8,7],"level":3},{"type":"propagate","lit":-3,"reason":[-3,-9],"level":3},{"type":"propagate","lit":-6,"reason":[-6,-9],"level":3},{"type":"propagate","lit":2,"reason":[2,3,1],"level":3},{"type":"propagate","lit":5,"reason":[5,6,4],"level":3},{"type":"conflict","clause":[-5,-2]},{"type":"learn","clause":[-10,1],"btlevel":1,"uip":-10},{"type":"backjump","level":1},{"type":"propagate","lit":-10,"reason":[-10,1],"level":1},{"type":"decision","lit":5,"level":2,"activity":[2.052632,2.052632,2.052632,2.052632,2.052632,2.052632,1.052632,2.052632,1.052632,1.052632,0.0,0.0]},{"type":"propagate","lit":-2,"reason":[-2,-5],"level":2},{"type":"propagate","lit":-8,"reason":[-8,-5],"level":2},{"type":"propagate","lit":-11,"reason":[-11,-5],"level":2},{"type":"propagate","lit":3,"reason":[3,2,1],"level":2},{"type":"propagate","lit":12,"reason":[12,11,10],"level":2},{"type":"propagate","lit":-6,"reason":[-6,-3],"level":2},{"type":"propagate","lit":-9,"reason":[-9,-3],"level":2},{"type":"conflict","clause":[-12,-3]},{"type":"learn","clause":[-5,10,1],"btlevel":1,"uip":-5},{"type":"backjump","level":1},{"type":"propagate","lit":-5,"reason":[-5,10,1],"level":1},{"type":"decision","lit":3,"level":2,"activity":[3.160665,3.160665,3.160665,2.052632,3.160665,2.052632,1.052632,2.052632,1.052632,2.160665,1.108033,1.108033]},{"type":"propagate","lit":-6,"reason":[-6,-3],"level":2},{"type":"propagate","lit":-9,"reason":[-9,-3],"level":2},{"type":"propagate","lit":-12,"reason":[-12,-3],"level":2},{"type":"propagate","lit":4,"reason":[4,6,5],"level":2},{"type":"propagate","lit":11,"reason":[11,12,10],"level":2},{"type":"propagate","lit":-7,"reason":[-7,-4],"level":2},{"type":"propagate","lit":-2,"reason":[-2,-11],"level":2},{"type":"propagate","lit":-8,"reason":[-8,-11],"level":2},{"type":"conflict","clause":[8,7,9]},{"type":"learn","clause":[-3,10,5],"btlevel":1,"uip":-3},{"type":"backjump","level":1},{"type":"propagate","lit":-3,"reason":[-3,10,5],"level":1},{"type":"propagate","lit":2,"reason":[2,3,1],"level":1},{"type":"propagate","lit":-8,"reason":[-8,-2],"level":1},{"type":"propagate","lit":-11,"reason":[-11,-2],"level":1},{"type":"propagate","lit":12,"reason":[12,11,10],"level":1},{"type":"propagate","lit":-6,"reason":[-6,-12],"level":1},{"type":"propagate","lit":-9,"reason":[-9,-12],"level":1},{"type":"propagate","lit":4,"reason":[4,6,5],"level":1},{"type":"propagate","lit":7,"reason":[7,9,8],"level":1},{"type":"conflict","clause":[-7,-4]},{"type":"learn","clause":[1],"btlevel":0,"uip":1},{"type":"backjump","level":0},{"type":"propagate","lit":1,"reason":[1],"level":0},{"type":"propagate","lit":-4,"reason":[-4,-1],"level":0},{"type":"propagate","lit":-7,"reason":[-7,-1],"level":0},{"type":"propagate","lit":-10,"reason":[-10,-1],"level":0},{"type":"decision","lit":-5,"level":1,"activity":[4.388402,4.388402,5.554753,4.44672,5.554753,4.44672,3.44672,4.44672,3.44672,4.554753,3.502122,3.502122]},{"type":"propagate","lit":6,"reason":[6,5,4],"level":1},{"type":"propagate","lit":-3,"reason":[-3,5,10],"level":1},{"type":"propagate","lit":-9,"reason":[-9,-6],"level":1},{"type":"propagate","lit":-12,"reason":[-12,-6],"level":1},{"type":"propagate","lit":8,"reason":[8,9,7],"level":1},{"type":"propagate","lit":11,"reason":[11,12,10],"level":1},{"type":"propagate","lit":-2,"reason":[-2,-8],"level":1},{"type":"conflict","clause":[-11,-8]},{"type":"learn","clause":[-6],"btlevel":0,"uip":-6},{"type":"backjump","level":0},{"type":"propagate","lit":-6,"reason":[-6],"level":0},{"type":"propagate","lit":5,"reason":[5,6,4],"level":0},{"type":"propagate","lit":-2,"reason":[-2,-5],"level":0},{"type":"propagate","lit":-8,"reason":[-8,-5],"level":0},{"type":"propagate","lit":-11,"reason":[-11,-5],"level":0},{"type":"propagate","lit":9,"reason":[9,8,7],"level":0},{"type":"propagate","lit":12,"reason":[12,11,10],"level":0},{"type":"propagate","lit":-3,"reason":[-3,-9],"level":0},{"type":"conflict","clause":[-12,-9]},{"type":"unsat"}],"result":"UNSAT","stats":{"decisions":7,"propagations":54,"conflicts":7,"learned":6,"restarts":0,"max_depth":4},"model":null,"proof_len":7};
+const N = DATA.num_vars;
+const EV = DATA.events;
+const SVGNS = "http://www.w3.org/2000/svg";
+
+// ---- replay state reconstruction ---------------------------------------
+function litStr(lit){ return (lit<0?"¬x":"x") + Math.abs(lit); }
+
+function stateAt(idx){
+  // rebuild full state after applying events 0..idx (inclusive)
+  const assign = new Map();      // var -> {val,level,reason,order,decision}
+  let trail = [];                // {lit,var,level,decision}
+  let level = 0, order = 0;
+  let learned = [];              // [{clause, step}]
+  let conflict = null, learnt = null, restarts = 0;
+  let activity = null;
+  let last = null;
+  let result = null;
+  for(let i=0;i<=idx && i<EV.length;i++){
+    const e = EV[i]; last = e;
+    if(e.type==="decision"){
+      level = e.level; conflict=null; learnt=null;
+      const v=Math.abs(e.lit);
+      assign.set(v,{val:e.lit>0,level:level,reason:null,order:order++,decision:true});
+      trail.push({lit:e.lit,var:v,level:level,decision:true});
+      if(e.activity) activity=e.activity;
+    } else if(e.type==="propagate"){
+      const v=Math.abs(e.lit);
+      if(!assign.has(v)){
+        assign.set(v,{val:e.lit>0,level:e.level,reason:e.reason,order:order++,decision:false});
+        trail.push({lit:e.lit,var:v,level:e.level,decision:false});
+      }
+    } else if(e.type==="conflict"){
+      conflict = e.clause;
+    } else if(e.type==="learn"){
+      learnt = {clause:e.clause, uip:e.uip, btlevel:e.btlevel};
+      learned.unshift({clause:e.clause});
+    } else if(e.type==="backjump"){
+      level = e.level;
+      trail = trail.filter(t=>t.level<=e.level);
+      for(const [v,a] of [...assign]) if(a.level>e.level) assign.delete(v);
+    } else if(e.type==="restart"){
+      restarts++; level=0; conflict=null; learnt=null;
+      trail = trail.filter(t=>t.level<=0);
+      for(const [v,a] of [...assign]) if(a.level>0) assign.delete(v);
+    } else if(e.type==="sat"||e.type==="unsat"){
+      result = e.type;
+    }
+  }
+  return {assign,trail,level,learned,conflict,learnt,restarts,activity,last,result};
+}
+
+// running stats up to idx
+function statsAt(idx){
+  let dec=0,prop=0,conf=0,learn=0,res=0,depth=0;
+  for(let i=0;i<=idx && i<EV.length;i++){
+    const e=EV[i];
+    if(e.type==="decision"){dec++; depth=Math.max(depth,e.level);}
+    else if(e.type==="propagate") prop++;
+    else if(e.type==="conflict") conf++;
+    else if(e.type==="learn") learn++;
+    else if(e.type==="restart") res++;
+  }
+  return {decisions:dec,propagations:prop,conflicts:conf,learned:learn,restarts:res,max_depth:depth};
+}
+
+// ---- rendering ----------------------------------------------------------
+const graph=document.getElementById("graph");
+const graphempty=document.getElementById("graphempty");
+
+function clearGraph(){
+  [...graph.querySelectorAll(".node,.edge,.lvline,.lvtxt,.knode")].forEach(n=>n.remove());
+}
+
+function renderGraph(st){
+  clearGraph();
+  const W=graph.clientWidth||800, H=graph.clientHeight||400;
+  // assigned vars with level>=1 form the implication graph; level 0 facts shown in a column 0
+  const nodes=[...st.assign.entries()].map(([v,a])=>({v,a}));
+  if(nodes.length===0){ graphempty.style.display="flex"; return; }
+  graphempty.style.display="none";
+  const maxLevel=Math.max(1, st.level, ...nodes.map(n=>n.a.level));
+  const colW=Math.min(170,(W-90)/(maxLevel+1));
+  const pad=55;
+  // group by level, order within level by 'order'
+  const byLevel=new Map();
+  for(const n of nodes){ (byLevel.get(n.a.level)||byLevel.set(n.a.level,[]).get(n.a.level)).push(n); }
+  const pos=new Map();
+  for(const [lv,arr] of byLevel){
+    arr.sort((a,b)=>a.a.order-b.a.order);
+    const x=pad+lv*colW;
+    const gap=Math.min(46,(H-70)/Math.max(1,arr.length));
+    arr.forEach((n,i)=>{ pos.set(n.v,{x,y:40+i*gap+gap/2}); });
+  }
+  // level guide lines
+  for(let lv=0;lv<=maxLevel;lv++){
+    const x=pad+lv*colW;
+    const line=document.createElementNS(SVGNS,"line");
+    line.setAttribute("x1",x);line.setAttribute("x2",x);line.setAttribute("y1",24);line.setAttribute("y2",H-12);
+    line.setAttribute("class","lvline");graph.appendChild(line);
+    const t=document.createElementNS(SVGNS,"text");
+    t.setAttribute("x",x);t.setAttribute("y",16);t.setAttribute("class","lvtxt");
+    t.textContent="dl "+lv;graph.appendChild(t);
+  }
+  const cutVars = st.learnt? new Set(st.learnt.clause.map(l=>Math.abs(l))) : new Set();
+  const uipVar = st.learnt? Math.abs(st.learnt.uip): null;
+  // edges from reasons
+  function edge(fromV,toPt,cls){
+    const p=pos.get(fromV); if(!p) return;
+    const e=document.createElementNS(SVGNS,"path");
+    const dx=toPt.x-p.x;
+    const c=`M ${p.x} ${p.y} C ${p.x+dx*0.5} ${p.y}, ${toPt.x-dx*0.5} ${toPt.y}, ${toPt.x} ${toPt.y}`;
+    e.setAttribute("d",c); e.setAttribute("class","edge"+(cls?(" "+cls):""));
+    if(cls==="confl") e.setAttribute("marker-end","url(#arrowc)");
+    graph.appendChild(e);
+  }
+  for(const n of nodes){
+    if(n.a.reason){
+      const to=pos.get(n.v);
+      for(const l of n.a.reason){
+        const av=Math.abs(l);
+        if(av!==n.v && pos.has(av)){
+          const cut = cutVars.has(av)&&cutVars.has(n.v);
+          edge(av,to,cut?"cut":"");
+        }
+      }
+    }
+  }
+  // conflict node
+  if(st.conflict){
+    const kx=pad+(maxLevel+1)*colW*0.6 + Math.min(W-30, pad+maxLevel*colW+70)-Math.min(W-30,pad+maxLevel*colW+70);
+    const kpt={x:Math.min(W-34, pad+maxLevel*colW+72), y:H/2};
+    for(const l of st.conflict){
+      const av=Math.abs(l); if(pos.has(av)) edge(av,kpt,"confl");
+    }
+    const g=document.createElementNS(SVGNS,"g"); g.setAttribute("class","knode");
+    const c=document.createElementNS(SVGNS,"circle");
+    c.setAttribute("cx",kpt.x);c.setAttribute("cy",kpt.y);c.setAttribute("r",15);
+    c.setAttribute("fill","#2d1517");c.setAttribute("stroke","#f85149");c.setAttribute("stroke-width","2.5");
+    g.appendChild(c);
+    const t=document.createElementNS(SVGNS,"text");
+    t.setAttribute("x",kpt.x);t.setAttribute("y",kpt.y);t.setAttribute("class","nlabel");
+    t.setAttribute("fill","#ff9a93");t.textContent="κ";g.appendChild(t);
+    graph.appendChild(g);
+  }
+  // nodes
+  for(const n of nodes){
+    const p=pos.get(n.v);
+    const g=document.createElementNS(SVGNS,"g"); g.setAttribute("class","node");
+    const c=document.createElementNS(SVGNS,"circle");
+    c.setAttribute("cx",p.x);c.setAttribute("cy",p.y);c.setAttribute("r",n.a.decision?16:13);
+    const tv=n.a.val;
+    c.setAttribute("fill",tv?"#13301d":"#301516");
+    let stroke = tv?"#3fb950":"#f85149";
+    if(n.a.decision) stroke="#58a6ff";
+    if(uipVar===n.v) stroke="#e3b341";
+    c.setAttribute("stroke",stroke);
+    c.setAttribute("stroke-width",(uipVar===n.v||n.a.decision)?"3":"2");
+    if(cutVars.has(n.v)){ c.setAttribute("stroke-dasharray", uipVar===n.v?"":"3 2"); }
+    g.appendChild(c);
+    const t=document.createElementNS(SVGNS,"text");
+    t.setAttribute("x",p.x);t.setAttribute("y",p.y);t.setAttribute("class","nlabel");
+    t.textContent=(tv?"x":"¬x")+n.v;
+    g.appendChild(t);
+    graph.appendChild(g);
+  }
+}
+
+function renderTrail(st){
+  const box=document.getElementById("trail"); box.innerHTML="";
+  const maxL=Math.max(0,st.level,...[...st.assign.values()].map(a=>a.level));
+  for(let lv=0;lv<=maxL;lv++){
+    const items=st.trail.filter(t=>t.level===lv);
+    if(items.length===0 && lv!==0) continue;
+    const d=document.createElement("div"); d.className="level";
+    const tag=document.createElement("div"); tag.className="lvtag"; tag.textContent="dl "+lv; d.appendChild(tag);
+    items.forEach((t,i)=>{
+      const c=document.createElement("span");
+      c.className="chip "+(t.lit>0?"t":"f")+(t.decision?" dec":"");
+      // highlight the most-recent assignment
+      c.textContent=litStr(t.lit);
+      d.appendChild(c);
+    });
+    box.appendChild(d);
+  }
+}
+
+function renderClauses(st){
+  const box=document.getElementById("clauses"); box.innerHTML="";
+  const learntKey = st.learnt? JSON.stringify(st.learnt.clause):null;
+  st.learned.forEach((lc,i)=>{
+    const div=document.createElement("div");
+    const isCur = i===0 && learntKey===JSON.stringify(lc.clause);
+    div.className="cl learn";
+    div.textContent="L "+fmtClause(lc.clause);
+    if(isCur) div.style.outline="1px solid #bc8cff";
+    box.appendChild(div);
+  });
+  DATA.clauses.forEach((c)=>{
+    const div=document.createElement("div");
+    div.className="cl"+(st.conflict&&JSON.stringify(st.conflict)===JSON.stringify(c)?" confl":"");
+    div.textContent=fmtClause(c);
+    box.appendChild(div);
+  });
+}
+function fmtClause(c){ return "("+c.map(litStr).join(" ∨ ")+")"; }
+
+function renderActs(st){
+  const box=document.getElementById("acts"); box.innerHTML="";
+  const act=st.activity;
+  if(!act){ box.innerHTML='<div class="hint">no decision yet</div>'; return; }
+  const max=Math.max(1e-9,...act);
+  const order=act.map((a,i)=>[a,i+1]).sort((x,y)=>y[0]-x[0]).slice(0,10);
+  for(const [a,v] of order){
+    const row=document.createElement("div"); row.className="actrow";
+    const lab=document.createElement("span"); lab.textContent="x"+v;
+    const bar=document.createElement("div"); bar.className="bar";
+    bar.style.width=Math.max(2,(a/max)*100)+"%";
+    row.appendChild(lab); row.appendChild(bar); box.appendChild(row);
+  }
+}
+
+function renderEvt(st,idx){
+  const box=document.getElementById("evt");
+  const e=st.last;
+  if(!e || idx<0){ box.innerHTML='<span class="k">start</span>'; return; }
+  let h="";
+  if(e.type==="decision") h=`<span class="k">decide</span> ${litStr(e.lit)} &nbsp;<span class="k">@ dl</span> ${e.level}`;
+  else if(e.type==="propagate") h=`<span class="k">imply</span> ${litStr(e.lit)} &nbsp;<span class="k">by</span> ${fmtClause(e.reason)}`;
+  else if(e.type==="conflict") h=`<span class="k">⚡ conflict</span> in ${fmtClause(e.clause)}`;
+  else if(e.type==="learn") h=`<span class="k">learn</span> ${fmtClause(e.clause)} &nbsp;<span class="k">1-UIP</span> ${litStr(e.uip)} &nbsp;<span class="k">backjump→</span> dl ${e.btlevel}`;
+  else if(e.type==="backjump") h=`<span class="k">backjump to</span> dl ${e.level}`;
+  else if(e.type==="restart") h=`<span class="k">↻ restart</span>`;
+  else if(e.type==="sat") h=`<span class="k">result</span> SATISFIABLE`;
+  else if(e.type==="unsat") h=`<span class="k">result</span> UNSATISFIABLE`;
+  box.innerHTML=h;
+}
+
+function renderStats(st){
+  const s=statsAt(cur);
+  const box=document.getElementById("stats");
+  box.innerHTML=`
+    <span>decisions</span><b>${s.decisions}</b>
+    <span>propagations</span><b>${s.propagations}</b>
+    <span>conflicts</span><b>${s.conflicts}</b>
+    <span>learned</span><b>${s.learned}</b>
+    <span>restarts</span><b>${s.restarts}</b>
+    <span>max depth</span><b>${s.max_depth}</b>`;
+}
+
+// ---- controller ---------------------------------------------------------
+let cur=-1, playing=false, timer=null;
+const seek=document.getElementById("seek");
+seek.max=EV.length-1<0?0:EV.length-1;
+
+function render(){
+  const st=stateAt(cur);
+  renderGraph(st); renderTrail(st); renderClauses(st); renderActs(st);
+  renderEvt(st,cur); renderStats(st);
+  document.getElementById("pos").textContent=(cur+1)+"/"+EV.length;
+  seek.value=Math.max(0,cur);
+  document.getElementById("prev").disabled=cur<0;
+  document.getElementById("next").disabled=cur>=EV.length-1;
+}
+function step(d){ cur=Math.max(-1,Math.min(EV.length-1,cur+d)); render(); if(cur>=EV.length-1) stop(); }
+function play(){ if(cur>=EV.length-1) cur=-1; playing=true; document.getElementById("play").textContent="❚❚ pause";
+  const spd=document.getElementById("speed").value;
+  timer=setInterval(()=>{ if(cur>=EV.length-1){stop();return;} step(1); }, 620-spd*19);
+}
+function stop(){ playing=false; clearInterval(timer); document.getElementById("play").textContent="▶ play"; }
+document.getElementById("play").onclick=()=>{ playing?stop():play(); };
+document.getElementById("next").onclick=()=>{ stop(); step(1); };
+document.getElementById("prev").onclick=()=>{ stop(); step(-1); };
+document.getElementById("reset").onclick=()=>{ stop(); cur=-1; render(); };
+seek.oninput=()=>{ stop(); cur=parseInt(seek.value); render(); };
+document.getElementById("speed").oninput=()=>{ if(playing){stop();play();} };
+window.addEventListener("keydown",e=>{
+  if(e.key==="ArrowRight"){stop();step(1);} else if(e.key==="ArrowLeft"){stop();step(-1);}
+  else if(e.key===" "){e.preventDefault(); playing?stop():play();}
+});
+
+// header
+document.getElementById("subtitle").textContent=DATA.title;
+const rp=document.getElementById("resultpill");
+rp.textContent=DATA.result; rp.classList.add(DATA.result==="SAT"?"sat":"unsat");
+document.getElementById("varpill").textContent=N+" vars · "+DATA.clauses.length+" clauses";
+
+window.addEventListener("resize",render);
+render();
+</script>
+</body>
+</html>

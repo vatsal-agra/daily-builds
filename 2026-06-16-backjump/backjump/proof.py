@@ -49,11 +49,22 @@ class _Propagator:
         self.clauses: List[List[int]] = []
         self.occ: Dict[int, List[int]] = {}
 
-    def add(self, clause: List[int]) -> None:
+    def add(self, clause: List[int]) -> bool:
+        """Add a clause (deduping literals and dropping tautologies, so duplicate
+        literals propagate correctly).  Returns True if the clause was kept."""
+        seen = set()
+        lits: List[int] = []
+        for l in clause:
+            if -l in seen:
+                return False  # tautology: always satisfied, never propagates
+            if l not in seen:
+                seen.add(l)
+                lits.append(l)
         ci = len(self.clauses)
-        self.clauses.append(clause)
-        for lit in clause:
+        self.clauses.append(lits)
+        for lit in lits:
             self.occ.setdefault(lit, []).append(ci)
+        return True
 
     def _propagate(self, assign: Dict[int, bool], trail: List[int]) -> bool:
         """Propagate to fixpoint.  Returns True iff a conflict is reached."""
