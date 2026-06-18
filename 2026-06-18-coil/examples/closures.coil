@@ -1,0 +1,30 @@
+// Closures capture enclosing locals by reference.
+
+fn makeCounter() {
+    let count = 0;
+    fn increment() {
+        count = count + 1;
+        return count;
+    }
+    return increment;
+}
+
+let c1 = makeCounter();
+let c2 = makeCounter();
+
+print c1();   // 1
+print c1();   // 2
+print c1();   // 3
+print c2();   // 1  (independent state — each counter owns its own `count`)
+
+// Per-iteration capture: a fresh block-scoped binding is captured (and closed)
+// once per loop pass, so each closure remembers its own value.
+let fns = [];
+for (let i = 0; i < 3; i = i + 1) {
+    let snapshot = i;
+    fn capture() { return snapshot; }
+    push(fns, capture);
+}
+print fns[0]();  // 0
+print fns[1]();  // 1
+print fns[2]();  // 2

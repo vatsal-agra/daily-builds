@@ -1,0 +1,39 @@
+// Two sorts, to exercise recursion, lists, indexing and loops.
+
+// Recursive quicksort (functional: builds new lists).
+fn quicksort(xs) {
+    if (len(xs) <= 1) return xs;
+    let pivot = xs[0];
+    let less = [];
+    let more = [];
+    for (let i = 1; i < len(xs); i = i + 1) {
+        if (xs[i] < pivot) {
+            push(less, xs[i]);
+        } else {
+            push(more, xs[i]);
+        }
+    }
+    return quicksort(less) + [pivot] + quicksort(more);
+}
+
+// In-place insertion sort (mutates the list via index assignment).
+fn insertionSort(xs) {
+    for (let i = 1; i < len(xs); i = i + 1) {
+        let key = xs[i];
+        let j = i - 1;
+        while (j >= 0 and xs[j] > key) {
+            xs[j + 1] = xs[j];
+            j = j - 1;
+        }
+        xs[j + 1] = key;
+    }
+    return xs;
+}
+
+let data = [5, 3, 8, 1, 9, 2, 7, 4, 6, 0];
+print "input:     " + str(data);
+print "quicksort: " + str(quicksort(data));
+
+let data2 = [42, 7, 7, 13, 1, 99, 0, 13];
+insertionSort(data2);
+print "insertion: " + str(data2);
