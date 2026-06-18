@@ -61,8 +61,13 @@ def roundtrip_words(items, breaking, original_words) -> Tuple[bool, str]:
 # River detection
 # --------------------------------------------------------------------------- #
 
-def line_gap_centers(items, line, margin: float = 0.0) -> List[float]:
-    """X positions (centres) of the inter-word spaces on a laid-out line."""
+def line_gap_centers(items, line, *, min_width: float = 0.0,
+                     margin: float = 0.0) -> List[float]:
+    """X centres of the inter-word spaces on a laid-out line.
+
+    Only spaces at least ``min_width`` wide are returned, so a river is built
+    from genuinely open gaps rather than tightly-set ones.
+    """
     centers: List[float] = []
     x = margin
     i = line.start
@@ -74,7 +79,8 @@ def line_gap_centers(items, line, margin: float = 0.0) -> List[float]:
             x += it.width
         elif it.is_glue:
             w = adjusted_glue(it.width, it.stretch, it.shrink, line.ratio)
-            centers.append(x + w / 2.0)
+            if w >= min_width - 1e-9:
+                centers.append(x + w / 2.0)
             x += w
         i += 1
     return centers
@@ -86,12 +92,15 @@ def count_rivers(items, breaking, font, *, threshold: float = None,
 
     A river is a run of inter-word gaps in consecutive lines whose horizontal
     centres stay within ``threshold`` of each other — the classic typographic
-    defect where the eye follows a pale channel down the column.
+    defect where the eye follows a pale channel down the column.  Gaps narrower
+    than a natural space do not count, and the alignment threshold is tight
+    (0.4 space-widths) so only real channels register.
     """
     if threshold is None:
-        threshold = font.space_width * 1.5
+        threshold = font.space_width * 0.4
+    min_gap = font.space_width
     lines = breaking.lines
-    gaps_per_line = [line_gap_centers(items, ln) for ln in lines]
+    gaps_per_line = [line_gap_centers(items, ln, min_width=min_gap) for ln in lines]
 
     # Active rivers: each is dict(x=current x, start_line, length, last_line)
     rivers: List[Dict] = []

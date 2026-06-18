@@ -29,9 +29,10 @@ SAMPLE = (
 
 
 def _read_text(args) -> str:
-    if getattr(args, "text", None):
+    # An explicit --text (even empty) wins over the sample fallback.
+    if getattr(args, "text", None) is not None:
         return args.text
-    if getattr(args, "file", None):
+    if getattr(args, "file", None) is not None:
         with open(args.file, encoding="utf-8") as fh:
             return fh.read().strip()
     if not sys.stdin.isatty():
@@ -82,7 +83,12 @@ def cmd_break(args) -> int:
     rule = "+" + "-" * width + "+"
     print(rule)
     for l in lines:
-        print("|" + l.ljust(width)[:width] + "|")
+        if len(l) > width:
+            # Overfull line (an unbreakable long word): show it in full,
+            # overflowing the border, marked so the defect is visible.
+            print("|" + l + " ▸ overfull")
+        else:
+            print("|" + l.ljust(width) + "|")
     print(rule)
     s = _stats(br)
     print("  " + "   ".join(f"{k}: {v}" for k, v in s))

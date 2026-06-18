@@ -109,8 +109,8 @@ def build_paragraph(
             items.append(Glue(sp_glue.width, sp_glue.stretch, sp_glue.shrink))
 
         fragments = [word]
-        if hyphenate is not None and _is_hyphenatable(word):
-            fragments = hyphenate(word)
+        if hyphenate is not None:
+            fragments = hyphenate_token(word, hyphenate)
 
         if len(fragments) == 1:
             items.append(Box(font.width(word), word))
@@ -136,12 +136,31 @@ def _append_finish(items: List[Item]) -> None:
     items.append(Penalty(0, -INFINITY, flagged=False))
 
 
-def _is_hyphenatable(word: str) -> bool:
-    # Only hyphenate runs of letters long enough to bother; leave punctuation
-    # attached so we don't hyphenate "word," in the wrong place. We allow a
-    # trailing/leading punctuation by hyphenating just the alphabetic core, but
-    # for simplicity only hyphenate purely alphabetic words of length >= 5.
-    return word.isalpha() and len(word) >= 5
+def hyphenate_token(token: str, hyphenate) -> List[str]:
+    """Hyphenate the alphabetic core of *token*, keeping punctuation attached.
+
+    ``hyphenate`` is a callable ``core -> [fragments]``.  Leading/trailing
+    non-letters (quotes, commas, parentheses) stay glued to the adjacent
+    fragment, so ``beautiful,`` can break as ``beau`` ``ti`` ``ful,`` but the
+    comma never starts a line on its own.  Tokens with interior non-letters
+    (already-hyphenated words, contractions written with apostrophes) are left
+    whole.
+    """
+    # Peel leading and trailing non-letters.
+    i, j = 0, len(token)
+    while i < j and not token[i].isalpha():
+        i += 1
+    while j > i and not token[j - 1].isalpha():
+        j -= 1
+    lead, core, trail = token[:i], token[i:j], token[j:]
+    if not core.isalpha() or len(core) < 5:
+        return [token]
+    frags = hyphenate(core)
+    if len(frags) <= 1:
+        return [token]
+    frags[0] = lead + frags[0]
+    frags[-1] = frags[-1] + trail
+    return frags
 
 
 def is_legal_breakpoint(items: List[Item], i: int) -> bool:

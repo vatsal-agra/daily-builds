@@ -301,7 +301,7 @@ def ascii_paragraph(text: str, hyphenate=None):
     Boxes have width = number of characters; inter-word glue has width 1 with
     one column of stretch and no shrink (monospace spaces cannot shrink).
     """
-    from .model import Box, Glue, Penalty, Paragraph, INFINITY
+    from .model import Box, Glue, Penalty, Paragraph, INFINITY, hyphenate_token
 
     words = text.split()
     items: List[object] = []
@@ -309,8 +309,8 @@ def ascii_paragraph(text: str, hyphenate=None):
         if wi > 0:
             items.append(Glue(1.0, 1.0, 0.0))
         frags = [word]
-        if hyphenate is not None and word.isalpha() and len(word) >= 5:
-            frags = hyphenate(word)
+        if hyphenate is not None:
+            frags = hyphenate_token(word, hyphenate)
         if len(frags) == 1:
             items.append(Box(len(word), word))
         else:

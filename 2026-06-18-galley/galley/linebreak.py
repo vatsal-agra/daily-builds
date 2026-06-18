@@ -125,15 +125,13 @@ def break_paragraph(
     line_penalty: float = LINE_PENALTY,
     flagged_demerit: float = FLAGGED_DEMERIT,
     fitness_demerit: float = FITNESS_DEMERIT,
-    looseness: int = 0,
     escalate: bool = True,
 ) -> Breaking:
     """Break ``items`` into lines minimizing total demerits (Knuth--Plass).
 
     ``measure`` is either a single number (every line the same width) or a list
     of per-line widths.  ``tolerance`` is the maximum allowed badness for a
-    feasible line (TeX's \\tolerance).  ``looseness`` nudges the chosen number of
-    lines (negative = fewer, positive = more), if a path of that length exists.
+    feasible line (TeX's \\tolerance).
 
     If ``escalate`` is true and the requested tolerance admits no all-feasible
     breaking (some line would be overfull), the tolerance is raised
@@ -142,13 +140,13 @@ def break_paragraph(
     narrow measures rather than overfull lines.
     """
     result = _break_once(items, measure, tolerance, line_penalty,
-                         flagged_demerit, fitness_demerit, looseness)
+                         flagged_demerit, fitness_demerit)
     if escalate and not result.feasible:
         tol = tolerance
         while not result.feasible and tol < 1e7:
             tol *= 4.0
             result = _break_once(items, measure, tol, line_penalty,
-                                 flagged_demerit, fitness_demerit, looseness)
+                                 flagged_demerit, fitness_demerit)
     return result
 
 
@@ -159,7 +157,6 @@ def _break_once(
     line_penalty: float,
     flagged_demerit: float,
     fitness_demerit: float,
-    looseness: int,
 ) -> Breaking:
     """One Knuth--Plass pass at a fixed tolerance (see :func:`break_paragraph`)."""
     line_lengths = [float(measure)] if isinstance(measure, (int, float)) else list(measure)
@@ -330,9 +327,8 @@ def _break_once(
                 "no feasible breaking found; internal active list emptied"
             )
 
-    # Choose the active node ending the paragraph with least demerits, honoring
-    # looseness if requested.
-    best_node = _choose_active(active, looseness)
+    # Choose the active node ending the paragraph with least total demerits.
+    best_node = min(active, key=lambda nd: nd.demerits)
     breaks, lines = _reconstruct(best_node, items, line_lengths)
     feasible = all(l.badness < INF_BAD for l in lines)
     return Breaking(breaks=breaks, lines=lines,
@@ -349,17 +345,6 @@ def _node_flagged(node: _Node, items) -> bool:
         return False
     it = items[node.position]
     return bool(it.is_penalty and it.flagged)
-
-
-def _choose_active(active: List[_Node], looseness: int) -> _Node:
-    best = min(active, key=lambda nd: nd.demerits)
-    if looseness == 0:
-        return best
-    # Find a node whose line count differs from best by the desired looseness
-    # (closest match) with least demerits.
-    target = best.line + looseness
-    candidates = sorted(active, key=lambda nd: (abs(nd.line - target), nd.demerits))
-    return candidates[0]
 
 
 def _reconstruct(node: _Node, items, line_lengths):
