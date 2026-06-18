@@ -30,6 +30,16 @@ def _serialize_items(items):
     return out
 
 
+def algorithm_js() -> str:
+    """Return just the pure JS line-breaking functions (no DOM, no rendering).
+
+    Used by the Python<->JS parity test to run the browser breaker under Node.
+    """
+    start = _TEMPLATE.index("//__ALGO_START__") + len("//__ALGO_START__")
+    end = _TEMPLATE.index("//__ALGO_END__")
+    return _TEMPLATE[start:end]
+
+
 def build_playground(text: str, font_family: str = "times", size: float = 14.0) -> str:
     font = Font(font_family, size)
     h = Hyphenator()
@@ -125,6 +135,7 @@ _TEMPLATE = r"""<!DOCTYPE html>
 <script>
 const DATA = /*__DATA__*/;
 const ITEMS = DATA.items, SIZE = DATA.size, CSS = DATA.css;
+//__ALGO_START__
 const INF = 10000, INF_BAD = 1e12, LINE_PEN = 10, FLAG_DEM = 3000, FIT_DEM = 3000;
 
 function isBox(i){return i.t==='b';}
@@ -287,6 +298,7 @@ function breakGreedy(items, measure){
 }
 
 function adjGlue(it,r){ r=Math.max(r,-1); return r>=0? it.w+r*it.y : it.w+r*it.z; }
+//__ALGO_END__
 
 const HEAT=[[0,'#1a9850'],[15,'#66bd63'],[40,'#a6d96a'],[80,'#fee08b'],
             [150,'#fdae61'],[400,'#f46d43'],[1e11,'#d73027']];
