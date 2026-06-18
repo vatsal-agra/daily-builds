@@ -105,10 +105,9 @@ def repl(gc_stress=False):
         try:
             fn = compile_source_text(src, name="<repl>")
         except ParseError as e:
-            # could be an incomplete multi-line construct; keep buffering only
-            # if it failed at end of input
-            if e.message.startswith("unexpected token end of input") or \
-               "expected" in e.message and _at_eof(buffer):
+            # Keep buffering only when input genuinely ran out, i.e. the error
+            # sits at the EOF token (an incomplete multi-line construct).
+            if _error_at_eof(buffer, e):
                 continue  # keep buffer, read more
             sys.stderr.write(e.render(source=buffer, filename="<repl>") + "\n")
             buffer = ""
@@ -125,9 +124,11 @@ def repl(gc_stress=False):
     return 0
 
 
-def _at_eof(src):
+def _error_at_eof(src, error):
+    """True if the parse error occurred at the final (EOF) token."""
     toks = tokenize(src)
-    return len(toks) >= 1 and toks[-1].type == T.EOF
+    eof = toks[-1]
+    return error.line == eof.line and error.col == eof.col
 
 
 def main(argv=None):

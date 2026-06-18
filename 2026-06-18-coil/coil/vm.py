@@ -312,10 +312,12 @@ class VM:
 
             elif op == Op.BUILD_LIST:
                 n = read()
-                items = stack[len(stack) - n:]
-                del stack[len(stack) - n:]
-                lst = ListObj(items)
+                start = len(stack) - n
+                # Allocate while the elements are still on the stack so a GC
+                # triggered by allocate() sees them as roots.
+                lst = ListObj(stack[start:])
                 self.allocate(lst)
+                del stack[start:]
                 stack.append(lst)
             elif op == Op.BUILD_MAP:
                 n = read()
@@ -327,9 +329,9 @@ class VM:
                         raise self._runtime_error(
                             f"map key must be string or number, got {type_name(key)}")
                     data[key] = stack[i + 1]
-                del stack[start:]
                 m = MapObj(data)
-                self.allocate(m)
+                self.allocate(m)  # operands still on stack -> rooted during GC
+                del stack[start:]
                 stack.append(m)
 
             elif op == Op.GET_INDEX:
@@ -419,9 +421,10 @@ class VM:
             self.stack.pop(); self.stack.pop()
             self.stack.append(a + b)
         elif isinstance(a, ListObj) and isinstance(b, ListObj):
-            self.stack.pop(); self.stack.pop()
+            # allocate before popping a, b so their elements stay rooted
             lst = ListObj(a.items + b.items)
             self.allocate(lst)
+            self.stack.pop(); self.stack.pop()
             self.stack.append(lst)
         else:
             raise self._runtime_error(

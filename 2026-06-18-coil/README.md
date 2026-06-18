@@ -7,10 +7,11 @@ from scratch in pure Python (no dependencies). Source flows:
 source → Lexer → Pratt parser → AST → bytecode Compiler → Chunk → stack VM
 ```
 
-**Status: Phase 2 (core build) complete.** Lexer, parser, compiler and VM are
-working; closures, recursion, lists/maps, control flow, a native stdlib, a
-mark-sweep GC, a disassembler and a REPL all run. Remaining phases (adversarial
-review, polish, verification, ship) fill in below as the build progresses.
+**Status: Phase 3 (adversarial review) complete.** Lexer, parser, compiler and
+VM all run; closures, recursion, lists/maps, control flow, a native stdlib, a
+mark-sweep GC, a disassembler and a REPL work. Self-review found and fixed a
+critical `break`/`continue` stack-corruption bug and a GC un-tracking hazard —
+see `REVIEW.md`. Remaining phases (polish, verification, ship) follow.
 
 ## Run it
 

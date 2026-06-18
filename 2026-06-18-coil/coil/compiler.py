@@ -93,6 +93,18 @@ class Compiler:
             else:
                 self.emit(Op.POP, line)
 
+    def emit_scope_unwind(self, target_depth, line):
+        """Emit POP/CLOSE_UPVALUE for locals deeper than `target_depth`,
+        WITHOUT removing them from the compiler's local table. Used by
+        break/continue, which jump out of (but do not lexically close) scopes."""
+        for local in reversed(self.locals):
+            if local.depth <= target_depth:
+                break
+            if local.is_captured:
+                self.emit(Op.CLOSE_UPVALUE, line)
+            else:
+                self.emit(Op.POP, line)
+
     def declare_local(self, name, line):
         # Detect redeclaration in the same scope.
         for local in reversed(self.locals):
@@ -208,7 +220,8 @@ class Compiler:
         loop_start = len(self.chunk.code)
         self.compile_expr(node.condition)
         exit_jump = self.emit_jump(Op.JUMP_IF_FALSE_POP, node.line)
-        self.loop_stack.append({"breaks": [], "continue": loop_start})
+        self.loop_stack.append({"breaks": [], "continue": loop_start,
+                                "depth": self.scope_depth})
         self.compile_stmt(node.body)
         self.emit_loop(Op.JUMP, loop_start, node.line)
         ctx = self.loop_stack.pop()
@@ -237,7 +250,8 @@ class Compiler:
         else:
             continue_target = loop_start
 
-        self.loop_stack.append({"breaks": [], "continue": continue_target})
+        self.loop_stack.append({"breaks": [], "continue": continue_target,
+                                "depth": self.scope_depth})
         self.compile_stmt(node.body)
         self.emit_loop(Op.JUMP, continue_target, node.line)
         ctx = self.loop_stack.pop()
@@ -259,12 +273,14 @@ class Compiler:
     def _stmt_BreakStmt(self, node):
         if not self.loop_stack:
             raise CompileError("'break' outside of a loop", node.line)
+        self.emit_scope_unwind(self.loop_stack[-1]["depth"], node.line)
         jump = self.emit_jump(Op.JUMP, node.line)
         self.loop_stack[-1]["breaks"].append(jump)
 
     def _stmt_ContinueStmt(self, node):
         if not self.loop_stack:
             raise CompileError("'continue' outside of a loop", node.line)
+        self.emit_scope_unwind(self.loop_stack[-1]["depth"], node.line)
         self.emit_loop(Op.JUMP, self.loop_stack[-1]["continue"], node.line)
 
     # ---- expression compilation ----

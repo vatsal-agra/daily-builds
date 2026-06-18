@@ -100,7 +100,7 @@ class Parser:
                 if p.value in params:
                     raise ParseError(f"duplicate parameter '{p.value}'", p.line, p.col)
                 params.append(p.value)
-                if not self._match(T.COMMA):
+                if not self._match(T.COMMA) or self._check(T.RPAREN):
                     break
         self._expect(T.RPAREN, "expected ')' after parameters")
         return params
@@ -264,7 +264,7 @@ class Parser:
         if not self._check(T.RPAREN):
             while True:
                 args.append(self._expression())
-                if not self._match(T.COMMA):
+                if not self._match(T.COMMA) or self._check(T.RPAREN):
                     break
         self._expect(T.RPAREN, "expected ')' after arguments")
         return A.Call(callee, args, lp.line)
@@ -308,7 +308,7 @@ class Parser:
         if not self._check(T.RBRACKET):
             while True:
                 elements.append(self._expression())
-                if not self._match(T.COMMA):
+                if not self._match(T.COMMA) or self._check(T.RBRACKET):
                     break
         self._expect(T.RBRACKET, "expected ']' after list elements")
         return A.ListLit(elements, lb.line)
@@ -327,7 +327,7 @@ class Parser:
                 self._expect(T.COLON, "expected ':' in map entry")
                 value = self._expression()
                 pairs.append((key, value))
-                if not self._match(T.COMMA):
+                if not self._match(T.COMMA) or self._check(T.RBRACE):
                     break
         self._expect(T.RBRACE, "expected '}' after map entries")
         return A.MapLit(pairs, lb.line)
