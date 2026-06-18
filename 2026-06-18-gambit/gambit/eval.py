@@ -200,6 +200,11 @@ def evaluate(board):
     mg_score = mg[WHITE] - mg[BLACK]
     eg_score = eg[WHITE] - eg[BLACK]
     phase = min(phase, PHASE_MAX)
-    score = (mg_score * phase + eg_score * (PHASE_MAX - phase)) // PHASE_MAX
+    num = mg_score * phase + eg_score * (PHASE_MAX - phase)
+    # Truncate toward zero so the value is exactly anti-symmetric under a
+    # color swap (floor division would introduce a 1cp color bias).
+    score = abs(num) // PHASE_MAX
+    if num < 0:
+        score = -score
 
     return score if board.side == WHITE else -score
