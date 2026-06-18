@@ -67,10 +67,17 @@ class Search:
             return best
         best.best_move = root_moves[0]
 
+        # Baseline so we can fully restore the board if a search is aborted mid-tree:
+        # TimeUp unwinds through make_move() calls without their unmake_move(), so we
+        # pop the undo stack back down to here before returning a corrupted board.
+        base_undo = len(board._undo)
+
         for depth in range(1, max_depth + 1):
             try:
                 score = self._negamax(board, depth, -INF, INF, 0)
             except TimeUp:
+                while len(board._undo) > base_undo:
+                    board.unmake_move()
                 break
             pv = self._extract_pv(board, depth)
             best = SearchResult(

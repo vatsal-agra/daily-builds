@@ -45,6 +45,22 @@ their input and raise a clear, located message.
 A placement with two white kings (or none) silently used the last-seen king square.
 **Fix:** `from_fen` now requires exactly one king per side.
 
+### F6 — Aborted timed search left the board corrupted (CRITICAL, found in Phase 5)
+The verification suite's "every move in a full game is legal" test crashed with
+`KeyError: 0` inside `to_san` — a "best move" whose origin square was empty. Root
+cause: when the time check raised `TimeUp` deep in the recursion, the exception
+unwound through every `board.make_move(...)` **without** running the matching
+`unmake_move()` (the `finally` only popped the repetition stack). `search()` caught
+`TimeUp` and returned the previous iteration's (legal) best move, but handed the
+caller a **mutated board** with half a search tree's worth of moves still applied —
+so that move was now illegal on the corrupted position. This only triggered under a
+`movetime` budget (the only path that raises `TimeUp`), which is exactly why
+deterministic depth-only games had replayed perfectly. **Fix:** `search()` records
+the undo-stack depth before searching and, on `TimeUp`, pops the board back down to
+that baseline before returning — guaranteeing the board is byte-for-byte restored.
+Verified: after a timed search the FEN and undo stack are identical to before, and
+8 independent timed games now replay with zero illegal moves.
+
 ## Re-verification after fixes
 A fresh run-through hits **zero** of the listed issues: KB-vs-KB and KN-vs-KN are no
 longer auto-drawn, K-vs-K / KN-vs-K / KB-vs-K still are; bad FEN/ep/king inputs raise
