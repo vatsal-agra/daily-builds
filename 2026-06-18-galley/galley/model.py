@@ -133,7 +133,7 @@ def _append_finish(items: List[Item]) -> None:
     """
     items.append(Penalty(0, INFINITY, flagged=False))
     items.append(Glue(0, 1e9, 0))
-    items.append(Penalty(0, -INFINITY, flagged=True))
+    items.append(Penalty(0, -INFINITY, flagged=False))
 
 
 def _is_hyphenatable(word: str) -> bool:
