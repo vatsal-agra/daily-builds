@@ -7,11 +7,12 @@ from scratch in pure Python (no dependencies). Source flows:
 source → Lexer → Pratt parser → AST → bytecode Compiler → Chunk → stack VM
 ```
 
-**Status: Phase 3 (adversarial review) complete.** Lexer, parser, compiler and
-VM all run; closures, recursion, lists/maps, control flow, a native stdlib, a
-mark-sweep GC, a disassembler and a REPL work. Self-review found and fixed a
-critical `break`/`continue` stack-corruption bug and a GC un-tracking hazard —
-see `REVIEW.md`. Remaining phases (polish, verification, ship) follow.
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features plus
+all 3 stretch features (mark-sweep GC, disassembler/REPL/tracebacks, example
+suite) are in. Self-review (see `REVIEW.md`) fixed a critical `break`/`continue`
+stack-corruption bug and a GC un-tracking hazard. The stdlib gained string ops
+(`split`/`join`/`upper`/`lower`/`contains`) and error handling is hardened
+(no raw Python tracebacks). Verification and ship follow.
 
 ## Run it
 

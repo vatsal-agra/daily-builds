@@ -623,10 +623,52 @@ class VM:
             raise self._runtime_error(f"slice() expects list/string, got {type_name(v)}")
         reg("slice", 3, _slice)
 
+        def _need_str(v, who):
+            if not isinstance(v, str):
+                raise self._runtime_error(
+                    f"{who} expects a string, got {type_name(v)}")
+            return v
+
+        def _split(vm, a):
+            s = _need_str(a[0], "split()")
+            sep = _need_str(a[1], "split()")
+            parts = s.split(sep) if sep != "" else list(s)
+            lst = ListObj(list(parts))
+            vm.allocate(lst)
+            return lst
+        reg("split", 2, _split)
+
+        def _join(vm, a):
+            lst = need_list(a[0], "join()")
+            sep = _need_str(a[1], "join()")
+            return sep.join(stringify(x) for x in lst.items)
+        reg("join", 2, _join)
+
+        reg("upper", 1, lambda vm, a: _need_str(a[0], "upper()").upper())
+        reg("lower", 1, lambda vm, a: _need_str(a[0], "lower()").lower())
+
+        def _contains(vm, a):
+            container = a[0]
+            if isinstance(container, str):
+                return _need_str(a[1], "contains()") in container
+            if isinstance(container, ListObj):
+                from .vm import values_equal as _eq
+                return any(_eq(x, a[1]) for x in container.items)
+            if isinstance(container, MapObj):
+                return a[1] in container.data
+            raise self._runtime_error(
+                f"contains() expects string/list/map, got {type_name(container)}")
+        reg("contains", 2, _contains)
+
         reg("abs", 1, lambda vm, a: float(abs(need_number(a[0], "abs()"))))
         reg("floor", 1, lambda vm, a: float(math.floor(need_number(a[0], "floor()"))))
         reg("ceil", 1, lambda vm, a: float(math.ceil(need_number(a[0], "ceil()"))))
-        reg("sqrt", 1, lambda vm, a: math.sqrt(need_number(a[0], "sqrt()")))
+        def _sqrt(vm, a):
+            x = need_number(a[0], "sqrt()")
+            if x < 0:
+                raise self._runtime_error("sqrt() of a negative number")
+            return math.sqrt(x)
+        reg("sqrt", 1, _sqrt)
 
         def _min(vm, a):
             if not a:

@@ -41,6 +41,12 @@ def _execute(source, filename, gc_stress=False, trace_gc=False):
         sys.stderr.write(e.render(source=source, filename=filename) + "\n")
         # 65 = data/compile error, 70 = runtime error (sysexits-style)
         return 70 if e.kind == "runtime error" else 65
+    except RecursionError:
+        sys.stderr.write("coil: internal recursion limit reached\n")
+        return 70
+    except KeyboardInterrupt:
+        sys.stderr.write("\ncoil: interrupted\n")
+        return 130
 
 
 def disassemble_file(path):
