@@ -114,6 +114,10 @@ def run_demo(outdir: str) -> int:
     from .playground import build_playground
     _write(play_path, build_playground(SAMPLE, font_family="times", size=14))
 
+    from .preview import comparison_png
+    png_path = os.path.join(outdir, "preview.png")
+    comparison_png(para.items, kp, gr, font, measure, scale=2.4, path=png_path)
+
     _hr("6. River detection (whitespace channels)")
     rivers = count_rivers(para.items, kp, font)
     print(f"   measure {measure:g}pt: {len(rivers)} river(s) >= 3 lines detected")
@@ -122,9 +126,10 @@ def run_demo(outdir: str) -> int:
               f"(len {rv['length']}) near x={rv['x']:.0f}pt")
 
     print("\nArtifacts written:")
-    for p in (kp_svg_path, gr_svg_path, cmp_path, play_path):
+    for p in (kp_svg_path, gr_svg_path, cmp_path, play_path, png_path):
         print(f"   {p}  ({os.path.getsize(p):,} bytes)")
-    print("\nOpen compare.html and playground.html in a browser.")
+    print("\nOpen compare.html and playground.html in a browser; "
+          "preview.png is a no-browser greeked comparison.")
     return 0
 
 

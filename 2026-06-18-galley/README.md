@@ -9,9 +9,9 @@ breaking a paragraph greedily one line at a time, it finds the set of line break
 that minimises a global "total demerits" cost over *every* possible breaking,
 turning "make this paragraph look good" into a shortest-path problem.
 
-**Status: Phase 2 (core build) complete.** All four required features work
-end-to-end; several stretch features are already in. Adversarial review,
-polish, and full test suite still to come.
+**Status: Phase 4 (stretch + polish) complete.** All four required features plus
+four stretch features work end-to-end; adversarial review done. Full test suite
+and ship notes still to come.
 
 ## Quick start
 

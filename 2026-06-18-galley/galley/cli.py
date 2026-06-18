@@ -11,7 +11,7 @@ from .model import build_paragraph
 from .hyphen import Hyphenator
 from .linebreak import break_paragraph, greedy_break, evaluate_breaks
 from .render import (
-    render_svg, render_ascii, ascii_paragraph,
+    render_svg, render_page_svg, render_ascii, ascii_paragraph,
     render_card, render_html_document,
 )
 from .verify import roundtrip_words, count_rivers
@@ -70,6 +70,7 @@ def cmd_hyphenate(args) -> int:
 
 
 def cmd_break(args) -> int:
+    _validate(args)
     h = Hyphenator() if not args.no_hyphenate else None
     text = _read_text(args)
     hyph = h.hyphenate if h else None
@@ -98,24 +99,38 @@ def cmd_break(args) -> int:
 
 
 def cmd_render(args) -> int:
+    _validate(args)
     h = Hyphenator() if not args.no_hyphenate else None
+    hyph = h.hyphenate if h else None
     text = _read_text(args)
     font = Font(args.font, args.size)
-    para = build_paragraph(text, font, hyphenate=(h.hyphenate if h else None))
     measure = float(args.width)
-    if args.method == "greedy":
-        br = greedy_break(para.items, measure)
+    # Split into paragraphs on blank lines so a whole document can be set.
+    chunks = [c.strip() for c in text.split("\n\n") if c.strip()] or [""]
+    rendered = []
+    total_lines = 0
+    for chunk in chunks:
+        para = build_paragraph(chunk, font, hyphenate=hyph)
+        br = (greedy_break(para.items, measure) if args.method == "greedy"
+              else break_paragraph(para.items, measure))
+        rendered.append((para.items, br))
+        total_lines += len(br.lines)
+    if len(rendered) == 1:
+        svg = render_svg(rendered[0][0], rendered[0][1], font, measure,
+                         heat=args.heat, title=args.title)
     else:
-        br = break_paragraph(para.items, measure)
-    svg = render_svg(para.items, br, font, measure, heat=args.heat,
-                     title=args.title)
+        svg = render_page_svg(rendered, font, measure, heat=args.heat,
+                              title=args.title)
     _write(args.output, svg)
-    print(f"wrote {args.output}  ({len(br.lines)} lines, "
-          f"{'feasible' if br.feasible else 'has overfull lines'})")
+    overfull = sum(1 for _, br in rendered
+                   for l in br.lines if l.ratio < -1.0 - 1e-9)
+    print(f"wrote {args.output}  ({len(chunks)} paragraph(s), {total_lines} "
+          f"lines, {overfull} overfull)")
     return 0
 
 
 def cmd_compare(args) -> int:
+    _validate(args)
     h = Hyphenator()
     text = _read_text(args)
     font = Font(args.font, args.size)
@@ -161,7 +176,25 @@ def cmd_compare(args) -> int:
     return 0
 
 
+def cmd_preview(args) -> int:
+    _validate(args)
+    from .preview import comparison_png
+    h = Hyphenator()
+    text = _read_text(args)
+    font = Font(args.font, args.size)
+    measure = float(args.width)
+    para = build_paragraph(text, font, hyphenate=h.hyphenate)
+    kp = break_paragraph(para.items, measure)
+    gr = greedy_break(para.items, measure)
+    comparison_png(para.items, kp, gr, font, measure, scale=args.scale,
+                   path=args.output)
+    print(f"wrote greeked PNG preview to {args.output} "
+          f"(Knuth–Plass {len(kp.lines)} lines vs greedy {len(gr.lines)})")
+    return 0
+
+
 def cmd_playground(args) -> int:
+    _validate(args)
     from .playground import build_playground
     text = _read_text(args)
     html = build_playground(text, font_family=args.font, size=args.size)
@@ -171,6 +204,7 @@ def cmd_playground(args) -> int:
 
 
 def cmd_rivers(args) -> int:
+    _validate(args)
     h = Hyphenator()
     text = _read_text(args)
     font = Font(args.font, args.size)
@@ -192,6 +226,20 @@ def cmd_demo(args) -> int:
 
 
 # --------------------------------------------------------------------------- #
+
+class CliError(Exception):
+    pass
+
+
+def _validate(args) -> None:
+    """Friendly validation of numeric arguments shared by several commands."""
+    width = getattr(args, "width", None)
+    if width is not None and width <= 0:
+        raise CliError(f"--width must be positive (got {width:g})")
+    size = getattr(args, "size", None)
+    if size is not None and size <= 0:
+        raise CliError(f"--size must be positive (got {size:g})")
+
 
 def _write(path, content):
     with open(path, "w", encoding="utf-8") as fh:
@@ -250,6 +298,12 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("-o", "--output", default="galley-playground.html")
     pp.set_defaults(func=cmd_playground)
 
+    gp = sub.add_parser("preview", help="render a greeked PNG (KP vs greedy)")
+    _add_text_args(gp, 252, with_method=False)
+    gp.add_argument("--scale", type=float, default=2.4)
+    gp.add_argument("-o", "--output", default="galley-preview.png")
+    gp.set_defaults(func=cmd_preview)
+
     vp = sub.add_parser("rivers", help="detect whitespace rivers in a set paragraph")
     _add_text_args(vp, 300, with_method=False)
     vp.set_defaults(func=cmd_rivers)
@@ -266,6 +320,9 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
+    except CliError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     except FileNotFoundError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

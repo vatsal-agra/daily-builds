@@ -328,6 +328,7 @@ function render(items, lines, measure, opts){
         if(it.x){ const t=document.createElementNS(SVGNS,'text');
           t.setAttribute('x',margin+x); t.setAttribute('y',baseline);
           t.setAttribute('font-size',SIZE); t.setAttribute('fill','#1a1a1a');
+          t.setAttribute('textLength',it.w); t.setAttribute('lengthAdjust','spacingAndGlyphs');
           t.setAttribute('xml:space','preserve'); t.textContent=it.x; svg.appendChild(t); }
         x+=it.w;
       } else if(isGlue(it)) x+=adjGlue(it,line.ratio);

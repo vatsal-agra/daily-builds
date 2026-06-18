@@ -29,14 +29,15 @@ def adjusted_glue(width: float, stretch: float, shrink: float, ratio: float) -> 
     return width + r * shrink
 
 
-def layout_line(items, line: Line) -> Tuple[List[Tuple[float, str]], float]:
+def layout_line(items, line: Line) -> Tuple[List[Tuple[float, str, float]], float]:
     """Place a line's boxes at absolute x offsets.
 
-    Returns ``(runs, end_x)`` where ``runs`` is a list of ``(x, text)`` for each
-    box (and a trailing hyphen if the line ends on a flagged break), and
-    ``end_x`` is the x where the line content ends.
+    Returns ``(runs, end_x)`` where ``runs`` is a list of ``(x, text, width)``
+    for each box (and a trailing hyphen if the line ends on a flagged break), and
+    ``end_x`` is the x where the line content ends.  The width lets renderers
+    pin each word to its exact metric so justified margins align perfectly.
     """
-    runs: List[Tuple[float, str]] = []
+    runs: List[Tuple[float, str, float]] = []
     x = 0.0
     i = line.start
     # Skip leading discardable glue at the start of the line.
@@ -46,7 +47,7 @@ def layout_line(items, line: Line) -> Tuple[List[Tuple[float, str]], float]:
         it = items[i]
         if it.is_box:
             if it.text:
-                runs.append((x, it.text))
+                runs.append((x, it.text, it.width))
             x += it.width
         elif it.is_glue:
             x += adjusted_glue(it.width, it.stretch, it.shrink, line.ratio)
@@ -55,7 +56,7 @@ def layout_line(items, line: Line) -> Tuple[List[Tuple[float, str]], float]:
         i += 1
     # Trailing hyphen if the line was broken at a flagged penalty.
     if line.flagged and not line.forced and line.end < len(items) and items[line.end].is_penalty:
-        runs.append((x, "-"))
+        runs.append((x, "-", items[line.end].width))
         x += items[line.end].width
     return runs, x
 
@@ -126,7 +127,15 @@ def render_svg(
             f'y2="{height - margin:.1f}" stroke="#d8d2c4" stroke-width="1"/>'
         )
 
-    for li, line in enumerate(breaking.lines):
+    _emit_lines(parts, items, breaking.lines, font, measure, margin,
+                baseline0, leading, heat, x_offset=0.0)
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _emit_lines(parts, items, lines, font, measure, margin, baseline0,
+                leading, heat, x_offset):
+    for li, line in enumerate(lines):
         baseline = baseline0 + li * leading
         if heat:
             color = _heat_color(line.badness)
@@ -136,12 +145,73 @@ def render_svg(
                 f'height="{leading:.1f}" fill="{color}" opacity="0.18"/>'
             )
         runs, _ = layout_line(items, line)
-        for x, text in runs:
+        for x, text, w in runs:
+            # textLength + lengthAdjust pins each word to its exact AFM width so
+            # the justified right margin lines up regardless of the viewer's font.
             parts.append(
-                f'<text x="{margin + x:.2f}" y="{baseline:.2f}" '
+                f'<text x="{margin + x_offset + x:.2f}" y="{baseline:.2f}" '
                 f'font-size="{font.size:.1f}" fill="#1a1a1a" '
+                f'textLength="{w:.2f}" lengthAdjust="spacingAndGlyphs" '
                 f'xml:space="preserve">{_xml_escape(text)}</text>'
             )
+
+
+def render_page_svg(
+    paragraphs,
+    font,
+    measure: float,
+    *,
+    leading: float = None,
+    margin: float = 24.0,
+    para_gap: float = None,
+    heat: bool = False,
+    show_measure: bool = True,
+    background: str = "#fbfaf7",
+    title: str = None,
+) -> str:
+    """Render several paragraphs as one stacked page.
+
+    ``paragraphs`` is a list of ``(items, breaking)`` tuples.  Paragraphs are
+    separated by ``para_gap`` vertical space.  This turns Galley's output into a
+    real galley of type rather than a single isolated paragraph.
+    """
+    if leading is None:
+        leading = font.size * 1.32
+    if para_gap is None:
+        para_gap = leading * 0.55
+    title_h = 0.0 if not title else font.size * 1.9 + 10
+
+    total_lines = sum(len(b.lines) for _, b in paragraphs)
+    n_para = len(paragraphs)
+    width = measure + 2 * margin
+    height = (title_h + 2 * margin + total_lines * leading
+              + max(0, n_para - 1) * para_gap)
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.1f}" '
+        f'height="{height:.1f}" viewBox="0 0 {width:.1f} {height:.1f}" '
+        f'font-family="{font.css}">',
+        f'<rect width="{width:.1f}" height="{height:.1f}" fill="{background}"/>',
+    ]
+    if title:
+        parts.append(
+            f'<text x="{margin:.1f}" y="{margin + font.size*1.3:.1f}" '
+            f'font-size="{font.size*1.2:.1f}" fill="#444" '
+            f'font-family="ui-sans-serif,system-ui,sans-serif" '
+            f'font-weight="600">{_xml_escape(title)}</text>'
+        )
+    if show_measure:
+        for rx in (margin, margin + measure):
+            parts.append(
+                f'<line x1="{rx:.1f}" y1="{margin + title_h:.1f}" x2="{rx:.1f}" '
+                f'y2="{height - margin:.1f}" stroke="#e2dccd" stroke-width="1"/>'
+            )
+
+    y_cursor = margin + title_h + font.size
+    for items, breaking in paragraphs:
+        _emit_lines(parts, items, breaking.lines, font, measure, margin,
+                    y_cursor, leading, heat, x_offset=0.0)
+        y_cursor += len(breaking.lines) * leading + para_gap
     parts.append("</svg>")
     return "".join(parts)
 
