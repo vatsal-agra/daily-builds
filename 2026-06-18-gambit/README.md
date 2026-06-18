@@ -1,6 +1,6 @@
 # Gambit
 
-> A from-scratch chess engine in pure Python. Status: **Phase 2 — core built.**
+> A from-scratch chess engine in pure Python. Status: **Phase 3 — reviewed & hardened.**
 
 See [PLAN.md](PLAN.md) for the concept, architecture, and feature list.
 

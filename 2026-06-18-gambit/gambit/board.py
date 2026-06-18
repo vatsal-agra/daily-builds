@@ -146,23 +146,35 @@ class Board:
         ranks = placement.split("/")
         if len(ranks) != 8:
             raise ValueError("FEN must have 8 ranks")
+        king_count = [0, 0]
         for ri, row in enumerate(ranks):
             rank = 7 - ri
             file = 0
             for ch in row:
                 if ch.isdigit():
                     file += int(ch)
-                else:
+                elif ch.lower() in "pnbrqk":
                     color = WHITE if ch.isupper() else BLACK
                     pt = " pnbrqk".index(ch.lower())
+                    if file > 7:
+                        raise ValueError(f"rank '{row}' overflows 8 files")
                     sq = sq_index(file, rank)
                     pc = make_piece(color, pt)
                     b.squares[sq] = pc
                     if pt == KING:
                         b.king_sq[color] = sq
+                        king_count[color] += 1
                     file += 1
+                else:
+                    raise ValueError(f"illegal piece char {ch!r} in FEN")
             if file != 8:
                 raise ValueError(f"rank '{row}' does not sum to 8 files")
+        if king_count != [1, 1]:
+            raise ValueError(
+                f"FEN must have exactly one king per side, got "
+                f"{king_count[WHITE]} white / {king_count[BLACK]} black")
+        if side not in ("w", "b"):
+            raise ValueError(f"side to move must be 'w' or 'b', got {side!r}")
 
         b.side = WHITE if side == "w" else BLACK
         b.castling = 0

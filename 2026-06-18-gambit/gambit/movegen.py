@@ -165,6 +165,8 @@ _PT_LETTER = {KNIGHT: "N", BISHOP: "B", ROOK: "R", QUEEN: "Q", KING: "K"}
 def to_san(board, m):
     """Standard Algebraic Notation for a *legal* move in the current position."""
     frm, to = move_from(m), move_to(m)
+    if frm == to:
+        return "(none)"
     flag = move_flag(m)
     pc = board.squares[frm]
     pt = piece_type(pc)
