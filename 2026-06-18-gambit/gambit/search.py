@@ -156,13 +156,16 @@ class Search:
             return 0  # stalemate
 
         if self.use_tt:
-            if best <= alpha_orig:
-                flag = TT_UPPER
-            elif best >= beta:
-                flag = TT_LOWER
-            else:
-                flag = TT_EXACT
-            self.tt[key] = (depth, self._to_tt_score(best, ply), flag, best_move)
+            existing = self.tt.get(key)
+            # depth-preferred replacement: keep a deeper existing entry
+            if existing is None or depth >= existing[0]:
+                if best <= alpha_orig:
+                    flag = TT_UPPER
+                elif best >= beta:
+                    flag = TT_LOWER
+                else:
+                    flag = TT_EXACT
+                self.tt[key] = (depth, self._to_tt_score(best, ply), flag, best_move)
         return best
 
     def _quiesce(self, board: Board, alpha: int, beta: int, ply: int) -> int:

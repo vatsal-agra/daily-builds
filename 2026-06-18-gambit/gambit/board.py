@@ -71,6 +71,8 @@ def sq_name(sq: int) -> str:
 
 
 def parse_sq(name: str) -> int:
+    if len(name) != 2 or name[0] not in "abcdefgh" or name[1] not in "12345678":
+        raise ValueError(f"invalid square name {name!r}")
     f = "abcdefgh".index(name[0])
     r = int(name[1]) - 1
     return sq_index(f, r)
@@ -147,6 +149,7 @@ class Board:
         ranks = placement.split("/")
         if len(ranks) != 8:
             raise ValueError(f"FEN placement needs 8 ranks, got {len(ranks)}")
+        king_count = [0, 0]
         for ri, row in enumerate(ranks):
             rank = 7 - ri  # FEN starts from rank 8
             file = 0
@@ -163,6 +166,7 @@ class Board:
                     b.squares[sq] = piece
                     if piece_type(piece) == KING:
                         b.king_sq[piece_color(piece)] = sq
+                        king_count[piece_color(piece)] += 1
                     file += 1
             if file != 8:
                 raise ValueError(f"FEN rank does not sum to 8 files: {row!r}")
@@ -182,8 +186,10 @@ class Board:
         b.ep = None if ep == "-" else parse_sq(ep)
         b.halfmove = int(half)
         b.fullmove = int(full)
-        if b.king_sq[WHITE] is None or b.king_sq[BLACK] is None:
-            raise ValueError("FEN missing a king")
+        if king_count[WHITE] != 1 or king_count[BLACK] != 1:
+            raise ValueError(
+                f"FEN must have exactly one king per side, got "
+                f"{king_count[WHITE]} white / {king_count[BLACK]} black")
         b.zobrist = b._compute_zobrist()
         return b
 

@@ -76,9 +76,11 @@ def result_text(board: Board, history_counts: dict | None = None) -> str | None:
 
 
 def _insufficient_material(board: Board) -> bool:
-    from .board import piece_type, piece_color, KING, BISHOP, KNIGHT, PAWN
-    minors = {0: 0, 1: 0}
-    others = False
+    """Only the universally dead positions: at most a single minor piece on the
+    whole board (K-vs-K, KN-vs-K, KB-vs-K). KB-vs-KB and KN-vs-KN are *not*
+    automatic draws under the rules, so they are not flagged here."""
+    from .board import piece_type, KING, BISHOP, KNIGHT
+    minors = 0
     for sq in range(128):
         if sq & 0x88:
             continue
@@ -89,12 +91,10 @@ def _insufficient_material(board: Board) -> bool:
         if pt == KING:
             continue
         if pt in (BISHOP, KNIGHT):
-            minors[piece_color(p)] += 1
+            minors += 1
         else:
-            others = True
-    if others:
-        return False
-    return minors[0] <= 1 and minors[1] <= 1
+            return False  # a pawn, rook or queen exists -> not a dead draw
+    return minors <= 1
 
 
 def play_game(white: Engine, black: Engine, start_fen: str | None = None,
