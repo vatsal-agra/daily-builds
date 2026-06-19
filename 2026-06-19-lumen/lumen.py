@@ -11,6 +11,7 @@ Scenes: cornell | spheres | caustic | custom <file.json>
 
 import argparse
 import base64
+import copy
 import json
 import math
 import os
@@ -1077,19 +1078,25 @@ def cmd_render(args):
             print("--file required for custom scene", file=sys.stderr)
             sys.exit(1)
         json_path = args.file
-        world, lights, bg, cam_obj = load_scene_json(json_path)
+        # Parse camera parameters directly from JSON to avoid reconstruction errors
+        with open(json_path) as f:
+            jdata = json.load(f)
+        cd = jdata.get("camera", {})
         cam_spec = _CamSpec(
-            lookfrom=list(cam_obj.origin),
-            lookat=list(cam_obj.lower_left + cam_obj.horizontal/2 + cam_obj.vertical/2 + cam_obj.origin),
-            vup=[0, 1, 0], vfov_deg=40, aspect=args.width/args.height,
+            lookfrom=cd.get("from", [0, 0, -5]),
+            lookat=cd.get("to", [0, 0, 0]),
+            vup=cd.get("up", [0, 1, 0]),
+            vfov_deg=cd.get("vfov", 40),
+            aspect=args.width / args.height,
+            aperture=cd.get("aperture", 0.0),
+            focus_dist=cd.get("focus_dist", None),
         )
-        # Actually, JSON loader handles cam directly — just rebuild from JSON
         scene_name = None
     else:
         if scene_name not in _DEFAULT_CAMS:
             print(f"Unknown scene {scene_name!r}. Choose: {list(SCENES)}", file=sys.stderr)
             sys.exit(1)
-        cam_spec = _DEFAULT_CAMS[scene_name]
+        cam_spec = copy.copy(_DEFAULT_CAMS[scene_name])
         cam_spec.aspect = args.width / args.height
 
     workers = args.workers or max(1, cpu_count())
@@ -1121,7 +1128,7 @@ def cmd_demo(args):
     workers = max(1, cpu_count())
     for name, w, h, spp in configs:
         print(f"\n── {name.upper()} ─────────────────────────────────")
-        cam = _DEFAULT_CAMS[name]
+        cam = copy.copy(_DEFAULT_CAMS[name])
         cam.aspect = w / h
         t0 = time.time()
         img_linear = render(name, None, cam, w, h, spp,
