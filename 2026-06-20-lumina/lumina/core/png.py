@@ -10,17 +10,30 @@ import math
 # ── Tonemapping ───────────────────────────────────────────────────────────────
 
 def gamma_correct(c, gamma=2.2):
-    """Apply sRGB-ish gamma correction (linear → display)."""
-    return max(0.0, min(1.0, c)) ** (1.0 / gamma)
+    """Apply sRGB-ish gamma correction (linear → display). NaN → 0, inf → 1."""
+    if math.isnan(c) or c < 0:
+        return 0.0
+    if math.isinf(c):
+        return 1.0
+    return min(1.0, c) ** (1.0 / gamma)
 
 
 def aces_film(x):
     """ACES filmic tonemapping curve (approximation by Krzysztof Narkowicz)."""
+    if math.isnan(x) or x < 0:
+        return 0.0
+    if math.isinf(x):
+        return 1.0
     a, b, c, d, e = 2.51, 0.03, 2.43, 0.59, 0.14
-    return max(0.0, min(1.0, (x * (a * x + b)) / (x * (c * x + d) + e)))
+    result = (x * (a * x + b)) / (x * (c * x + d) + e)
+    return max(0.0, min(1.0, result))
 
 
 def reinhard(x):
+    if math.isnan(x) or x < 0:
+        return 0.0
+    if math.isinf(x):
+        return 1.0
     return x / (1.0 + x)
 
 

@@ -67,19 +67,26 @@ class Plane:
         return True
 
     def bounding_box(self):
-        # Planes are infinite; give a large AABB
+        # Planes are infinite; build a large slab along the normal direction.
+        # Works for any normal, not just axis-aligned ones.
         BIG = 1e4
         n = self.normal
-        # Create a huge slab around the plane's normal direction
-        if abs(n.y) > 0.9:
-            return AABB(Vec3(-BIG, self.point.y - 0.001, -BIG),
-                        Vec3(BIG,  self.point.y + 0.001,  BIG))
-        elif abs(n.x) > 0.9:
-            return AABB(Vec3(self.point.x - 0.001, -BIG, -BIG),
-                        Vec3(self.point.x + 0.001,  BIG,  BIG))
+        d = self.point.dot(n)   # signed distance from origin
+        # Project BIG cube corners onto the normal to get tight axis-aligned slab
+        # The plane occupies the thin band [d-eps, d+eps] in the normal direction.
+        # AABB needs axis-aligned bounds: for each axis, the extent is BIG unless
+        # the normal is nearly perpendicular to that axis (in which case ±BIG suffices).
+        eps = 0.001
+        px, py, pz = self.point.x, self.point.y, self.point.z
+        if abs(n.x) >= abs(n.y) and abs(n.x) >= abs(n.z):
+            # Normal dominates X
+            return AABB(Vec3(px - eps, -BIG, -BIG), Vec3(px + eps, BIG, BIG))
+        elif abs(n.y) >= abs(n.x) and abs(n.y) >= abs(n.z):
+            # Normal dominates Y
+            return AABB(Vec3(-BIG, py - eps, -BIG), Vec3(BIG, py + eps, BIG))
         else:
-            return AABB(Vec3(-BIG, -BIG, self.point.z - 0.001),
-                        Vec3( BIG,  BIG, self.point.z + 0.001))
+            # Normal dominates Z
+            return AABB(Vec3(-BIG, -BIG, pz - eps), Vec3(BIG, BIG, pz + eps))
 
 
 class Triangle:
@@ -181,27 +188,13 @@ class Box:
         dy = Vec3(0, b.y - a.y, 0)
         dz = Vec3(0, 0, b.z - a.z)
         self.faces = [
-            Quad(a, dx, dy, material),                          # front  -z
-            Quad(Vec3(b.x, a.y, a.z), -dx, dy, material),      # back   +z... wait
-            Quad(a, dz, dy, material),                          # left
-            Quad(Vec3(b.x, a.y, a.z), -dz, dy, material),      # right
-            Quad(Vec3(a.x, b.y, a.z), dx, dz, material),       # top
-            Quad(a, dx, dz, material),                          # bottom ... swap dz sign
+            Quad(a,                         dx,  dy, material),   # front face  (z=a.z)
+            Quad(Vec3(b.x, a.y, b.z),      -dx,  dy, material),   # back face   (z=b.z)
+            Quad(a,                         dz,  dy, material),   # left face   (x=a.x)
+            Quad(Vec3(b.x, a.y, a.z),      -dz,  dy, material),   # right face  (x=b.x)
+            Quad(a,                         dx,  dz, material),   # bottom face (y=a.y)
+            Quad(Vec3(a.x, b.y, b.z),       dx, -dz, material),   # top face    (y=b.y)
         ]
-        # Rebuild properly
-        self.faces = []
-        # front face (z=a.z), normal -z
-        self.faces.append(Quad(a, dx, dy, material))
-        # back face (z=b.z), normal +z
-        self.faces.append(Quad(Vec3(b.x, a.y, b.z), -dx, dy, material))
-        # left face (x=a.x), normal -x
-        self.faces.append(Quad(a, dz, dy, material))
-        # right face (x=b.x), normal +x
-        self.faces.append(Quad(Vec3(b.x, a.y, a.z), -dz, dy, material))
-        # bottom face (y=a.y), normal -y
-        self.faces.append(Quad(a, dx, dz, material))
-        # top face (y=b.y), normal +y
-        self.faces.append(Quad(Vec3(a.x, b.y, b.z), dx, -dz, material))
         self._bbox = AABB(a, b)
 
     def hit(self, ray, t_min, t_max, rec):

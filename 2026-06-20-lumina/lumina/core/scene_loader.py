@@ -88,7 +88,12 @@ def load_scene(path_or_dict):
         d = path_or_dict
 
     # Camera
+    if 'camera' not in d:
+        raise ValueError("Scene JSON missing required 'camera' field")
     cam_d = d['camera']
+    for req in ('look_from', 'look_at'):
+        if req not in cam_d:
+            raise ValueError(f"Camera missing required field {req!r}")
     camera = Camera(
         look_from  = _v(cam_d['look_from']),
         look_at    = _v(cam_d['look_at']),

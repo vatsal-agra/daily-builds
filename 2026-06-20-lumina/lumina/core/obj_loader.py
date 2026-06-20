@@ -28,8 +28,18 @@ def load_obj(path, material, scale=1.0, offset=None):
                                      z * scale + offset.z))
             elif parts[0] == 'f':
                 # Face indices may be "v", "v/vt", or "v/vt/vn" — we only need v
-                def parse_idx(token):
-                    return int(token.split('/')[0]) - 1
+                def parse_idx(token, nv=len(vertices)):
+                    raw = int(token.split('/')[0])
+                    # OBJ is 1-indexed; negative indices count from end (OBJ spec)
+                    if raw > 0:
+                        idx = raw - 1
+                    elif raw < 0:
+                        idx = nv + raw
+                    else:
+                        raise ValueError(f"OBJ index 0 is invalid (indices are 1-based)")
+                    if idx < 0 or idx >= nv:
+                        raise ValueError(f"OBJ face index {raw} out of range (have {nv} vertices)")
+                    return idx
                 indices = [parse_idx(t) for t in parts[1:]]
                 # Fan-triangulate
                 for i in range(1, len(indices) - 1):

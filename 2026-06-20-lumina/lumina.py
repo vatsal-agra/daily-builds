@@ -35,18 +35,25 @@ def cmd_render(args):
 
     camera, world, lights, settings = load_scene(scene_path)
 
-    # CLI overrides
-    if args.width:   settings['width']   = args.width
-    if args.height:  settings['height']  = args.height
-    if args.samples: settings['samples'] = args.samples
-    if args.mode:    settings['mode']    = args.mode
-    if args.tonemap: settings['tonemap'] = args.tonemap
-    if args.depth:   settings['max_depth'] = args.depth
+    # CLI overrides (use is not None to correctly handle 0 values)
+    if args.width   is not None: settings['width']     = args.width
+    if args.height  is not None: settings['height']    = args.height
+    if args.samples is not None: settings['samples']   = args.samples
+    if args.mode    is not None: settings['mode']      = args.mode
+    if args.tonemap is not None: settings['tonemap']   = args.tonemap
+    if args.depth   is not None: settings['max_depth'] = args.depth
 
     W  = settings['width']
     H  = settings['height']
     S  = settings['samples']
     md = settings['max_depth']
+
+    if W <= 0 or H <= 0:
+        print(f"Error: width and height must be positive (got {W}×{H})", file=sys.stderr)
+        sys.exit(1)
+    if S <= 0:
+        print(f"Error: samples must be positive (got {S})", file=sys.stderr)
+        sys.exit(1)
     mode     = settings['mode']
     tonemap  = settings['tonemap']
     sky_raw  = settings.get('sky')
@@ -64,8 +71,6 @@ def cmd_render(args):
             print("  [warn] No lights in scene — Whitted mode will be dark. "
                   "Add lights or switch to 'path' mode.", file=sys.stderr)
 
-        def sky_colour_fn(ray=None):
-            return sky_raw
         pixels = render_whitted_full(
             world=world, camera=camera, lights=lights,
             sky_colour=sky_raw,
