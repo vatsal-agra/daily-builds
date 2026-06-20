@@ -124,6 +124,8 @@ class Triangle:
         t = f * e2.dot(q)
         if t < t_min or t > t_max:
             return False
+        if not self.two_sided and ray.direction.dot(self._normal) > 0:
+            return False
         rec.t = t
         rec.p = ray.at(t)
         rec.set_face_normal(ray, self._normal)
@@ -187,13 +189,14 @@ class Box:
         dx = Vec3(b.x - a.x, 0, 0)
         dy = Vec3(0, b.y - a.y, 0)
         dz = Vec3(0, 0, b.z - a.z)
+        # Each Quad's outward normal = u_vec × v_vec — verified analytically.
         self.faces = [
-            Quad(a,                         dx,  dy, material),   # front face  (z=a.z)
-            Quad(Vec3(b.x, a.y, b.z),      -dx,  dy, material),   # back face   (z=b.z)
-            Quad(a,                         dz,  dy, material),   # left face   (x=a.x)
-            Quad(Vec3(b.x, a.y, a.z),      -dz,  dy, material),   # right face  (x=b.x)
-            Quad(a,                         dx,  dz, material),   # bottom face (y=a.y)
-            Quad(Vec3(a.x, b.y, b.z),       dx, -dz, material),   # top face    (y=b.y)
+            Quad(a,                          dy,  dx, material),   # front   z=a.z  n=-z
+            Quad(Vec3(a.x, a.y, b.z),        dx,  dy, material),   # back    z=b.z  n=+z
+            Quad(a,                          dz,  dy, material),   # left    x=a.x  n=-x  (dz×dy=-x)
+            Quad(Vec3(b.x, a.y, a.z),        dy,  dz, material),   # right   x=b.x  n=+x  (dy×dz=+x)
+            Quad(a,                          dx,  dz, material),   # bottom  y=a.y  n=-y  (dx×dz=-y)
+            Quad(Vec3(a.x, b.y, a.z),        dz,  dx, material),   # top     y=b.y  n=+y  (dz×dx=+y)
         ]
         self._bbox = AABB(a, b)
 
@@ -246,7 +249,7 @@ class PrimitiveList:
 
     def bounding_box(self):
         if not self.objects:
-            return AABB(Vec3(-1,-1,-1), Vec3(1,1,1))
+            raise ValueError("bounding_box() called on empty PrimitiveList")
         box = self.objects[0].bounding_box()
         for obj in self.objects[1:]:
             box = AABB.surrounding(box, obj.bounding_box())

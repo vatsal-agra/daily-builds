@@ -50,8 +50,11 @@ def tonemap(pixels, method='aces', gamma=2.2):
             r = reinhard(p.x); g = reinhard(p.y); b = reinhard(p.z)
         elif method == 'clamp':
             r = max(0, min(1, p.x)); g = max(0, min(1, p.y)); b = max(0, min(1, p.z))
+        elif method == 'gamma':
+            r = p.x; g = p.y; b = p.z   # just gamma-correct raw linear values
         else:
-            r = p.x; g = p.y; b = p.z
+            raise ValueError(f"Unknown tonemap method: {method!r}. "
+                             "Choose from: aces, reinhard, clamp, gamma")
         r = gamma_correct(r, gamma)
         g = gamma_correct(g, gamma)
         b = gamma_correct(b, gamma)

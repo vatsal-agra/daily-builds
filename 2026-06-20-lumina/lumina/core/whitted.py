@@ -92,7 +92,7 @@ def _lambertian_shade(rec, lights, world):
                 ndl = max(0.0, rec.normal.dot(L))
                 colour = colour + albedo * light.colour * (light.intensity * ndl)
 
-    return colour.clamp()
+    return colour
 
 
 def _sky(ray, sky_colour):

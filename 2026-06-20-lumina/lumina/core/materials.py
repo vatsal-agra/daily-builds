@@ -121,30 +121,42 @@ class Phong:
     def shade(self, ray_in, rec, lights, world, t_min=0.001, t_max=1e9):
         """Whitted shading: iterate lights, cast shadow rays."""
         from .ray import Ray
-        colour = self.ambient.clamp()
+        from .lights import AreaLight
+        colour = self.ambient
         view_dir = (-ray_in.direction).unit()
 
         for light in lights:
-            L, dist = light.direction_and_distance(rec.p)
-            # shadow ray
-            shadow = Ray(rec.p, L)
-            shadow_rec = HitRecord()
-            in_shadow = world.hit(shadow, 0.001, dist - 0.001, shadow_rec)
-            if in_shadow:
-                continue
+            if isinstance(light, AreaLight):
+                # Stratified soft shadows — average over all area light samples
+                diffuse_sum = Vec3(0, 0, 0)
+                spec_sum    = Vec3(0, 0, 0)
+                count = 0
+                for L, dist in light.sample_directions(rec.p):
+                    count += 1
+                    shadow_rec = HitRecord()
+                    if world.hit(Ray(rec.p, L), 0.001, dist - 0.001, shadow_rec):
+                        continue
+                    ndl = max(0.0, rec.normal.dot(L))
+                    diffuse_sum += light.colour * (light.intensity * ndl * self.diffuse)
+                    h = (L + view_dir).unit()
+                    ndh = max(0.0, rec.normal.dot(h))
+                    spec_sum += light.colour * (light.intensity * ndh ** self.shininess * self.specular)
+                if count:
+                    colour = colour + diffuse_sum * (1.0 / count) + spec_sum * (1.0 / count)
+            else:
+                L, dist = light.direction_and_distance(rec.p)
+                shadow = Ray(rec.p, L)
+                shadow_rec = HitRecord()
+                if world.hit(shadow, 0.001, dist - 0.001, shadow_rec):
+                    continue
+                ndl = max(0.0, rec.normal.dot(L))
+                diffuse_contrib = self.diffuse * (light.intensity * ndl)
+                h = (L + view_dir).unit()
+                ndh = max(0.0, rec.normal.dot(h))
+                spec_contrib = self.specular * (light.intensity * ndh ** self.shininess)
+                colour = colour + diffuse_contrib * light.colour + spec_contrib * light.colour
 
-            # diffuse
-            ndl = max(0.0, rec.normal.dot(L))
-            diffuse_contrib = self.diffuse * (light.intensity * ndl)
-
-            # specular (Blinn-Phong half-vector)
-            h = (L + view_dir).unit()
-            ndh = max(0.0, rec.normal.dot(h))
-            spec_contrib = self.specular * (light.intensity * ndh ** self.shininess)
-
-            colour = colour + diffuse_contrib * light.colour + spec_contrib * light.colour
-
-        return colour.clamp()
+        return colour
 
     def emitted(self, u, v, p):
         return Vec3(0, 0, 0)
