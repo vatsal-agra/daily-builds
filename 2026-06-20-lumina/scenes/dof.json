@@ -1,0 +1,42 @@
+{
+  "camera": {
+    "look_from": [3, 1.5, 6],
+    "look_at":   [0, 0.5, -1],
+    "vup":       [0, 1, 0],
+    "vfov":      22,
+    "aspect":    1.777,
+    "aperture":  0.18,
+    "focus_dist": 7.2
+  },
+  "objects": [
+    {
+      "type": "sphere", "center": [-2, 0.5, -1], "radius": 0.5,
+      "material": { "type": "lambertian", "albedo": [0.9, 0.2, 0.1] }
+    },
+    {
+      "type": "sphere", "center": [-1, 0.5, -1], "radius": 0.5,
+      "material": { "type": "lambertian", "albedo": [0.1, 0.8, 0.2] }
+    },
+    {
+      "type": "sphere", "center": [0, 0.5, -1], "radius": 0.5,
+      "material": { "type": "metal", "albedo": [0.8, 0.8, 0.8], "fuzz": 0.01 }
+    },
+    {
+      "type": "sphere", "center": [1, 0.5, -1], "radius": 0.5,
+      "material": { "type": "dielectric", "ior": 1.5 }
+    },
+    {
+      "type": "sphere", "center": [2, 0.5, -1], "radius": 0.5,
+      "material": { "type": "lambertian", "albedo": [0.2, 0.3, 0.9] }
+    },
+    {
+      "type": "sphere", "center": [0, -100, -1], "radius": 100,
+      "material": { "type": "lambertian", "albedo": [0.5, 0.5, 0.5] }
+    }
+  ],
+  "lights": [],
+  "render": {
+    "width": 400, "height": 225, "samples": 64,
+    "mode": "path", "max_depth": 10, "tonemap": "aces"
+  }
+}
