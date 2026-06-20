@@ -86,10 +86,11 @@ def cmd_render(args):
             t = 0.5 * (ray.direction.unit().y + 1.0)
             return Vec3(1, 1, 1) * (1 - t) + Vec3(0.5, 0.7, 1.0) * t
 
+        workers = getattr(args, 'workers', None)
         pixels = render_path(
             world=world, camera=camera, sky_fn=sky_fn,
             width=W, height=H, samples_per_pixel=S, max_depth=md,
-            progress_cb=_progress,
+            progress_cb=_progress, workers=workers,
         )
 
     elapsed = time.perf_counter() - t0
@@ -197,6 +198,8 @@ def cmd_demo(args):
         ('spheres.json',      'path',    32,  'aces'),
         ('dof.json',          'path',    32,  'aces'),
         ('cornell.json',      'path',    64,  'aces'),
+        ('showcase.json',     'path',    64,  'aces'),
+        ('mesh.json',         'path',    48,  'aces'),
     ]
 
     for fname, mode, spp, tm in scenes:
@@ -263,6 +266,8 @@ def main():
     p_render.add_argument('--mode',    choices=['path', 'whitted'], default=None)
     p_render.add_argument('--tonemap', choices=['aces', 'reinhard', 'clamp', 'gamma'], default=None)
     p_render.add_argument('--depth',   type=int, default=None, help='Max ray bounce depth')
+    p_render.add_argument('--workers', type=int, default=None,
+                          help='Worker processes for path tracing (default: CPU count)')
 
     # bench
     p_bench = sub.add_parser('bench', help='BVH vs brute-force benchmark')
