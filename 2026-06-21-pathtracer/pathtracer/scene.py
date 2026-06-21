@@ -71,10 +71,10 @@ def load_scene(path_or_dict):
     aperture  = cam_data.get('aperture', 0.0)
     focus_dist = cam_data.get('focus_dist', None)
 
-    width  = data.get('width',  400)
-    height = data.get('height', 225)
-    spp    = data.get('spp',    64)
-    max_depth = data.get('max_depth', 10)
+    width  = max(1, int(data.get('width',  400)))
+    height = max(1, int(data.get('height', 225)))
+    spp    = max(1, int(data.get('spp',    64)))
+    max_depth = max(1, int(data.get('max_depth', 10)))
 
     aspect = width / height
     camera = Camera(look_from, look_at, up, vfov, aspect, aperture, focus_dist)

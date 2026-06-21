@@ -35,7 +35,7 @@ class Metal:
     def scatter(self, ray_in, hit, rng):
         reflected = reflect(ray_in.direction.normalize(), hit.normal)
         fuzz = self.roughness * random_unit_vector(rng) if self.roughness > 0 else Vec3(0, 0, 0)
-        scattered_dir = reflected + fuzz
+        scattered_dir = (reflected + fuzz).normalize()
         if scattered_dir.dot(hit.normal) <= 0:
             return None  # absorbed below surface
         from .ray import Ray

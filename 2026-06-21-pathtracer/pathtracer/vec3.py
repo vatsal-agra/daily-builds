@@ -118,6 +118,7 @@ def refract(v, n, eta_ratio):
 
 def schlick(cosine, ref_idx):
     """Fresnel-Schlick approximation for reflectance."""
+    cosine = max(0.0, min(1.0, cosine))  # clamp; fp error can push outside [0,1]
     r0 = ((1.0 - ref_idx) / (1.0 + ref_idx)) ** 2
     return r0 + (1.0 - r0) * (1.0 - cosine) ** 5
 

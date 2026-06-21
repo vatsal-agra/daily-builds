@@ -45,7 +45,10 @@ class Sphere:
                 return None
         t = root
         p = ray.at(t)
-        outward_normal = (p - self.center) / self.radius
+        # Always use abs(radius) so negative-radius (hollow-glass) spheres
+        # have outward normals pointing away from the center, keeping the
+        # front_face / IOR logic in Dielectric correct.
+        outward_normal = (p - self.center) / abs(self.radius)
         u, v = _sphere_uv(outward_normal)
         return HitRecord(t, p, outward_normal, ray.direction, u, v, self.material)
 
@@ -75,11 +78,15 @@ class Box:
         self.material = material
 
     def hit(self, ray, t_min, t_max):
-        # Slab intersection — track which face was hit for normals
+        # Slab intersection — track entry AND exit axes for normals.
+        # Tracking both handles rays that start inside the box (hit_axis_enter
+        # stays -1 in that case; we fall through to the exit hit).
         t_enter = t_min
         t_exit = t_max
-        hit_axis = -1
-        hit_sign = 0
+        hit_axis_enter = -1
+        hit_sign_enter = 0
+        hit_axis_exit = -1
+        hit_sign_exit = 0
 
         for axis in range(3):
             o = (ray.origin.x, ray.origin.y, ray.origin.z)[axis]
@@ -100,24 +107,32 @@ class Box:
 
             if t0 > t_enter:
                 t_enter = t0
-                hit_axis = axis
-                hit_sign = -1 if d > 0 else 1
+                hit_axis_enter = axis
+                hit_sign_enter = -1 if d > 0 else 1
 
-            t_exit = min(t_exit, t1)
+            if t1 < t_exit:
+                t_exit = t1
+                hit_axis_exit = axis
+                hit_sign_exit = 1 if d > 0 else -1  # exit normal points outward
+
             if t_exit <= t_enter:
                 return None
 
-        if t_enter < t_min or t_enter > t_max or hit_axis < 0:
+        # Choose the actual hit: entry if the ray came from outside, exit otherwise.
+        if hit_axis_enter >= 0 and t_enter >= t_min and t_enter <= t_max:
+            t = t_enter
+            nc = [0.0, 0.0, 0.0]
+            nc[hit_axis_enter] = float(hit_sign_enter)
+        elif hit_axis_exit >= 0 and t_exit >= t_min and t_exit <= t_max:
+            # Ray started inside the box — return the exit face.
+            t = t_exit
+            nc = [0.0, 0.0, 0.0]
+            nc[hit_axis_exit] = float(hit_sign_exit)
+        else:
             return None
 
-        t = t_enter
         p = ray.at(t)
-
-        normal_components = [0.0, 0.0, 0.0]
-        normal_components[hit_axis] = float(hit_sign)
-        outward_normal = Vec3(*normal_components)
-
-        # UV: project onto dominant face
+        outward_normal = Vec3(*nc)
         u, v = _box_uv(p, outward_normal, self.p_min, self.p_max)
         return HitRecord(t, p, outward_normal, ray.direction, u, v, self.material)
 
