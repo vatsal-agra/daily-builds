@@ -1,0 +1,92 @@
+{
+  "_comment": "Depth-of-field demo: row of spheres, focus on middle, bokeh on near/far",
+  "width": 400,
+  "height": 225,
+  "spp": 64,
+  "max_depth": 8,
+  "camera": {
+    "look_from": [0, 1.5, 6],
+    "look_at":   [0, 0.5, 0],
+    "up":        [0, 1, 0],
+    "vfov":      25,
+    "aperture":  0.3,
+    "focus_dist": 6.0
+  },
+  "background": {
+    "type": "gradient",
+    "top":    [0.4, 0.6, 1.0],
+    "bottom": [0.9, 0.9, 1.0]
+  },
+  "objects": [
+    {
+      "_comment": "Ground plane with checker texture",
+      "type": "sphere",
+      "center": [0, -100.5, 0],
+      "radius": 100,
+      "material": {
+        "type": "lambertian",
+        "albedo": {
+          "type": "checker",
+          "even": [0.85, 0.85, 0.90],
+          "odd":  [0.30, 0.30, 0.35],
+          "scale": 5.0
+        }
+      }
+    },
+    {
+      "_comment": "Far sphere (blurred)",
+      "type": "sphere",
+      "center": [0, 0.5, -4],
+      "radius": 0.5,
+      "material": {"type": "metal",
+                   "albedo": {"type": "solid", "color": [0.9, 0.6, 0.2]},
+                   "roughness": 0.02}
+    },
+    {
+      "_comment": "Mid-far sphere",
+      "type": "sphere",
+      "center": [-1.4, 0.5, -2],
+      "radius": 0.5,
+      "material": {"type": "lambertian",
+                   "albedo": {"type": "solid", "color": [0.8, 0.2, 0.2]}}
+    },
+    {
+      "_comment": "Center sphere — in focus",
+      "type": "sphere",
+      "center": [0, 0.5, 0],
+      "radius": 0.5,
+      "material": {"type": "dielectric", "ior": 1.5}
+    },
+    {
+      "_comment": "Center sphere inner (hollow)",
+      "type": "sphere",
+      "center": [0, 0.5, 0],
+      "radius": -0.47,
+      "material": {"type": "dielectric", "ior": 1.5}
+    },
+    {
+      "_comment": "Near sphere (blurred)",
+      "type": "sphere",
+      "center": [1.4, 0.5, 2],
+      "radius": 0.5,
+      "material": {
+        "type": "lambertian",
+        "albedo": {
+          "type": "perlin",
+          "color1": [0.2, 0.7, 0.3],
+          "color2": [0.05, 0.3, 0.1],
+          "scale": 6.0
+        }
+      }
+    },
+    {
+      "_comment": "Very near sphere (heavily blurred)",
+      "type": "sphere",
+      "center": [-1.4, 0.5, 3.5],
+      "radius": 0.5,
+      "material": {"type": "metal",
+                   "albedo": {"type": "solid", "color": [0.7, 0.7, 0.9]},
+                   "roughness": 0.0}
+    }
+  ]
+}

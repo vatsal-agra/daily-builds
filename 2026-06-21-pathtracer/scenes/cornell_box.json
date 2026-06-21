@@ -1,0 +1,76 @@
+{
+  "_comment": "Cornell Box — area light on ceiling, red/green walls, color bleeding",
+  "width": 400,
+  "height": 400,
+  "spp": 128,
+  "max_depth": 10,
+  "camera": {
+    "look_from": [278, 278, -800],
+    "look_at":   [278, 278,  0],
+    "up":        [0, 1, 0],
+    "vfov":      40,
+    "aperture":  0.0
+  },
+  "background": {
+    "type": "solid",
+    "color": [0, 0, 0]
+  },
+  "objects": [
+    {
+      "_comment": "Left wall — red (inner face at x=0)",
+      "type": "box",
+      "p_min": [-10,   0,   0],
+      "p_max": [  0, 555, 555],
+      "material": {"type": "lambertian", "albedo": {"type": "solid", "color": [0.65, 0.05, 0.05]}}
+    },
+    {
+      "_comment": "Right wall — green (inner face at x=555)",
+      "type": "box",
+      "p_min": [555,   0,   0],
+      "p_max": [565, 555, 555],
+      "material": {"type": "lambertian", "albedo": {"type": "solid", "color": [0.12, 0.45, 0.15]}}
+    },
+    {
+      "_comment": "Floor (inner face at y=0)",
+      "type": "box",
+      "p_min": [  0, -10,   0],
+      "p_max": [555,   0, 555],
+      "material": {"type": "lambertian", "albedo": {"type": "solid", "color": [0.73, 0.73, 0.73]}}
+    },
+    {
+      "_comment": "Ceiling (inner face at y=555) — has hole where light is, approximated by full ceiling + light overlapping",
+      "type": "box",
+      "p_min": [  0, 555,   0],
+      "p_max": [555, 565, 555],
+      "material": {"type": "lambertian", "albedo": {"type": "solid", "color": [0.73, 0.73, 0.73]}}
+    },
+    {
+      "_comment": "Back wall (inner face at z=555)",
+      "type": "box",
+      "p_min": [  0,   0, 555],
+      "p_max": [555, 555, 565],
+      "material": {"type": "lambertian", "albedo": {"type": "solid", "color": [0.73, 0.73, 0.73]}}
+    },
+    {
+      "_comment": "Area light — sits at y=553 just below ceiling inner face at y=555, visible from below",
+      "type": "box",
+      "p_min": [183, 553, 177],
+      "p_max": [382, 555, 382],
+      "material": {"type": "diffuse_light", "color": [1.0, 0.95, 0.85], "intensity": 15.0}
+    },
+    {
+      "_comment": "Tall box (right of center)",
+      "type": "box",
+      "p_min": [265,   0, 295],
+      "p_max": [430, 330, 460],
+      "material": {"type": "lambertian", "albedo": {"type": "solid", "color": [0.73, 0.73, 0.73]}}
+    },
+    {
+      "_comment": "Short box (left of center)",
+      "type": "box",
+      "p_min": [130,   0,  65],
+      "p_max": [295, 165, 230],
+      "material": {"type": "lambertian", "albedo": {"type": "solid", "color": [0.73, 0.73, 0.73]}}
+    }
+  ]
+}
