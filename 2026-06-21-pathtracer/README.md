@@ -102,8 +102,8 @@ scenes/
 | 2 — CORE BUILD | ✓ | Full path tracer, BVH, 4 scenes rendering |
 | 3 — ADVERSARIAL REVIEW | ✓ | 5 bugs found & fixed |
 | 4 — STRETCH + POLISH | ✓ | Progressive viewer, CLI polish, bench, random scene gen |
-| 5 — VERIFICATION | in progress | Test suite + demo script |
-| 6 — SHIP | pending | Final README + LEDGER entry |
+| 5 — VERIFICATION | ✓ | 113/113 tests green; demo.sh exercises all CLI subcommands |
+| 6 — SHIP | ✓ | Final README + LEDGER entry |
 
 ## Bugs Fixed in Review (Phase 3)
 
