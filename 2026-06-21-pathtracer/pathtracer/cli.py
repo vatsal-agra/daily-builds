@@ -12,20 +12,28 @@ from .png_writer import write_png, image_to_ppm
 
 def cmd_render(args):
     """Render a JSON scene file."""
-    scene = load_scene(args.scene)
+    if not os.path.isfile(args.scene):
+        print(f"Error: scene file not found: {args.scene}", file=sys.stderr)
+        sys.exit(1)
 
-    # CLI overrides
-    if args.width:  scene.width  = args.width
-    if args.height: scene.height = args.height
-    if args.spp:    scene.spp    = args.spp
-    if args.depth:  scene.max_depth = args.depth
+    try:
+        scene = load_scene(args.scene)
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        print(f"Error: bad scene file — {e}", file=sys.stderr)
+        sys.exit(1)
 
-    # Rebuild camera with new aspect ratio if dimensions changed
-    if args.width or args.height:
-        _rebuild_camera(scene)
+    # CLI overrides (all guarded: value > 0 after clamping in load_scene)
+    if args.width  and args.width  > 0:  scene.width  = args.width
+    if args.height and args.height > 0:  scene.height = args.height
+    if args.spp    and args.spp    > 0:  scene.spp    = args.spp
+    if args.depth  and args.depth  > 0:  scene.max_depth = args.depth
 
     out = args.output or _default_out(args.scene, 'png')
     fmt = args.format or ('ppm' if out.endswith('.ppm') else 'png')
+
+    out_dir = os.path.dirname(out)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
 
     print(f"Rendering {scene.width}×{scene.height} @ {scene.spp} SPP "
           f"({scene.max_depth} bounces) → {out}")
@@ -141,9 +149,19 @@ def cmd_info(args):
     print(f"  Max depth : {scene.max_depth}")
 
 
-def _rebuild_camera(scene):
-    """Re-instantiate the camera with the updated aspect ratio."""
-    pass  # Camera was already built from JSON; dimensions affect only rendering loops
+def cmd_view(args):
+    """Render a scene and display progressive updates in the browser."""
+    if not os.path.isfile(args.scene):
+        print(f"Error: scene file not found: {args.scene}", file=sys.stderr)
+        sys.exit(1)
+    from .viewer import view
+    scene = load_scene(args.scene)
+    if args.width:  scene.width  = args.width
+    if args.height: scene.height = args.height
+    if args.spp:    scene.spp    = args.spp
+    port = args.port or 8080
+    print(f"Progressive viewer → http://127.0.0.1:{port}/")
+    view(scene, workers=args.workers or None, host='127.0.0.1', port=port)
 
 
 def _default_out(scene_path, ext):
@@ -189,6 +207,16 @@ def main(argv=None):
     p_info = sub.add_parser('info', help='Print scene metadata')
     p_info.add_argument('scene', help='Path to scene JSON')
     p_info.set_defaults(func=cmd_info)
+
+    # view — progressive browser viewer
+    p_view = sub.add_parser('view', help='Live progressive render in browser (SSE)')
+    p_view.add_argument('scene', help='Path to scene JSON')
+    p_view.add_argument('--width',   type=int)
+    p_view.add_argument('--height',  type=int)
+    p_view.add_argument('--spp',     type=int)
+    p_view.add_argument('--workers', type=int)
+    p_view.add_argument('--port',    type=int, default=8080)
+    p_view.set_defaults(func=cmd_view)
 
     args = parser.parse_args(argv)
     args.func(args)
