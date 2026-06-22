@@ -269,7 +269,7 @@ def generate_chords(
     for bar in range(0, num_bars, bars_per_chord):
         chord_idx = (bar // bars_per_chord) % len(chord_pattern)
         degree, quality = chord_pattern[chord_idx]
-        chord_root = degree_to_midi(root_midi + 48, scale_name, degree)  # mid register
+        chord_root = degree_to_midi(root_midi, scale_name, degree)  # mid register (4th octave)
         notes = chord_notes(chord_root, quality)
 
         abs_tick = bar * ticks_per_bar
@@ -308,7 +308,7 @@ def generate_bass(
     for bar in range(num_bars):
         chord_idx = (bar // bars_per_chord) % len(chord_pattern)
         degree, quality = chord_pattern[chord_idx]
-        chord_root_midi = degree_to_midi(root_midi + 36, scale_name, degree)
+        chord_root_midi = degree_to_midi(root_midi - 24, scale_name, degree)
         chord_fifth = chord_root_midi + 7
         chord_third = chord_root_midi + (4 if quality == "maj" else 3)
 
