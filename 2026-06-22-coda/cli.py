@@ -5,10 +5,15 @@ Usage:
   coda generate  [--key KEY] [--scale SCALE] [--bpm BPM] [--bars N]
                  [--drums STYLE] [--seed SEED] [--out FILE.mid]
   coda render    <file.mid> [--out FILE.wav] [--reverb] [--delay] [--lpf]
+  coda make      [same options as generate + render combined → .mid + .wav + .html]
   coda viz       <file.mid> [--out FILE.html] [--title TITLE]
   coda info      <file.mid>
   coda demo
   coda help
+
+Scales:  major, minor, dorian, mixolydian, pentatonic, minor_pent, blues
+Drums:   standard, rock, jazz, electronic
+Key:     note name (C, D#, G) or MIDI number (60 = C4, 69 = A4)
 """
 
 import sys
@@ -294,9 +299,100 @@ def die(msg: str, code: int = 1):
     sys.exit(code)
 
 
+def cmd_make(args: list[str]):
+    """Generate a piece and render it to WAV + HTML in one step."""
+    # Parse generate options + render options together
+    key = 60
+    scale_name = "major"
+    bpm = 120
+    num_bars = 32
+    drum_style = "standard"
+    seed = None
+    base_name = "piece"
+    do_reverb = False
+    do_delay = False
+    do_lpf = False
+
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--key" and i + 1 < len(args):
+            i += 1
+            val = args[i]
+            try:
+                key = int(val)
+            except ValueError:
+                name = val.upper()
+                if name in NOTE_NAMES:
+                    key = 48 + NOTE_NAMES.index(name)
+                else:
+                    die(f"Unknown note: {val}")
+        elif a == "--scale" and i + 1 < len(args):
+            i += 1
+            from generator import SCALES
+            if args[i] not in SCALES:
+                die(f"Unknown scale '{args[i]}'")
+            scale_name = args[i]
+        elif a == "--bpm" and i + 1 < len(args):
+            i += 1
+            try:
+                bpm = int(args[i])
+            except ValueError:
+                die(f"Invalid BPM: {args[i]}")
+        elif a == "--bars" and i + 1 < len(args):
+            i += 1
+            try:
+                num_bars = int(args[i])
+            except ValueError:
+                die(f"Invalid bars: {args[i]}")
+        elif a == "--drums" and i + 1 < len(args):
+            i += 1
+            drum_style = args[i]
+        elif a == "--seed" and i + 1 < len(args):
+            i += 1
+            try:
+                seed = int(args[i])
+            except ValueError:
+                die(f"Invalid seed: {args[i]}")
+        elif a == "--out" and i + 1 < len(args):
+            i += 1
+            base_name = os.path.splitext(args[i])[0]
+        elif a == "--reverb":
+            do_reverb = True
+        elif a == "--delay":
+            do_delay = True
+        elif a == "--lpf":
+            do_lpf = True
+        elif a.startswith("-"):
+            die(f"Unknown option: {a}")
+        i += 1
+
+    from generator import generate_piece, SCALES
+    note_name = NOTE_NAMES[key % 12]
+    print(f"Generating {num_bars}-bar piece: {note_name} {scale_name}, {bpm} BPM")
+    midi = generate_piece(key=key, scale_name=scale_name, bpm=bpm,
+                          num_bars=num_bars, drum_style=drum_style, seed=seed)
+    midi_path = base_name + ".mid"
+    write_midi_file(midi, midi_path)
+    print(f"MIDI: {midi_path}")
+
+    print("Rendering audio...")
+    buf = render_midi(midi)
+    if do_reverb or do_delay or do_lpf:
+        apply_effects(buf, reverb=do_reverb, delay=do_delay, lpf=do_lpf)
+    wav_path = base_name + ".wav"
+    buf.write_wav(wav_path)
+    print(f"WAV:  {wav_path}  ({buf.num_samples/44100:.1f}s, peak={buf.peak():.3f})")
+
+    html_path = base_name + "_roll.html"
+    write_html(midi, html_path, title=f"Coda — {note_name} {scale_name}")
+    print(f"HTML: {html_path}  (open in browser to play)")
+
+
 COMMANDS = {
     "generate": cmd_generate,
     "render":   cmd_render,
+    "make":     cmd_make,
     "viz":      cmd_viz,
     "info":     cmd_info,
     "demo":     cmd_demo,
