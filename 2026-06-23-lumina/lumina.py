@@ -75,6 +75,10 @@ def cmd_render(args):
     spp = args.spp
     depth = args.depth
     out = args.output or f"{scene_name}.png"
+    # Auto-create parent directory so --output renders/foo.png never fails
+    out_dir = os.path.dirname(out)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     tone = 'aces' if args.aces else 'reinhard'
     exposure = args.exposure
     use_nee = not args.simple
@@ -164,9 +168,10 @@ def cmd_info(args):
     def count_nodes(node, depth=0):
         if isinstance(node, BVHNode):
             l_n, l_d = count_nodes(node.left, depth + 1)
-            r_n, r_d = count_nodes(node.right, depth + 1) if node.right else (0, depth)
+            r_n, r_d = (count_nodes(node.right, depth + 1)
+                        if node.right else (0, depth))
             return l_n + r_n + 1, max(l_d, r_d)
-        return 1, depth
+        return 1, depth  # Leaf primitive
 
     n_nodes, max_depth = count_nodes(root)
 

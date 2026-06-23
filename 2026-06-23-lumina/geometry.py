@@ -207,10 +207,9 @@ class QuadLight:
         self.v = v
         self.material = material
         normal_raw = u.cross(v)
-        self._area = normal_raw.length()
-        self._normal = normal_raw / self._area if self._area > 1e-20 else Vec3(0, 1, 0)
-        self._area *= 0.5  # Actually a parallelogram, area = |u × v|
-        self._area = u.cross(v).length()  # Full quad area (parallelogram)
+        area_x2 = normal_raw.length()
+        self._normal = normal_raw / area_x2 if area_x2 > 1e-20 else Vec3(0, 1, 0)
+        self._area = area_x2  # Parallelogram area = |u × v|
         self._d = self._normal.dot(corner)  # Plane equation constant
 
     def hit(self, ray: Ray, t_min: float, t_max: float):

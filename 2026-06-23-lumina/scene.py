@@ -73,10 +73,20 @@ class Scene:
         self.background_top = background_top or Vec3(0.5, 0.7, 1.0)
         self.background_bot = background_bot or Vec3(1.0, 1.0, 1.0)
 
+        # Annotate each emissive material with its sampling area and light count.
+        # This lets the renderer compute the NEE light PDF when a BRDF-sampled ray
+        # hits an emissive (needed for MIS weighting).
+        n = len(emissives)
+        for light in emissives:
+            _, _, area = light.sample_point()
+            mat = light.material
+            mat._sample_area = area
+            mat._n_lights = n
+
         if not objects:
             self._root = HittableList()
         elif len(objects) == 1:
-            self._root = objects[0]
+            self._root = BVHNode(objects)  # Always wrap so info/bounding_box work
         else:
             self._root = BVHNode(objects)
 
@@ -93,28 +103,33 @@ class Scene:
                     b.z + t * (top.z - b.z))
 
     def sample_light(self, surface_point: Vec3):
-        """Pick a random emissive primitive, sample a point on it.
+        """Pick a random emissive primitive and sample a visible point on it.
 
-        Returns (light_point, light_normal, emission, solid_angle_pdf)
-        or None if no lights.
+        Returns (light_point, light_dir, light_dist, emission, solid_angle_pdf)
+        or None if no lights or sampled point faces away.
+
+        For sphere lights, retries up to 4 times to find a front-facing sample
+        (hemisphere visible from surface_point), avoiding wasted NEE attempts.
         """
         if not self.emissives:
             return None
         light = random.choice(self.emissives)
-        lp, ln, area = light.sample_point()
-        to_light = lp - surface_point
-        dist_sq = to_light.length_sq()
-        if dist_sq < 1e-20:
-            return None
-        dist = math.sqrt(dist_sq)
-        direction = Vec3(to_light.x / dist, to_light.y / dist, to_light.z / dist)
-        cos_light = abs(ln.dot(-direction))
-        if cos_light < 1e-8:
-            return None
-        # Solid-angle PDF = (dist² / (cos_light * area)) * (1/n_lights)
-        pdf = dist_sq / (cos_light * area * len(self.emissives))
-        emission = light.material.emission if hasattr(light.material, 'emission') else Vec3.zero()
-        return lp, direction, dist, emission, pdf
+        n_retries = 4 if isinstance(light.material, Emissive) else 1
+        for _ in range(n_retries):
+            lp, ln, area = light.sample_point()
+            to_light = lp - surface_point
+            dist_sq = to_light.length_sq()
+            if dist_sq < 1e-20:
+                continue
+            dist = math.sqrt(dist_sq)
+            direction = Vec3(to_light.x / dist, to_light.y / dist, to_light.z / dist)
+            cos_light = abs(ln.dot(-direction))
+            if cos_light < 1e-8:
+                continue
+            pdf = dist_sq / (cos_light * area * len(self.emissives))
+            emission = light.material.emission if hasattr(light.material, 'emission') else Vec3.zero()
+            return lp, direction, dist, emission, pdf
+        return None
 
 
 # ── Preset scene builders ─────────────────────────────────────────────────────
@@ -180,19 +195,34 @@ def scene_cornell():
     green = Lambertian(Vec3(0.12, 0.45, 0.15))
     light_mat = Emissive(Vec3(1.0, 1.0, 1.0), strength=15.0)
 
-    # Box walls (each as 2 triangles)
+    # Box walls — 5 faces (no front wall; camera is outside at z=-800).
     W = 555  # box size
 
-    # Floor
-    objects += make_box(Vec3(0, 0, 0), Vec3(W, 1, W), white)
-    # Ceiling
-    objects += make_box(Vec3(0, W - 1, 0), Vec3(W, W, W), white)
-    # Back wall
-    objects += make_box(Vec3(0, 0, W - 1), Vec3(W, W, W), white)
-    # Left wall (red)
-    objects += make_box(Vec3(0, 0, 0), Vec3(1, W, W), red)
-    # Right wall (green)
-    objects += make_box(Vec3(W - 1, 0, 0), Vec3(W, W, W), green)
+    # Floor (y=0 plane, xz extent)
+    objects += [
+        Triangle(Vec3(0,0,0), Vec3(W,0,0), Vec3(W,0,W), white),
+        Triangle(Vec3(0,0,0), Vec3(W,0,W), Vec3(0,0,W), white),
+    ]
+    # Ceiling (y=W plane, xz extent)
+    objects += [
+        Triangle(Vec3(0,W,0), Vec3(W,W,W), Vec3(W,W,0), white),
+        Triangle(Vec3(0,W,0), Vec3(0,W,W), Vec3(W,W,W), white),
+    ]
+    # Back wall (z=W plane, xy extent)
+    objects += [
+        Triangle(Vec3(0,0,W), Vec3(W,0,W), Vec3(W,W,W), white),
+        Triangle(Vec3(0,0,W), Vec3(W,W,W), Vec3(0,W,W), white),
+    ]
+    # Left wall — red (x=0 plane, yz extent)
+    objects += [
+        Triangle(Vec3(0,0,0), Vec3(0,0,W), Vec3(0,W,W), red),
+        Triangle(Vec3(0,0,0), Vec3(0,W,W), Vec3(0,W,0), red),
+    ]
+    # Right wall — green (x=W plane, yz extent)
+    objects += [
+        Triangle(Vec3(W,0,0), Vec3(W,W,0), Vec3(W,W,W), green),
+        Triangle(Vec3(W,0,0), Vec3(W,W,W), Vec3(W,0,W), green),
+    ]
 
     # Area light on ceiling
     light_quad = QuadLight(
@@ -388,13 +418,22 @@ def load_scene(path: str):
         t = spec['type']
         if t == 'sphere':
             obj = Sphere(v3(spec['center']), spec['radius'], mat)
+            objects.append(obj)
         elif t == 'triangle':
             obj = Triangle(v3(spec['v0']), v3(spec['v1']), v3(spec['v2']), mat)
+            objects.append(obj)
         elif t == 'quad_light':
             obj = QuadLight(v3(spec['corner']), v3(spec['u']), v3(spec['v']), mat)
+            objects.append(obj)
+        elif t == 'box':
+            tris = make_box(v3(spec['p_min']), v3(spec['p_max']), mat)
+            objects.extend(tris)
+            for tri in tris:
+                if isinstance(mat, Emissive):
+                    emissives.append(tri)
+            continue
         else:
             raise ValueError(f"Unknown object type: {t!r}")
-        objects.append(obj)
         if isinstance(mat, Emissive):
             emissives.append(obj)
 
