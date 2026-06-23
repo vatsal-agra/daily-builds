@@ -43,16 +43,14 @@ class Lambertian:
 
     def scatter(self, ray_in: Ray, hit: HitRecord):
         direction = Vec3.random_cosine_hemisphere(hit.normal)
-        # Degenerate scatter direction
         if direction.near_zero():
             direction = hit.normal
-        cos_theta = max(0.0, direction.dot(hit.normal))
-        pdf = cos_theta / math.pi
-        if pdf < 1e-10:
+        if direction.dot(hit.normal) < 1e-10:
             return None
         scattered = Ray(hit.point, direction)
-        attenuation = self.albedo
-        return attenuation, scattered, pdf, False
+        # Weight = f_r × cos(θ) / pdf = (albedo/π) × cos(θ) / (cos(θ)/π) = albedo
+        # Return the pre-computed weight; renderer applies it directly (pdf=1).
+        return self.albedo, scattered, 1.0, False
 
     def pdf(self, hit: HitRecord, direction: Vec3) -> float:
         cos_theta = direction.normalize().dot(hit.normal)
@@ -178,13 +176,11 @@ class Checkerboard:
         direction = Vec3.random_cosine_hemisphere(hit.normal)
         if direction.near_zero():
             direction = hit.normal
-        cos_theta = max(0.0, direction.dot(hit.normal))
-        pdf = cos_theta / math.pi
-        if pdf < 1e-10:
+        if direction.dot(hit.normal) < 1e-10:
             return None
         scattered = Ray(hit.point, direction)
         albedo = self._albedo(hit)
-        return albedo, scattered, pdf, False
+        return albedo, scattered, 1.0, False
 
     def pdf(self, hit: HitRecord, direction: Vec3) -> float:
         cos_theta = direction.normalize().dot(hit.normal)

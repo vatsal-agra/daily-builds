@@ -383,9 +383,8 @@ class TestEnergyConservation(unittest.TestCase):
         avg_cos = total_cos / N
         self.assertAlmostEqual(avg_cos, 2.0 / 3.0, delta=0.03)
 
-    def test_lambertian_brdf_cos_pdf(self):
-        """For Lambertian: BRDF × cos(θ) / pdf = albedo exactly."""
-        import math as m
+    def test_lambertian_weight_equals_albedo(self):
+        """Lambertian scatter returns weight = albedo (f_r*cos/pdf cancels to albedo)."""
         mat = Lambertian(Vec3(0.8, 0.6, 0.4))
         normal = Vec3(0, 1, 0)
         for _ in range(20):
@@ -395,11 +394,11 @@ class TestEnergyConservation(unittest.TestCase):
             if result is None:
                 continue
             atten, scattered, pdf, is_spec = result
-            cos_theta = scattered.direction.dot(normal)
-            # atten = albedo = [0.8, 0.6, 0.4]
+            # Scatter returns pre-computed weight = albedo (pdf incorporated)
             self.assertAlmostEqual(atten.x, 0.8, places=10)
             self.assertAlmostEqual(atten.y, 0.6, places=10)
             self.assertAlmostEqual(atten.z, 0.4, places=10)
+            self.assertAlmostEqual(pdf, 1.0, places=10)  # weight is pre-computed
 
     def test_metal_scatter_above_surface(self):
         """Metal scatter direction always has positive dot with normal."""

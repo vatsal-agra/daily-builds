@@ -49,13 +49,14 @@ def trace_simple(ray: Ray, scene: Scene, max_depth: int) -> Vec3:
         if scatter is None:
             break  # Absorbed or pure light source
 
-        attenuation, scattered, pdf, is_specular = scatter
-        if pdf < 1e-12:
-            break
+        attenuation, scattered, _pdf, is_specular = scatter
 
-        throughput = Vec3(throughput.x * attenuation.x / pdf,
-                          throughput.y * attenuation.y / pdf,
-                          throughput.z * attenuation.z / pdf)
+        # attenuation is the pre-computed Monte Carlo weight f_r*cos(θ)/pdf.
+        # For Lambertian this equals albedo; for Metal/Dielectric it's the
+        # reflectance. No further division by pdf needed here.
+        throughput = Vec3(throughput.x * attenuation.x,
+                          throughput.y * attenuation.y,
+                          throughput.z * attenuation.z)
 
         # Russian Roulette after depth 3
         if depth >= 3:
@@ -105,21 +106,19 @@ def trace_nee(ray: Ray, scene: Scene, max_depth: int) -> Vec3:
         if scatter is None:
             break
 
-        attenuation, scattered, brdf_pdf, is_specular = scatter
-        if brdf_pdf < 1e-12:
-            break
+        attenuation, scattered, _pdf, is_specular = scatter
 
         # NEE: explicit direct light sampling (only for non-specular surfaces)
         if not is_specular and scene.emissives:
-            direct = _direct_light(hit, scene, attenuation, brdf_pdf)
+            direct = _direct_light(hit, scene)
             result = Vec3(result.x + throughput.x * direct.x,
                           result.y + throughput.y * direct.y,
                           result.z + throughput.z * direct.z)
 
-        # Update throughput for BRDF sample
-        throughput = Vec3(throughput.x * attenuation.x / brdf_pdf,
-                          throughput.y * attenuation.y / brdf_pdf,
-                          throughput.z * attenuation.z / brdf_pdf)
+        # Update throughput: attenuation is pre-computed weight (f_r*cos/pdf).
+        throughput = Vec3(throughput.x * attenuation.x,
+                          throughput.y * attenuation.y,
+                          throughput.z * attenuation.z)
 
         # Russian Roulette after depth 3
         if depth >= 3:
@@ -135,7 +134,7 @@ def trace_nee(ray: Ray, scene: Scene, max_depth: int) -> Vec3:
     return result
 
 
-def _direct_light(hit, scene: Scene, brdf_attenuation: Vec3, brdf_pdf: float) -> Vec3:
+def _direct_light(hit, scene: Scene) -> Vec3:
     """Sample a light and return the MIS-weighted direct contribution."""
     sample = scene.sample_light(hit.point)
     if sample is None:
