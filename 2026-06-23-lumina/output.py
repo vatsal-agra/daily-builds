@@ -177,6 +177,66 @@ def decode_png_rgb(path: str):
 
 # ── Render statistics ─────────────────────────────────────────────────────────
 
+def bilateral_denoise(pixels: list, width: int, height: int,
+                      sigma_s: float = 1.5, sigma_r: float = 0.3,
+                      radius: int = 2) -> list:
+    """Simple spatial bilateral filter for denoising low-spp renders.
+
+    Weights each neighbour's contribution by:
+      w = exp(-dist²/(2σ_s²)) × exp(-color_diff²/(2σ_r²))
+
+    This preserves edges while averaging away high-frequency Monte Carlo noise.
+
+    Args:
+        pixels:  Flat list of linear Vec3 pixels.
+        width, height: Image dimensions.
+        sigma_s: Spatial standard deviation (pixels).
+        sigma_r: Range standard deviation (luminance units).
+        radius:  Filter half-size (2 → 5×5 kernel).
+
+    Returns:
+        New denoised flat list of Vec3 pixels (same length).
+    """
+    inv_2ss = 1.0 / (2.0 * sigma_s * sigma_s)
+    inv_2sr = 1.0 / (2.0 * sigma_r * sigma_r)
+
+    def idx(row, col):
+        return row * width + col
+
+    def lum(p):
+        return 0.2126 * p.x + 0.7152 * p.y + 0.0722 * p.z
+
+    out = []
+    for j in range(height):
+        for i in range(width):
+            center = pixels[idx(j, i)]
+            lc = lum(center)
+            wr = wg = wb = 0.0
+            total_w = 0.0
+            for dj in range(-radius, radius + 1):
+                rr = j + dj
+                if rr < 0 or rr >= height:
+                    continue
+                ds_sq_partial = dj * dj
+                for di in range(-radius, radius + 1):
+                    cc = i + di
+                    if cc < 0 or cc >= width:
+                        continue
+                    p = pixels[idx(rr, cc)]
+                    ds_sq = ds_sq_partial + di * di
+                    dr = lum(p) - lc
+                    w = math.exp(-ds_sq * inv_2ss - dr * dr * inv_2sr)
+                    wr += w * p.x
+                    wg += w * p.y
+                    wb += w * p.z
+                    total_w += w
+            if total_w > 0:
+                out.append(Vec3(wr / total_w, wg / total_w, wb / total_w))
+            else:
+                out.append(center)
+    return out
+
+
 def pixel_stats(pixels: list) -> dict:
     """Compute luminance statistics for a list of linear Vec3 pixels."""
     if not pixels:

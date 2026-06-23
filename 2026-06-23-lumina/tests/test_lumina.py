@@ -643,5 +643,118 @@ class TestMaterials(unittest.TestCase):
         self.assertAlmostEqual(m2.ior, 2.0)
 
 
+# ── OBJ loader ───────────────────────────────────────────────────────────────
+
+class TestOBJLoader(unittest.TestCase):
+    def setUp(self):
+        self.here = os.path.dirname(os.path.dirname(__file__))
+
+    def _mat(self):
+        from materials import Lambertian
+        return Lambertian(Vec3(0.8, 0.6, 0.4))
+
+    def test_tetrahedron_loads(self):
+        from mesh import load_obj, obj_bounds
+        path = os.path.join(self.here, 'models', 'tetrahedron.obj')
+        tris = load_obj(path, self._mat())
+        self.assertEqual(len(tris), 4)
+
+    def test_icosphere_loads(self):
+        from mesh import load_obj
+        path = os.path.join(self.here, 'models', 'icosphere.obj')
+        tris = load_obj(path, self._mat())
+        self.assertEqual(len(tris), 20)
+
+    def test_icosphere_smooth_normals(self):
+        """Icosphere triangles should have vertex normals set (not default flat)."""
+        from mesh import load_obj
+        from geometry import Triangle
+        path = os.path.join(self.here, 'models', 'icosphere.obj')
+        tris = load_obj(path, self._mat())
+        for t in tris:
+            # Smooth normals should be roughly unit length
+            self.assertAlmostEqual(t.n0.length(), 1.0, places=4)
+            self.assertAlmostEqual(t.n1.length(), 1.0, places=4)
+            self.assertAlmostEqual(t.n2.length(), 1.0, places=4)
+
+    def test_scale_and_translate(self):
+        """Scaled and translated mesh should have correct bounds."""
+        from mesh import load_obj, obj_bounds
+        path = os.path.join(self.here, 'models', 'tetrahedron.obj')
+        tris = load_obj(path, self._mat(), scale=2.0, translate=Vec3(10, 0, 0))
+        mn, mx, center, extent = obj_bounds(tris)
+        self.assertAlmostEqual(mn.x, -2.0 + 10.0, delta=0.01)
+
+    def test_flip_normals(self):
+        """Flipped normals should point in opposite direction."""
+        from mesh import load_obj
+        path = os.path.join(self.here, 'models', 'icosphere.obj')
+        tris_normal = load_obj(path, self._mat())
+        tris_flipped = load_obj(path, self._mat(), flip_normals=True)
+        n = tris_normal[0].n0
+        nf = tris_flipped[0].n0
+        # Dot product should be -1 (opposite)
+        self.assertAlmostEqual(n.dot(nf), -1.0, places=4)
+
+    def test_file_not_found(self):
+        from mesh import load_obj
+        with self.assertRaises(FileNotFoundError):
+            load_obj('/nonexistent/path.obj', self._mat())
+
+    def test_obj_renders(self):
+        """OBJ mesh should render without error."""
+        from mesh import load_obj
+        from geometry import BVHNode, Sphere, QuadLight
+        from materials import Lambertian, Emissive
+        from scene import Scene, Camera
+        path = os.path.join(self.here, 'models', 'tetrahedron.obj')
+        mat = self._mat()
+        tris = load_obj(path, mat)
+        light_mat = Emissive(Vec3(1, 1, 1), 5.0)
+        light = Sphere(Vec3(0, 10, 0), 2.0, light_mat)
+        scene = Scene(tris + [light], [light])
+        camera = Camera(Vec3(3, 3, 5), Vec3(0, 0.8, 0), Vec3(0, 1, 0), 40, 4/3)
+        pixels = render(scene, camera, 20, 15, 2, max_depth=3, use_nee=False)
+        self.assertEqual(len(pixels), 20 * 15)
+        from output import pixel_stats
+        stats = pixel_stats(pixels)
+        self.assertGreater(stats['mean_luminance'], 0.0)
+
+
+# ── Denoiser ──────────────────────────────────────────────────────────────────
+
+class TestDenoiser(unittest.TestCase):
+    def test_denoiser_output_size(self):
+        from output import bilateral_denoise
+        pixels = [Vec3(random.random(), random.random(), random.random())
+                  for _ in range(20 * 15)]
+        out = bilateral_denoise(pixels, 20, 15)
+        self.assertEqual(len(out), 20 * 15)
+
+    def test_denoiser_uniform_image_unchanged(self):
+        """Denoising a perfectly uniform image should leave it unchanged."""
+        from output import bilateral_denoise
+        w, h = 10, 10
+        val = Vec3(0.5, 0.3, 0.7)
+        pixels = [val] * (w * h)
+        out = bilateral_denoise(pixels, w, h)
+        for p in out:
+            self.assertAlmostEqual(p.x, val.x, places=6)
+            self.assertAlmostEqual(p.y, val.y, places=6)
+
+    def test_denoiser_preserves_range(self):
+        """Denoised values should stay in the same range as inputs."""
+        from output import bilateral_denoise
+        import random
+        w, h = 16, 16
+        pixels = [Vec3(random.random() * 2, random.random() * 2, random.random() * 2)
+                  for _ in range(w * h)]
+        out = bilateral_denoise(pixels, w, h)
+        for p in out:
+            self.assertGreaterEqual(p.x, 0.0)
+            self.assertGreaterEqual(p.y, 0.0)
+            self.assertGreaterEqual(p.z, 0.0)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

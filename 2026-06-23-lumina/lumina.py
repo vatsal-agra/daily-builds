@@ -30,7 +30,7 @@ import random as _rng
 from vec3 import Vec3
 from scene import PRESETS, load_scene
 from renderer import render
-from output import tone_map, write_png, pixel_stats
+from output import tone_map, write_png, pixel_stats, bilateral_denoise
 
 
 def progress_bar(done: int, total: int, width: int = 40):
@@ -98,6 +98,8 @@ def cmd_render(args):
     elapsed = time.time() - t0
 
     stats = pixel_stats(pixels)
+    if args.denoise:
+        pixels = bilateral_denoise(pixels, width, height)
     pixels_8 = tone_map(pixels, tone, exposure)
     meta = {
         'scene': scene_name,
@@ -187,6 +189,77 @@ def cmd_info(args):
     print(f"  Camera at:      {camera.origin}")
 
 
+def cmd_obj(args):
+    """Render a Wavefront OBJ mesh file."""
+    from mesh import load_obj, obj_bounds
+    from vec3 import Vec3
+    from materials import Lambertian, Metal, Emissive
+    from geometry import BVHNode, Sphere, QuadLight
+    from scene import Scene, Camera
+
+    mat_type = args.material
+    if mat_type == 'diffuse':
+        mat = Lambertian(Vec3(args.color[0], args.color[1], args.color[2]))
+    elif mat_type == 'metal':
+        mat = Metal(Vec3(args.color[0], args.color[1], args.color[2]),
+                    args.fuzz)
+    else:
+        mat = Lambertian(Vec3(0.8, 0.7, 0.6))
+
+    print(f"Loading OBJ: {args.obj_file}")
+    tris = load_obj(args.obj_file, mat,
+                    scale=args.scale,
+                    translate=Vec3(args.tx, args.ty, args.tz))
+    mn, mx, center, extent = obj_bounds(tris)
+    print(f"  {len(tris)} triangles | bounds {mn} — {mx}")
+
+    # Ground plane
+    ground_mat = Lambertian(Vec3(0.4, 0.4, 0.4))
+    ground = Sphere(Vec3(0, mn.y - 1000, 0), 1000, ground_mat)
+
+    # Area light above the mesh
+    light_mat = Emissive(Vec3(1.0, 0.98, 0.95), strength=5.0)
+    dim = max(extent.x, extent.z) * 2
+    light = QuadLight(
+        corner=Vec3(center.x - dim / 2, mx.y + dim, center.z - dim / 2),
+        u=Vec3(dim, 0, 0),
+        v=Vec3(0, 0, dim),
+        material=light_mat,
+    )
+
+    objects = tris + [ground, light]
+    scene = Scene(objects, [light],
+                  background_top=Vec3(0.15, 0.2, 0.35),
+                  background_bot=Vec3(0.4, 0.45, 0.5))
+
+    # Camera: look at center of mesh from outside
+    dist = max(extent.x, extent.y, extent.z) * 2.5
+    cam_pos = Vec3(center.x + dist * 0.6,
+                   center.y + dist * 0.4,
+                   center.z + dist)
+    camera = Camera(
+        lookfrom=cam_pos,
+        lookat=center,
+        vup=Vec3(0, 1, 0),
+        vfov_deg=35,
+        aspect=args.width / args.height,
+    )
+
+    out = args.output or os.path.splitext(args.obj_file)[0] + '.png'
+    os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
+
+    print(f"Rendering {args.width}×{args.height} at {args.spp} spp...")
+    t0 = time.time()
+    pixels = render(scene, camera, args.width, args.height, args.spp,
+                    args.depth, use_nee=not args.simple, progress_cb=make_progress(False))
+    elapsed = time.time() - t0
+    if args.denoise:
+        pixels = bilateral_denoise(pixels, args.width, args.height)
+    pixels_8 = tone_map(pixels, 'aces' if args.aces else 'reinhard', args.exposure)
+    write_png(out, pixels_8, args.width, args.height)
+    print(f"\n  Done in {elapsed:.1f}s → {out}")
+
+
 def cmd_bench(args):
     scene_name = args.scene
     scene, camera = resolve_scene(scene_name)
@@ -234,6 +307,8 @@ def main():
         sp.add_argument('--exposure', type=float, default=1.0)
         sp.add_argument('--seed', type=int, default=None)
         sp.add_argument('-q', '--quiet', action='store_true')
+        sp.add_argument('--denoise', action='store_true',
+                        help='Apply bilateral denoiser to reduce noise')
         return sp
 
     add_common(sub.add_parser('render', help='Render a scene to PNG'))
@@ -254,6 +329,26 @@ def main():
 
     add_common(sub.add_parser('bench', help='Benchmark rendering performance'))
 
+    op = sub.add_parser('obj', help='Render a Wavefront OBJ mesh file')
+    op.add_argument('obj_file', help='Path to .obj file')
+    op.add_argument('-W', '--width', type=int, default=400)
+    op.add_argument('-H', '--height', type=int, default=300)
+    op.add_argument('-s', '--spp', type=int, default=32)
+    op.add_argument('-d', '--depth', type=int, default=8)
+    op.add_argument('-o', '--output', default=None)
+    op.add_argument('--material', choices=['diffuse', 'metal'], default='diffuse')
+    op.add_argument('--color', type=float, nargs=3, default=[0.8, 0.7, 0.6],
+                    metavar=('R', 'G', 'B'))
+    op.add_argument('--fuzz', type=float, default=0.1)
+    op.add_argument('--scale', type=float, default=1.0)
+    op.add_argument('--tx', type=float, default=0.0)
+    op.add_argument('--ty', type=float, default=0.0)
+    op.add_argument('--tz', type=float, default=0.0)
+    op.add_argument('--simple', action='store_true')
+    op.add_argument('--aces', action='store_true')
+    op.add_argument('--exposure', type=float, default=1.0)
+    op.add_argument('--denoise', action='store_true')
+
     args = p.parse_args()
     if not args.command:
         p.print_help()
@@ -265,6 +360,7 @@ def main():
         'demo':    cmd_demo,
         'info':    cmd_info,
         'bench':   cmd_bench,
+        'obj':     cmd_obj,
     }
     dispatch[args.command](args)
 
