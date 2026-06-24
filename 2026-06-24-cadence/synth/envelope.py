@@ -25,23 +25,25 @@ def compute_adsr(
         release_n = max(int(release_s * sr), 1)
         return [0.0] * release_n
 
-    attack_n = min(max(int(attack_s * sr), 1), gate_samples)
-    decay_n = min(max(int(decay_s * sr), 0), gate_samples - attack_n)
+    attack_n_natural = max(int(attack_s * sr), 1)
+    attack_n = min(attack_n_natural, gate_samples)
+    decay_n_natural = max(int(decay_s * sr), 0)
+    decay_n = min(decay_n_natural, gate_samples - attack_n)
     sustain_n = gate_samples - attack_n - decay_n
     release_n = max(int(release_s * sr), 1)
 
-    # Level at gate-off
-    if gate_samples <= attack_n:
-        gate_off = gate_samples / max(attack_n, 1)
-    elif gate_samples <= attack_n + decay_n:
-        t = (gate_samples - attack_n) / max(decay_n, 1)
+    # Level at gate-off — use natural (uncompressed) durations for correct scaling
+    if gate_samples <= attack_n_natural:
+        gate_off = gate_samples / attack_n_natural
+    elif gate_samples <= attack_n_natural + decay_n_natural:
+        t = (gate_samples - attack_n_natural) / max(decay_n_natural, 1)
         gate_off = 1.0 - (1.0 - sustain_level) * t
     else:
         gate_off = sustain_level
 
-    # Build each segment with a list comprehension (much faster than a loop)
-    attack_env = [(i + 1) / attack_n for i in range(attack_n)]
-    decay_env = [1.0 - (1.0 - sustain_level) * (i + 1) / decay_n
+    # Build each segment; ramp attack over natural length so gate_off < 1 when gate closes early
+    attack_env = [(i + 1) / attack_n_natural for i in range(attack_n)]
+    decay_env = [1.0 - (1.0 - sustain_level) * (i + 1) / decay_n_natural
                  for i in range(decay_n)] if decay_n else []
     sustain_env = [sustain_level] * sustain_n
     release_env = [gate_off * (1.0 - (i + 1) / release_n)

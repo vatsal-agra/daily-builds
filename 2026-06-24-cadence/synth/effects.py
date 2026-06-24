@@ -20,7 +20,7 @@ class Delay:
         self.delay_n = max(1, int(delay_s * sr))
         self.feedback = feedback
         self.damping = damping
-        self.buf = [0.0] * (self.delay_n + 1)
+        self.buf = [0.0] * self.delay_n
         self.pos = 0
         self._lp = 0.0  # one-pole LP state for damping
 
