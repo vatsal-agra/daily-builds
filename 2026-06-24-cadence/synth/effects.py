@@ -147,10 +147,14 @@ class Reverb:
 # ---------------------------------------------------------------------------
 
 def soft_clip(samples: list, drive: float = 2.0, makeup: float = 1.0) -> list:
-    """Hyperbolic tangent soft-clip. drive > 1 = more saturation."""
+    """Hyperbolic tangent soft-clip. drive > 1 = more saturation.
+
+    Normalised so x=±1 maps to ±1. For |x| > 1 the output is clamped to ±1.
+    """
     drive = max(0.1, drive)
     norm = math.tanh(drive)
-    return [math.tanh(x * drive) / norm * makeup for x in samples]
+    return [max(-1.0, min(1.0, math.tanh(x * drive) / norm * makeup))
+            for x in samples]
 
 
 # ---------------------------------------------------------------------------

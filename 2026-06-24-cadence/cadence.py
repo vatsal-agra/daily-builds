@@ -69,8 +69,11 @@ def cmd_compose(args):
     import random
     rng = random.Random(seed)
 
-    print("[cadence] rendering audio ...")
+    dur_s = seq.total_samples / SAMPLE_RATE
+    print(f"[cadence] rendering {dur_s:.1f}s audio ...")
+    t_render = time.time()
     left, right = render(seq, rng=rng)
+    print(f"[cadence] render done in {time.time()-t_render:.1f}s, applying effects ...")
 
     # Apply reverb
     rev_wet = STYLES[style]['reverb']
@@ -78,6 +81,14 @@ def cmd_compose(args):
         rev = Reverb(room_size=0.6, damping=0.5, wet=rev_wet,
                      dry=1.0 - rev_wet * 0.4)
         left, right = rev.process_stereo(left, right)
+
+    # Apply chorus for styles that benefit from it
+    if style in ('pop', 'jazz'):
+        from synth.effects import Chorus
+        ch = Chorus(rate=0.4, depth=0.002, base_delay=0.015, wet=0.15)
+        left = ch.process(left)
+        ch2 = Chorus(rate=0.5, depth=0.0025, base_delay=0.017, wet=0.15)
+        right = ch2.process(right)
 
     left, right = normalize_peak(left, right, target=0.88)
 
