@@ -1,0 +1,7 @@
+{
+  "kick":  {"velocity_default": 100},
+  "snare": {"velocity_default": 90},
+  "hihat": {"velocity_default": 65},
+  "open_hihat": {"velocity_default": 55},
+  "clap":  {"velocity_default": 80}
+}

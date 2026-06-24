@@ -1,0 +1,18 @@
+{
+  "oscillator": "sawtooth",
+  "pw": 0.5,
+  "sub_mix": 0.5,
+  "detune_cents": 0.0,
+  "attack": 0.005,
+  "decay": 0.1,
+  "sustain": 0.6,
+  "release": 0.08,
+  "filter_type": "lpf",
+  "cutoff": 800.0,
+  "resonance": 1.8,
+  "filter_env_amount": 6.0,
+  "lfo_rate": 0.0,
+  "lfo_depth": 0.0,
+  "lfo_target": "pitch",
+  "volume": 0.7
+}
