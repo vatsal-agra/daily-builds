@@ -220,14 +220,21 @@ def normalize_peak(left: list, right: list, target: float = 0.88) -> tuple:
 
 
 def soft_limit(samples: list, threshold: float = 0.9) -> list:
-    """Gentle knee limiter to prevent hard clipping."""
+    """Gentle knee limiter that keeps output in (-1, 1).
+
+    Below threshold: unity gain. Above threshold: soft-knee compression
+    that asymptotically approaches 1.0 as input → ∞.
+    """
+    headroom = 1.0 - threshold
     out = []
     for s in samples:
-        if abs(s) <= threshold:
+        a = abs(s)
+        if a <= threshold:
             out.append(s)
         else:
             sign = 1.0 if s > 0 else -1.0
-            excess = abs(s) - threshold
-            compressed = threshold + excess / (1.0 + excess)
+            excess = a - threshold
+            # Compresses the excess into (0, headroom); asymptotically → 1.0
+            compressed = threshold + headroom * (1.0 - 1.0 / (1.0 + excess / headroom))
             out.append(sign * compressed)
     return out

@@ -21,6 +21,10 @@ def compute_adsr(
     holds sustain until the gate closes, then releases from the actual gate-off
     level (which may be < sustain if the gate closes during attack/decay).
     """
+    if gate_samples <= 0:
+        release_n = max(int(release_s * sr), 1)
+        return [0.0] * release_n
+
     attack_n = min(max(int(attack_s * sr), 1), gate_samples)
     decay_n = min(max(int(decay_s * sr), 0), gate_samples - attack_n)
     sustain_n = gate_samples - attack_n - decay_n
@@ -28,7 +32,7 @@ def compute_adsr(
 
     # Level at gate-off
     if gate_samples <= attack_n:
-        gate_off = gate_samples / attack_n
+        gate_off = gate_samples / max(attack_n, 1)
     elif gate_samples <= attack_n + decay_n:
         t = (gate_samples - attack_n) / max(decay_n, 1)
         gate_off = 1.0 - (1.0 - sustain_level) * t
