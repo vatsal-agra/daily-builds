@@ -1,0 +1,28 @@
+{
+  "camera": {
+    "look_from": [0, 1, 3],
+    "look_at":   [0, 0, 0],
+    "vup":       [0, 1, 0],
+    "vfov":      40,
+    "aspect":    1.777
+  },
+  "objects": [
+    {
+      "type": "obj",
+      "path": "scenes/sphere_mesh.obj",
+      "scale": 1.0,
+      "material": { "type": "metal", "albedo": [0.9, 0.7, 0.3], "fuzz": 0.02 }
+    },
+    {
+      "type": "sphere",
+      "center": [0, -101, 0],
+      "radius": 100,
+      "material": { "type": "lambertian", "albedo": [0.6, 0.6, 0.6] }
+    }
+  ],
+  "lights": [],
+  "render": {
+    "width": 400, "height": 225, "samples": 16,
+    "mode": "path", "max_depth": 8, "tonemap": "aces"
+  }
+}
