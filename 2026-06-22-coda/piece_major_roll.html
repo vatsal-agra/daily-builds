@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C Major — Jazz Drums</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif;
+       font-size: 13px; overflow: hidden; }
+
+#app { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
+
+/* ── Header ── */
+#header { background: #16213e; padding: 10px 16px; display: flex; align-items: center;
+           gap: 16px; border-bottom: 1px solid #0f3460; flex-shrink: 0; }
+#title { font-size: 16px; font-weight: 700; color: #4fc3f7; }
+.btn { background: #0f3460; border: 1px solid #4fc3f7; color: #4fc3f7;
+        padding: 5px 14px; border-radius: 4px; cursor: pointer; font-size: 12px;
+        transition: background 0.15s; }
+.btn:hover { background: #1a5276; }
+.btn.active { background: #4fc3f7; color: #16213e; }
+#time-display { margin-left: auto; color: #90caf9; font-size: 12px; min-width: 80px; }
+#bpm-label { color: #aaa; font-size: 11px; }
+input[type=range] { accent-color: #4fc3f7; }
+
+/* ── Legend ── */
+#legend { background: #16213e; padding: 6px 16px; display: flex; gap: 16px;
+           flex-wrap: wrap; border-bottom: 1px solid #0f3460; flex-shrink: 0; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.legend-swatch { width: 14px; height: 10px; border-radius: 2px; }
+
+/* ── Piano Roll Container ── */
+#roll-wrapper { flex: 1; display: flex; overflow: hidden; position: relative; }
+
+/* ── Piano keyboard on left ── */
+#piano { width: 48px; flex-shrink: 0; background: #111; overflow: hidden;
+          position: relative; border-right: 1px solid #333; }
+#piano canvas { display: block; }
+
+/* ── Roll canvas ── */
+#roll-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; position: relative; }
+#roll-canvas { display: block; cursor: pointer; }
+
+/* ── Playhead ── */
+#playhead { position: absolute; top: 0; bottom: 0; width: 2px;
+             background: rgba(255,255,100,0.9); pointer-events: none;
+             left: 0; z-index: 10; }
+
+/* ── Tooltip ── */
+#tooltip { position: fixed; background: rgba(0,0,0,0.85); color: #fff;
+            padding: 5px 10px; border-radius: 4px; font-size: 11px;
+            pointer-events: none; display: none; z-index: 100;
+            border: 1px solid #4fc3f7; }
+
+/* ── Zoom controls ── */
+#zoom-bar { background: #16213e; padding: 6px 16px; display: flex; align-items: center;
+             gap: 12px; border-top: 1px solid #0f3460; flex-shrink: 0; }
+#zoom-bar label { font-size: 11px; color: #aaa; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <span id="title">C Major — Jazz Drums</span>
+    <button class="btn" id="btn-play" onclick="togglePlay()">▶ Play</button>
+    <button class="btn" onclick="stopAudio()">■ Stop</button>
+    <label id="bpm-label">Tempo: —</label>
+    <span id="time-display">0:00 / 1:03</span>
+  </div>
+
+  <div id="legend"></div>
+
+  <div id="roll-wrapper">
+    <div id="piano"><canvas id="piano-canvas"></canvas></div>
+    <div id="roll-scroll">
+      <canvas id="roll-canvas"></canvas>
+      <div id="playhead"></div>
+    </div>
+  </div>
+
+  <div id="zoom-bar">
+    <label>Horizontal zoom:</label>
+    <input type="range" id="zoom-x" min="50" max="600" value="150"
+           oninput="setZoomX(this.value)">
+    <label>Vertical zoom:</label>
+    <input type="range" id="zoom-y" min="4" max="20" value="8"
+           oninput="setZoomY(this.value)">
+    <span style="color:#aaa;font-size:11px;margin-left:8px">
+      Click on the roll to seek. Hover notes for details.
+    </span>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// ── Data ────────────────────────────────────────────────────────────────────
+const TRACKS = [{"name": "Melody", "notes": [{"note": 67, "name": "G4", "start": 0.0, "dur": 0.201, "vel": 83, "ch": 0}, {"note": 69, "name": "A4", "start": 0.5, "dur": 0.224, "vel": 92, "ch": 0}, {"note": 67, "name": "G4", "start": 0.75, "dur": 0.2104, "vel": 88, "ch": 0}, {"note": 64, "name": "E4", "start": 1.0, "dur": 0.2125, "vel": 83, "ch": 0}, {"note": 64, "name": "E4", "start": 1.5, "dur": 0.4281, "vel": 72, "ch": 0}, {"note": 64, "name": "E4", "start": 2.0, "dur": 0.4281, "vel": 99, "ch": 0}, {"note": 65, "name": "F4", "start": 2.5, "dur": 0.4271, "vel": 97, "ch": 0}, {"note": 74, "name": "D5", "start": 3.5, "dur": 0.4167, "vel": 97, "ch": 0}, {"note": 72, "name": "C5", "start": 4.0, "dur": 0.226, "vel": 78, "ch": 0}, {"note": 72, "name": "C5", "start": 4.25, "dur": 0.2062, "vel": 90, "ch": 0}, {"note": 72, "name": "C5", "start": 4.5, "dur": 0.2094, "vel": 82, "ch": 0}, {"note": 69, "name": "A4", "start": 4.75, "dur": 0.2313, "vel": 80, "ch": 0}, {"note": 69, "name": "A4", "start": 5.0, "dur": 0.4594, "vel": 71, "ch": 0}, {"note": 69, "name": "A4", "start": 5.5, "dur": 0.4698, "vel": 99, "ch": 0}, {"note": 67, "name": "G4", "start": 6.0, "dur": 0.4552, "vel": 77, "ch": 0}, {"note": 65, "name": "F4", "start": 6.5, "dur": 0.4292, "vel": 88, "ch": 0}, {"note": 65, "name": "F4", "start": 7.0, "dur": 0.4562, "vel": 72, "ch": 0}, {"note": 65, "name": "F4", "start": 7.5, "dur": 0.4594, "vel": 75, "ch": 0}, {"note": 69, "name": "A4", "start": 8.0, "dur": 0.45, "vel": 70, "ch": 0}, {"note": 72, "name": "C5", "start": 8.75, "dur": 0.2042, "vel": 80, "ch": 0}, {"note": 79, "name": "G5", "start": 9.0, "dur": 0.4531, "vel": 98, "ch": 0}, {"note": 79, "name": "G5", "start": 9.5, "dur": 0.4646, "vel": 73, "ch": 0}, {"note": 81, "name": "A5", "start": 10.0, "dur": 0.2344, "vel": 86, "ch": 0}, {"note": 76, "name": "E5", "start": 10.25, "dur": 0.2323, "vel": 81, "ch": 0}, {"note": 74, "name": "D5", "start": 10.5, "dur": 0.4177, "vel": 71, "ch": 0}, {"note": 74, "name": "D5", "start": 11.0, "dur": 0.4354, "vel": 93, "ch": 0}, {"note": 72, "name": "C5", "start": 12.0, "dur": 0.4448, "vel": 97, "ch": 0}, {"note": 76, "name": "E5", "start": 12.5, "dur": 0.4146, "vel": 92, "ch": 0}, {"note": 77, "name": "F5", "start": 13.0, "dur": 0.2333, "vel": 84, "ch": 0}, {"note": 76, "name": "E5", "start": 13.25, "dur": 0.2125, "vel": 72, "ch": 0}, {"note": 76, "name": "E5", "start": 13.5, "dur": 0.4, "vel": 77, "ch": 0}, {"note": 74, "name": "D5", "start": 14.0, "dur": 0.4156, "vel": 85, "ch": 0}, {"note": 74, "name": "D5", "start": 14.75, "dur": 0.2177, "vel": 95, "ch": 0}, {"note": 72, "name": "C5", "start": 15.0, "dur": 0.2156, "vel": 91, "ch": 0}, {"note": 74, "name": "D5", "start": 15.25, "dur": 0.224, "vel": 91, "ch": 0}, {"note": 72, "name": "C5", "start": 15.5, "dur": 0.425, "vel": 93, "ch": 0}, {"note": 72, "name": "C5", "start": 16.0, "dur": 0.4646, "vel": 77, "ch": 0}, {"note": 67, "name": "G4", "start": 16.75, "dur": 0.2365, "vel": 90, "ch": 0}, {"note": 72, "name": "C5", "start": 17.0, "dur": 0.2083, "vel": 97, "ch": 0}, {"note": 76, "name": "E5", "start": 17.25, "dur": 0.2021, "vel": 98, "ch": 0}, {"note": 74, "name": "D5", "start": 17.5, "dur": 0.4583, "vel": 95, "ch": 0}, {"note": 71, "name": "B4", "start": 18.0, "dur": 0.2354, "vel": 76, "ch": 0}, {"note": 74, "name": "D5", "start": 18.25, "dur": 0.201, "vel": 71, "ch": 0}, {"note": 74, "name": "D5", "start": 18.5, "dur": 0.4719, "vel": 71, "ch": 0}, {"note": 72, "name": "C5", "start": 20.0, "dur": 0.4021, "vel": 89, "ch": 0}, {"note": 71, "name": "B4", "start": 21.0, "dur": 0.2073, "vel": 78, "ch": 0}, {"note": 69, "name": "A4", "start": 21.25, "dur": 0.2042, "vel": 82, "ch": 0}, {"note": 74, "name": "D5", "start": 21.5, "dur": 0.4052, "vel": 99, "ch": 0}, {"note": 72, "name": "C5", "start": 22.0, "dur": 0.426, "vel": 99, "ch": 0}, {"note": 72, "name": "C5", "start": 23.0, "dur": 0.4625, "vel": 84, "ch": 0}, {"note": 81, "name": "A5", "start": 23.5, "dur": 0.4396, "vel": 90, "ch": 0}, {"note": 79, "name": "G5", "start": 24.0, "dur": 0.4073, "vel": 98, "ch": 0}, {"note": 79, "name": "G5", "start": 24.5, "dur": 0.4156, "vel": 89, "ch": 0}, {"note": 83, "name": "B5", "start": 25.0, "dur": 0.4365, "vel": 86, "ch": 0}, {"note": 77, "name": "F5", "start": 25.5, "dur": 0.4615, "vel": 83, "ch": 0}, {"note": 79, "name": "G5", "start": 26.25, "dur": 0.2021, "vel": 73, "ch": 0}, {"note": 79, "name": "G5", "start": 26.5, "dur": 0.4271, "vel": 96, "ch": 0}, {"note": 74, "name": "D5", "start": 27.0, "dur": 0.2333, "vel": 81, "ch": 0}, {"note": 79, "name": "G5", "start": 27.25, "dur": 0.225, "vel": 76, "ch": 0}, {"note": 79, "name": "G5", "start": 27.5, "dur": 0.4656, "vel": 87, "ch": 0}, {"note": 83, "name": "B5", "start": 28.0, "dur": 0.4302, "vel": 98, "ch": 0}, {"note": 81, "name": "A5", "start": 29.0, "dur": 0.2323, "vel": 91, "ch": 0}, {"note": 79, "name": "G5", "start": 29.25, "dur": 0.226, "vel": 95, "ch": 0}, {"note": 79, "name": "G5", "start": 29.5, "dur": 0.4167, "vel": 85, "ch": 0}, {"note": 79, "name": "G5", "start": 30.0, "dur": 0.4292, "vel": 76, "ch": 0}, {"note": 79, "name": "G5", "start": 30.5, "dur": 0.4208, "vel": 94, "ch": 0}, {"note": 79, "name": "G5", "start": 31.0, "dur": 0.4396, "vel": 96, "ch": 0}, {"note": 79, "name": "G5", "start": 31.5, "dur": 0.4125, "vel": 78, "ch": 0}, {"note": 79, "name": "G5", "start": 32.0, "dur": 0.4729, "vel": 89, "ch": 0}, {"note": 79, "name": "G5", "start": 32.75, "dur": 0.226, "vel": 71, "ch": 0}, {"note": 81, "name": "A5", "start": 33.25, "dur": 0.2271, "vel": 93, "ch": 0}, {"note": 79, "name": "G5", "start": 34.0, "dur": 0.4219, "vel": 98, "ch": 0}, {"note": 77, "name": "F5", "start": 34.5, "dur": 0.4406, "vel": 79, "ch": 0}, {"note": 76, "name": "E5", "start": 35.5, "dur": 0.4677, "vel": 93, "ch": 0}, {"note": 77, "name": "F5", "start": 36.0, "dur": 0.424, "vel": 90, "ch": 0}, {"note": 77, "name": "F5", "start": 36.5, "dur": 0.4667, "vel": 95, "ch": 0}, {"note": 77, "name": "F5", "start": 37.0, "dur": 0.4208, "vel": 72, "ch": 0}, {"note": 72, "name": "C5", "start": 37.5, "dur": 0.4562, "vel": 100, "ch": 0}, {"note": 76, "name": "E5", "start": 38.0, "dur": 0.4333, "vel": 72, "ch": 0}, {"note": 77, "name": "F5", "start": 38.5, "dur": 0.2177, "vel": 82, "ch": 0}, {"note": 71, "name": "B4", "start": 38.75, "dur": 0.2313, "vel": 94, "ch": 0}, {"note": 67, "name": "G4", "start": 39.0, "dur": 0.2354, "vel": 95, "ch": 0}, {"note": 65, "name": "F4", "start": 39.25, "dur": 0.2344, "vel": 77, "ch": 0}, {"note": 65, "name": "F4", "start": 40.0, "dur": 0.226, "vel": 96, "ch": 0}, {"note": 67, "name": "G4", "start": 40.25, "dur": 0.2052, "vel": 98, "ch": 0}, {"note": 71, "name": "B4", "start": 40.5, "dur": 0.4469, "vel": 96, "ch": 0}, {"note": 72, "name": "C5", "start": 41.0, "dur": 0.4323, "vel": 78, "ch": 0}, {"note": 71, "name": "B4", "start": 41.5, "dur": 0.424, "vel": 80, "ch": 0}, {"note": 71, "name": "B4", "start": 42.0, "dur": 0.424, "vel": 83, "ch": 0}, {"note": 71, "name": "B4", "start": 42.5, "dur": 0.2156, "vel": 96, "ch": 0}, {"note": 72, "name": "C5", "start": 42.75, "dur": 0.2323, "vel": 97, "ch": 0}, {"note": 77, "name": "F5", "start": 43.0, "dur": 0.2281, "vel": 79, "ch": 0}, {"note": 76, "name": "E5", "start": 43.25, "dur": 0.2271, "vel": 93, "ch": 0}, {"note": 76, "name": "E5", "start": 43.5, "dur": 0.4323, "vel": 78, "ch": 0}, {"note": 76, "name": "E5", "start": 44.25, "dur": 0.2198, "vel": 89, "ch": 0}, {"note": 77, "name": "F5", "start": 44.5, "dur": 0.4479, "vel": 72, "ch": 0}, {"note": 76, "name": "E5", "start": 45.5, "dur": 0.424, "vel": 82, "ch": 0}, {"note": 79, "name": "G5", "start": 46.0, "dur": 0.401, "vel": 85, "ch": 0}, {"note": 77, "name": "F5", "start": 46.5, "dur": 0.4042, "vel": 90, "ch": 0}, {"note": 76, "name": "E5", "start": 47.0, "dur": 0.4708, "vel": 70, "ch": 0}, {"note": 76, "name": "E5", "start": 48.0, "dur": 0.2094, "vel": 92, "ch": 0}, {"note": 83, "name": "B5", "start": 48.25, "dur": 0.2042, "vel": 92, "ch": 0}, {"note": 77, "name": "F5", "start": 48.5, "dur": 0.2344, "vel": 70, "ch": 0}, {"note": 76, "name": "E5", "start": 48.75, "dur": 0.226, "vel": 100, "ch": 0}, {"note": 72, "name": "C5", "start": 49.25, "dur": 0.2104, "vel": 94, "ch": 0}, {"note": 76, "name": "E5", "start": 49.5, "dur": 0.4583, "vel": 88, "ch": 0}, {"note": 79, "name": "G5", "start": 50.0, "dur": 0.4323, "vel": 73, "ch": 0}, {"note": 77, "name": "F5", "start": 50.5, "dur": 0.4323, "vel": 74, "ch": 0}, {"note": 76, "name": "E5", "start": 51.0, "dur": 0.4688, "vel": 95, "ch": 0}, {"note": 79, "name": "G5", "start": 51.5, "dur": 0.4198, "vel": 88, "ch": 0}, {"note": 81, "name": "A5", "start": 52.0, "dur": 0.425, "vel": 82, "ch": 0}, {"note": 81, "name": "A5", "start": 52.5, "dur": 0.4156, "vel": 85, "ch": 0}, {"note": 81, "name": "A5", "start": 53.0, "dur": 0.2219, "vel": 98, "ch": 0}, {"note": 81, "name": "A5", "start": 53.25, "dur": 0.2031, "vel": 76, "ch": 0}, {"note": 83, "name": "B5", "start": 53.5, "dur": 0.4354, "vel": 92, "ch": 0}, {"note": 81, "name": "A5", "start": 54.0, "dur": 0.4427, "vel": 91, "ch": 0}, {"note": 79, "name": "G5", "start": 54.5, "dur": 0.4406, "vel": 93, "ch": 0}, {"note": 77, "name": "F5", "start": 55.0, "dur": 0.2042, "vel": 77, "ch": 0}, {"note": 84, "name": "C6", "start": 56.0, "dur": 0.4438, "vel": 86, "ch": 0}, {"note": 81, "name": "A5", "start": 56.5, "dur": 0.4125, "vel": 81, "ch": 0}, {"note": 79, "name": "G5", "start": 57.25, "dur": 0.2198, "vel": 71, "ch": 0}, {"note": 79, "name": "G5", "start": 57.5, "dur": 0.4562, "vel": 97, "ch": 0}, {"note": 77, "name": "F5", "start": 58.0, "dur": 0.2177, "vel": 97, "ch": 0}, {"note": 72, "name": "C5", "start": 58.25, "dur": 0.225, "vel": 90, "ch": 0}, {"note": 67, "name": "G4", "start": 58.75, "dur": 0.2042, "vel": 77, "ch": 0}, {"note": 71, "name": "B4", "start": 59.0, "dur": 0.2281, "vel": 77, "ch": 0}, {"note": 69, "name": "A4", "start": 59.25, "dur": 0.2365, "vel": 88, "ch": 0}, {"note": 71, "name": "B4", "start": 59.5, "dur": 0.4073, "vel": 93, "ch": 0}, {"note": 67, "name": "G4", "start": 60.0, "dur": 0.4333, "vel": 83, "ch": 0}, {"note": 67, "name": "G4", "start": 60.5, "dur": 0.4208, "vel": 77, "ch": 0}, {"note": 62, "name": "D4", "start": 61.0, "dur": 0.2344, "vel": 77, "ch": 0}, {"note": 64, "name": "E4", "start": 61.25, "dur": 0.2073, "vel": 99, "ch": 0}, {"note": 67, "name": "G4", "start": 62.25, "dur": 0.2104, "vel": 99, "ch": 0}, {"note": 72, "name": "C5", "start": 62.75, "dur": 0.2198, "vel": 86, "ch": 0}, {"note": 77, "name": "F5", "start": 63.0, "dur": 0.2115, "vel": 93, "ch": 0}, {"note": 76, "name": "E5", "start": 63.25, "dur": 0.225, "vel": 100, "ch": 0}, {"note": 69, "name": "A4", "start": 63.5, "dur": 0.45, "vel": 94, "ch": 0}]}, {"name": "Chords", "notes": [{"note": 60, "name": "C4", "start": 0.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 64, "name": "E4", "start": 0.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 67, "name": "G4", "start": 0.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 65, "name": "F4", "start": 4.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 69, "name": "A4", "start": 4.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 72, "name": "C5", "start": 4.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 67, "name": "G4", "start": 8.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 71, "name": "B4", "start": 8.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 74, "name": "D5", "start": 8.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 60, "name": "C4", "start": 12.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 64, "name": "E4", "start": 12.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 67, "name": "G4", "start": 12.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 60, "name": "C4", "start": 16.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 64, "name": "E4", "start": 16.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 67, "name": "G4", "start": 16.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 65, "name": "F4", "start": 20.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 69, "name": "A4", "start": 20.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 72, "name": "C5", "start": 20.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 67, "name": "G4", "start": 24.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 71, "name": "B4", "start": 24.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 74, "name": "D5", "start": 24.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 60, "name": "C4", "start": 28.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 64, "name": "E4", "start": 28.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 67, "name": "G4", "start": 28.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 60, "name": "C4", "start": 32.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 64, "name": "E4", "start": 32.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 67, "name": "G4", "start": 32.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 65, "name": "F4", "start": 36.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 69, "name": "A4", "start": 36.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 72, "name": "C5", "start": 36.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 67, "name": "G4", "start": 40.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 71, "name": "B4", "start": 40.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 74, "name": "D5", "start": 40.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 60, "name": "C4", "start": 44.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 64, "name": "E4", "start": 44.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 67, "name": "G4", "start": 44.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 60, "name": "C4", "start": 48.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 64, "name": "E4", "start": 48.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 67, "name": "G4", "start": 48.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 65, "name": "F4", "start": 52.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 69, "name": "A4", "start": 52.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 72, "name": "C5", "start": 52.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 67, "name": "G4", "start": 56.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 71, "name": "B4", "start": 56.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 74, "name": "D5", "start": 56.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 60, "name": "C4", "start": 60.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 64, "name": "E4", "start": 60.0, "dur": 3.875, "vel": 60, "ch": 1}, {"note": 67, "name": "G4", "start": 60.0, "dur": 3.875, "vel": 60, "ch": 1}]}, {"name": "Bass", "notes": [{"note": 36, "name": "C2", "start": 0.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 40, "name": "E2", "start": 0.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 38, "name": "D2", "start": 1.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 1.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 2.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 43, "name": "G2", "start": 2.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 34, "name": "A#1", "start": 3.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 38, "name": "D2", "start": 3.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 4.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 39, "name": "D#2", "start": 4.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 45, "name": "A2", "start": 5.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 48, "name": "C3", "start": 5.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 6.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 43, "name": "G2", "start": 6.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 39, "name": "D#2", "start": 7.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 39, "name": "D#2", "start": 7.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 8.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 43, "name": "G2", "start": 8.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 9.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 47, "name": "B2", "start": 9.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 10.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 41, "name": "F2", "start": 10.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 47, "name": "B2", "start": 11.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 47, "name": "B2", "start": 11.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 12.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 36, "name": "C2", "start": 12.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 13.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 40, "name": "E2", "start": 13.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 14.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 34, "name": "A#1", "start": 14.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 34, "name": "A#1", "start": 15.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 40, "name": "E2", "start": 15.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 16.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 34, "name": "A#1", "start": 16.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 38, "name": "D2", "start": 17.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 17.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 18.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 34, "name": "A#1", "start": 18.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 19.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 40, "name": "E2", "start": 19.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 20.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 45, "name": "A2", "start": 20.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 45, "name": "A2", "start": 21.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 21.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 22.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 39, "name": "D#2", "start": 22.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 23.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 23.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 24.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 45, "name": "A2", "start": 24.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 25.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 25.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 26.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 43, "name": "G2", "start": 26.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 50, "name": "D3", "start": 27.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 45, "name": "A2", "start": 27.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 28.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 40, "name": "E2", "start": 28.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 38, "name": "D2", "start": 29.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 34, "name": "A#1", "start": 29.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 30.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 34, "name": "A#1", "start": 30.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 31.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 31.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 32.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 40, "name": "E2", "start": 32.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 38, "name": "D2", "start": 33.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 33.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 34.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 40, "name": "E2", "start": 34.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 34, "name": "A#1", "start": 35.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 34, "name": "A#1", "start": 35.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 36.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 41, "name": "F2", "start": 36.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 37.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 37.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 38.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 48, "name": "C3", "start": 38.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 48, "name": "C3", "start": 39.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 45, "name": "A2", "start": 39.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 40.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 45, "name": "A2", "start": 40.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 41.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 45, "name": "A2", "start": 41.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 42.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 41, "name": "F2", "start": 42.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 43.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 50, "name": "D3", "start": 43.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 44.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 36, "name": "C2", "start": 44.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 34, "name": "A#1", "start": 45.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 45.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 46.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 43, "name": "G2", "start": 46.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 34, "name": "A#1", "start": 47.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 40, "name": "E2", "start": 47.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 48.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 38, "name": "D2", "start": 48.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 40, "name": "E2", "start": 49.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 34, "name": "A#1", "start": 49.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 50.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 34, "name": "A#1", "start": 50.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 34, "name": "A#1", "start": 51.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 51.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 52.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 39, "name": "D#2", "start": 52.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 53.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 48, "name": "C3", "start": 53.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 54.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 39, "name": "D#2", "start": 54.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 48, "name": "C3", "start": 55.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 55.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 56.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 45, "name": "A2", "start": 56.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 50, "name": "D3", "start": 57.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 57.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 43, "name": "G2", "start": 58.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 47, "name": "B2", "start": 58.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 41, "name": "F2", "start": 59.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 47, "name": "B2", "start": 59.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 60.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 38, "name": "D2", "start": 60.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 40, "name": "E2", "start": 61.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 61.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 36, "name": "C2", "start": 62.0, "dur": 0.425, "vel": 90, "ch": 2}, {"note": 40, "name": "E2", "start": 62.5, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 40, "name": "E2", "start": 63.0, "dur": 0.425, "vel": 70, "ch": 2}, {"note": 38, "name": "D2", "start": 63.5, "dur": 0.425, "vel": 70, "ch": 2}]}, {"name": "Drums", "notes": [{"note": 36, "name": "C2", "start": 0.0, "dur": 0.0625, "vel": 107, "ch": 9}, {"note": 46, "name": "A#2", "start": 0.0, "dur": 0.0625, "vel": 59, "ch": 9}, {"note": 49, "name": "C#3", "start": 0.0, "dur": 0.125, "vel": 100, "ch": 9}, {"note": 42, "name": "F#2", "start": 0.25, "dur": 0.0625, "vel": 65, "ch": 9}, {"note": 38, "name": "D2", "start": 0.75, "dur": 0.0625, "vel": 86, "ch": 9}, {"note": 42, "name": "F#2", "start": 0.75, "dur": 0.0625, "vel": 62, "ch": 9}, {"note": 46, "name": "A#2", "start": 1.0, "dur": 0.0625, "vel": 68, "ch": 9}, {"note": 38, "name": "D2", "start": 1.125, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 36, "name": "C2", "start": 1.25, "dur": 0.0625, "vel": 104, "ch": 9}, {"note": 42, "name": "F#2", "start": 1.25, "dur": 0.0625, "vel": 67, "ch": 9}, {"note": 38, "name": "D2", "start": 1.625, "dur": 0.0625, "vel": 84, "ch": 9}, {"note": 42, "name": "F#2", "start": 1.75, "dur": 0.0625, "vel": 56, "ch": 9}, {"note": 36, "name": "C2", "start": 2.0, "dur": 0.0625, "vel": 102, "ch": 9}, {"note": 46, "name": "A#2", "start": 2.0, "dur": 0.0625, "vel": 58, "ch": 9}, {"note": 42, "name": "F#2", "start": 2.25, "dur": 0.0625, "vel": 71, "ch": 9}, {"note": 38, "name": "D2", "start": 2.5, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 38, "name": "D2", "start": 2.75, "dur": 0.0625, "vel": 84, "ch": 9}, {"note": 42, "name": "F#2", "start": 2.75, "dur": 0.0625, "vel": 57, "ch": 9}, {"note": 46, "name": "A#2", "start": 3.0, "dur": 0.0625, "vel": 65, "ch": 9}, {"note": 36, "name": "C2", "start": 3.25, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 3.25, "dur": 0.0625, "vel": 65, "ch": 9}, {"note": 38, "name": "D2", "start": 3.625, "dur": 0.0625, "vel": 90, "ch": 9}, {"note": 42, "name": "F#2", "start": 3.75, "dur": 0.0625, "vel": 70, "ch": 9}, {"note": 36, "name": "C2", "start": 4.0, "dur": 0.0625, "vel": 93, "ch": 9}, {"note": 46, "name": "A#2", "start": 4.0, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 42, "name": "F#2", "start": 4.25, "dur": 0.0625, "vel": 64, "ch": 9}, {"note": 38, "name": "D2", "start": 4.75, "dur": 0.0625, "vel": 100, "ch": 9}, {"note": 42, "name": "F#2", "start": 4.75, "dur": 0.0625, "vel": 58, "ch": 9}, {"note": 46, "name": "A#2", "start": 5.0, "dur": 0.0625, "vel": 55, "ch": 9}, {"note": 38, "name": "D2", "start": 5.125, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 36, "name": "C2", "start": 5.25, "dur": 0.0625, "vel": 101, "ch": 9}, {"note": 42, "name": "F#2", "start": 5.25, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 38, "name": "D2", "start": 5.625, "dur": 0.0625, "vel": 98, "ch": 9}, {"note": 42, "name": "F#2", "start": 5.75, "dur": 0.0625, "vel": 60, "ch": 9}, {"note": 36, "name": "C2", "start": 6.0, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 46, "name": "A#2", "start": 6.0, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 42, "name": "F#2", "start": 6.25, "dur": 0.0625, "vel": 62, "ch": 9}, {"note": 38, "name": "D2", "start": 6.75, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 6.75, "dur": 0.0625, "vel": 63, "ch": 9}, {"note": 46, "name": "A#2", "start": 7.0, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 36, "name": "C2", "start": 7.25, "dur": 0.0625, "vel": 97, "ch": 9}, {"note": 42, "name": "F#2", "start": 7.25, "dur": 0.0625, "vel": 57, "ch": 9}, {"note": 38, "name": "D2", "start": 7.625, "dur": 0.0625, "vel": 100, "ch": 9}, {"note": 42, "name": "F#2", "start": 7.75, "dur": 0.0625, "vel": 63, "ch": 9}, {"note": 36, "name": "C2", "start": 8.0, "dur": 0.0625, "vel": 101, "ch": 9}, {"note": 46, "name": "A#2", "start": 8.0, "dur": 0.0625, "vel": 61, "ch": 9}, {"note": 42, "name": "F#2", "start": 8.25, "dur": 0.0625, "vel": 58, "ch": 9}, {"note": 38, "name": "D2", "start": 8.75, "dur": 0.0625, "vel": 89, "ch": 9}, {"note": 42, "name": "F#2", "start": 8.75, "dur": 0.0625, "vel": 55, "ch": 9}, {"note": 46, "name": "A#2", "start": 9.0, "dur": 0.0625, "vel": 63, "ch": 9}, {"note": 38, "name": "D2", "start": 9.125, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 36, "name": "C2", "start": 9.25, "dur": 0.0625, "vel": 93, "ch": 9}, {"note": 42, "name": "F#2", "start": 9.25, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 38, "name": "D2", "start": 9.625, "dur": 0.0625, "vel": 87, "ch": 9}, {"note": 42, "name": "F#2", "start": 9.75, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 36, "name": "C2", "start": 10.0, "dur": 0.0625, "vel": 98, "ch": 9}, {"note": 46, "name": "A#2", "start": 10.0, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 42, "name": "F#2", "start": 10.25, "dur": 0.0625, "vel": 59, "ch": 9}, {"note": 38, "name": "D2", "start": 10.75, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 10.75, "dur": 0.0625, "vel": 56, "ch": 9}, {"note": 46, "name": "A#2", "start": 11.0, "dur": 0.0625, "vel": 57, "ch": 9}, {"note": 36, "name": "C2", "start": 11.25, "dur": 0.0625, "vel": 105, "ch": 9}, {"note": 42, "name": "F#2", "start": 11.25, "dur": 0.0625, "vel": 60, "ch": 9}, {"note": 38, "name": "D2", "start": 11.625, "dur": 0.0625, "vel": 91, "ch": 9}, {"note": 42, "name": "F#2", "start": 11.75, "dur": 0.0625, "vel": 63, "ch": 9}, {"note": 36, "name": "C2", "start": 12.0, "dur": 0.0625, "vel": 100, "ch": 9}, {"note": 46, "name": "A#2", "start": 12.0, "dur": 0.0625, "vel": 70, "ch": 9}, {"note": 42, "name": "F#2", "start": 12.25, "dur": 0.0625, "vel": 65, "ch": 9}, {"note": 38, "name": "D2", "start": 12.75, "dur": 0.0625, "vel": 87, "ch": 9}, {"note": 42, "name": "F#2", "start": 12.75, "dur": 0.0625, "vel": 67, "ch": 9}, {"note": 46, "name": "A#2", "start": 13.0, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 36, "name": "C2", "start": 13.25, "dur": 0.0625, "vel": 100, "ch": 9}, {"note": 42, "name": "F#2", "start": 13.25, "dur": 0.0625, "vel": 72, "ch": 9}, {"note": 38, "name": "D2", "start": 13.625, "dur": 0.0625, "vel": 88, "ch": 9}, {"note": 42, "name": "F#2", "start": 13.75, "dur": 0.0625, "vel": 75, "ch": 9}, {"note": 36, "name": "C2", "start": 14.0, "dur": 0.0625, "vel": 95, "ch": 9}, {"note": 46, "name": "A#2", "start": 14.0, "dur": 0.0625, "vel": 62, "ch": 9}, {"note": 42, "name": "F#2", "start": 14.25, "dur": 0.0625, "vel": 72, "ch": 9}, {"note": 38, "name": "D2", "start": 14.75, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 14.75, "dur": 0.0625, "vel": 64, "ch": 9}, {"note": 46, "name": "A#2", "start": 15.0, "dur": 0.0625, "vel": 56, "ch": 9}, {"note": 36, "name": "C2", "start": 15.25, "dur": 0.0625, "vel": 107, "ch": 9}, {"note": 42, "name": "F#2", "start": 15.25, "dur": 0.0625, "vel": 58, "ch": 9}, {"note": 38, "name": "D2", "start": 15.625, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 15.75, "dur": 0.0625, "vel": 72, "ch": 9}, {"note": 36, "name": "C2", "start": 16.0, "dur": 0.0625, "vel": 96, "ch": 9}, {"note": 46, "name": "A#2", "start": 16.0, "dur": 0.0625, "vel": 68, "ch": 9}, {"note": 49, "name": "C#3", "start": 16.0, "dur": 0.125, "vel": 100, "ch": 9}, {"note": 42, "name": "F#2", "start": 16.25, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 38, "name": "D2", "start": 16.625, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 38, "name": "D2", "start": 16.75, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 16.75, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 46, "name": "A#2", "start": 17.0, "dur": 0.0625, "vel": 58, "ch": 9}, {"note": 36, "name": "C2", "start": 17.25, "dur": 0.0625, "vel": 103, "ch": 9}, {"note": 42, "name": "F#2", "start": 17.25, "dur": 0.0625, "vel": 56, "ch": 9}, {"note": 38, "name": "D2", "start": 17.625, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 17.75, "dur": 0.0625, "vel": 61, "ch": 9}, {"note": 36, "name": "C2", "start": 18.0, "dur": 0.0625, "vel": 92, "ch": 9}, {"note": 46, "name": "A#2", "start": 18.0, "dur": 0.0625, "vel": 56, "ch": 9}, {"note": 42, "name": "F#2", "start": 18.25, "dur": 0.0625, "vel": 59, "ch": 9}, {"note": 38, "name": "D2", "start": 18.75, "dur": 0.0625, "vel": 98, "ch": 9}, {"note": 42, "name": "F#2", "start": 18.75, "dur": 0.0625, "vel": 61, "ch": 9}, {"note": 46, "name": "A#2", "start": 19.0, "dur": 0.0625, "vel": 59, "ch": 9}, {"note": 36, "name": "C2", "start": 19.25, "dur": 0.0625, "vel": 100, "ch": 9}, {"note": 42, "name": "F#2", "start": 19.25, "dur": 0.0625, "vel": 59, "ch": 9}, {"note": 38, "name": "D2", "start": 19.625, "dur": 0.0625, "vel": 83, "ch": 9}, {"note": 42, "name": "F#2", "start": 19.75, "dur": 0.0625, "vel": 55, "ch": 9}, {"note": 36, "name": "C2", "start": 20.0, "dur": 0.0625, "vel": 103, "ch": 9}, {"note": 46, "name": "A#2", "start": 20.0, "dur": 0.0625, "vel": 62, "ch": 9}, {"note": 38, "name": "D2", "start": 20.25, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 42, "name": "F#2", "start": 20.25, "dur": 0.0625, "vel": 63, "ch": 9}, {"note": 38, "name": "D2", "start": 20.75, "dur": 0.0625, "vel": 95, "ch": 9}, {"note": 42, "name": "F#2", "start": 20.75, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 46, "name": "A#2", "start": 21.0, "dur": 0.0625, "vel": 58, "ch": 9}, {"note": 36, "name": "C2", "start": 21.25, "dur": 0.0625, "vel": 93, "ch": 9}, {"note": 42, "name": "F#2", "start": 21.25, "dur": 0.0625, "vel": 71, "ch": 9}, {"note": 38, "name": "D2", "start": 21.625, "dur": 0.0625, "vel": 95, "ch": 9}, {"note": 42, "name": "F#2", "start": 21.75, "dur": 0.0625, "vel": 68, "ch": 9}, {"note": 36, "name": "C2", "start": 22.0, "dur": 0.0625, "vel": 107, "ch": 9}, {"note": 46, "name": "A#2", "start": 22.0, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 42, "name": "F#2", "start": 22.25, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 38, "name": "D2", "start": 22.75, "dur": 0.0625, "vel": 90, "ch": 9}, {"note": 42, "name": "F#2", "start": 22.75, "dur": 0.0625, "vel": 67, "ch": 9}, {"note": 46, "name": "A#2", "start": 23.0, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 36, "name": "C2", "start": 23.25, "dur": 0.0625, "vel": 95, "ch": 9}, {"note": 42, "name": "F#2", "start": 23.25, "dur": 0.0625, "vel": 75, "ch": 9}, {"note": 38, "name": "D2", "start": 23.625, "dur": 0.0625, "vel": 86, "ch": 9}, {"note": 42, "name": "F#2", "start": 23.75, "dur": 0.0625, "vel": 62, "ch": 9}, {"note": 36, "name": "C2", "start": 24.0, "dur": 0.0625, "vel": 106, "ch": 9}, {"note": 46, "name": "A#2", "start": 24.0, "dur": 0.0625, "vel": 67, "ch": 9}, {"note": 42, "name": "F#2", "start": 24.25, "dur": 0.0625, "vel": 68, "ch": 9}, {"note": 38, "name": "D2", "start": 24.75, "dur": 0.0625, "vel": 95, "ch": 9}, {"note": 42, "name": "F#2", "start": 24.75, "dur": 0.0625, "vel": 57, "ch": 9}, {"note": 46, "name": "A#2", "start": 25.0, "dur": 0.0625, "vel": 68, "ch": 9}, {"note": 36, "name": "C2", "start": 25.25, "dur": 0.0625, "vel": 96, "ch": 9}, {"note": 42, "name": "F#2", "start": 25.25, "dur": 0.0625, "vel": 72, "ch": 9}, {"note": 38, "name": "D2", "start": 25.625, "dur": 0.0625, "vel": 83, "ch": 9}, {"note": 42, "name": "F#2", "start": 25.75, "dur": 0.0625, "vel": 68, "ch": 9}, {"note": 36, "name": "C2", "start": 26.0, "dur": 0.0625, "vel": 93, "ch": 9}, {"note": 46, "name": "A#2", "start": 26.0, "dur": 0.0625, "vel": 64, "ch": 9}, {"note": 42, "name": "F#2", "start": 26.25, "dur": 0.0625, "vel": 73, "ch": 9}, {"note": 38, "name": "D2", "start": 26.75, "dur": 0.0625, "vel": 91, "ch": 9}, {"note": 42, "name": "F#2", "start": 26.75, "dur": 0.0625, "vel": 72, "ch": 9}, {"note": 46, "name": "A#2", "start": 27.0, "dur": 0.0625, "vel": 73, "ch": 9}, {"note": 36, "name": "C2", "start": 27.25, "dur": 0.0625, "vel": 92, "ch": 9}, {"note": 42, "name": "F#2", "start": 27.25, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 38, "name": "D2", "start": 27.625, "dur": 0.0625, "vel": 85, "ch": 9}, {"note": 42, "name": "F#2", "start": 27.75, "dur": 0.0625, "vel": 64, "ch": 9}, {"note": 36, "name": "C2", "start": 28.0, "dur": 0.0625, "vel": 103, "ch": 9}, {"note": 46, "name": "A#2", "start": 28.0, "dur": 0.0625, "vel": 55, "ch": 9}, {"note": 42, "name": "F#2", "start": 28.25, "dur": 0.0625, "vel": 67, "ch": 9}, {"note": 38, "name": "D2", "start": 28.75, "dur": 0.0625, "vel": 96, "ch": 9}, {"note": 42, "name": "F#2", "start": 28.75, "dur": 0.0625, "vel": 61, "ch": 9}, {"note": 46, "name": "A#2", "start": 29.0, "dur": 0.0625, "vel": 60, "ch": 9}, {"note": 36, "name": "C2", "start": 29.25, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 29.25, "dur": 0.0625, "vel": 56, "ch": 9}, {"note": 38, "name": "D2", "start": 29.625, "dur": 0.0625, "vel": 82, "ch": 9}, {"note": 42, "name": "F#2", "start": 29.75, "dur": 0.0625, "vel": 68, "ch": 9}, {"note": 36, "name": "C2", "start": 30.0, "dur": 0.0625, "vel": 106, "ch": 9}, {"note": 46, "name": "A#2", "start": 30.0, "dur": 0.0625, "vel": 68, "ch": 9}, {"note": 42, "name": "F#2", "start": 30.25, "dur": 0.0625, "vel": 58, "ch": 9}, {"note": 38, "name": "D2", "start": 30.75, "dur": 0.0625, "vel": 96, "ch": 9}, {"note": 42, "name": "F#2", "start": 30.75, "dur": 0.0625, "vel": 64, "ch": 9}, {"note": 38, "name": "D2", "start": 30.875, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 46, "name": "A#2", "start": 31.0, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 36, "name": "C2", "start": 31.25, "dur": 0.0625, "vel": 98, "ch": 9}, {"note": 42, "name": "F#2", "start": 31.25, "dur": 0.0625, "vel": 59, "ch": 9}, {"note": 38, "name": "D2", "start": 31.625, "dur": 0.0625, "vel": 95, "ch": 9}, {"note": 42, "name": "F#2", "start": 31.75, "dur": 0.0625, "vel": 60, "ch": 9}, {"note": 36, "name": "C2", "start": 32.0, "dur": 0.0625, "vel": 99, "ch": 9}, {"note": 46, "name": "A#2", "start": 32.0, "dur": 0.0625, "vel": 71, "ch": 9}, {"note": 49, "name": "C#3", "start": 32.0, "dur": 0.125, "vel": 100, "ch": 9}, {"note": 42, "name": "F#2", "start": 32.25, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 38, "name": "D2", "start": 32.625, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 38, "name": "D2", "start": 32.75, "dur": 0.0625, "vel": 82, "ch": 9}, {"note": 42, "name": "F#2", "start": 32.75, "dur": 0.0625, "vel": 65, "ch": 9}, {"note": 46, "name": "A#2", "start": 33.0, "dur": 0.0625, "vel": 75, "ch": 9}, {"note": 36, "name": "C2", "start": 33.25, "dur": 0.0625, "vel": 92, "ch": 9}, {"note": 42, "name": "F#2", "start": 33.25, "dur": 0.0625, "vel": 65, "ch": 9}, {"note": 38, "name": "D2", "start": 33.625, "dur": 0.0625, "vel": 91, "ch": 9}, {"note": 42, "name": "F#2", "start": 33.75, "dur": 0.0625, "vel": 58, "ch": 9}, {"note": 36, "name": "C2", "start": 34.0, "dur": 0.0625, "vel": 104, "ch": 9}, {"note": 46, "name": "A#2", "start": 34.0, "dur": 0.0625, "vel": 71, "ch": 9}, {"note": 42, "name": "F#2", "start": 34.25, "dur": 0.0625, "vel": 65, "ch": 9}, {"note": 38, "name": "D2", "start": 34.75, "dur": 0.0625, "vel": 96, "ch": 9}, {"note": 42, "name": "F#2", "start": 34.75, "dur": 0.0625, "vel": 71, "ch": 9}, {"note": 46, "name": "A#2", "start": 35.0, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 36, "name": "C2", "start": 35.25, "dur": 0.0625, "vel": 96, "ch": 9}, {"note": 42, "name": "F#2", "start": 35.25, "dur": 0.0625, "vel": 62, "ch": 9}, {"note": 38, "name": "D2", "start": 35.625, "dur": 0.0625, "vel": 84, "ch": 9}, {"note": 42, "name": "F#2", "start": 35.75, "dur": 0.0625, "vel": 75, "ch": 9}, {"note": 36, "name": "C2", "start": 36.0, "dur": 0.0625, "vel": 107, "ch": 9}, {"note": 46, "name": "A#2", "start": 36.0, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 42, "name": "F#2", "start": 36.25, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 38, "name": "D2", "start": 36.75, "dur": 0.0625, "vel": 90, "ch": 9}, {"note": 42, "name": "F#2", "start": 36.75, "dur": 0.0625, "vel": 75, "ch": 9}, {"note": 46, "name": "A#2", "start": 37.0, "dur": 0.0625, "vel": 70, "ch": 9}, {"note": 36, "name": "C2", "start": 37.25, "dur": 0.0625, "vel": 100, "ch": 9}, {"note": 42, "name": "F#2", "start": 37.25, "dur": 0.0625, "vel": 73, "ch": 9}, {"note": 38, "name": "D2", "start": 37.625, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 38, "name": "D2", "start": 37.75, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 42, "name": "F#2", "start": 37.75, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 36, "name": "C2", "start": 38.0, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 46, "name": "A#2", "start": 38.0, "dur": 0.0625, "vel": 75, "ch": 9}, {"note": 42, "name": "F#2", "start": 38.25, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 38, "name": "D2", "start": 38.75, "dur": 0.0625, "vel": 81, "ch": 9}, {"note": 42, "name": "F#2", "start": 38.75, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 46, "name": "A#2", "start": 39.0, "dur": 0.0625, "vel": 61, "ch": 9}, {"note": 36, "name": "C2", "start": 39.25, "dur": 0.0625, "vel": 96, "ch": 9}, {"note": 42, "name": "F#2", "start": 39.25, "dur": 0.0625, "vel": 56, "ch": 9}, {"note": 38, "name": "D2", "start": 39.625, "dur": 0.0625, "vel": 82, "ch": 9}, {"note": 42, "name": "F#2", "start": 39.75, "dur": 0.0625, "vel": 60, "ch": 9}, {"note": 38, "name": "D2", "start": 39.875, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 36, "name": "C2", "start": 40.0, "dur": 0.0625, "vel": 106, "ch": 9}, {"note": 46, "name": "A#2", "start": 40.0, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 42, "name": "F#2", "start": 40.25, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 38, "name": "D2", "start": 40.75, "dur": 0.0625, "vel": 99, "ch": 9}, {"note": 42, "name": "F#2", "start": 40.75, "dur": 0.0625, "vel": 56, "ch": 9}, {"note": 46, "name": "A#2", "start": 41.0, "dur": 0.0625, "vel": 57, "ch": 9}, {"note": 36, "name": "C2", "start": 41.25, "dur": 0.0625, "vel": 104, "ch": 9}, {"note": 42, "name": "F#2", "start": 41.25, "dur": 0.0625, "vel": 64, "ch": 9}, {"note": 38, "name": "D2", "start": 41.625, "dur": 0.0625, "vel": 99, "ch": 9}, {"note": 42, "name": "F#2", "start": 41.75, "dur": 0.0625, "vel": 65, "ch": 9}, {"note": 36, "name": "C2", "start": 42.0, "dur": 0.0625, "vel": 96, "ch": 9}, {"note": 46, "name": "A#2", "start": 42.0, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 42, "name": "F#2", "start": 42.25, "dur": 0.0625, "vel": 67, "ch": 9}, {"note": 38, "name": "D2", "start": 42.75, "dur": 0.0625, "vel": 100, "ch": 9}, {"note": 42, "name": "F#2", "start": 42.75, "dur": 0.0625, "vel": 65, "ch": 9}, {"note": 46, "name": "A#2", "start": 43.0, "dur": 0.0625, "vel": 71, "ch": 9}, {"note": 36, "name": "C2", "start": 43.25, "dur": 0.0625, "vel": 108, "ch": 9}, {"note": 42, "name": "F#2", "start": 43.25, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 38, "name": "D2", "start": 43.375, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 38, "name": "D2", "start": 43.625, "dur": 0.0625, "vel": 90, "ch": 9}, {"note": 42, "name": "F#2", "start": 43.75, "dur": 0.0625, "vel": 70, "ch": 9}, {"note": 36, "name": "C2", "start": 44.0, "dur": 0.0625, "vel": 96, "ch": 9}, {"note": 46, "name": "A#2", "start": 44.0, "dur": 0.0625, "vel": 59, "ch": 9}, {"note": 42, "name": "F#2", "start": 44.25, "dur": 0.0625, "vel": 58, "ch": 9}, {"note": 38, "name": "D2", "start": 44.75, "dur": 0.0625, "vel": 90, "ch": 9}, {"note": 42, "name": "F#2", "start": 44.75, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 46, "name": "A#2", "start": 45.0, "dur": 0.0625, "vel": 60, "ch": 9}, {"note": 36, "name": "C2", "start": 45.25, "dur": 0.0625, "vel": 97, "ch": 9}, {"note": 42, "name": "F#2", "start": 45.25, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 38, "name": "D2", "start": 45.375, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 38, "name": "D2", "start": 45.625, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 45.75, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 36, "name": "C2", "start": 46.0, "dur": 0.0625, "vel": 99, "ch": 9}, {"note": 46, "name": "A#2", "start": 46.0, "dur": 0.0625, "vel": 64, "ch": 9}, {"note": 42, "name": "F#2", "start": 46.25, "dur": 0.0625, "vel": 61, "ch": 9}, {"note": 38, "name": "D2", "start": 46.75, "dur": 0.0625, "vel": 89, "ch": 9}, {"note": 42, "name": "F#2", "start": 46.75, "dur": 0.0625, "vel": 67, "ch": 9}, {"note": 46, "name": "A#2", "start": 47.0, "dur": 0.0625, "vel": 60, "ch": 9}, {"note": 36, "name": "C2", "start": 47.25, "dur": 0.0625, "vel": 96, "ch": 9}, {"note": 42, "name": "F#2", "start": 47.25, "dur": 0.0625, "vel": 63, "ch": 9}, {"note": 38, "name": "D2", "start": 47.625, "dur": 0.0625, "vel": 83, "ch": 9}, {"note": 42, "name": "F#2", "start": 47.75, "dur": 0.0625, "vel": 71, "ch": 9}, {"note": 36, "name": "C2", "start": 48.0, "dur": 0.0625, "vel": 101, "ch": 9}, {"note": 46, "name": "A#2", "start": 48.0, "dur": 0.0625, "vel": 57, "ch": 9}, {"note": 49, "name": "C#3", "start": 48.0, "dur": 0.125, "vel": 100, "ch": 9}, {"note": 42, "name": "F#2", "start": 48.25, "dur": 0.0625, "vel": 71, "ch": 9}, {"note": 38, "name": "D2", "start": 48.75, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 48.75, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 46, "name": "A#2", "start": 49.0, "dur": 0.0625, "vel": 67, "ch": 9}, {"note": 36, "name": "C2", "start": 49.25, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 49.25, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 38, "name": "D2", "start": 49.625, "dur": 0.0625, "vel": 100, "ch": 9}, {"note": 42, "name": "F#2", "start": 49.75, "dur": 0.0625, "vel": 59, "ch": 9}, {"note": 36, "name": "C2", "start": 50.0, "dur": 0.0625, "vel": 101, "ch": 9}, {"note": 46, "name": "A#2", "start": 50.0, "dur": 0.0625, "vel": 70, "ch": 9}, {"note": 42, "name": "F#2", "start": 50.25, "dur": 0.0625, "vel": 70, "ch": 9}, {"note": 38, "name": "D2", "start": 50.5, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 38, "name": "D2", "start": 50.75, "dur": 0.0625, "vel": 84, "ch": 9}, {"note": 42, "name": "F#2", "start": 50.75, "dur": 0.0625, "vel": 72, "ch": 9}, {"note": 46, "name": "A#2", "start": 51.0, "dur": 0.0625, "vel": 68, "ch": 9}, {"note": 36, "name": "C2", "start": 51.25, "dur": 0.0625, "vel": 101, "ch": 9}, {"note": 42, "name": "F#2", "start": 51.25, "dur": 0.0625, "vel": 58, "ch": 9}, {"note": 38, "name": "D2", "start": 51.375, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 38, "name": "D2", "start": 51.625, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 51.75, "dur": 0.0625, "vel": 70, "ch": 9}, {"note": 36, "name": "C2", "start": 52.0, "dur": 0.0625, "vel": 92, "ch": 9}, {"note": 46, "name": "A#2", "start": 52.0, "dur": 0.0625, "vel": 75, "ch": 9}, {"note": 42, "name": "F#2", "start": 52.25, "dur": 0.0625, "vel": 59, "ch": 9}, {"note": 38, "name": "D2", "start": 52.5, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 38, "name": "D2", "start": 52.75, "dur": 0.0625, "vel": 85, "ch": 9}, {"note": 42, "name": "F#2", "start": 52.75, "dur": 0.0625, "vel": 57, "ch": 9}, {"note": 46, "name": "A#2", "start": 53.0, "dur": 0.0625, "vel": 71, "ch": 9}, {"note": 36, "name": "C2", "start": 53.25, "dur": 0.0625, "vel": 108, "ch": 9}, {"note": 42, "name": "F#2", "start": 53.25, "dur": 0.0625, "vel": 72, "ch": 9}, {"note": 38, "name": "D2", "start": 53.375, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 38, "name": "D2", "start": 53.625, "dur": 0.0625, "vel": 92, "ch": 9}, {"note": 42, "name": "F#2", "start": 53.75, "dur": 0.0625, "vel": 63, "ch": 9}, {"note": 36, "name": "C2", "start": 54.0, "dur": 0.0625, "vel": 103, "ch": 9}, {"note": 46, "name": "A#2", "start": 54.0, "dur": 0.0625, "vel": 57, "ch": 9}, {"note": 42, "name": "F#2", "start": 54.25, "dur": 0.0625, "vel": 75, "ch": 9}, {"note": 38, "name": "D2", "start": 54.75, "dur": 0.0625, "vel": 91, "ch": 9}, {"note": 42, "name": "F#2", "start": 54.75, "dur": 0.0625, "vel": 72, "ch": 9}, {"note": 46, "name": "A#2", "start": 55.0, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 36, "name": "C2", "start": 55.25, "dur": 0.0625, "vel": 97, "ch": 9}, {"note": 42, "name": "F#2", "start": 55.25, "dur": 0.0625, "vel": 59, "ch": 9}, {"note": 38, "name": "D2", "start": 55.625, "dur": 0.0625, "vel": 89, "ch": 9}, {"note": 42, "name": "F#2", "start": 55.75, "dur": 0.0625, "vel": 61, "ch": 9}, {"note": 36, "name": "C2", "start": 56.0, "dur": 0.0625, "vel": 102, "ch": 9}, {"note": 46, "name": "A#2", "start": 56.0, "dur": 0.0625, "vel": 64, "ch": 9}, {"note": 42, "name": "F#2", "start": 56.25, "dur": 0.0625, "vel": 72, "ch": 9}, {"note": 38, "name": "D2", "start": 56.5, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 38, "name": "D2", "start": 56.75, "dur": 0.0625, "vel": 81, "ch": 9}, {"note": 42, "name": "F#2", "start": 56.75, "dur": 0.0625, "vel": 75, "ch": 9}, {"note": 46, "name": "A#2", "start": 57.0, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 36, "name": "C2", "start": 57.25, "dur": 0.0625, "vel": 106, "ch": 9}, {"note": 42, "name": "F#2", "start": 57.25, "dur": 0.0625, "vel": 67, "ch": 9}, {"note": 38, "name": "D2", "start": 57.625, "dur": 0.0625, "vel": 91, "ch": 9}, {"note": 42, "name": "F#2", "start": 57.75, "dur": 0.0625, "vel": 71, "ch": 9}, {"note": 36, "name": "C2", "start": 58.0, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 46, "name": "A#2", "start": 58.0, "dur": 0.0625, "vel": 68, "ch": 9}, {"note": 42, "name": "F#2", "start": 58.25, "dur": 0.0625, "vel": 60, "ch": 9}, {"note": 38, "name": "D2", "start": 58.75, "dur": 0.0625, "vel": 89, "ch": 9}, {"note": 42, "name": "F#2", "start": 58.75, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 46, "name": "A#2", "start": 59.0, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 38, "name": "D2", "start": 59.25, "dur": 0.0625, "vel": 40, "ch": 9}, {"note": 36, "name": "C2", "start": 59.25, "dur": 0.0625, "vel": 103, "ch": 9}, {"note": 42, "name": "F#2", "start": 59.25, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 38, "name": "D2", "start": 59.625, "dur": 0.0625, "vel": 81, "ch": 9}, {"note": 42, "name": "F#2", "start": 59.75, "dur": 0.0625, "vel": 75, "ch": 9}, {"note": 36, "name": "C2", "start": 60.0, "dur": 0.0625, "vel": 108, "ch": 9}, {"note": 46, "name": "A#2", "start": 60.0, "dur": 0.0625, "vel": 60, "ch": 9}, {"note": 42, "name": "F#2", "start": 60.25, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 38, "name": "D2", "start": 60.75, "dur": 0.0625, "vel": 100, "ch": 9}, {"note": 42, "name": "F#2", "start": 60.75, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 46, "name": "A#2", "start": 61.0, "dur": 0.0625, "vel": 56, "ch": 9}, {"note": 36, "name": "C2", "start": 61.25, "dur": 0.0625, "vel": 103, "ch": 9}, {"note": 42, "name": "F#2", "start": 61.25, "dur": 0.0625, "vel": 66, "ch": 9}, {"note": 38, "name": "D2", "start": 61.625, "dur": 0.0625, "vel": 91, "ch": 9}, {"note": 42, "name": "F#2", "start": 61.75, "dur": 0.0625, "vel": 75, "ch": 9}, {"note": 36, "name": "C2", "start": 62.0, "dur": 0.0625, "vel": 95, "ch": 9}, {"note": 46, "name": "A#2", "start": 62.0, "dur": 0.0625, "vel": 55, "ch": 9}, {"note": 42, "name": "F#2", "start": 62.25, "dur": 0.0625, "vel": 67, "ch": 9}, {"note": 38, "name": "D2", "start": 62.75, "dur": 0.0625, "vel": 86, "ch": 9}, {"note": 42, "name": "F#2", "start": 62.75, "dur": 0.0625, "vel": 74, "ch": 9}, {"note": 46, "name": "A#2", "start": 63.0, "dur": 0.0625, "vel": 70, "ch": 9}, {"note": 36, "name": "C2", "start": 63.25, "dur": 0.0625, "vel": 94, "ch": 9}, {"note": 42, "name": "F#2", "start": 63.25, "dur": 0.0625, "vel": 69, "ch": 9}, {"note": 38, "name": "D2", "start": 63.625, "dur": 0.0625, "vel": 90, "ch": 9}, {"note": 42, "name": "F#2", "start": 63.75, "dur": 0.0625, "vel": 57, "ch": 9}]}];
+const TOTAL_DURATION = 63.9500;
+const COLORS = ["#4fc3f7", "#81c784", "#ffb74d", "#f48fb1", "#ce93d8", "#80cbc4", "#fff176", "#ff8a65", "#a5d6a7", "#90caf9"];
+
+// ── Config ────────────────────────────────────────────────────────────────────
+let pxPerSec = 150;
+let rowH = 8;
+const NOTE_MIN = 0, NOTE_MAX = 127;
+const PIANO_W = 48;
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+// ── Canvas setup ───────────────────────────────────────────────────────────
+const rollCanvas = document.getElementById('roll-canvas');
+const rollCtx = rollCanvas.getContext('2d');
+const pianoCanvas = document.getElementById('piano-canvas');
+const pianoCtx = pianoCanvas.getContext('2d');
+const rollScroll = document.getElementById('roll-scroll');
+
+function totalRows() { return NOTE_MAX - NOTE_MIN + 1; }
+function canvasH() { return totalRows() * rowH; }
+function canvasW() { return Math.ceil(TOTAL_DURATION * pxPerSec) + 60; }
+
+function setZoomX(v) {
+  pxPerSec = parseInt(v);
+  draw();
+}
+function setZoomY(v) {
+  rowH = parseInt(v);
+  draw();
+  drawPiano();
+}
+
+function noteY(note) {
+  return (NOTE_MAX - note) * rowH;
+}
+
+// ── Draw piano keyboard ─────────────────────────────────────────────────────
+function drawPiano() {
+  const h = canvasH();
+  pianoCanvas.width = PIANO_W;
+  pianoCanvas.height = h;
+  pianoCanvas.style.height = h + 'px';
+
+  for (let note = NOTE_MIN; note <= NOTE_MAX; note++) {
+    const y = noteY(note);
+    const isBlack = [1,3,6,8,10].includes(note % 12);
+    pianoCtx.fillStyle = isBlack ? '#222' : '#ddd';
+    pianoCtx.fillRect(0, y, PIANO_W, rowH);
+    pianoCtx.strokeStyle = '#555';
+    pianoCtx.strokeRect(0, y, PIANO_W, rowH);
+
+    if (note % 12 === 0 && rowH >= 8) {
+      pianoCtx.fillStyle = isBlack ? '#aaa' : '#333';
+      pianoCtx.font = `${Math.max(7, rowH - 2)}px monospace`;
+      pianoCtx.fillText(`C${Math.floor(note/12)-1}`, 2, y + rowH - 2);
+    }
+  }
+}
+
+// ── Draw roll ─────────────────────────────────────────────────────────────
+function draw() {
+  const w = canvasW();
+  const h = canvasH();
+  rollCanvas.width = w;
+  rollCanvas.height = h;
+  rollCanvas.style.height = h + 'px';
+
+  // Background
+  rollCtx.fillStyle = '#1e1e2e';
+  rollCtx.fillRect(0, 0, w, h);
+
+  // Grid lines
+  for (let note = NOTE_MIN; note <= NOTE_MAX; note++) {
+    const y = noteY(note);
+    const isBlack = [1,3,6,8,10].includes(note % 12);
+    if (isBlack) {
+      rollCtx.fillStyle = 'rgba(0,0,0,0.25)';
+      rollCtx.fillRect(0, y, w, rowH);
+    }
+    if (note % 12 === 0) {
+      rollCtx.strokeStyle = 'rgba(255,255,255,0.06)';
+      rollCtx.beginPath();
+      rollCtx.moveTo(0, y);
+      rollCtx.lineTo(w, y);
+      rollCtx.stroke();
+    }
+  }
+
+  // Vertical beat lines (approximate with 0.5s grid)
+  rollCtx.strokeStyle = 'rgba(255,255,255,0.05)';
+  for (let t = 0; t <= TOTAL_DURATION; t += 0.5) {
+    const x = t * pxPerSec;
+    rollCtx.beginPath();
+    rollCtx.moveTo(x, 0);
+    rollCtx.lineTo(x, h);
+    rollCtx.stroke();
+  }
+  // Stronger lines every 2 seconds
+  rollCtx.strokeStyle = 'rgba(255,255,255,0.12)';
+  for (let t = 0; t <= TOTAL_DURATION; t += 2) {
+    const x = t * pxPerSec;
+    rollCtx.beginPath();
+    rollCtx.moveTo(x, 0);
+    rollCtx.lineTo(x, h);
+    rollCtx.stroke();
+  }
+
+  // Notes
+  TRACKS.forEach((track, ti) => {
+    const color = COLORS[ti % COLORS.length];
+    track.notes.forEach(n => {
+      const x = n.start * pxPerSec;
+      const y = noteY(n.note);
+      const nw = Math.max(2, n.dur * pxPerSec - 1);
+      const alpha = 0.5 + (n.vel / 127) * 0.5;
+      rollCtx.fillStyle = color;
+      rollCtx.globalAlpha = alpha;
+      rollCtx.fillRect(x, y + 1, nw, Math.max(2, rowH - 2));
+      // Bright top edge
+      rollCtx.globalAlpha = 1.0;
+      rollCtx.fillStyle = 'rgba(255,255,255,0.3)';
+      rollCtx.fillRect(x, y + 1, nw, 1);
+    });
+  });
+  rollCtx.globalAlpha = 1.0;
+}
+
+// ── Legend ───────────────────────────────────────────────────────────────
+function buildLegend() {
+  const leg = document.getElementById('legend');
+  leg.innerHTML = '';
+  TRACKS.forEach((t, i) => {
+    const color = COLORS[i % COLORS.length];
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<div class="legend-swatch" style="background:${color}"></div><span>${t.name}</span>`;
+    leg.appendChild(item);
+  });
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+
+rollCanvas.addEventListener('mousemove', (e) => {
+  const rect = rollCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left + rollScroll.scrollLeft;
+  const my = e.clientY - rect.top;
+  const t = mx / pxPerSec;
+  const note = NOTE_MAX - Math.floor(my / rowH);
+
+  // Find a note under cursor
+  let found = null;
+  outer: for (const track of TRACKS) {
+    for (const n of track.notes) {
+      if (n.note === note && t >= n.start && t <= n.start + n.dur) {
+        found = { ...n, trackName: track.name };
+        break outer;
+      }
+    }
+  }
+
+  if (found) {
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top = (e.clientY - 10) + 'px';
+    tooltip.innerHTML =
+      `<b>${found.name}</b> (MIDI ${found.note})<br>` +
+      `Track: ${found.trackName} · Ch ${found.ch}<br>` +
+      `Start: ${found.start.toFixed(2)}s · Dur: ${found.dur.toFixed(2)}s<br>` +
+      `Velocity: ${found.vel}`;
+  } else {
+    tooltip.style.display = 'none';
+  }
+});
+rollCanvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+// ── Seek on click ─────────────────────────────────────────────────────────
+rollCanvas.addEventListener('click', (e) => {
+  const rect = rollCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left + rollScroll.scrollLeft;
+  seekTime = mx / pxPerSec;
+  if (isPlaying) {
+    stopAudio();
+    startAudio(seekTime);
+  } else {
+    updatePlayhead(seekTime);
+  }
+});
+
+// ── Playhead ──────────────────────────────────────────────────────────────
+const playheadEl = document.getElementById('playhead');
+let seekTime = 0;
+
+function updatePlayhead(t) {
+  const x = t * pxPerSec;
+  playheadEl.style.left = x + 'px';
+  // Auto-scroll
+  const scrollW = rollScroll.clientWidth;
+  if (x < rollScroll.scrollLeft || x > rollScroll.scrollLeft + scrollW - 40) {
+    rollScroll.scrollLeft = Math.max(0, x - scrollW * 0.3);
+  }
+  // Update time display
+  const totalSec = TOTAL_DURATION;
+  const mm = Math.floor(t / 60);
+  const ss = Math.floor(t % 60);
+  const totalMM = Math.floor(totalSec / 60);
+  const totalSS = Math.floor(totalSec % 60);
+  document.getElementById('time-display').textContent =
+    `${mm}:${String(ss).padStart(2,'0')} / ${totalMM}:${String(totalSS).padStart(2,'0')}`;
+}
+
+// ── Web Audio Playback ────────────────────────────────────────────────────
+let audioCtx = null;
+let isPlaying = false;
+let scheduledNodes = [];
+let playStartWallClock = 0;
+let playStartOffset = 0;
+let animFrame = null;
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function togglePlay() {
+  if (isPlaying) { stopAudio(); }
+  else { startAudio(seekTime); }
+}
+
+function stopAudio() {
+  isPlaying = false;
+  document.getElementById('btn-play').textContent = '▶ Play';
+  scheduledNodes.forEach(n => { try { n.stop(); } catch(e) {} });
+  scheduledNodes = [];
+  if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+}
+
+function startAudio(offset) {
+  const ctx = getAudioCtx();
+  if (ctx.state === 'suspended') ctx.resume();
+  isPlaying = true;
+  document.getElementById('btn-play').textContent = '⏸ Pause';
+  playStartWallClock = ctx.currentTime;
+  playStartOffset = offset;
+
+  // Schedule all notes
+  TRACKS.forEach((track, ti) => {
+    const isMelody = ti === 1;
+    const isChords = ti === 2;
+    const isBass = ti === 3;
+    const isDrum = ti === 4;
+
+    track.notes.forEach(n => {
+      const noteStart = n.start - offset;
+      if (noteStart + n.dur < 0) return;
+      const when = ctx.currentTime + Math.max(0, noteStart);
+      const dur = n.dur;
+
+      const osc = ctx.createOscillator();
+      const env = ctx.createGain();
+      const master = ctx.createGain();
+      master.gain.value = isDrum ? 0.4 : (isChords ? 0.25 : (isBass ? 0.5 : 0.45));
+
+      // Waveform selection by track role
+      if (isDrum) {
+        // Use noise-like buffer for drums
+        const frames = ctx.sampleRate * 0.3;
+        const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < frames; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (frames * 0.15));
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(env);
+        env.connect(master);
+        master.connect(ctx.destination);
+        env.gain.setValueAtTime(n.vel / 127, when);
+        env.gain.exponentialRampToValueAtTime(0.001, when + Math.min(dur, 0.3));
+        src.start(when);
+        src.stop(when + Math.min(dur, 0.3) + 0.05);
+        scheduledNodes.push(src);
+        return;
+      }
+
+      if (isBass) {
+        osc.type = 'sine';
+      } else if (isChords) {
+        osc.type = 'triangle';
+      } else {
+        osc.type = 'sine';
+      }
+      const freq = 440 * Math.pow(2, (n.note - 69) / 12);
+      osc.frequency.value = freq;
+
+      osc.connect(env);
+      env.connect(master);
+      master.connect(ctx.destination);
+
+      // ADSR
+      const atk = isBass ? 0.01 : (isChords ? 0.15 : 0.01);
+      const rel = isChords ? 0.3 : 0.1;
+      env.gain.setValueAtTime(0.001, when);
+      env.gain.linearRampToValueAtTime(n.vel / 127, when + atk);
+      env.gain.setValueAtTime(n.vel / 127, when + Math.max(atk, dur - rel));
+      env.gain.linearRampToValueAtTime(0.001, when + dur + 0.01);
+
+      osc.start(when);
+      osc.stop(when + dur + 0.15);
+      scheduledNodes.push(osc);
+    });
+  });
+
+  // Animate playhead
+  function animLoop() {
+    if (!isPlaying) return;
+    const ctx2 = getAudioCtx();
+    const elapsed = ctx2.currentTime - playStartWallClock;
+    const t = playStartOffset + elapsed;
+    updatePlayhead(t);
+    if (t >= TOTAL_DURATION) {
+      stopAudio();
+      seekTime = 0;
+      updatePlayhead(0);
+      return;
+    }
+    animFrame = requestAnimationFrame(animLoop);
+  }
+  animLoop();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  draw();
+  drawPiano();
+  buildLegend();
+  updatePlayhead(0);
+});
+
+// Sync piano height with roll
+new MutationObserver(() => {
+  pianoCanvas.style.height = rollCanvas.style.height;
+  document.getElementById('piano').style.height = rollCanvas.style.height;
+}).observe(rollCanvas, { attributes: true, attributeFilter: ['style'] });
+
+window.addEventListener('resize', () => { draw(); drawPiano(); });
+</script>
+</body>
+</html>
