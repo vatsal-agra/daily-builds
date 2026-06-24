@@ -1,0 +1,22 @@
+{
+  "background": "sky",
+  "camera": {
+    "from": [0, 2, -6],
+    "to":   [0, 0,  0],
+    "up":   [0, 1,  0],
+    "vfov": 30,
+    "aspect": 1.777
+  },
+  "materials": {
+    "ground":  {"type": "lambertian", "albedo": [0.4, 0.7, 0.2]},
+    "red":     {"type": "lambertian", "albedo": [0.8, 0.1, 0.1]},
+    "mirror":  {"type": "metal",      "albedo": [0.9, 0.9, 0.9], "roughness": 0.02},
+    "glass":   {"type": "dielectric", "ior": 1.5}
+  },
+  "objects": [
+    {"type": "sphere", "center": [0, -100.5, 0], "radius": 100, "material": "ground"},
+    {"type": "sphere", "center": [-1.5, 0, 0],   "radius": 0.5, "material": "red"},
+    {"type": "sphere", "center": [0,   0, 0],    "radius": 0.5, "material": "glass"},
+    {"type": "sphere", "center": [1.5,  0, 0],   "radius": 0.5, "material": "mirror"}
+  ]
+}
