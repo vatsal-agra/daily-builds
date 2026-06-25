@@ -748,3 +748,147 @@ def H_gate_matrix():
     """Return the 2x2 Hadamard matrix as a flat list."""
     _S = 1.0 / math.sqrt(2)
     return [_S, _S, _S, -_S]
+
+
+# ------------------------------------------------------------------
+# 7. BB84 Quantum Key Distribution
+# ------------------------------------------------------------------
+
+def bb84(n_bits: int = 100, eavesdrop: bool = False,
+         rng: random.Random = None) -> dict:
+    """
+    BB84 QKD protocol: Alice and Bob establish a shared secret key.
+
+    Alice prepares n_bits qubits — each in one of four states |0⟩,|1⟩,|+⟩,|−⟩
+    (two conjugate bases: Z and X).  Bob measures in a random basis.
+    They publicly compare bases (sifting) and keep bits where bases matched.
+
+    With Eve intercepting and re-sending, ~25% of sifted bits are wrong
+    (QBER ≈ 0.25).  QBER < 11% indicates a secure channel (BB84 bound).
+
+    Uses qsim quantum state prep + measurement for every qubit.
+
+    Returns {
+        'n_bits', 'sifted_length', 'qber', 'eavesdrop_detected',
+        'alice_key', 'bob_key', 'key_match', 'secure_key_length'
+    }
+    """
+    if rng is None:
+        rng = random.Random()
+
+    alice_bits  = [rng.randint(0, 1) for _ in range(n_bits)]
+    alice_bases = [rng.randint(0, 1) for _ in range(n_bits)]  # 0=Z 1=X
+    bob_bases   = [rng.randint(0, 1) for _ in range(n_bits)]
+
+    bob_results = []
+
+    for i in range(n_bits):
+        # --- Alice prepares 1-qubit state ---
+        state = QuantumState.zero(1)
+        if alice_bits[i] == 1:
+            state = apply_1q(state, _X, 0)     # |1⟩
+        if alice_bases[i] == 1:
+            state = apply_1q(state, _H, 0)     # X-basis: |+⟩ or |−⟩
+
+        # --- Eve intercepts (optional) ---
+        if eavesdrop:
+            eve_basis = rng.randint(0, 1)
+            eve_state = state
+            if eve_basis == 1:
+                eve_state = apply_1q(eve_state, _H, 0)  # rotate to X basis
+            eve_str, _ = measure(eve_state, rng)
+            eve_bit = int(eve_str)
+            # Eve re-prepares in her measured basis
+            state = QuantumState.zero(1)
+            if eve_bit == 1:
+                state = apply_1q(state, _X, 0)
+            if eve_basis == 1:
+                state = apply_1q(state, _H, 0)
+
+        # --- Bob measures in his chosen basis ---
+        bob_state = state
+        if bob_bases[i] == 1:
+            bob_state = apply_1q(bob_state, _H, 0)  # rotate to X basis
+        result_str, _ = measure(bob_state, rng)
+        bob_results.append(int(result_str))
+
+    # Sifting: keep positions where bases agree
+    sifted = [i for i in range(n_bits) if alice_bases[i] == bob_bases[i]]
+    a_sifted = [alice_bits[i]  for i in sifted]
+    b_sifted = [bob_results[i] for i in sifted]
+
+    # QBER estimation: use first 25% of sifted bits as test sample
+    n_test  = max(1, len(sifted) // 4)
+    errors  = sum(1 for j in range(n_test) if a_sifted[j] != b_sifted[j])
+    qber    = errors / n_test if n_test > 0 else 0.0
+
+    alice_key = "".join(str(b) for b in a_sifted[n_test:])
+    bob_key   = "".join(str(b) for b in b_sifted[n_test:])
+
+    QBER_THRESHOLD = 0.11  # BB84 security bound
+    return {
+        'n_bits':            n_bits,
+        'sifted_length':     len(sifted),
+        'n_test_bits':       n_test,
+        'qber':              qber,
+        'eavesdrop':         eavesdrop,
+        'eavesdrop_detected': qber > QBER_THRESHOLD,
+        'alice_key':         alice_key,
+        'bob_key':           bob_key,
+        'key_match':         alice_key == bob_key,
+        'secure_key_length': len(alice_key),
+    }
+
+
+# ------------------------------------------------------------------
+# 8. Superdense Coding
+# ------------------------------------------------------------------
+
+def superdense_coding(message: str, rng: random.Random = None) -> dict:
+    """
+    Superdense coding: transmit 2 classical bits using 1 qubit + 1 shared ebit.
+
+    Protocol:
+      1. Alice and Bob share Bell pair |φ+⟩ = (|00⟩+|11⟩)/√2
+      2. Alice applies local gates on her qubit to encode 2 bits:
+           "00" → I,   "01" → X,   "10" → Z,   "11" → XZ
+      3. Alice sends her qubit to Bob
+      4. Bob decodes with CNOT(Alice→Bob) + H(Alice), then measures both
+
+    Returns {
+        'message', 'decoded', 'verified', 'circuit'
+    }
+    """
+    if rng is None:
+        rng = random.Random()
+    if len(message) != 2 or not all(b in "01" for b in message):
+        raise ValueError("Message must be a 2-bit binary string, e.g. '10'")
+
+    qc = Circuit(2, 2, name=f"Superdense('{message}')")
+
+    # Shared Bell pair |φ+⟩ — Alice holds qubit 0, Bob holds qubit 1
+    qc.h(0)
+    qc.cnot(0, 1)
+
+    # Alice encodes: b0 → Z gate, b1 → X gate (X before Z)
+    b0, b1 = message[0], message[1]
+    if b1 == "1":
+        qc.x(0)
+    if b0 == "1":
+        qc.z(0)
+
+    # Bob decodes
+    qc.cnot(0, 1)
+    qc.h(0)
+    qc.measure(0, 0)
+    qc.measure(1, 1)
+
+    result = qc.run(shots=1, rng=rng)
+    decoded = result.most_likely()
+
+    return {
+        "message": message,
+        "decoded": decoded,
+        "circuit": qc,
+        "verified": decoded == message,
+    }

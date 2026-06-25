@@ -114,6 +114,19 @@ def main(argv=None):
     # gates
     p = sub.add_parser("gates", help="List all available gates and verify unitarity")
 
+    # bb84
+    p = sub.add_parser("bb84", help="BB84 Quantum Key Distribution protocol")
+    p.add_argument("--bits", type=int, default=200,
+                   help="Number of qubits Alice sends (default: 200)")
+    p.add_argument("--eavesdrop", action="store_true",
+                   help="Simulate Eve intercepting the channel")
+    p.add_argument("--seed", type=int, default=42)
+
+    # superdense
+    p = sub.add_parser("superdense", help="Superdense coding: 2 bits via 1 qubit")
+    p.add_argument("message", help="2-bit message to encode, e.g. '10'")
+    p.add_argument("--seed", type=int, default=42)
+
     args = parser.parse_args(argv)
 
     try:
@@ -150,6 +163,10 @@ def _dispatch(args):
         _cmd_demo(args)
     elif cmd == "gates":
         _cmd_gates(args)
+    elif cmd == "bb84":
+        _cmd_bb84(args)
+    elif cmd == "superdense":
+        _cmd_superdense(args)
     else:
         print(f"Unknown command: {cmd}", file=sys.stderr)
         sys.exit(1)
@@ -471,7 +488,7 @@ def _cmd_viz(args):
 def _cmd_demo(args):
     from .algorithms import (grover, deutsch_jozsa, bernstein_vazirani,
                               verify_qft, teleportation, simon,
-                              quantum_phase_estimation)
+                              quantum_phase_estimation, bb84, superdense_coding)
 
     rng = random.Random(args.seed)
     print("=" * 60)
@@ -481,38 +498,38 @@ def _cmd_demo(args):
     results = {}
 
     # 1. Deutsch-Jozsa
-    print("\n[1/7] Deutsch-Jozsa (n=4, balanced oracle)")
+    print("\n[1/9] Deutsch-Jozsa (n=4, balanced oracle)")
     r = deutsch_jozsa(4, "balanced", rng=random.Random(args.seed))
     results["dj"] = r['verified']
     print(f"  Result: {r['result'].upper()}  |  Verified: {'✓' if r['verified'] else '✗'}")
 
     # 2. Bernstein-Vazirani
-    print("\n[2/7] Bernstein-Vazirani (secret = '10110')")
+    print("\n[2/9] Bernstein-Vazirani (secret = '10110')")
     r = bernstein_vazirani("10110", rng=random.Random(args.seed))
     results["bv"] = r['verified']
     print(f"  Recovered: '{r['result']}'  |  Verified: {'✓' if r['verified'] else '✗'}")
 
     # 3. Grover (n=4, marked=[7])
-    print("\n[3/7] Grover's Search (n=4, searching for item 7 among 16)")
+    print("\n[3/9] Grover's Search (n=4, searching for item 7 among 16)")
     r = grover(4, [7], rng=random.Random(args.seed))
     results["grover"] = r['verified']
     print(f"  Found: item {r['result_int']}  |  Iterations: {r['iterations']}  |"
           f"  Verified: {'✓' if r['verified'] else '✗'}")
 
     # 4. Grover (multiple targets)
-    print("\n[4/7] Grover's Search (n=4, 3 targets [2,8,13])")
+    print("\n[4/9] Grover's Search (n=4, 3 targets [2,8,13])")
     r = grover(4, [2, 8, 13], rng=random.Random(args.seed))
     results["grover_multi"] = r['verified']
     print(f"  Found: item {r['result_int']}  |  Verified: {'✓' if r['verified'] else '✗'}")
 
     # 5. QFT
-    print("\n[5/7] Quantum Fourier Transform (n=4)")
+    print("\n[5/9] Quantum Fourier Transform (n=4)")
     r = verify_qft(4, rng=random.Random(args.seed))
     results["qft"] = r['verified']
     print(f"  Max error vs DFT matrix: {r['max_error']:.2e}  |  Verified: {'✓' if r['verified'] else '✗'}")
 
     # 6. Teleportation
-    print("\n[6/7] Quantum Teleportation (20 trials)")
+    print("\n[6/9] Quantum Teleportation (20 trials)")
     from .state import QuantumState
     psi = QuantumState(1, [1/math.sqrt(2), 1j/math.sqrt(2)])
     fidelities = [teleportation(psi, rng=random.Random(args.seed + i))['fidelity']
@@ -522,11 +539,25 @@ def _cmd_demo(args):
     print(f"  Average fidelity: {avg_f:.8f}  |  Verified: {'✓' if results['teleport'] else '✗'}")
 
     # 7. Simon's
-    print("\n[7/7] Simon's Algorithm (n=3, period='101')")
+    print("\n[7/9] Simon's Algorithm (n=3, period='101')")
     r = simon(3, "101", rng=random.Random(args.seed))
     results["simon"] = r['verified']
     print(f"  Period found: '{r['period']}'  |  Queries: {r['queries']}  |"
           f"  Verified: {'✓' if r['verified'] else '✗'}")
+
+    # 8. BB84 QKD
+    print("\n[8/9] BB84 QKD (200 qubits, no Eve)")
+    r = bb84(200, eavesdrop=False, rng=random.Random(args.seed))
+    results["bb84"] = r['key_match'] and not r['eavesdrop_detected']
+    print(f"  Sifted: {r['sifted_length']} bits  |  QBER: {r['qber']:.3f}  |"
+          f"  Key: {r['secure_key_length']} bits  |  Verified: {'✓' if results['bb84'] else '✗'}")
+
+    # 9. Superdense Coding (all 4 messages)
+    print("\n[9/9] Superdense Coding (all 4 messages)")
+    msgs = ["00", "01", "10", "11"]
+    sdc_ok = all(superdense_coding(m, rng=random.Random(args.seed))['verified'] for m in msgs)
+    results["superdense"] = sdc_ok
+    print(f"  Messages 00,01,10,11 decoded correctly  |  Verified: {'✓' if sdc_ok else '✗'}")
 
     print("\n" + "=" * 60)
     n_pass = sum(results.values())
@@ -559,6 +590,48 @@ def _cmd_gates(args):
         ok = "✓" if g.is_unitary() else "✗"
         print(f"  {name:<18} {g.n_qubits:<8} {ok}")
     print(f"\n  Total: {len(all_gates)} gates")
+
+
+def _cmd_bb84(args):
+    from .algorithms import bb84
+    rng = random.Random(args.seed)
+    eve_label = "WITH eavesdropping (Eve)" if args.eavesdrop else "No eavesdropping"
+    print(f"\nBB84 Quantum Key Distribution")
+    print(f"  Qubits sent:   {args.bits}")
+    print(f"  Channel:       {eve_label}")
+    r = bb84(args.bits, eavesdrop=args.eavesdrop, rng=rng)
+    print(f"  Sifted key length:  {r['sifted_length']} bits  "
+          f"(~{r['sifted_length']/args.bits*100:.0f}% of raw bits)")
+    print(f"  Test bits used:     {r['n_test_bits']}")
+    print(f"  QBER:               {r['qber']:.3f}  "
+          f"(threshold = 0.11; {'>= means Eve detected' if r['qber'] >= 0.11 else 'secure'})")
+    print(f"  Eavesdrop detected: {'YES ⚠' if r['eavesdrop_detected'] else 'NO ✓'}")
+    print(f"  Secure key length:  {r['secure_key_length']} bits")
+    print(f"  Keys match:         {'✓' if r['key_match'] else '✗'}")
+    if r['secure_key_length'] > 0:
+        display = r['alice_key'][:32]
+        if len(r['alice_key']) > 32:
+            display += f"... ({len(r['alice_key'])} bits total)"
+        print(f"  Alice's key:        {display}")
+    print(f"\n  BB84 summary: {r['sifted_length']} sifted → {r['secure_key_length']} secure bits "
+          f"({r['qber']*100:.1f}% QBER)")
+
+
+def _cmd_superdense(args):
+    from .algorithms import superdense_coding
+    from .visualize import circuit_to_ascii
+    rng = random.Random(args.seed)
+    msg = args.message
+    print(f"\nSuperdense Coding")
+    print(f"  Encoding message: '{msg}'  (2 classical bits)")
+    print(f"  Protocol: Alice encodes via local gates on shared Bell pair,")
+    print(f"            Bob decodes with CNOT + H + measurement")
+    r = superdense_coding(msg, rng=rng)
+    print(f"  Decoded:  '{r['decoded']}'")
+    print(f"  Verified: {'✓ CORRECT' if r['verified'] else '✗ WRONG'}")
+    print(f"  Efficiency: 2 bits transmitted using 1 qubit + 1 ebit")
+    print(f"\n  Circuit:")
+    print(circuit_to_ascii(r['circuit']))
 
 
 def _show_histogram(counts: dict, top_n: int = 10, title: str = ""):
