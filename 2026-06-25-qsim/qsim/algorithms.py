@@ -208,8 +208,11 @@ def grover(n: int, marked: list = None, rng: random.Random = None) -> dict:
             raise ValueError(f"Marked item {m} out of range [0, {N})")
     k = len(marked)
 
-    # Optimal number of iterations: ⌊(π/4) √(N/k)⌋
-    iterations = max(1, round(math.pi / 4 * math.sqrt(N / k)))
+    # Optimal iterations: floor(π / (4·arcsin(√(k/N)))).
+    # Using arcsin(sqrt(k/N)) instead of the approximation sqrt(k/N) is critical
+    # for small N (e.g. n=2 where round() overshoots and gives only 25% success).
+    theta = math.asin(math.sqrt(k / N))
+    iterations = max(1, math.floor(math.pi / (4 * theta)))
 
     qc = Circuit(n, n, name=f"Grover(n={n}, targets={marked})")
 
@@ -232,7 +235,6 @@ def grover(n: int, marked: list = None, rng: random.Random = None) -> dict:
     outcome_int = int(outcome, 2)
 
     # Theoretical success probability after `iterations` steps
-    theta = math.asin(math.sqrt(k / N))
     success_prob = math.sin((2 * iterations + 1) * theta) ** 2
 
     return {
@@ -604,6 +606,13 @@ def simon(n: int, period: str = None, rng: random.Random = None) -> dict:
     if period is None:
         # Random non-zero period
         period = format(rng.randint(1, (1 << n) - 1), f"0{n}b")
+
+    if len(period) != n:
+        raise ValueError(f"Period '{period}' has {len(period)} bits but n={n}")
+    if not all(b in "01" for b in period):
+        raise ValueError(f"Period must be a binary string, got '{period}'")
+    if all(b == "0" for b in period):
+        raise ValueError(f"Period must be non-zero (all-zeros = injective function, not Simon's problem)")
 
     s = int(period, 2)
 

@@ -283,9 +283,12 @@ def _cmd_qpe(args):
     rng = random.Random(args.seed)
     phase = args.phase
     n = args.n_count
+    phase_normalized = phase % 1.0
     print(f"\nQuantum Phase Estimation")
-    print(f"  True phase:     φ = {phase:.6f}")
+    print(f"  Input phase:     φ = {phase:.6f}  (mod 1 → {phase_normalized:.6f})")
+    print(f"  True phase:     φ = {phase_normalized:.6f}")
     print(f"  Counting qubits: {n}  (precision = 1/{1<<n} = {1/(1<<n):.4f})")
+    phase = phase_normalized
     r = quantum_phase_estimation(n, phase, rng=rng)
     print(f"  Estimated phase: φ̂ = {r['estimated_phase']:.6f}")
     print(f"  Error: {r['error']:.2e}  (target < 1/{1<<n} = {1/(1<<n):.4f})")
