@@ -651,9 +651,10 @@ def simon(n: int, period: str = None, rng: random.Random = None) -> dict:
         y = result.most_likely()[:n]
         queries += 1
 
-        # y must satisfy y·s = 0 mod 2
+        # y must satisfy y·s = 0 mod 2, and be non-trivial (not all zeros)
+        # The all-zeros string is trivially orthogonal to everything and carries no info.
         dot = sum(int(a) * int(b) for a, b in zip(y, period)) % 2
-        if dot == 0 and y not in samples:
+        if dot == 0 and y not in samples and any(b == "1" for b in y):
             samples.append(y)
 
         if len(samples) >= needed:
