@@ -1,0 +1,33 @@
+{
+  "name": "channel_flow",
+  "description": "Flow through a narrow channel between two rectangular obstacles — creates a jet and two symmetric eddies",
+  "N": 64,
+  "dt": 0.15,
+  "visc": 0.0,
+  "diff": 0.0,
+  "vort_scale": 4.0,
+  "gravity": 0.0,
+  "dyes": [
+    {"color": [0.3, 0.7, 1.0]},
+    {"color": [1.0, 0.4, 0.1]}
+  ],
+  "obstacles": [
+    {"type": "rect", "x0": 0.38, "y0": 0.0, "x1": 0.62, "y1": 0.35},
+    {"type": "rect", "x0": 0.38, "y0": 0.65, "x1": 0.62, "y1": 1.0}
+  ],
+  "injections": [
+    {
+      "frames": [0, 400],
+      "dye": 0,
+      "cx": 0.07, "cy": 0.5, "radius": 0.06, "amount": 1.5,
+      "vx": 2.5, "vy": 0.0
+    },
+    {
+      "frames": [0, 400],
+      "dye": 1,
+      "cx": 0.07, "cy": 0.5, "radius": 0.04, "amount": 0.8,
+      "vx": 2.5, "vy": 0.0
+    }
+  ],
+  "frames": 200
+}
