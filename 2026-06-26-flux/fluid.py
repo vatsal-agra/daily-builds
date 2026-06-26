@@ -92,6 +92,8 @@ class FluidGrid:
 
     def inject_dye(self, channel: int, cx: float, cy: float, radius: float,
                    amount: float = 1.0) -> None:
+        if channel >= len(self.dyes):
+            return  # silently skip invalid channels
         N = self.N
         i0, j0 = int(cx * N) + 1, int(cy * N) + 1
         r = max(1, int(radius * N))
@@ -144,6 +146,9 @@ class FluidGrid:
         _apply_obstacles_vel(u_adv, v_adv, self.obstacles)
 
         u_adv, v_adv = _project(N, u_adv, v_adv, self.iters)
+        # Always zero obstacle cells after the final project (pressure gradient can
+        # deposit non-zero velocity inside solids even when vort_scale=0).
+        _apply_obstacles_vel(u_adv, v_adv, self.obstacles)
 
         if self.vort_scale > 0.0:
             u_adv, v_adv = _vorticity_confinement(N, u_adv, v_adv, dt, self.vort_scale)
