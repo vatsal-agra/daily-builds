@@ -25,11 +25,11 @@ def scene_smoke(N: int = 64) -> tuple:
         t = frame * 0.05
         # Two alternating smoke columns
         ox = 0.1 * math.sin(t)
-        fluid.inject_dye(0, 0.35 + ox, 0.05, 0.04, amount=1.5)
-        fluid.inject_velocity(0.35 + ox, 0.05, 0.04, 0.0, 2.5)
+        fluid.inject_dye(0, 0.35 + ox, 0.95, 0.04, amount=1.5)
+        fluid.inject_velocity(0.35 + ox, 0.95, 0.04, 0.0, -2.5)
 
-        fluid.inject_dye(1, 0.65 - ox, 0.05, 0.04, amount=1.5)
-        fluid.inject_velocity(0.65 - ox, 0.05, 0.04, 0.0, 2.5)
+        fluid.inject_dye(1, 0.65 - ox, 0.95, 0.04, amount=1.5)
+        fluid.inject_velocity(0.65 - ox, 0.95, 0.04, 0.0, -2.5)
 
     return fluid, inject, {
         "name": "smoke",
@@ -51,10 +51,10 @@ def scene_ink(N: int = 64) -> tuple:
     def inject(frame: int) -> None:
         t = frame * 0.04
         # Drop injection at top, slightly wandering
-        for i, (cx, cy) in enumerate([(0.3, 0.9), (0.5, 0.9), (0.7, 0.9)]):
+        for i, (cx, cy) in enumerate([(0.3, 0.05), (0.5, 0.05), (0.7, 0.05)]):
             cx2 = cx + 0.04 * math.sin(t + i * 2.1)
             fluid.inject_dye(i, cx2, cy, 0.035, amount=1.2)
-            fluid.inject_velocity(cx2, cy, 0.035, 0.0, -1.5)
+            fluid.inject_velocity(cx2, cy, 0.035, 0.0, 1.5)
 
     return fluid, inject, {
         "name": "ink",
@@ -162,12 +162,12 @@ def scene_fire(N: int = 64) -> tuple:
         w = 0.06 + 0.02 * math.sin(t * 3.7)
         cx = 0.5 + 0.03 * math.sin(t * 2.1)
         # Hot fast gas
-        fluid.inject_dye(0, cx, 0.05, w, amount=2.0)
-        fluid.inject_velocity(cx, 0.05, w, 0.0, 4.0)
+        fluid.inject_dye(0, cx, 0.95, w, amount=2.0)
+        fluid.inject_velocity(cx, 0.95, w, 0.0, -4.0)
         # Cooler trailing smoke
-        fluid.inject_dye(1, cx, 0.08, w * 0.6, amount=0.5)
+        fluid.inject_dye(1, cx, 0.92, w * 0.6, amount=0.5)
         # Slight horizontal turbulence
-        fluid.inject_velocity(cx, 0.05, w * 0.5,
+        fluid.inject_velocity(cx, 0.95, w * 0.5,
                                0.8 * math.sin(t * 7.3), 0.0)
 
     return fluid, inject, {

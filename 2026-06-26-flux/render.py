@@ -230,4 +230,5 @@ RENDER_MODES = {
 
 def render_frame(fluid, mode: str = "composite", scale: int = 1) -> np.ndarray:
     fn = RENDER_MODES.get(mode, render_composite)
-    return fn(fluid, scale=scale)
+    rgb = fn(fluid, scale=scale)
+    return rgb.transpose(1, 0, 2)  # first axis (x) → columns; second axis (y) → rows

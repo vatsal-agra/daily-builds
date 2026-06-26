@@ -590,10 +590,10 @@ function setupScene(name) {
     sceneInjectFn = (fr) => {
       const t = fr * 0.05;
       const ox = 0.1 * Math.sin(t);
-      injectDye(0, 0.35+ox, 0.05, 0.04, 1.5);
-      injectVelocity(0.35+ox, 0.05, 0.04, 0, 2.5);
-      injectDye(1, 0.65-ox, 0.05, 0.04, 1.5);
-      injectVelocity(0.65-ox, 0.05, 0.04, 0, 2.5);
+      injectDye(0, 0.35+ox, 0.95, 0.04, 1.5);
+      injectVelocity(0.35+ox, 0.95, 0.04, 0, -2.5);
+      injectDye(1, 0.65-ox, 0.95, 0.04, 1.5);
+      injectVelocity(0.65-ox, 0.95, 0.04, 0, -2.5);
     };
   } else if (name === 'ink') {
     document.getElementById('sl-grav').value = '0.12'; fluid_grav = 0.12;
@@ -608,8 +608,8 @@ function setupScene(name) {
       const cx = [0.3, 0.5, 0.7];
       for (let i = 0; i < 3; i++) {
         const x = cx[i] + 0.04*Math.sin(t + i*2.1);
-        injectDye(i, x, 0.93, 0.035, 1.2);
-        injectVelocity(x, 0.93, 0.035, 0, -1.5);
+        injectDye(i, x, 0.05, 0.035, 1.2);
+        injectVelocity(x, 0.05, 0.035, 0, 1.5);
       }
     };
   } else if (name === 'wind') {
