@@ -1,7 +1,7 @@
 # VecNN — From-Scratch Vector Search Engine
 
-> Phase 2 (Core Build) complete. Adversarial review in progress.
+> Phase 3 (Adversarial Review) complete. Stretch + Polish in progress.
 
 See [PLAN.md](PLAN.md) for full architecture and feature list.
 
-81 tests passing. All 4 required features implemented and working.
+81 tests passing. 5 bugs found and fixed in review.

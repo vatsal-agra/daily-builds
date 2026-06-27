@@ -110,11 +110,29 @@ def cmd_demo(args):
     print(f"  Built in {lsh_ms:.1f} ms")
 
     print(f"\nHead-to-head comparison (HNSW vs LSH vs exact, {len(query_vecs)} queries, k={k}) …")
+    print(f"  (LSH using {args.lsh_bits} bits/table — fewer bits → more collisions → higher recall)")
     comp = benchmod.compare_indices(hnsw, lsh, query_vecs, vectors, ids, k=k)
     rows = []
-    for name, m in [("exact", comp["exact"]), ("hnsw", comp["hnsw"]), ("lsh", comp.get("lsh", {}))]:
+    for name, m in [("exact", comp["exact"]), ("hnsw", comp["hnsw"]), ("lsh (1-probe)", comp.get("lsh", {}))]:
         if m:
             rows.append([name, f"{m['recall_at_k']:.3f}", m["qps"], f"{m['avg_ms']} ms"])
+
+    # Multi-probe LSH: show recall improvement with 2 and 3 probes
+    from vecnn.bench import recall_at_k as rak, exact_knn
+    for n_probes in [2, 3]:
+        recalls = []
+        start = time.perf_counter()
+        for q in query_vecs:
+            hits = lsh.search(q, k=k, n_probes=n_probes)
+            approx_ids = [h[0] for h in hits]
+            true_indices = exact_knn(q, vectors, k, "cosine")
+            true_set = {ids[i] for i in true_indices}
+            recalls.append(rak(true_set, approx_ids))
+        elapsed = time.perf_counter() - start
+        avg_r = sum(recalls) / len(recalls)
+        qps = len(query_vecs) / elapsed
+        rows.append([f"lsh ({n_probes}-probe)", f"{avg_r:.3f}", f"{qps:.1f}", f"{elapsed*1000/len(query_vecs):.2f} ms"])
+
     _print_table(["method", f"recall@{k}", "QPS", "avg_query"], rows)
 
     # Metadata filter demo

@@ -97,19 +97,34 @@ class LSHIndex:
         query: np.ndarray,
         k: int = 10,
         filter_fn=None,
+        n_probes: int = 1,
     ) -> List[Tuple[int, float, Dict[str, Any]]]:
+        """
+        Search for k nearest neighbours.
+
+        n_probes : int
+            Multi-probe LSH: how many nearby buckets to check per table in
+            addition to the exact bucket.  Each probe flips one bit of the
+            hash code.  n_probes=1 checks the exact bucket only; n_probes=2
+            also checks the n_bits buckets that differ by one bit, etc.
+            Raising n_probes dramatically improves recall at the cost of
+            checking more candidates (most of which are scored by exact cosine
+            distance and discarded).
+        """
         if not self._nodes:
             return []
         query = self._coerce(query)
 
-        # Collect candidate set from all tables
+        # Collect candidate set from all tables (with multi-probe)
         candidate_ids: set = set()
         for t, planes in enumerate(self._hyperplanes):
             bucket = self._hash(query, planes)
-            for nid in self._tables[t].get(bucket, []):
-                candidate_ids.add(nid)
+            probes = self._multi_probe_buckets(bucket, n_probes)
+            for probe_bucket in probes:
+                for nid in self._tables[t].get(probe_bucket, []):
+                    candidate_ids.add(nid)
 
-        # Score candidates by exact cosine distance
+        # Score candidates by exact cosine distance (re-ranking step)
         results = []
         for nid in candidate_ids:
             node = self._nodes[nid]
@@ -122,6 +137,35 @@ class LSHIndex:
 
         results.sort()
         return [(nid, dist, meta) for dist, nid, meta in results[:k]]
+
+    def _multi_probe_buckets(self, bucket: tuple, n_probes: int) -> List[tuple]:
+        """
+        Generate probe buckets by flipping bits of the original bucket.
+        n_probes=1 → just the exact bucket.
+        n_probes=2 → exact + all n_bits single-bit-flips.
+        n_probes=3 → exact + single-flips + double-flips.
+        """
+        if n_probes <= 1:
+            return [bucket]
+        probes = [bucket]
+        if n_probes >= 2:
+            # All single-bit flips
+            lst = list(bucket)
+            for i in range(len(lst)):
+                lst[i] = not lst[i]
+                probes.append(tuple(lst))
+                lst[i] = not lst[i]
+        if n_probes >= 3:
+            # All double-bit flips
+            lst = list(bucket)
+            for i in range(len(lst)):
+                for j in range(i + 1, len(lst)):
+                    lst[i] = not lst[i]
+                    lst[j] = not lst[j]
+                    probes.append(tuple(lst))
+                    lst[i] = not lst[i]
+                    lst[j] = not lst[j]
+        return probes
 
     def delete(self, node_id: int) -> bool:
         if node_id not in self._nodes:
