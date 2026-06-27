@@ -77,12 +77,15 @@ def benchmark(
 
     Returns list of dicts: {ef, recall_at_k, qps, avg_query_ms}
     """
+    if len(all_vectors) != len(all_ids):
+        raise ValueError(
+            f"all_vectors ({len(all_vectors)}) and all_ids ({len(all_ids)}) "
+            "must have the same length and be aligned row-by-row."
+        )
     if ef_values is None:
         ef_values = sorted({k, k * 2, k * 4, k * 8, 50, 100, 200, 400})
         ef_values = [e for e in ef_values if e >= k]
 
-    # Build id→row mapping for exact search
-    id_to_row = {nid: row for row, nid in enumerate(all_ids)}
     metric = index.metric
 
     results = []
@@ -92,12 +95,6 @@ def benchmark(
         for q in query_vectors:
             hits = index.search(q, k=k, ef=ef)
             approx_ids = [h[0] for h in hits]
-
-            # get exact ground truth by indexing all_vectors
-            q_row_indices = np.array([id_to_row[nid] for nid in all_ids
-                                      if nid in id_to_row], dtype=np.int64)
-            # Use only live (non-deleted) vectors for exact search
-            live_rows = q_row_indices if len(q_row_indices) == len(all_ids) else None
             true_indices = exact_knn(q, all_vectors, k, metric)
             true_set = {all_ids[i] for i in true_indices if i < len(all_ids)}
 

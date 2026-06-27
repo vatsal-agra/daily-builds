@@ -309,7 +309,7 @@ class TestHNSWEdgeCases(unittest.TestCase):
         st = idx.stats()
         self.assertIn("size", st)
         self.assertIn("max_layer", st)
-        self.assertIn("total_edges", st)
+        self.assertIn("total_edges_directed", st)
 
 
 if __name__ == "__main__":

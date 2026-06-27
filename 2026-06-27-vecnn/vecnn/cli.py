@@ -86,7 +86,7 @@ def cmd_demo(args):
     build_ms = (time.perf_counter() - t0) * 1000
     print(f"  Built in {build_ms:.1f} ms  ({build_ms/n:.2f} ms/insert)")
     st = hnsw.stats()
-    print(f"  Max layer: {st['max_layer']}  |  Total edges: {st['total_edges']}")
+    print(f"  Max layer: {st['max_layer']}  |  Directed edges: {st['total_edges_directed']}")
 
     # Benchmark recall vs ef
     print(f"\nRecall@{k} sweep (100 random queries) …")

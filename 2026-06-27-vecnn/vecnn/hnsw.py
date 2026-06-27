@@ -230,7 +230,7 @@ class HNSWIndex:
         if not self._nodes or self._entry_point is None:
             return []
         query = self._coerce(query)
-        ef = ef or self.ef_search
+        ef = ef if ef is not None else self.ef_search
 
         # Algorithm 4 — K-NN-SEARCH
         ep_id = self._entry_point
@@ -441,7 +441,7 @@ class HNSWIndex:
             "metric": self.metric,
             "dim": self.dim,
             "layer_node_counts": layer_counts,
-            "total_edges": total_edges,
+            "total_edges_directed": total_edges,  # each undirected edge counted twice
             "avg_degree_l0": total_edges / max(len(live), 1),
         }
 
