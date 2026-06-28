@@ -10,6 +10,8 @@ Subcommands:
   compact PATH                 — trigger manual compaction
   info   PATH                  — show level statistics
   bench  PATH [--n N] [--mode MODE]  — throughput benchmark
+  viz    PATH [--out FILE]      — generate HTML visualizer to file
+  serve  PATH [--port PORT]     — serve live HTML visualizer
 
 In the REPL, commands are:
   get KEY
@@ -298,6 +300,32 @@ def cmd_info(args):
         db.close()
 
 
+def cmd_viz(args):
+    """Generate a self-contained HTML visualization of the DB state."""
+    from .visualizer import generate_html
+    db = _open_db(args.path)
+    try:
+        html = generate_html(db)
+    finally:
+        db.close()
+
+    out_path = args.out or "strata-viz.html"
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"Visualizer written to {out_path}")
+    print(f"Open it in a browser: file://{os.path.abspath(out_path)}")
+
+
+def cmd_serve(args):
+    """Serve a live HTML visualizer on a local HTTP server."""
+    from .visualizer import serve_visualizer
+    db = _open_db(args.path)
+    try:
+        serve_visualizer(db, port=args.port)
+    finally:
+        db.close()
+
+
 def cmd_bench(args):
     """Throughput benchmark: sequential write, random write, read."""
     n = args.n
@@ -406,6 +434,16 @@ def main():
     p.add_argument("--mode", choices=["all", "seqwrite", "randwrite", "seqread", "randread"],
                    default="all")
 
+    # viz
+    p = sub.add_parser("viz", help="Generate HTML visualizer")
+    p.add_argument("path", help="Database directory")
+    p.add_argument("--out", default=None, help="Output HTML file (default: strata-viz.html)")
+
+    # serve
+    p = sub.add_parser("serve", help="Serve live HTML visualizer")
+    p.add_argument("path", help="Database directory")
+    p.add_argument("--port", type=int, default=8765, help="Port to listen on (default: 8765)")
+
     args = parser.parse_args()
 
     dispatch = {
@@ -417,6 +455,8 @@ def main():
         "compact": cmd_compact,
         "info": cmd_info,
         "bench": cmd_bench,
+        "viz": cmd_viz,
+        "serve": cmd_serve,
     }
     dispatch[args.cmd](args)
 

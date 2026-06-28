@@ -1,6 +1,6 @@
 # Strata — LSM-Tree Key-Value Store
 
-> **Status:** Phase 2 complete (core build). All 4 required features implemented and green.
+> **Status:** Phase 4 complete (stretch + polish). All required + stretch features implemented and green.
 
 A from-scratch implementation of the **Log-Structured Merge-tree** — the write-optimized
 storage engine behind LevelDB, RocksDB, Cassandra, HBase, and InfluxDB.
@@ -48,6 +48,14 @@ python -m kvstore.cli info /tmp/mydb
 # Benchmark
 python -m kvstore.cli bench /tmp/mydb --n 20000 --mode all
 
+# Generate HTML visualizer
+python -m kvstore.cli viz /tmp/mydb --out viz.html
+# open viz.html in your browser
+
+# Serve live HTML visualizer
+python -m kvstore.cli serve /tmp/mydb --port 8765
+# then browse to http://127.0.0.1:8765/
+
 # Run all tests
 python -m unittest discover tests/ -v
 ```
@@ -90,6 +98,9 @@ strata> quit                exit
   atomically under a contiguous sequence number block
 - **S3 — REPL + Benchmarks** — Full interactive REPL with `snap`/`snapget`/`batch`/`compact`
   commands; `bench` subcommand reports ops/sec and MB/sec for all four I/O patterns
+- **S4 — HTML Visualizer** — `viz` subcommand generates a self-contained dark-themed HTML page
+  showing level structure, key ranges, sizes, Bloom filter parameters, and read amplification;
+  `serve` subcommand hosts it on a local HTTP server that refreshes on every request
 
 ## Design Highlights
 
