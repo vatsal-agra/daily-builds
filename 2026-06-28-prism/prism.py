@@ -182,7 +182,7 @@ def cmd_render(args):
     fname = f"{scene}{'_shadow' if shadow else ''}.png"
     path = os.path.join(out, fname)
     save_png(path, fb.width, fb.height, fb.resolve_to_rgb_bytes())
-    print(f"  → {path}  ({elapsed:.2f}s, {len(fb.triangles_rendered) if hasattr(fb,'triangles_rendered') else '—'} triangles)")
+    print(f"  → {path}  ({elapsed:.2f}s)")
 
 
 def cmd_animate(args):
@@ -384,8 +384,6 @@ def cmd_demo(args):
                              width=w, height=h,
                              caption="Gold torus · Blinn-Phong · 2 lights · 3200 triangles")
     with open(os.path.join(out, "torus_anim.html"), 'w') as f: f.write(html)
-    save_png(os.path.join(out, "torus.png"), w, h,
-             Framebuffer(w,h).resolve_to_rgb_bytes())
     # Save a representative frame
     fb0, _ = _render_scene("torus", w, h, msaa=msaa, rotation_y=0.4, textures=textures)
     save_png(os.path.join(out, "torus.png"), fb0.width, fb0.height, fb0.resolve_to_rgb_bytes())

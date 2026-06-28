@@ -22,6 +22,11 @@ def _edge(ax, ay, bx, by, px, py):
     return (bx - ax)*(py - ay) - (by - ay)*(px - ax)
 
 
+def _is_top_left(ax, ay, bx, by):
+    """Top-left fill rule: edge is 'top' (horizontal, goes left) or 'left' (goes up)."""
+    return (ay == by and ax > bx) or (by < ay)
+
+
 def _clip_triangle_near(v0, v1, v2, near=0.0):
     """
     Clip a triangle against the w > near plane in clip space.
@@ -167,6 +172,14 @@ def render_mesh(ctx, mesh, model_matrix):
             min_y = max(0, int(min(sy0,sy1,sy2)))
             max_y = min(H-1, int(max(sy0,sy1,sy2))+1)
 
+            # Shadow map: pre-compute world positions once per triangle
+            shadow_wp = None
+            if ctx.shadow_map is not None and ctx.light_vp is not None:
+                wp0 = model_matrix.transform_point(ov0.pos)
+                wp1 = model_matrix.transform_point(ov1.pos)
+                wp2 = model_matrix.transform_point(ov2.pos)
+                shadow_wp = (wp0, wp1, wp2)
+
             # Pre-compute view-space positions and normals
             vpos0 = mv.transform_point(ov0.pos)
             vpos1 = mv.transform_point(ov1.pos)
@@ -204,15 +217,10 @@ def render_mesh(ctx, mesh, model_matrix):
                     w1 = _edge(sx2,sy2, sx0,sy0, cx,cy)
                     w2 = _edge(sx0,sy0, sx1,sy1, cx,cy)
 
-                    # Top-left fill rule: reject pixels on shared edges
-                    # Edge is "top" if horizontal and goes left; "left" if goes up
-                    def is_top_left(ax,ay,bx,by):
-                        return (ay==by and ax>bx) or (by<ay)
-
                     if w0 < 0 or w1 < 0 or w2 < 0: continue
-                    if w0 == 0 and not is_top_left(sx1,sy1,sx2,sy2): continue
-                    if w1 == 0 and not is_top_left(sx2,sy2,sx0,sy0): continue
-                    if w2 == 0 and not is_top_left(sx0,sy0,sx1,sy1): continue
+                    if w0 == 0 and not _is_top_left(sx1,sy1,sx2,sy2): continue
+                    if w1 == 0 and not _is_top_left(sx2,sy2,sx0,sy0): continue
+                    if w2 == 0 and not _is_top_left(sx0,sy0,sx1,sy1): continue
 
                     # Barycentric coordinates
                     b0 = w0 * inv_area
@@ -246,17 +254,8 @@ def render_mesh(ctx, mesh, model_matrix):
 
                     # Shadow map lookup
                     shadow = 1.0
-                    if ctx.shadow_map is not None and ctx.light_vp is not None:
-                        # World position of fragment
-                        # We need world pos: we have view-space pos, need to invert view
-                        # Since we have model_matrix and original world_pos interpolated:
-                        # Actually easier: transform frag_pos_view back to world
-                        # via view_matrix inverse (= view_matrix transpose for rigid)
-                        # But it's cheaper to interpolate world-space positions directly:
-                        # Pre-compute world positions per vertex
-                        wp0 = model_matrix.transform_point(ov0.pos)
-                        wp1 = model_matrix.transform_point(ov1.pos)
-                        wp2 = model_matrix.transform_point(ov2.pos)
+                    if shadow_wp is not None:
+                        wp0, wp1, wp2 = shadow_wp
                         wpx = (b0*wp0.x*iw0 + b1*wp1.x*iw1 + b2*wp2.x*iw2)*w_frag
                         wpy = (b0*wp0.y*iw0 + b1*wp1.y*iw1 + b2*wp2.y*iw2)*w_frag
                         wpz = (b0*wp0.z*iw0 + b1*wp1.z*iw1 + b2*wp2.z*iw2)*w_frag
