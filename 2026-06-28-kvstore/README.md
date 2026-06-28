@@ -1,6 +1,6 @@
 # Strata — LSM-Tree Key-Value Store
 
-> **Status:** Phase 4 complete (stretch + polish). All required + stretch features implemented and green.
+> **Status:** COMPLETE — 72/72 tests, all required + stretch features implemented, demo.sh passes end-to-end.
 
 A from-scratch implementation of the **Log-Structured Merge-tree** — the write-optimized
 storage engine behind LevelDB, RocksDB, Cassandra, HBase, and InfluxDB.
@@ -129,6 +129,13 @@ snapshot reads without any locks on the data path.
 [FilterBlock]    ← Bloom filter: k(1) + m(4) + bits
 [IndexBlock]     ← count(4) + [klen(2) offset(8) size(4) last_key]×
 [Footer: 32B]    ← filter_offset(8) filter_size(4) index_offset(8) index_size(4) MAGIC(8)
+```
+
+## Running the Demo
+
+```bash
+cd 2026-06-28-kvstore
+bash demo.sh          # exercises every feature end-to-end (~5s)
 ```
 
 ## Test Suite (72 tests)
