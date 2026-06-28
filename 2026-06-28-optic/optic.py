@@ -637,6 +637,58 @@ def canny(img: Image, sigma: float = 1.4, low: float = 0.10, high: float = 0.20)
     return res
 
 
+def bilateral_filter(img: Image, sigma_s: float = 2.0, sigma_r: float = 0.15) -> Image:
+    """
+    Bilateral filter — edge-preserving smoothing (stretch feature S4).
+    Each output pixel is a weighted average of neighbors, where weights combine:
+      - spatial Gaussian (sigma_s): nearby pixels weighted more
+      - range Gaussian (sigma_r): similar-intensity pixels weighted more
+    Edges are preserved because pixels across an edge have large intensity differences
+    → low range weight → they don't blur together.
+    sigma_s: spatial spread (pixels); sigma_r: intensity range spread (0–1 scale).
+    """
+    radius = max(1, int(math.ceil(2.5 * sigma_s)))
+    s2 = 2.0 * sigma_s * sigma_s
+    r2 = 2.0 * sigma_r * sigma_r
+
+    # Precompute spatial weights for the window
+    spatial = []
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            spatial.append((dy, dx, math.exp(-(dy * dy + dx * dx) / s2)))
+
+    if img.mode == 'L':
+        channels = [img]
+    else:
+        channels = img.split_channels()
+
+    out_channels = []
+    for ch_img in channels:
+        W, H = ch_img.width, ch_img.height
+        src = ch_img.planes[0]
+        out = Image(W, H, 'L')
+        dst = out.planes[0]
+        for r in range(H):
+            for c in range(W):
+                p = src[r * W + c]
+                acc = 0.0; wsum = 0.0
+                for dy, dx, ws in spatial:
+                    nr = _clamp_idx(r + dy, H)
+                    nc = _clamp_idx(c + dx, W)
+                    q = src[nr * W + nc]
+                    diff = p - q
+                    wr = math.exp(-diff * diff / r2)
+                    w = ws * wr
+                    acc += q * w
+                    wsum += w
+                dst[r * W + c] = acc / wsum if wsum > 1e-12 else p
+        out_channels.append(out)
+
+    if img.mode == 'L':
+        return out_channels[0]
+    return Image.merge_channels(out_channels, img.mode)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Feature detection: Harris + FAST (R3)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1468,8 +1520,20 @@ document.getElementById('modal').addEventListener('click',e=>{{if(e.target===e.c
 # CLI commands
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _load(path: str) -> Image:
+    """Load a PNG, with a clear error if the file is missing or not a PNG."""
+    if not os.path.exists(path):
+        print(f"error: file not found: {path}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        return read_png(path)
+    except (ValueError, struct.error) as e:
+        print(f"error: cannot read '{path}': {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_info(args):
-    img = read_png(args.image)
+    img = _load(args.image)
     print(f"File:    {args.image}")
     print(f"Mode:    {img.mode}")
     print(f"Size:    {img.width}×{img.height}")
@@ -1481,7 +1545,11 @@ def cmd_info(args):
 
 
 def cmd_edges(args):
-    img = read_png(args.image).grayscale()
+    if args.sigma <= 0:
+        print("error: --sigma must be positive", file=sys.stderr); sys.exit(1)
+    if not (0 < args.low < args.high < 1):
+        print("error: must have 0 < --low < --high < 1", file=sys.stderr); sys.exit(1)
+    img = _load(args.image).grayscale()
     result = canny(img, sigma=args.sigma, low=args.low, high=args.high)
     out_path = args.output or _add_suffix(args.image, '_edges')
     write_png(result, out_path)
@@ -1490,7 +1558,7 @@ def cmd_edges(args):
 
 
 def cmd_corners(args):
-    img = read_png(args.image)
+    img = _load(args.image)
     if args.method == 'harris':
         corners = harris_corners(img, k=args.k, threshold=args.threshold, top_n=args.top)
         print(f"Harris corners: {len(corners)} found (k={args.k})")
@@ -1506,7 +1574,7 @@ def cmd_corners(args):
 
 
 def cmd_morph(args):
-    img = read_png(args.image)
+    img = _load(args.image)
     if img.mode != 'L':
         img = img.grayscale()
     # Threshold to binary
@@ -1527,7 +1595,7 @@ def cmd_morph(args):
 
 
 def cmd_components(args):
-    img = read_png(args.image)
+    img = _load(args.image)
     if img.mode != 'L':
         img = img.grayscale()
     _, img = threshold_otsu(img)
@@ -1542,7 +1610,7 @@ def cmd_components(args):
 
 
 def cmd_hough(args):
-    img = read_png(args.image)
+    img = _load(args.image)
     if img.mode != 'L':
         edges = canny(img.grayscale(), sigma=1.4)
     else:
@@ -1557,8 +1625,8 @@ def cmd_hough(args):
 
 
 def cmd_match(args):
-    img = read_png(args.image)
-    tmpl = read_png(args.template)
+    img = _load(args.image)
+    tmpl = _load(args.template)
     corr = template_match_ncc(img, tmpl)
     matches = find_matches(corr, tmpl.width, tmpl.height, threshold=args.threshold)
     out_img = img.to_rgb()
@@ -1571,8 +1639,16 @@ def cmd_match(args):
         print(f"  ({x}, {y})  NCC={s:.4f}")
 
 
+def cmd_denoise(args):
+    img = _load(args.image)
+    result = bilateral_filter(img, sigma_s=args.sigma_s, sigma_r=args.sigma_r)
+    out_path = args.output or _add_suffix(args.image, '_denoised')
+    write_png(result, out_path)
+    print(f"Bilateral filter (σ_s={args.sigma_s}, σ_r={args.sigma_r}) → {out_path}")
+
+
 def cmd_thresh(args):
-    img = read_png(args.image).grayscale()
+    img = _load(args.image).grayscale()
     if args.method == 'otsu':
         t, result = threshold_otsu(img)
         print(f"Otsu threshold: {t:.4f}")
@@ -1585,7 +1661,7 @@ def cmd_thresh(args):
 
 
 def cmd_viz(args):
-    img = read_png(args.image)
+    img = _load(args.image)
     gray = img.grayscale()
     blurred = gaussian_blur(gray, sigma=1.4)
     _, _, mag, _ = sobel(blurred)
@@ -1701,8 +1777,28 @@ def cmd_demo(args):
         for x, y, s in matches:
             print(f"      ({x:3d},{y:3d}) NCC={s:.4f}")
 
-    # 6. Prewitt/Scharr comparison
-    print("\n[6] Edge operator comparison (Sobel/Prewitt/Scharr)")
+    # 6. Bilateral denoising (stretch S4)
+    print("\n[6] Bilateral filter denoising (stretch S4)")
+    import random; rng2 = random.Random(99)
+    noisy_shapes = shapes.copy()
+    for i in range(128 * 128):
+        noisy_shapes.planes[0][i] = min(1.0, max(0.0,
+            noisy_shapes.planes[0][i] + rng2.gauss(0, 0.12)))
+    gauss_denoised   = gaussian_blur(noisy_shapes, sigma=1.5)
+    bilat_denoised   = bilateral_filter(noisy_shapes, sigma_s=2.0, sigma_r=0.15)
+    write_png(noisy_shapes,   f'{out_dir}/shapes_noisy.png')
+    write_png(gauss_denoised, f'{out_dir}/shapes_gauss_denoise.png')
+    write_png(bilat_denoised, f'{out_dir}/shapes_bilateral.png')
+    # Compute edge-preservation: run Canny on both, compare edge counts at true boundaries
+    edges_gauss = canny(gauss_denoised, sigma=1.0, low=0.05, high=0.15)
+    edges_bilat = canny(bilat_denoised, sigma=1.0, low=0.05, high=0.15)
+    n_g = sum(1 for v in edges_gauss.planes[0] if v > 0.5)
+    n_b = sum(1 for v in edges_bilat.planes[0] if v > 0.5)
+    print(f"    Noisy image: Gaussian denoising → {n_g} edges, Bilateral → {n_b} edges")
+    print(f"    (Bilateral preserves sharp edges; Gaussian blurs them out)")
+
+    # 7. Prewitt/Scharr comparison
+    print("\n[7] Edge operator comparison (Sobel/Prewitt/Scharr)")
     _, _, sob_mag, _ = sobel(shapes)
     _, _, pre_mag, _ = prewitt(shapes)
     _, _, scha_mag, _ = scharr(shapes)
@@ -1711,15 +1807,18 @@ def cmd_demo(args):
     write_png(scha_mag.normalize(), f'{out_dir}/shapes_scharr.png')
     print(f"    Sobel/Prewitt/Scharr magnitude images written")
 
-    # 7. Pipeline visualizer HTML
-    print("\n[7] HTML pipeline visualizer")
+    # 8. Pipeline visualizer HTML
+    print("\n[8] HTML pipeline visualizer")
     blurred_s = gaussian_blur(shapes, 1.4)
     _, _, mag_s, _ = sobel(blurred_s)
     _, thresh_s = threshold_otsu(shapes)
     lbl_s, _, _, _ = connected_components(thresh_s)
 
     stages = [
-        ('Original Shapes', shapes),
+        ('Original', shapes),
+        ('Noisy (+Gaussian noise)', noisy_shapes),
+        ('Gaussian Denoise', gauss_denoised),
+        ('Bilateral Denoise', bilat_denoised),
         ('Gaussian Blur', blurred_s),
         ('Sobel Magnitude', mag_s.normalize()),
         ('Canny Edges', edges_img),
@@ -1816,6 +1915,13 @@ def main():
     p.add_argument('--C', type=float, default=0.02, help='Adaptive constant')
     p.add_argument('-o', '--output')
 
+    # denoise (S4 stretch)
+    p = sub.add_parser('denoise', help='Bilateral filter: edge-preserving denoising')
+    p.add_argument('image')
+    p.add_argument('--sigma-s', type=float, default=2.0, help='Spatial sigma (pixels)')
+    p.add_argument('--sigma-r', type=float, default=0.15, help='Range sigma (intensity 0-1)')
+    p.add_argument('-o', '--output')
+
     # viz
     p = sub.add_parser('viz', help='Generate HTML pipeline visualizer for an image')
     p.add_argument('image')
@@ -1829,7 +1935,8 @@ def main():
     dispatch = {
         'info': cmd_info, 'edges': cmd_edges, 'corners': cmd_corners,
         'morph': cmd_morph, 'components': cmd_components, 'hough': cmd_hough,
-        'match': cmd_match, 'thresh': cmd_thresh, 'viz': cmd_viz, 'demo': cmd_demo,
+        'match': cmd_match, 'thresh': cmd_thresh, 'denoise': cmd_denoise,
+        'viz': cmd_viz, 'demo': cmd_demo,
     }
     dispatch[args.cmd](args)
 

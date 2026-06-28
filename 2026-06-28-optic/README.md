@@ -1,5 +1,5 @@
 # Optic — Computer Vision from Scratch
 
-> Phase 1 complete: PLAN.md written. See PLAN.md for full architecture and feature list.
+> Phase 4 complete: all required + stretch features implemented. See PLAN.md.
 
-Building a complete, dependency-free computer vision library in pure Python.
+Phase 1 (plan), 2 (core build), 3 (adversarial review + fixes), 4 (bilateral filter + polish) done.
