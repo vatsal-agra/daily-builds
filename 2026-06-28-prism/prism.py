@@ -109,7 +109,7 @@ def _build_textures():
 
 def _render_scene(scene_name, width, height, msaa=1,
                   shadow=False, wireframe=False, rotation_y=0.0,
-                  textures=None):
+                  textures=None, shade_mode='phong'):
     """Core render: returns (Framebuffer, elapsed_seconds)."""
     t0 = time.time()
     if textures is None:
@@ -134,7 +134,7 @@ def _render_scene(scene_name, width, height, msaa=1,
 
     # Build lights in view space (already done above)
     ctx = RenderContext(fb, cam, lights, shadow_map=smap, light_vp=light_vp,
-                        wireframe=wireframe)
+                        wireframe=wireframe, shade_mode=shade_mode)
 
     for mesh, model_mat in objects:
         render_mesh(ctx, mesh, rot * model_mat)
@@ -173,13 +173,15 @@ def cmd_render(args):
     w, h = args.width, args.height
     msaa = args.msaa
     shadow = args.shadow
+    mode = getattr(args, 'mode', 'phong') or 'phong'
 
-    print(f"Rendering '{scene}' at {w}×{h} (MSAA={msaa}×, shadow={shadow})…", flush=True)
+    print(f"Rendering '{scene}' at {w}×{h} (MSAA={msaa}×, shadow={shadow}, mode={mode})…", flush=True)
     textures = _build_textures()
     fb, elapsed = _render_scene(scene, w, h, msaa=msaa, shadow=shadow,
-                                textures=textures)
+                                textures=textures, shade_mode=mode)
     out = _out_dir()
-    fname = f"{scene}{'_shadow' if shadow else ''}.png"
+    suffix = f"_{mode}" if mode != 'phong' else ''
+    fname = f"{scene}{'_shadow' if shadow else ''}{suffix}.png"
     path = os.path.join(out, fname)
     save_png(path, fb.width, fb.height, fb.resolve_to_rgb_bytes())
     print(f"  → {path}  ({elapsed:.2f}s)")
@@ -301,7 +303,7 @@ def cmd_shadows(args):
 
 
 def cmd_compare(args):
-    """Flat / Gouraud(Phong) / Wireframe / Textured comparison."""
+    """Wireframe / Phong / Textured / Normals / MSAA comparison."""
     scene = args.scene or "torus"
     w, h = args.width, args.height
     print(f"Rendering comparison for '{scene}' at {w}×{h}…", flush=True)
@@ -324,7 +326,12 @@ def cmd_compare(args):
     renders.append({'label':'Phong + Texture','png_bytes':_fb_to_png(fb),'caption':f'{el:.2f}s'})
     print(f"  textured: {el:.2f}s", flush=True)
 
-    # 4. MSAA 2×
+    # 4. Normal visualization
+    fb, el = _render_scene(scene, w, h, textures={}, shade_mode='normals')
+    renders.append({'label':'Normal Map','png_bytes':_fb_to_png(fb),'caption':f'view-space normals → RGB  {el:.2f}s'})
+    print(f"  normals: {el:.2f}s", flush=True)
+
+    # 5. MSAA 2×
     fb, el = _render_scene(scene, w, h, msaa=2, textures=textures)
     renders.append({'label':'MSAA 2×','png_bytes':_fb_to_png(fb),'caption':f'{el:.2f}s'})
     print(f"  msaa2x: {el:.2f}s", flush=True)
@@ -436,6 +443,21 @@ def cmd_demo(args):
              fb.resolve_to_rgb_bytes())
     print(f"  → {out}/cornell.png  ({el:.2f}s)")
 
+    # D6: Normal visualization comparison
+    print("\n[D6] Normal visualization comparison (torus)…", flush=True)
+    norm_renders = []
+    for scene in ["torus", "sphere", "showcase"]:
+        fb, el = _render_scene(scene, w, h, textures={}, shade_mode='normals')
+        norm_renders.append({
+            'label': scene.title(),
+            'png_bytes': _fb_to_png(fb),
+            'caption': f'View-space normals → RGB  {el:.2f}s',
+        })
+        print(f"  {scene} normals: {el:.2f}s", flush=True)
+    html = build_comparison_html(norm_renders, "Prism — Normal Visualization")
+    with open(os.path.join(out, "normals_compare.html"), 'w') as f: f.write(html)
+    print(f"  → {out}/normals_compare.html")
+
     print(f"\nDemo complete. Output in: {out}/")
 
 
@@ -456,6 +478,8 @@ def build_parser():
     r.add_argument('scene', nargs='?', default='torus',
                    choices=['torus','sphere','cornell','shadow_demo','showcase'])
     r.add_argument('--shadow', action='store_true')
+    r.add_argument('--mode', choices=['phong','normals'], default='phong',
+                   help='Shading mode: phong (default) or normals (visualize normals as RGB)')
 
     # animate
     an = sub.add_parser('animate', help='Render rotation animation to HTML')

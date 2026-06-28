@@ -79,13 +79,15 @@ def _clip_triangle_near(v0, v1, v2, near=0.0):
 
 class RenderContext:
     def __init__(self, fb, camera, lights, shadow_map=None, light_vp=None,
-                 wireframe=False):
+                 wireframe=False, shade_mode='phong'):
         self.fb = fb
         self.camera = camera
         self.lights = lights          # list of Light in view space
         self.shadow_map = shadow_map  # DepthBuffer or None
         self.light_vp = light_vp      # Mat4 (light view-proj) or None
         self.wireframe = wireframe
+        # shade_mode: 'phong' | 'normals' (visualize per-fragment normal as RGB)
+        self.shade_mode = shade_mode
 
 
 def _draw_line(fb, x0, y0, x1, y1, r, g, b):
@@ -266,10 +268,16 @@ def render_mesh(ctx, mesh, model_matrix):
                             shadow = sample_shadow_pcf(ctx.shadow_map, lndc)
 
                     # Fragment shader
-                    color = blinn_phong(
-                        frag_pos_view, frag_normal, (uf, vf),
-                        mat, ctx.lights, shadow_factor=shadow
-                    )
+                    if ctx.shade_mode == 'normals':
+                        # Map view-space normal from [-1,1] → [0,1] as RGB
+                        color = Vec3(frag_normal.x*0.5+0.5,
+                                     frag_normal.y*0.5+0.5,
+                                     frag_normal.z*0.5+0.5)
+                    else:
+                        color = blinn_phong(
+                            frag_pos_view, frag_normal, (uf, vf),
+                            mat, ctx.lights, shadow_factor=shadow
+                        )
 
                     fb.set_pixel(px, py, color.x, color.y, color.z)
 

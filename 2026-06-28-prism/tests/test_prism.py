@@ -678,6 +678,25 @@ class TestFullPipeline(unittest.TestCase):
         fb, el = self._render("showcase")
         self.assertGreater(_count_lit(fb), 100)
 
+    def test_normals_mode_produces_color(self):
+        """shade_mode='normals' renders normal vectors as RGB (not Phong output)."""
+        fb = Framebuffer(64, 64)
+        fb.clear((0, 0, 0))
+        cam = Camera(eye=Vec3(0,0,3), center=Vec3(0,0,0), fov_y=60,
+                     aspect=1.0, near=0.1, far=20, width=64, height=64)
+        lights = [Light.ambient()]
+        mesh = _make_sphere(rings=12, sectors=12)
+        from src.math3d import Mat4
+        ctx = RenderContext(fb, cam, lights, shade_mode='normals')
+        render_mesh(ctx, mesh, Mat4.identity())
+        # Centre pixel should be blue-ish (front-facing normal maps to high Z → high B)
+        r, g, b = fb.get_pixel(32, 32)
+        self.assertGreater(b, 0.6, f"Expected blue-dominant center normal, got r={r:.2f} g={g:.2f} b={b:.2f}")
+        # Should produce colored pixels across the sphere
+        colored = sum(1 for x in range(64) for y in range(64)
+                      if any(fb.get_pixel(x,y)[c] > 0.1 for c in range(3)))
+        self.assertGreater(colored, 200)
+
     def test_shadow_pass_reduces_light(self):
         """Rendering with shadow=True produces same or fewer bright pixels."""
         import importlib.util
