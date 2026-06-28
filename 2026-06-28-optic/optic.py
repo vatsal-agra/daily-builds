@@ -1144,6 +1144,7 @@ def template_match_ncc(img: Image, tmpl: Image) -> Image:
     Normalized Cross-Correlation template matching.
     Returns response map (L mode, 0–1; 1 = perfect match).
     Uses summed-area tables for O(1) patch sum/sum² per position.
+    Raises ValueError if template is larger than the image.
     """
     if img.mode != 'L':
         img = img.grayscale()
@@ -1152,6 +1153,10 @@ def template_match_ncc(img: Image, tmpl: Image) -> Image:
 
     W, H = img.width, img.height
     TW, TH = tmpl.width, tmpl.height
+    if TW > W or TH > H:
+        raise ValueError(
+            f"Template ({TW}×{TH}) is larger than image ({W}×{H}) — no valid positions"
+        )
     n_t = TW * TH
 
     src = img.planes[0]
@@ -1604,7 +1609,7 @@ def cmd_viz(args):
         ('Components', lbl_img),
     ]
     html = build_pipeline_html(stages)
-    out_path = args.output or _add_suffix(args.image, '_pipeline.html').replace('.png.html', '.html')
+    out_path = args.output or (os.path.splitext(args.image)[0] + '_pipeline.html')
     with open(out_path, 'w') as f:
         f.write(html)
     print(f"Pipeline visualizer → {out_path}")
