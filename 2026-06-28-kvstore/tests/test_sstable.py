@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from kvstore.sstable import SSTableWriter2, SSTableReader, BLOCK_SIZE
+from kvstore.sstable import SSTableWriter, SSTableReader, BLOCK_SIZE
 from kvstore.record import Record, RecordType
 
 
@@ -33,7 +33,7 @@ class TestSSTable(unittest.TestCase):
 
     def _write(self, records, fname="test.sst"):
         path = Path(self.tmpdir) / fname
-        writer = SSTableWriter2(path)
+        writer = SSTableWriter(path)
         for r in records:
             writer.add(r)
         writer.finish()

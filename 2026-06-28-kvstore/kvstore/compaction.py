@@ -11,10 +11,15 @@ L0 → L1 compaction:
 LN → LN+1 compaction (N ≥ 1):
   Pick the L-N file that was least-recently compacted (round-robin).
   Find all LN+1 files whose range overlaps this file.
-  Merge-sort; output new LN+1 SSTables. Delete old files.
+  Merge-sort all; output new LN+1 SSTables. Delete old files.
 
-Tombstone GC: at the deepest level, tombstones can be dropped entirely
-(no older data can exist below them).
+Tombstone GC: tombstones are ONLY dropped when compacting into Options.max_levels
+(the configured deepest level). This prevents deleted keys from resurfacing if
+data for the same key exists at a deeper level.
+
+Crash safety (partial): on exception mid-compaction, any newly-written SSTables
+that were added to the manifest are rolled back (removed) so the manifest reflects
+only the original input files. The input files are NOT deleted, so no data is lost.
 """
 
 import os
@@ -22,7 +27,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .record import Record, RecordType
-from .sstable import SSTableReader, SSTableWriter2
+from .sstable import SSTableReader, SSTableWriter
 from .iterator import MergeIterator
 from .manifest import Manifest
 
@@ -93,46 +98,58 @@ def _write_merged(
     manifest: Manifest,
     target_level: int,
     records_iter,
-    max_level: int,
+    gc_tombstones: bool,
     bloom_fp_rate: float = 0.01,
 ) -> List[str]:
-    """Write compacted records to new SSTables; return new filenames."""
+    """Write compacted records to new SSTables; return new filenames.
+
+    On exception, cleans up any already-written output files and removes
+    their manifest entries so the compaction is rolled back.
+    """
     new_files: List[str] = []
-    writer: Optional[SSTableWriter2] = None
+    writer: Optional[SSTableWriter] = None
+    fname: Optional[str] = None
     current_size = 0
-    is_deepest = (target_level == max_level)
 
-    def finish_writer():
-        if writer is not None:
+    try:
+        for record in records_iter:
+            if gc_tombstones and record.rtype == RecordType.DELETE:
+                continue
+
+            if writer is None:
+                fname = manifest.new_sst_filename()
+                writer = SSTableWriter(db_dir / fname, bloom_fp_rate)
+
+            writer.add(record)
+            current_size += 5 + len(record.key) + len(record.value)
+
+            if current_size >= MAX_SSTABLE_SIZE:
+                writer.finish()
+                writer = None
+                new_files.append(fname)
+                manifest.add_file(target_level, fname)
+                fname = None
+                current_size = 0
+
+        if writer is not None and fname is not None:
             writer.finish()
-
-    fname = None
-    for record in records_iter:
-        # At deepest level, drop tombstones
-        if is_deepest and record.rtype == RecordType.DELETE:
-            continue
-
-        if writer is None:
-            fname = manifest.new_sst_filename()
-            writer = SSTableWriter2(db_dir / fname, bloom_fp_rate)
-
-        writer.add(record)
-        current_size += 5 + len(record.key) + len(record.value)
-
-        if current_size >= MAX_SSTABLE_SIZE:
-            writer.finish()
+            writer = None
             new_files.append(fname)
             manifest.add_file(target_level, fname)
-            writer = None
             fname = None
-            current_size = 0
 
-    if writer is not None and fname is not None:
-        writer.finish()
-        new_files.append(fname)
-        manifest.add_file(target_level, fname)
+        return new_files
 
-    return new_files
+    except Exception:
+        # Rollback: remove any partially-written output files
+        if writer is not None:
+            writer.abort()
+        for f in new_files:
+            manifest.remove_file(target_level, f)
+            p = db_dir / f
+            if p.exists():
+                p.unlink()
+        raise
 
 
 def compact_level(
@@ -141,14 +158,13 @@ def compact_level(
     level: int,
     compaction_pointers: Dict[int, int],
     bloom_fp_rate: float = 0.01,
+    max_levels: int = 3,
 ) -> None:
     """Perform one round of compaction for the given level."""
-    max_level = max(manifest.all_levels() + [level + 1])
-
     if level == 0:
-        _compact_l0(db_dir, manifest, compaction_pointers, bloom_fp_rate, max_level)
+        _compact_l0(db_dir, manifest, compaction_pointers, bloom_fp_rate, max_levels)
     else:
-        _compact_ln(db_dir, manifest, level, compaction_pointers, bloom_fp_rate, max_level)
+        _compact_ln(db_dir, manifest, level, compaction_pointers, bloom_fp_rate, max_levels)
 
 
 def _compact_l0(
@@ -156,7 +172,7 @@ def _compact_l0(
     manifest: Manifest,
     compaction_pointers: Dict[int, int],
     bloom_fp_rate: float,
-    max_level: int,
+    max_levels: int,
 ) -> None:
     """Merge all L0 files + overlapping L1 files into new L1 SSTables."""
     l0_files = manifest.files_at_level(0)
@@ -188,13 +204,14 @@ def _compact_l0(
             r.close()
 
     # Merge-sort all: L0 files (each is a separate source) + L1 overlap
-    # L0 files can have overlapping ranges; each is its own iterator.
-    # L1 files are non-overlapping; merge them all together.
     all_iters = [r.iter_all() for r in l0_readers] + [r.iter_all() for r in l1_readers]
     merged = MergeIterator(all_iters)
 
+    # Tombstone GC: only at the configured deepest level
+    gc_tombstones = (1 >= max_levels)
+
     new_l1_files = _write_merged(
-        db_dir, manifest, 1, merged, max_level, bloom_fp_rate
+        db_dir, manifest, 1, merged, gc_tombstones, bloom_fp_rate
     )
 
     # Close readers
@@ -221,7 +238,7 @@ def _compact_ln(
     level: int,
     compaction_pointers: Dict[int, int],
     bloom_fp_rate: float,
-    max_level: int,
+    max_levels: int,
 ) -> None:
     """Pick one file from level N (round-robin) and compact with overlapping LN+1."""
     ln_files = manifest.files_at_level(level)
@@ -262,8 +279,11 @@ def _compact_ln(
     all_iters = [chosen_reader.iter_all()] + [r.iter_all() for r in ln1_readers]
     merged = MergeIterator(all_iters)
 
+    # Tombstone GC: only at the configured deepest level
+    gc_tombstones = (level + 1 >= max_levels)
+
     new_files = _write_merged(
-        db_dir, manifest, level + 1, merged, max_level, bloom_fp_rate
+        db_dir, manifest, level + 1, merged, gc_tombstones, bloom_fp_rate
     )
 
     chosen_reader.close()

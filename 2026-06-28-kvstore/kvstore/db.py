@@ -29,7 +29,7 @@ from .manifest import Manifest
 from .memtable import MemTable
 from .record import Record, RecordType
 from .snapshot import Snapshot
-from .sstable import SSTableReader, SSTableWriter2
+from .sstable import SSTableReader, SSTableWriter
 from .wal import WAL
 
 
@@ -39,6 +39,7 @@ class Options:
     bloom_fp_rate: float = 0.01
     max_open_files: int = 64
     auto_compact: bool = True               # compact after each flush
+    max_levels: int = 3                     # deepest level; tombstones only GC'd here
 
 
 class DB:
@@ -95,10 +96,16 @@ class DB:
 
     def scan(self, start: Optional[bytes] = None, end: Optional[bytes] = None,
              snapshot: Optional[Snapshot] = None) -> Iterator[Tuple[bytes, bytes]]:
-        """Return an iterator over (key, value) pairs in [start, end)."""
+        """Return an iterator over (key, value) pairs in [start, end).
+
+        Results are materialized inside the lock so that concurrent compactions
+        cannot close SSTable file handles while the caller iterates.
+        """
         max_seq = snapshot.seq if snapshot else 2**63
         with self._lock:
-            return self._scan_locked(start, end, max_seq)
+            # Materialize to list; prevents use-after-close if compaction runs
+            # between calls to next() on the returned iterator.
+            return iter(list(self._scan_locked(start, end, max_seq)))
 
     def write_batch(self, batch: WriteBatch) -> None:
         """Apply all operations in batch atomically."""
@@ -134,7 +141,8 @@ class DB:
                     return
             compact_level(
                 self._dir, self._manifest, level,
-                self._compaction_pointers, self._opts.bloom_fp_rate
+                self._compaction_pointers, self._opts.bloom_fp_rate,
+                self._opts.max_levels,
             )
             self._close_stale_readers()
 
@@ -260,18 +268,20 @@ class DB:
         return None
 
     def _find_file_for_key(self, files: List[str], key: bytes) -> Optional[str]:
-        """Binary-search sorted L1+ files for one that might contain key."""
-        # L1+ files have non-overlapping ranges sorted by key.
-        # We need the file where min_key <= key <= max_key.
-        # We use max_key for binary search since that's what we have in the index.
+        """Binary-search sorted L1+ files for one that might contain key.
+
+        L1+ files are non-overlapping and sorted by key range. We search by
+        max_key (the last key in each file). If a reader fails to open, we
+        skip that slot and continue rather than aborting the search.
+        """
         lo, hi = 0, len(files) - 1
         while lo <= hi:
             mid = (lo + hi) // 2
             reader = self._get_reader(files[mid])
-            if reader is None:
-                return None
-            if reader.max_key is None:
-                return None
+            if reader is None or reader.max_key is None:
+                # Can't determine range of this file; skip it by moving right
+                lo = mid + 1
+                continue
             if reader.max_key < key:
                 lo = mid + 1
             elif reader.min_key is not None and reader.min_key > key:
@@ -314,7 +324,7 @@ class DB:
             return
 
         fname = self._manifest.new_sst_filename()
-        writer = SSTableWriter2(self._dir / fname, self._opts.bloom_fp_rate)
+        writer = SSTableWriter(self._dir / fname, self._opts.bloom_fp_rate)
         for r in records:
             writer.add(r)
         writer.finish()
@@ -341,7 +351,8 @@ class DB:
             if level is not None:
                 compact_level(
                     self._dir, self._manifest, level,
-                    self._compaction_pointers, self._opts.bloom_fp_rate
+                    self._compaction_pointers, self._opts.bloom_fp_rate,
+                    self._opts.max_levels,
                 )
                 self._close_stale_readers()
 

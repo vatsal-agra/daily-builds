@@ -11,6 +11,7 @@ Write-and-rename for atomicity on each flush/compaction.
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -34,7 +35,7 @@ class Manifest:
                 try:
                     op = json.loads(line)
                 except json.JSONDecodeError:
-                    break  # truncated line
+                    continue  # skip corrupt line, keep loading
                 if op["op"] == "add":
                     lvl = op["level"]
                     fname = op["file"]
@@ -59,6 +60,8 @@ class Manifest:
     def _append(self, op: dict) -> None:
         with open(self.path, "a") as f:
             f.write(json.dumps(op) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
 
     def next_seq(self) -> int:
         seq = self._next_seq

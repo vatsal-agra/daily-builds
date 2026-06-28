@@ -33,10 +33,8 @@ from .record import Record, RecordType
 from .bloom import BloomFilter
 
 MAGIC = b"STRATAL1"  # 8-byte magic
-FOOTER_SIZE = 32  # 8+4+8+4+8
-_FOOTER_FMT = struct.Struct(">QIQIQ")  # 5 fields × sizes = 8+4+8+4+8 = 32 OK
-# Actually: filter_offset(8) filter_size(4) index_offset(8) index_size(4) magic(8) = 32
-_FOOTER = struct.Struct(">QIQIQ")  # hmm: Q=8 I=4 Q=8 I=4 Q=8 = 32. Let's check: 8+4+8+4+8=32. Yes.
+FOOTER_SIZE = 32  # filter_offset(8) + filter_size(4) + index_offset(8) + index_size(4) + magic(8)
+_FOOTER = struct.Struct(">QIQIQ")
 
 BLOCK_SIZE = 4096  # target data block size
 
@@ -111,92 +109,9 @@ def _decode_index_block(data: bytes) -> List[Tuple[bytes, int, int]]:
 # ---------------------------------------------------------------------------
 
 class SSTableWriter:
-    """Builds an SSTable from an iterator of Records (must be key-sorted)."""
-
-    def __init__(self, path: Path, bloom_fp_rate: float = 0.01):
-        self.path = path
-        self._fp_rate = bloom_fp_rate
-        self._fh = open(path, "wb")
-        self._current_block: List[Record] = []
-        self._current_block_size: int = 0
-        self._index_entries: List[Tuple[bytes, int, int]] = []
-        self._write_offset: int = 0
-        self._bloom: Optional[BloomFilter] = None
-        self._key_count: int = 0
-
-    def add(self, record: Record) -> None:
-        """Add a Record (must be called in key-sorted order)."""
-        if self._bloom is None:
-            # We don't know total count yet; use a growing bloom or default size.
-            # We'll rebuild it at finish time; just collect keys for now.
-            pass
-        self._current_block.append(record)
-        entry_size = 5 + len(record.key) + len(record.value)
-        self._current_block_size += entry_size
-        self._key_count += 1
-        if self._current_block_size >= BLOCK_SIZE:
-            self._flush_block()
-
-    def _flush_block(self) -> None:
-        if not self._current_block:
-            return
-        last_key = self._current_block[-1].key
-        encoded = _encode_data_block(self._current_block)
-        self._fh.write(encoded)
-        self._index_entries.append((last_key, self._write_offset, len(encoded)))
-        self._write_offset += len(encoded)
-        self._current_block = []
-        self._current_block_size = 0
-
-    def finish(self, all_keys: Optional[List[bytes]] = None) -> None:
-        """Finalize and close the SSTable."""
-        self._flush_block()
-
-        # Build Bloom filter over all keys
-        bf = BloomFilter(expected_items=max(1, self._key_count), fp_rate=self._fp_rate)
-        if all_keys:
-            for k in all_keys:
-                bf.add(k)
-        # We can't add keys retroactively without storing them, so we re-iterate
-        # the index to reconstruct — but we lost the key list. Instead we store
-        # a reference list during add(). Let me redesign: store keys inline.
-        # Since we already built index_entries with last_keys, and we need
-        # ALL keys for the bloom filter, we'll rely on the caller providing them,
-        # OR we will just not populate the bloom correctly here if all_keys is None.
-        # The proper way: caller passes all_keys. The DB layer does this.
-        filter_bytes = bf.to_bytes()
-        filter_offset = self._write_offset
-        self._fh.write(filter_bytes)
-        self._write_offset += len(filter_bytes)
-
-        # Write index block
-        index_data = _encode_index_block(self._index_entries)
-        index_offset = self._write_offset
-        self._fh.write(index_data)
-        self._write_offset += len(index_data)
-
-        # Write footer
-        footer = _FOOTER.pack(
-            filter_offset, len(filter_bytes),
-            index_offset, len(index_data),
-            int.from_bytes(MAGIC, "big")
-        )
-        self._fh.write(footer)
-        self._fh.flush()
-        os.fsync(self._fh.fileno())
-        self._fh.close()
-
-    def abort(self) -> None:
-        self._fh.close()
-        if self.path.exists():
-            self.path.unlink()
-
-
-class SSTableWriter2:
     """
-    Two-pass SSTable writer: collects all records first (in memory or temp),
-    then writes in one go so the Bloom filter has all keys.
-    For large tables this is memory-intensive; for our purposes it's fine.
+    Two-pass SSTable writer: buffers all records in memory, then writes
+    in one go so the Bloom filter can cover all keys.
     """
 
     def __init__(self, path: Path, bloom_fp_rate: float = 0.01):
@@ -386,9 +301,6 @@ class SSTableReader:
 
         for block_idx in range(block_start, len(self._index)):
             last_key = self._index[block_idx][0]
-            if end is not None and last_key < end:
-                # Could still have keys in range
-                pass
             records = self._read_block(block_idx)
             for r in records:
                 if start is not None and r.key < start:
@@ -397,7 +309,7 @@ class SSTableReader:
                     return
                 if r.seq <= max_seq:
                     yield r
-            # If end is before this block's last key, we're done
+            # Once we've passed the end boundary in this block's range, stop
             if end is not None and last_key >= end:
                 return
 

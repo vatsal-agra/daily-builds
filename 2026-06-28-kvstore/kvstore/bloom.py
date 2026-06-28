@@ -64,12 +64,22 @@ class BloomFilter:
     @classmethod
     def from_bytes(cls, data: bytes) -> "BloomFilter":
         import struct
+        header_size = struct.calcsize(">BI")  # 5 bytes
+        if len(data) < header_size:
+            raise ValueError(
+                f"Bloom filter data too short: {len(data)} < {header_size}"
+            )
         k, m = struct.unpack_from(">BI", data, 0)
+        expected_bit_bytes = (m + 7) // 8
+        if len(data) - header_size < expected_bit_bytes:
+            raise ValueError(
+                f"Bloom filter bit array truncated: have {len(data) - header_size} "
+                f"bytes, need {expected_bit_bytes} for m={m}"
+            )
         bf = cls.__new__(cls)
         bf.k = k
         bf.m = m
         bf.fp_rate = 0.01
         bf.expected_items = 0
-        header_size = struct.calcsize(">BI")
-        bf._bits = bytearray(data[header_size:])
+        bf._bits = bytearray(data[header_size:header_size + expected_bit_bytes])
         return bf
