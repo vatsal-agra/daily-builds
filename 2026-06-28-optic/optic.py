@@ -797,7 +797,7 @@ def fast_corners(img: Image, threshold: float = 0.05, n_arc: int = 9,
 
             n_bright = sum(1 for k in (0, 4, 8, 12) if pv(k) > hi)
             n_dark   = sum(1 for k in (0, 4, 8, 12) if pv(k) < lo)
-            if n_bright < 3 and n_dark < 3:
+            if n_bright < 2 and n_dark < 2:
                 continue
 
             vals = [src[roff + c + circle_off[k]] for k in range(N)]
