@@ -72,7 +72,14 @@ def _solve_numpy(U, V, Du, Dv, F, k, steps, dt=1.0):
 # ── pure-Python solver ────────────────────────────────────────────────────────
 
 def _solve_python(U, V, Du, Dv, F, k, steps, dt=1.0, W=None, H=None):
-    """Pure-Python fallback — correct but slow for large grids."""
+    """
+    Pure-Python fallback — correct but slow for large grids.
+
+    NOTE: This uses Gauss-Seidel style in-place updates (each cell's Laplacian
+    reads already-updated neighbours earlier in the row scan). This differs from
+    the explicit-Euler numpy path, so the same seed produces slightly different
+    patterns. Both converge to valid RD textures.
+    """
     rows = H or len(U)
     cols = W or (len(U[0]) if hasattr(U[0], '__len__') else len(U) // rows)
     for _ in range(steps):

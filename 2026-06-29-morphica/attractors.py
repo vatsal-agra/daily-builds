@@ -45,8 +45,9 @@ def _pickover(x, y, z, a=-2.24, b=0.43, c=-0.65, d=-2.43):
 
 
 def _duffing(x, y, a=2.75, b=0.2):
+    # Duffing map: x_{n+1} = y_n, y_{n+1} = -b*x_n + a*y_n - y_n^3
     nx = y
-    ny = -b * y + a * x - x ** 3
+    ny = -b * x + a * y - y ** 3
     return nx, ny
 
 
@@ -200,14 +201,24 @@ def _orbit_pickover(steps, warmup, seed):
 
 def _orbit_duffing(steps, warmup, seed):
     rng = _random.Random(seed)
-    x, y = rng.uniform(-0.5, 0.5), rng.uniform(-0.5, 0.5)
+    # Use small initial conditions to stay in the basin of attraction
+    x, y = rng.uniform(-0.1, 0.1), rng.uniform(-0.1, 0.1)
+    # Guard against divergence — skip if |x| or |y| > 10
     for _ in range(warmup):
-        x, y = _duffing(x, y)
+        nx, ny = _duffing(x, y)
+        if abs(nx) > 10 or abs(ny) > 10:
+            x, y = 0.01, 0.01
+        else:
+            x, y = nx, ny
     xs, ys = [], []
     for _ in range(steps):
-        x, y = _duffing(x, y)
-        xs.append(x)
-        ys.append(y)
+        nx, ny = _duffing(x, y)
+        if abs(nx) > 10 or abs(ny) > 10:
+            x, y = 0.01, 0.01
+        else:
+            x, y = nx, ny
+            xs.append(x)
+            ys.append(y)
     return xs, ys
 
 

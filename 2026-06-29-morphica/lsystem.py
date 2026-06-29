@@ -83,7 +83,7 @@ PRESETS = {
             "Z": "[-FFF][+FFF]F",
         },
         "angle": 20,
-        "iterations": 5,
+        "iterations": 4,  # 5 produces >1M char strings; 4 is still visually rich
         "step": 5.0,
         "description": "Bush / branching structure",
     },
@@ -356,4 +356,6 @@ def render_lsystem(
 
 def _parse_hex_color(hex_str):
     h = hex_str.lstrip("#")
+    if len(h) == 3:
+        h = h[0]*2 + h[1]*2 + h[2]*2
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))

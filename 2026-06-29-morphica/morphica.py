@@ -232,8 +232,9 @@ def cmd_viewer(args):
     seed = getattr(args, "seed", 42)
 
     # L-systems as PNG
-    print("  Rendering L-system gallery images…")
-    for name in ["koch", "dragon", "barnsley", "hilbert"]:
+    ls_names_gallery = ["koch", "dragon", "barnsley", "hilbert"]
+    for i, name in enumerate(ls_names_gallery):
+        print(f"  [{i+1}/{len(ls_names_gallery)}] L-system: {name}…")
         pixels, w, h = render_lsystem(name, width=400, height=400,
                                        output_format="pixels", seed=seed)
         b64 = _pixels_to_b64(pixels, w, h)
@@ -245,8 +246,9 @@ def cmd_viewer(args):
         })
 
     # Attractors
-    print("  Rendering attractor gallery images…")
-    for aname in ["clifford", "dejong", "lorenz"]:
+    att_gallery = ["clifford", "dejong", "lorenz"]
+    for i, aname in enumerate(att_gallery):
+        print(f"  [{i+1}/{len(att_gallery)}] Attractor: {aname}…")
         pixels, w, h = render_attractor(aname, width=400, height=400,
                                          seed=seed, palette_fn=_palette_fn("plasma"))
         b64 = _pixels_to_b64(pixels, w, h)
@@ -258,7 +260,7 @@ def cmd_viewer(args):
         })
 
     # RD — one preset
-    print("  Rendering reaction-diffusion image…")
+    print("  Reaction-diffusion: worms (200×200, 3000 steps)…")
     flat_v, rdw, rdh = simulate(preset_name="worms", width=200, height=200,
                                  steps=3000, seed=seed)
     px = field_to_pixels(flat_v, rdw, rdh, _palette_fn("viridis"))
@@ -271,7 +273,7 @@ def cmd_viewer(args):
     })
 
     # Voronoi
-    print("  Rendering Voronoi image…")
+    print("  Voronoi: 60 points…")
     voronoi_px, vw, vh = render_voronoi(
         n_points=60, width=400, height=400, lloyd_iterations=4,
         seed=seed, output_format="pixels"

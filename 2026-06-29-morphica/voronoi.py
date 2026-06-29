@@ -261,7 +261,7 @@ def brute_voronoi_pixels(points, width, height, palette_fn=None, bg=(10, 10, 10)
 # Lloyd relaxation
 # ─────────────────────────────────────────────────────────────────────────────
 
-def lloyd_relax(points, width, height, iterations=10, rng=None):
+def lloyd_relax(points, width, height, iterations=10):
     """
     Iteratively move each site to the centroid of its Voronoi cell
     (brute-force, works for moderate n).
@@ -403,43 +403,59 @@ def voronoi_to_svg(points, width=800, height=800, bg="#111111"):
     # Build SVG rects at 1×1 pixel (slow but correct for SVG)
     # Instead, output coloured pixel data embedded as SVG image
     # — just build an SVG with dots for the sites and polyline borders
+    # Cap SVG resolution to avoid generating >10K elements
+    svg_res = min(res, 100)
+    svg_cell = []
+    for row in range(svg_res):
+        y = row / svg_res
+        for col in range(svg_res):
+            x = col / svg_res
+            best = 0
+            best_d = float("inf")
+            for i, (px, py) in enumerate(points):
+                d = (x - px) ** 2 + (y - py) ** 2
+                if d < best_d:
+                    best_d = d
+                    best = i
+            svg_cell.append(best)
+
     lines = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">',
         f'<rect width="{width}" height="{height}" fill="{bg}"/>',
     ]
 
     # Draw cell-coloured rectangles (downsampled)
-    pixel_w = width / res
-    pixel_h = height / res
-    for row in range(res):
-        for col in range(res):
-            site_i = cell[row * res + col]
+    pixel_w = width / svg_res
+    pixel_h = height / svg_res
+    for row in range(svg_res):
+        for col in range(svg_res):
+            site_i = svg_cell[row * svg_res + col]
             r, g, b = colors[site_i]
             lines.append(
                 f'<rect x="{col*pixel_w:.1f}" y="{row*pixel_h:.1f}" '
                 f'width="{pixel_w+0.5:.1f}" height="{pixel_h+0.5:.1f}" '
-                f'fill="rgb({r},{g},{b})" opacity="0.6"/>'
+                f'fill="rgb({r},{g},{b})"/>'
             )
 
     # Draw edges (neighbours with different cells)
-    for row in range(res - 1):
-        for col in range(res - 1):
-            c = cell[row * res + col]
-            cr = cell[row * res + col + 1]
-            cd = cell[(row + 1) * res + col]
+    for row in range(svg_res - 1):
+        for col in range(svg_res - 1):
+            c = svg_cell[row * svg_res + col]
+            cr = svg_cell[row * svg_res + col + 1]
+            cd = svg_cell[(row + 1) * svg_res + col]
             if c != cr:
                 x = (col + 1) * pixel_w
                 lines.append(
                     f'<line x1="{x:.1f}" y1="{row*pixel_h:.1f}" '
                     f'x2="{x:.1f}" y2="{(row+1)*pixel_h:.1f}" '
-                    f'stroke="white" stroke-width="0.5" opacity="0.7"/>'
+                    f'stroke="white" stroke-width="1"/>'
                 )
             if c != cd:
                 y = (row + 1) * pixel_h
                 lines.append(
                     f'<line x1="{col*pixel_w:.1f}" y1="{y:.1f}" '
                     f'x2="{(col+1)*pixel_w:.1f}" y2="{y:.1f}" '
-                    f'stroke="white" stroke-width="0.5" opacity="0.7"/>'
+                    f'stroke="white" stroke-width="1"/>'
                 )
 
     # Draw site dots
@@ -477,7 +493,7 @@ def render_voronoi(
     """
     rng = _random.Random(seed)
     points = [(rng.random(), rng.random()) for _ in range(n_points)]
-    points = lloyd_relax(points, width, height, iterations=lloyd_iterations, rng=rng)
+    points = lloyd_relax(points, width, height, iterations=lloyd_iterations)
 
     if stipple_mode:
         pixels, w, h, _ = stipple(

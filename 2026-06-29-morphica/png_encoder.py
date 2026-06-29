@@ -27,9 +27,10 @@ def encode_png(width, height, pixels, mode="RGB"):
         for x in range(width):
             px = pixels[row_start + x]
             if channels == 3:
-                vals = [px[0], px[1], px[2]]
+                vals = [px[0] & 0xFF, px[1] & 0xFF, px[2] & 0xFF]
             else:
-                vals = [px[0], px[1], px[2], px[3] if len(px) > 3 else 255]
+                vals = [px[0] & 0xFF, px[1] & 0xFF, px[2] & 0xFF,
+                        (px[3] if len(px) > 3 else 255) & 0xFF]
             for ch in range(channels):
                 filtered = (vals[ch] - prev[ch]) & 0xFF
                 raw.append(filtered)
