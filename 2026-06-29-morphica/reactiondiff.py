@@ -123,35 +123,36 @@ def simulate(
         p = PRESETS[preset_name]
         Du, Dv, F, k = p["Du"], p["Dv"], p["F"], p["k"]
 
+    # Build initial noise grid (same RNG draw order for both paths)
+    cx, cy = width // 2, height // 2
+    patch_r = max(5, min(width, height) // 10)
+    noise_u = [[rng.gauss(0, noise_level) for _ in range(width)] for _ in range(height)]
+    noise_v = [[rng.gauss(0, noise_level) for _ in range(width)] for _ in range(height)]
+
     if _HAS_NUMPY:
         U = np.ones((height, width), dtype=np.float64)
         V = np.zeros((height, width), dtype=np.float64)
         # Seed a square patch in the centre
-        cx, cy = width // 2, height // 2
-        r = max(5, min(width, height) // 10)
-        U[cy - r:cy + r, cx - r:cx + r] = 0.5
-        V[cy - r:cy + r, cx - r:cx + r] = 0.25
-        # Add noise
-        U += np.array([[rng.gauss(0, noise_level) for _ in range(width)]
-                        for _ in range(height)])
-        V += np.array([[rng.gauss(0, noise_level) for _ in range(width)]
-                        for _ in range(height)])
+        U[cy - patch_r:cy + patch_r, cx - patch_r:cx + patch_r] = 0.5
+        V[cy - patch_r:cy + patch_r, cx - patch_r:cx + patch_r] = 0.25
+        # Add noise to all cells (same as pure-Python path)
+        U += np.array(noise_u)
+        V += np.array(noise_v)
         np.clip(U, 0, 1, out=U)
         np.clip(V, 0, 1, out=V)
         U, V = _solve_numpy(U, V, Du, Dv, F, k, steps)
         flat_v = V.flatten().tolist()
     else:
-        # Pure-Python path
-        U = [[1.0] * width for _ in range(height)]
-        V = [[0.0] * width for _ in range(height)]
-        cx, cy = width // 2, height // 2
-        r = max(5, min(width, height) // 10)
-        for row in range(cy - r, cy + r):
-            for col in range(cx - r, cx + r):
+        # Pure-Python path — same initialisation as numpy path
+        U = [[max(0.0, min(1.0, 1.0 + noise_u[row][col])) for col in range(width)]
+             for row in range(height)]
+        V = [[max(0.0, min(1.0, 0.0 + noise_v[row][col])) for col in range(width)]
+             for row in range(height)]
+        for row in range(cy - patch_r, cy + patch_r):
+            for col in range(cx - patch_r, cx + patch_r):
                 if 0 <= row < height and 0 <= col < width:
-                    U[row][col] = 0.5 + rng.gauss(0, noise_level)
-                    V[row][col] = 0.25 + rng.gauss(0, noise_level)
-                    U[row][col] = max(0.0, min(1.0, U[row][col]))
+                    U[row][col] = max(0.0, min(1.0, 0.5 + noise_u[row][col]))
+                    V[row][col] = max(0.0, min(1.0, 0.25 + noise_v[row][col]))
                     V[row][col] = max(0.0, min(1.0, V[row][col]))
         U, V = _solve_python(U, V, Du, Dv, F, k, steps, W=width, H=height)
         flat_v = [V[r][c] for r in range(height) for c in range(width)]

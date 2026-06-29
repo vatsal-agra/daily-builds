@@ -269,6 +269,8 @@ def lloyd_relax(points, width, height, iterations=10):
     Returns relaxed list of (x, y) in [0,1]x[0,1].
     """
     pts = list(points)
+    if not pts:
+        return pts
     for _ in range(iterations):
         sums_x = [0.0] * len(pts)
         sums_y = [0.0] * len(pts)
@@ -344,7 +346,7 @@ def stipple(
             pts.append((rng.random(), rng.random()))
 
     # Lloyd relaxation
-    pts = lloyd_relax(pts, width, height, iterations=lloyd_iters, rng=rng)
+    pts = lloyd_relax(pts, width, height, iterations=lloyd_iters)
 
     # Rasterise: draw small circles for each stipple dot
     pixels = [(10, 10, 10)] * (width * height)
@@ -379,12 +381,14 @@ def voronoi_to_svg(points, width=800, height=800, bg="#111111"):
     """
     from palette import hsv_cycle_palette
     n = len(points)
+    if n == 0:
+        return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
+                f'height="{height}"><rect width="{width}" height="{height}" '
+                f'fill="{bg}"/></svg>')
     colors = hsv_cycle_palette(n)
 
     # Build cell map at reduced resolution for edge detection
     res = min(width, height, 400)
-    scale_x = res / width * width
-    scale_y = res / height * height
 
     cell = []
     for row in range(res):
@@ -491,11 +495,11 @@ def render_voronoi(
     output_format: "svg" | "pixels"
     stipple_mode: if True, render as weighted stipple dots instead of filled cells
     """
-    rng = _random.Random(seed)
-    points = [(rng.random(), rng.random()) for _ in range(n_points)]
-    points = lloyd_relax(points, width, height, iterations=lloyd_iterations)
+    if n_points < 1:
+        raise ValueError(f"n_points must be ≥ 1, got {n_points}")
 
     if stipple_mode:
+        # In stipple mode, generate points inside stipple() to avoid a wasted Lloyd pass
         pixels, w, h, _ = stipple(
             n_points, width, height,
             weight_field=weight_field,
@@ -503,6 +507,10 @@ def render_voronoi(
             seed=seed,
         )
         return pixels, w, h
+
+    rng = _random.Random(seed)
+    points = [(rng.random(), rng.random()) for _ in range(n_points)]
+    points = lloyd_relax(points, width, height, iterations=lloyd_iterations)
 
     if output_format == "svg":
         return voronoi_to_svg(points, width=width, height=height)

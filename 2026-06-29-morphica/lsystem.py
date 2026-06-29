@@ -122,13 +122,18 @@ def rewrite(axiom, rules, iterations, rng=None):
                 weights = [w for w, _ in rule]
                 prods = [p for _, p in rule]
                 total = sum(weights)
-                r = rng.random() * total
-                cumul = 0.0
-                for w, p in zip(weights, prods):
-                    cumul += w
-                    if r <= cumul:
-                        buf.append(p)
-                        break
+                if total <= 0:
+                    buf.append(prods[0] if prods else ch)
+                else:
+                    r = rng.random() * total
+                    cumul = 0.0
+                    chosen = prods[-1]  # fallback to last if floating-point misses
+                    for w, p in zip(weights, prods):
+                        cumul += w
+                        if r <= cumul:
+                            chosen = p
+                            break
+                    buf.append(chosen)
             else:
                 buf.append(rule)
         current = "".join(buf)

@@ -316,6 +316,46 @@ def cmd_viewer(args):
     print("  Open in a browser to explore.")
 
 
+# ── animate command ───────────────────────────────────────────────────────────
+
+def cmd_animate(args):
+    from animate import animate_lsystem, animate_rd, animate_attractor
+
+    atype = args.type
+    name = args.name
+    n_frames = args.frames
+    seed = args.seed
+    w = args.width
+    h = args.height
+    palette = args.palette
+    out_dir = args.output or os.path.join(os.path.dirname(__file__), "output", f"anim_{atype}_{name}")
+
+    print(f"  Animating {atype} '{name}' → {n_frames} frames in {out_dir}")
+    t0 = time.time()
+
+    if atype == "lsystem":
+        files = animate_lsystem(
+            name, max_iter=n_frames - 1, width=w, height=h,
+            output_dir=out_dir, seed=seed,
+        )
+    elif atype == "rd":
+        files = animate_rd(
+            name, n_frames=n_frames, width=min(w, 200), height=min(h, 200),
+            palette_name=palette, output_dir=out_dir, seed=seed,
+        )
+    elif atype == "attractor":
+        files = animate_attractor(
+            name, n_frames=n_frames, width=w, height=h,
+            palette_name=palette, output_dir=out_dir, seed=seed,
+        )
+    else:
+        print(f"Unknown animation type '{atype}'")
+        sys.exit(1)
+
+    print(f"  {len(files)} frames written in {time.time()-t0:.2f}s")
+    print(f"  To make a GIF: convert -delay 10 {out_dir}/frame_*.png animation.gif")
+
+
 # ── demo command ──────────────────────────────────────────────────────────────
 
 def cmd_demo(args):
@@ -419,7 +459,8 @@ def main():
 
     # voronoi
     vor = sub.add_parser("voronoi", help="Render a Voronoi diagram")
-    vor.add_argument("--points", type=int, default=80)
+    vor.add_argument("--points", type=int, default=80, metavar="N",
+                     help="Number of Voronoi sites (≥1)")
     vor.add_argument("--width", type=int, default=800)
     vor.add_argument("--height", type=int, default=800)
     vor.add_argument("--lloyd", type=int, default=5)
@@ -441,6 +482,19 @@ def main():
     vie.add_argument("--seed", type=int, default=42)
     vie.add_argument("-o", "--output", default=None)
 
+    # animate
+    ani = sub.add_parser("animate", help="Export animation frames as PNG sequence")
+    ani.add_argument("type", choices=["lsystem", "rd", "attractor"],
+                     help="What to animate")
+    ani.add_argument("name", help="Preset or attractor name")
+    ani.add_argument("--frames", type=int, default=10, help="Number of output frames")
+    ani.add_argument("--width", type=int, default=600)
+    ani.add_argument("--height", type=int, default=600)
+    ani.add_argument("--palette", default="plasma", choices=PALETTE_NAMES)
+    ani.add_argument("--seed", type=int, default=None)
+    ani.add_argument("-o", "--output", default=None,
+                     help="Output directory for frames")
+
     # demo
     sub.add_parser("demo", help="Run all features end-to-end")
 
@@ -456,6 +510,7 @@ def main():
         "voronoi":   cmd_voronoi,
         "stipple":   cmd_stipple,
         "viewer":    cmd_viewer,
+        "animate":   cmd_animate,
         "demo":      cmd_demo,
         "list":      cmd_list,
     }
