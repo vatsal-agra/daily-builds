@@ -381,11 +381,22 @@ def cmd_chacha(args: argparse.Namespace) -> None:
             _err("Key must be 64 hex chars (32 bytes)")
         if len(nonce) != 12:
             _err("Nonce must be 24 hex chars (12 bytes)")
+        if args.text is None and args.file is None:
+            _err("Provide input via --text or --file")
         aad = args.aad.encode() if args.aad else b""
-        plaintext = args.text.encode()
+        if args.file:
+            with open(args.file, "rb") as f:
+                plaintext = f.read()
+        else:
+            plaintext = args.text.encode()
         ct, tag = chacha20_poly1305_encrypt(key, nonce, plaintext, aad)
         result = {"ct": _b64(ct), "tag": _b64(tag)}
-        print(json.dumps(result))
+        if args.output:
+            with open(args.output, "w") as f:
+                json.dump(result, f)
+            print(f"Encrypted to {args.output}")
+        else:
+            print(json.dumps(result))
 
     elif args.chacha_cmd == "decrypt":
         key = _parse_hex(args.key, "ChaCha20 key")
@@ -395,14 +406,30 @@ def cmd_chacha(args: argparse.Namespace) -> None:
         if len(nonce) != 12:
             _err("Nonce must be 24 hex chars (12 bytes)")
         aad = args.aad.encode() if args.aad else b""
-        payload = json.loads(args.payload)
+        payload_str = args.payload
+        if os.path.isfile(payload_str):
+            with open(payload_str) as f:
+                payload = json.load(f)
+        else:
+            try:
+                payload = json.loads(payload_str)
+            except json.JSONDecodeError:
+                _err("Payload must be JSON string or path to JSON file")
         ct = _unb64(payload["ct"])
         tag = _unb64(payload["tag"])
         try:
             pt = chacha20_poly1305_decrypt(key, nonce, ct, tag, aad)
-            print(pt.decode())
         except ValueError as e:
             _err(str(e))
+        if args.output:
+            with open(args.output, "wb") as f:
+                f.write(pt)
+            print(f"Decrypted to {args.output}")
+        else:
+            try:
+                print(pt.decode())
+            except UnicodeDecodeError:
+                print(_b64(pt))
 
     elif args.chacha_cmd == "test":
         from chacha20 import _chacha20_block, chacha20_encrypt, poly1305_mac
@@ -467,6 +494,143 @@ def cmd_chacha(args: argparse.Namespace) -> None:
 
         print(f"\nChaCha20 tests: {'PASSED' if failures == 0 else f'{failures} FAILURES'}")
         sys.exit(0 if failures == 0 else 1)
+
+
+# ---------------------------------------------------------------------------
+# Benchmark
+# ---------------------------------------------------------------------------
+
+def cmd_bench(args: argparse.Namespace) -> None:
+    """Benchmark all cryptographic primitives and report throughput."""
+    import random
+
+    KB = 1024
+    MB = 1024 * KB
+    print("=" * 60)
+    print("CRYPTEX BENCHMARK  (pure-Python — expect 10–1000× slower than C)")
+    print("=" * 60)
+
+    # AES-256 CTR throughput (use 32KB to keep bench under ~5s)
+    from aes import AES256
+    key = os.urandom(32)
+    nonce = os.urandom(8)
+    data_32k = os.urandom(32 * KB)
+    cipher = AES256(key)
+    iters = 3
+    t0 = time.perf_counter()
+    for _ in range(iters):
+        cipher.encrypt_ctr(data_32k, nonce)
+    elapsed = time.perf_counter() - t0
+    throughput = iters * 32 * KB / elapsed / MB
+    print(f"\n[AES-256-CTR]")
+    print(f"  Throughput: {throughput:.3f} MB/s  ({iters}×32KB in {elapsed:.3f}s)")
+
+    # AES block
+    t0 = time.perf_counter()
+    n_blocks = 500
+    for _ in range(n_blocks):
+        cipher.encrypt_block(b"\x00" * 16)
+    elapsed = time.perf_counter() - t0
+    print(f"  Block ops:  {n_blocks / elapsed:.0f} blocks/s  ({n_blocks} in {elapsed:.3f}s)")
+
+    # SHA-256 throughput (64KB)
+    from sha256 import sha256 as sha256_fn
+    data_64k = os.urandom(64 * KB)
+    t0 = time.perf_counter()
+    for _ in range(iters):
+        sha256_fn(data_64k)
+    elapsed = time.perf_counter() - t0
+    throughput = iters * 64 * KB / elapsed / MB
+    print(f"\n[SHA-256]")
+    print(f"  Throughput: {throughput:.3f} MB/s  ({iters}×64KB in {elapsed:.3f}s)")
+
+    n_short = 200
+    short_msg = b"hello world"
+    t0 = time.perf_counter()
+    for _ in range(n_short):
+        sha256_fn(short_msg)
+    elapsed = time.perf_counter() - t0
+    print(f"  Short msg:  {n_short / elapsed:.0f} hashes/s  ({n_short} in {elapsed:.3f}s)")
+
+    # RSA-2048
+    from rsa import generate_keypair, rsa_oaep_encrypt, rsa_oaep_decrypt
+    from rsa import rsa_pss_sign, rsa_pss_verify
+    print(f"\n[RSA-2048]")
+    t0 = time.perf_counter()
+    priv_rsa = generate_keypair(2048)
+    elapsed_kg = time.perf_counter() - t0
+    print(f"  Keygen:     {elapsed_kg:.3f}s")
+
+    msg_rsa = b"benchmark test message"
+    pub_rsa = priv_rsa.public_key
+
+    n_rsa = 5
+    t0 = time.perf_counter()
+    for _ in range(n_rsa):
+        ct = rsa_oaep_encrypt(pub_rsa, msg_rsa)
+    elapsed = time.perf_counter() - t0
+    print(f"  OAEP enc:   {n_rsa / elapsed:.1f} ops/s  ({n_rsa} in {elapsed:.3f}s)")
+
+    t0 = time.perf_counter()
+    for _ in range(n_rsa):
+        rsa_oaep_decrypt(priv_rsa, ct)
+    elapsed = time.perf_counter() - t0
+    print(f"  OAEP dec:   {n_rsa / elapsed:.1f} ops/s  ({n_rsa} in {elapsed:.3f}s)")
+
+    sig = rsa_pss_sign(priv_rsa, msg_rsa)
+    t0 = time.perf_counter()
+    for _ in range(n_rsa):
+        rsa_pss_verify(pub_rsa, msg_rsa, sig)
+    elapsed = time.perf_counter() - t0
+    print(f"  PSS verify: {n_rsa / elapsed:.1f} ops/s  ({n_rsa} in {elapsed:.3f}s)")
+
+    # P-256 ECDH + ECDSA
+    from ecc import ECPrivateKey, ecdh_exchange, ecdsa_sign, ecdsa_verify
+    print(f"\n[P-256]")
+
+    n_ecc = 20
+    priv_ec = ECPrivateKey.generate()
+    pub_ec = priv_ec.public_key
+    bob_ec = ECPrivateKey.generate()
+
+    t0 = time.perf_counter()
+    for _ in range(n_ecc):
+        ECPrivateKey.generate()
+    elapsed = time.perf_counter() - t0
+    print(f"  Keygen:     {n_ecc / elapsed:.1f} ops/s  ({n_ecc} in {elapsed:.3f}s)")
+
+    t0 = time.perf_counter()
+    for _ in range(n_ecc):
+        ecdh_exchange(priv_ec, bob_ec.public_key)
+    elapsed = time.perf_counter() - t0
+    print(f"  ECDH:       {n_ecc / elapsed:.1f} ops/s  ({n_ecc} in {elapsed:.3f}s)")
+
+    msg_ec = b"benchmark"
+    t0 = time.perf_counter()
+    for _ in range(n_ecc):
+        r, s = ecdsa_sign(priv_ec, msg_ec)
+    elapsed = time.perf_counter() - t0
+    print(f"  ECDSA sign: {n_ecc / elapsed:.1f} ops/s  ({n_ecc} in {elapsed:.3f}s)")
+
+    t0 = time.perf_counter()
+    for _ in range(n_ecc):
+        ecdsa_verify(pub_ec, msg_ec, r, s)
+    elapsed = time.perf_counter() - t0
+    print(f"  ECDSA vfy:  {n_ecc / elapsed:.1f} ops/s  ({n_ecc} in {elapsed:.3f}s)")
+
+    # ChaCha20-Poly1305 (64KB)
+    from chacha20 import chacha20_poly1305_encrypt
+    key_c = os.urandom(32)
+    nonce_c = os.urandom(12)
+    print(f"\n[ChaCha20-Poly1305]")
+    t0 = time.perf_counter()
+    for _ in range(iters):
+        chacha20_poly1305_encrypt(key_c, nonce_c, data_64k, b"")
+    elapsed = time.perf_counter() - t0
+    throughput = iters * 64 * KB / elapsed / MB
+    print(f"  Throughput: {throughput:.3f} MB/s  ({iters}×64KB in {elapsed:.3f}s)")
+
+    print("\n" + "=" * 60)
 
 
 # ---------------------------------------------------------------------------
@@ -682,10 +846,12 @@ def main() -> None:
               # ChaCha20-Poly1305 AEAD
               python3 cryptex.py chacha keygen
               python3 cryptex.py chacha encrypt <key> <nonce> --text "hello"
+              python3 cryptex.py chacha encrypt <key> <nonce> --file secret.bin -o enc.json
 
-              # Visualizer and demo
+              # Visualizer, demo, and benchmark
               python3 cryptex.py viz
               python3 cryptex.py demo
+              python3 cryptex.py bench
         """),
     )
     sub = parser.add_subparsers(dest="command")
@@ -694,7 +860,8 @@ def main() -> None:
     aes_p = sub.add_parser("aes", help="AES-256 encryption")
     aes_sub = aes_p.add_subparsers(dest="aes_cmd")
     aes_kg = aes_sub.add_parser("keygen", help="Generate random AES-256 key")
-    aes_enc = aes_sub.add_parser("encrypt", help="Encrypt with AES-256-CTR")
+    aes_enc = aes_sub.add_parser("encrypt",
+        help="Encrypt with AES-256-CTR (NOTE: CTR provides no integrity; use 'chacha' for AEAD)")
     aes_enc.add_argument("key", help="64 hex chars (32 bytes)")
     aes_enc.add_argument("--text", "-t", help="Plaintext string")
     aes_enc.add_argument("--file", "-f", help="Plaintext file")
@@ -766,13 +933,16 @@ def main() -> None:
     cc_enc = cc_sub.add_parser("encrypt", help="ChaCha20-Poly1305 encrypt")
     cc_enc.add_argument("key", help="64 hex chars")
     cc_enc.add_argument("nonce", help="24 hex chars")
-    cc_enc.add_argument("--text", "-t", required=True)
+    cc_enc.add_argument("--text", "-t", help="Plaintext string")
+    cc_enc.add_argument("--file", "-f", help="Plaintext file")
+    cc_enc.add_argument("--output", "-o", help="Output JSON file")
     cc_enc.add_argument("--aad", "-a", help="Additional authenticated data")
     cc_dec = cc_sub.add_parser("decrypt", help="ChaCha20-Poly1305 decrypt")
     cc_dec.add_argument("key", help="64 hex chars")
     cc_dec.add_argument("nonce", help="24 hex chars")
-    cc_dec.add_argument("payload", help='JSON: {"ct": "...", "tag": "..."}')
+    cc_dec.add_argument("payload", help='JSON: {"ct": "...", "tag": "..."} or JSON file path')
     cc_dec.add_argument("--aad", "-a", help="Additional authenticated data")
+    cc_dec.add_argument("--output", "-o", help="Output file for plaintext")
     cc_sub.add_parser("test", help="Run RFC 8439 test vectors")
 
     # Visualizer
@@ -782,6 +952,9 @@ def main() -> None:
 
     # Demo
     sub.add_parser("demo", help="Run full feature demo")
+
+    # Bench
+    sub.add_parser("bench", help="Benchmark all cryptographic primitives")
 
     args = parser.parse_args()
 
@@ -794,6 +967,7 @@ def main() -> None:
         "chacha": cmd_chacha,
         "viz": cmd_viz,
         "demo": cmd_demo,
+        "bench": cmd_bench,
     }
 
     if args.command is None:

@@ -8,6 +8,6 @@ A from-scratch cryptography toolkit implementing AES-256, SHA-256/HMAC, RSA-2048
 - [x] Phase 1: Plan
 - [x] Phase 2: Core build (AES-256, SHA-256/HMAC, RSA-2048, P-256 ECDH/ECDSA, ChaCha20-Poly1305, CLI, viz) — 20/20 demo checks
 - [x] Phase 3: Adversarial review — 10 issues found & fixed (4 critical CLI crashes, 4 medium UX, 2 minor)
-- [ ] Phase 4: Stretch + polish
+- [x] Phase 4: Stretch + polish — bench subcommand, chacha file I/O, AES-CTR auth warning, unused import removal
 - [ ] Phase 5: Verification
 - [ ] Phase 6: Ship

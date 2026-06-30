@@ -12,8 +12,6 @@ No external crypto libraries. OS entropy used only for key generation.
 
 import os
 import struct
-import hmac as _hmac_mod
-import hashlib as _hashlib
 from sha256 import sha256, hmac_sha256
 
 # ---------------------------------------------------------------------------
