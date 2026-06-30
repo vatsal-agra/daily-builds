@@ -40,6 +40,13 @@ def _unb64(s: str) -> bytes:
         _err("Invalid base64 input")
 
 
+def _parse_hex(hex_str: str, name: str = "hex input") -> bytes:
+    try:
+        return bytes.fromhex(hex_str.strip())
+    except ValueError:
+        _err(f"Invalid hex for {name}: {hex_str!r}")
+
+
 # ---------------------------------------------------------------------------
 # AES subcommands
 # ---------------------------------------------------------------------------
@@ -49,9 +56,11 @@ def cmd_aes(args: argparse.Namespace) -> None:
     import os as _os
 
     if args.aes_cmd == "encrypt":
-        key_b = bytes.fromhex(args.key)
+        key_b = _parse_hex(args.key, "AES key")
         if len(key_b) != 32:
             _err(f"AES key must be 64 hex chars (32 bytes), got {len(key_b)*2}")
+        if args.text is None and args.file is None:
+            _err("Provide input via --text or --file")
         cipher = AES256(key_b)
         nonce = _os.urandom(8)
         if args.file:
@@ -69,7 +78,7 @@ def cmd_aes(args: argparse.Namespace) -> None:
             print(payload)
 
     elif args.aes_cmd == "decrypt":
-        key_b = bytes.fromhex(args.key)
+        key_b = _parse_hex(args.key, "AES key")
         if len(key_b) != 32:
             _err(f"AES key must be 64 hex chars (32 bytes)")
         cipher = AES256(key_b)
@@ -165,6 +174,8 @@ def cmd_sha256(args: argparse.Namespace) -> None:
     from sha256 import sha256_hex, hmac_sha256_hex
 
     if args.sha_cmd == "hash":
+        if args.text is None and args.file is None:
+            _err("Provide input via --text or --file")
         if args.file:
             with open(args.file, "rb") as f:
                 data = f.read()
@@ -173,7 +184,9 @@ def cmd_sha256(args: argparse.Namespace) -> None:
         print(sha256_hex(data))
 
     elif args.sha_cmd == "hmac":
-        key_b = bytes.fromhex(args.key)
+        key_b = _parse_hex(args.key, "HMAC key")
+        if args.text is None and args.file is None:
+            _err("Provide input via --text or --file")
         if args.file:
             with open(args.file, "rb") as f:
                 data = f.read()
@@ -247,6 +260,9 @@ def cmd_rsa(args: argparse.Namespace) -> None:
 
         pub_path = getattr(args, "out_pub", None) or "rsa_pub.pem"
         priv_path = getattr(args, "out_priv", None) or "rsa_priv.pem"
+        for p in (pub_path, priv_path):
+            if os.path.exists(p):
+                print(f"Warning: overwriting existing file {p}", file=sys.stderr)
         with open(pub_path, "w") as f:
             f.write(pub_pem)
         with open(priv_path, "w") as f:
@@ -303,9 +319,12 @@ def cmd_ecdh(args: argparse.Namespace) -> None:
         print(f"Public key:  {pub.to_uncompressed_hex()}")
 
     elif args.ecdh_cmd == "exchange":
-        priv = ECPrivateKey.from_hex(args.privkey)
-        peer_pub = ECPublicKey.from_hex(args.peerpub)
-        shared = ecdh_exchange(priv, peer_pub)
+        try:
+            priv = ECPrivateKey.from_hex(args.privkey)
+            peer_pub = ECPublicKey.from_hex(args.peerpub)
+            shared = ecdh_exchange(priv, peer_pub)
+        except ValueError as e:
+            _err(str(e))
         print(f"Shared secret (SHA-256 of x): {shared.hex()}")
 
 
@@ -323,13 +342,19 @@ def cmd_ecdsa(args: argparse.Namespace) -> None:
         print(f"Public key:  {pub.to_uncompressed_hex()}")
 
     elif args.ecdsa_cmd == "sign":
-        priv = ECPrivateKey.from_hex(args.privkey)
+        try:
+            priv = ECPrivateKey.from_hex(args.privkey)
+        except ValueError as e:
+            _err(str(e))
         msg = args.message.encode()
         sig = ecdsa_sign_hex(priv, msg)
         print(sig)
 
     elif args.ecdsa_cmd == "verify":
-        pub = ECPublicKey.from_hex(args.pubkey)
+        try:
+            pub = ECPublicKey.from_hex(args.pubkey)
+        except ValueError as e:
+            _err(str(e))
         msg = args.message.encode()
         ok = ecdsa_verify_hex(pub, msg, args.signature)
         print("VALID" if ok else "INVALID")
@@ -346,12 +371,12 @@ def cmd_chacha(args: argparse.Namespace) -> None:
     if args.chacha_cmd == "keygen":
         key = os.urandom(32)
         nonce = os.urandom(12)
-        print(f"Key:   {key.hex()}")
+        print(f"Key: {key.hex()}")
         print(f"Nonce: {nonce.hex()}")
 
     elif args.chacha_cmd == "encrypt":
-        key = bytes.fromhex(args.key)
-        nonce = bytes.fromhex(args.nonce)
+        key = _parse_hex(args.key, "ChaCha20 key")
+        nonce = _parse_hex(args.nonce, "nonce")
         if len(key) != 32:
             _err("Key must be 64 hex chars (32 bytes)")
         if len(nonce) != 12:
@@ -363,8 +388,8 @@ def cmd_chacha(args: argparse.Namespace) -> None:
         print(json.dumps(result))
 
     elif args.chacha_cmd == "decrypt":
-        key = bytes.fromhex(args.key)
-        nonce = bytes.fromhex(args.nonce)
+        key = _parse_hex(args.key, "ChaCha20 key")
+        nonce = _parse_hex(args.nonce, "nonce")
         if len(key) != 32:
             _err("Key must be 64 hex chars (32 bytes)")
         if len(nonce) != 12:

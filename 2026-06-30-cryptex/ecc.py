@@ -166,7 +166,8 @@ def _mul_point(k: int, px: int, py: int) -> tuple | None:
 
 class ECPrivateKey:
     def __init__(self, d: int):
-        assert 1 <= d < _N
+        if not (1 <= d < _N):
+            raise ValueError(f"Private key scalar must be in [1, N-1]; got {d!r}")
         self.d = d
         qx, qy = _mul_G(d)
         self.public_key = ECPublicKey(qx, qy)
@@ -176,7 +177,13 @@ class ECPrivateKey:
 
     @classmethod
     def from_hex(cls, h: str) -> "ECPrivateKey":
-        return cls(int(h, 16))
+        h = h.strip()
+        if len(h) != 64:
+            raise ValueError(f"Private key must be 64 hex chars (32 bytes), got {len(h)}")
+        try:
+            return cls(int(h, 16))
+        except ValueError as e:
+            raise ValueError(f"Invalid private key hex: {e}") from e
 
     @classmethod
     def generate(cls) -> "ECPrivateKey":
@@ -228,12 +235,17 @@ class ECPublicKey:
 # ---------------------------------------------------------------------------
 
 def ecdh_exchange(priv: ECPrivateKey, peer_pub: ECPublicKey) -> bytes:
-    """ECDH shared secret: d * Q_peer, return x-coordinate (32 bytes)."""
+    """ECDH shared secret: d * Q_peer → SHA-256(x-coordinate).
+
+    We hash the raw x-coordinate with SHA-256 to produce 32 bytes of key
+    material (simulating the ANSI X9.63 single-hash KDF). A real application
+    would use HKDF. The raw x-coordinate itself is never returned.
+    """
     pt = _mul_point(priv.d, peer_pub.x, peer_pub.y)
     if pt is None:
         raise ValueError("ECDH result is the point at infinity")
     shared_x, _ = pt
-    return sha256(shared_x.to_bytes(32, "big"))  # HKDF-like hash
+    return sha256(shared_x.to_bytes(32, "big"))
 
 
 # ---------------------------------------------------------------------------

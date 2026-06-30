@@ -6,8 +6,8 @@ A from-scratch cryptography toolkit implementing AES-256, SHA-256/HMAC, RSA-2048
 
 ## Build Phases
 - [x] Phase 1: Plan
-- [ ] Phase 2: Core build
-- [ ] Phase 3: Adversarial review
+- [x] Phase 2: Core build (AES-256, SHA-256/HMAC, RSA-2048, P-256 ECDH/ECDSA, ChaCha20-Poly1305, CLI, viz) — 20/20 demo checks
+- [x] Phase 3: Adversarial review — 10 issues found & fixed (4 critical CLI crashes, 4 medium UX, 2 minor)
 - [ ] Phase 4: Stretch + polish
 - [ ] Phase 5: Verification
 - [ ] Phase 6: Ship
