@@ -1,107 +1,172 @@
 # Ironkey
 
-A cryptography suite built entirely from scratch in pure Python — SHA-256,
-HMAC/PBKDF2, AES-256 (CBC + GCM), RSA (OAEP + PSS), and X25519 ECDH — each
-verified against official NIST/RFC test vectors, powering a real encrypted
-file vault and a forward-secure messaging session.
+A cryptography suite built entirely from scratch in pure Python — no
+`hashlib`, `hmac`, `Crypto`/`cryptography`, or `ssl` involved in any
+actual crypto math. Every primitive is implemented from its
+specification and checked bit-for-bit against official NIST/RFC test
+vectors and, where applicable, cross-checked against OpenSSL. On top of
+the primitives sits a real encrypted file vault, a forward-secure
+two-party messaging session, and a working implementation (and
+counter-demonstration) of a classic real-world attack.
 
-**Status: Phase 2 (Core build) complete.** All 4 required primitives are
-implemented and independently verified:
+## Why this, today
 
-- `sha256.py` — SHA-256, bit-exact vs `hashlib` (empty string, "abc", 1M
-  `"a"` chars, arbitrary text).
-- `hmac_kdf.py` — HMAC-SHA256 (RFC 4231 vectors incl. keys longer than
-  the block size) + PBKDF2-HMAC-SHA256, both bit-exact vs `hmac`/`hashlib`.
-- `aes.py` + `modes.py` — AES-128/192/256 exact vs the FIPS 197 Appendix
-  B/C test vectors; CBC and GCM cross-checked byte-for-byte against
-  OpenSSL (`openssl enc` for CBC, a small libcrypto/EVP harness for GCM,
-  since OpenSSL's `enc` CLI doesn't do AEAD) including AAD and tamper
-  rejection.
-- `rsa.py` — RSA key generation (Miller-Rabin), OAEP encryption, and PSS
-  signatures per RFC 8017; round-tripped, boundary-length-tested, and
-  tamper/cross-key rejection tested.
+Every prior daily build in this repo has been a simulator, solver, or
+renderer (SAT solvers, path tracers, chess engines, a DB, a regex
+engine, a compression toolkit, a language VM, a physics engine, a music
+synth...). Cryptography is a different kind of "from scratch": there's
+no partial credit. A reasonable-looking AES implementation that's off
+by one bit in the key schedule produces ciphertext that looks totally
+fine and is completely wrong — the only way to know you got it right is
+exact agreement with a published test vector. That made it an
+unusually strict test of this build style's "no stubs, no shortcuts"
+rule, and the adversarial-review phase actually found a critical bug
+(see below) instead of rubber-stamping the code. It's also genuinely
+useful output: the vault and messaging tool are things you can actually
+point at a real file or a real conversation.
 
-`cli.py` exposes all of it (`hash`, `hmac`, `kdf`, `aes encrypt/decrypt`,
-`rsa genkey/encrypt/decrypt/sign/verify`) and every command has been run
-by hand end to end.
+## How to run it
 
-**Status: Phase 3 (Adversarial review) complete.** Reviewed as a hostile
-reviewer; found and fixed 4 real issues (full writeup in
-[REVIEW.md](./REVIEW.md)):
-1. **Critical performance bug** — AES re-expanded its full round-key
-   schedule on every 16-byte block, making a 1 MB GCM encrypt take
-   43 seconds. Fixed by caching the schedule per key and switching
-   MixColumns/SubBytes to precomputed lookup tables: **1 MB now
-   encrypts in ~5.5 s** (~8x), with headroom documented honestly below
-   rather than pretended away.
-2. **OAEP decryption oracle** — a ciphertext representative `>= n`
-   raised a different, distinguishable error message than a padding
-   failure, which is exactly the kind of oracle RFC 8017 tells
-   implementers to avoid. Unified to a single generic message.
-3. Dead/confusing branch in `pss_verify` left over from an earlier
-   refactor — cleaned up.
-4. `bigint`'s hand-written uniform-random-integer helper had an
+```bash
+python3 cli.py demo              # exercise every feature end to end
+./demo.sh                        # full test suite (122 tests) + CLI walkthrough
+python3 cli.py --help            # every subcommand
+python3 cli.py viz               # generates ironkey_viz.html — open it in a browser
+```
+
+Common commands:
+
+```bash
+# Hash / MAC / KDF
+python3 cli.py hash --text "hello"
+python3 cli.py hmac --key secret --text "hello"
+python3 cli.py kdf --password "correct horse" --iterations 4096
+
+# AES-256-GCM (default) or CBC
+python3 cli.py aes encrypt --key-hex $(python3 -c "import os;print(os.urandom(32).hex())") \
+    --text "secret message" --out msg.bin
+python3 cli.py aes decrypt --key-hex <same key> --in msg.bin
+
+# RSA: keygen, OAEP encryption, PSS signatures
+python3 cli.py rsa genkey --bits 2048 --pub-out pub.json --priv-out priv.json
+python3 cli.py rsa encrypt --pub pub.json --text "secret" --out ct.bin
+python3 cli.py rsa decrypt --priv priv.json --in ct.bin
+python3 cli.py rsa sign --priv priv.json --text "msg" --out sig.bin
+python3 cli.py rsa verify --pub pub.json --text "msg" --sig sig.bin
+
+# X25519 handshake / encrypted session
+python3 cli.py dh demo
+python3 cli.py session demo
+
+# Password-based file vault (PBKDF2 + AES-256-GCM)
+python3 cli.py vault encrypt --password "hunter2" --in notes.txt --out notes.vault
+python3 cli.py vault decrypt --password "hunter2" --in notes.vault --out notes.txt
+
+# Padding-oracle attack demo (recovers plaintext with NO key access)
+python3 cli.py attack demo --text "attack this secret"
+```
+
+## Feature list
+
+**Required (all 4 implemented and independently verified):**
+1. **SHA-256** (`sha256.py`) — FIPS 180-4, bit-exact vs `hashlib` across
+   boundary lengths, the empty string, and 1M `"a"` characters.
+2. **HMAC-SHA256 + PBKDF2-HMAC-SHA256** (`hmac_kdf.py`) — RFC 2104 / RFC
+   8018, verified against RFC 4231 HMAC vectors and `hashlib.pbkdf2_hmac`.
+3. **AES-256 with CBC and GCM** (`aes.py` + `modes.py`) — FIPS 197
+   (all 3 key sizes), cross-checked against OpenSSL for CBC and (via a
+   small libcrypto/EVP harness, since OpenSSL's `enc` CLI doesn't do
+   AEAD) for GCM, including AAD and tamper rejection.
+4. **RSA: keygen + OAEP encryption + PSS signatures** (`rsa.py`) —
+   RFC 8017, Miller-Rabin key generation, round-tripped and
+   boundary/tamper/cross-key tested.
+
+**Stretch (all 3 implemented, plus the vault promised in the plan):**
+5. **X25519 ECDH-based encrypted messaging** (`x25519.py` + `session.py`)
+   — RFC 7748 Curve25519, cross-checked against OpenSSL-derived
+   keypairs and shared secrets; ephemeral per-session keys give
+   session-level forward secrecy; messages are AES-256-GCM with
+   strictly-increasing per-direction counters (tamper + replay detection).
+6. **Interactive HTML visualizer** (`viz.py`) — animates real AES
+   round-by-round state and the SHA-256 compression function step by
+   step, generated directly from execution traces of the real code (not
+   a separate, possibly-diverging JS reimplementation).
+7. **Padding-oracle attack** (`vulnerable_cbc.py` + `padding_oracle.py`)
+   — a real implementation of Vaudenay's 2002 attack: recovers full
+   plaintext from a deliberately unauthenticated CBC box using only a
+   padding-valid/invalid oracle and zero key access, then fails cleanly
+   against the real AES-GCM vault, concretely demonstrating why the
+   required features are built the way they are.
+8. **Password-based file vault** (`vault.py`) — PBKDF2 + AES-256-GCM,
+   self-describing container, wrong-password and corrupted-file
+   failures are deliberately indistinguishable.
+
+## Adversarial review (Phase 3 — see [REVIEW.md](./REVIEW.md))
+
+Reviewing the code as a hostile reviewer caught 4 real issues, the
+first a genuine bug rather than a style nit:
+1. **Critical performance bug** — AES re-derived its entire round-key
+   schedule from scratch on every 16-byte block. A 1 MB GCM encrypt
+   took **43 seconds**. Fixed by caching the schedule per key and
+   switching MixColumns/SubBytes to precomputed lookup tables: now
+   ~5.5 s/MB (~8x).
+2. **OAEP decryption oracle** — an out-of-range ciphertext raised a
+   different error message than a bad-padding one, exactly the
+   distinguishable-failure class RFC 8017 warns against (Manger's
+   attack). Unified to one generic message.
+3. Dead/confusing leftover-refactor branch in `pss_verify` — cleaned up.
+4. The hand-written uniform-random-integer helper in `bigint.py` had an
    off-by-one in its rejection-sampling threshold, proven non-uniform
-   by exact enumeration (not just sampling noise) for a range of small
-   cases. Fixed and re-proven uniform by the same enumeration.
+   by exact enumeration. Fixed and re-proven uniform.
 
-**Known limitation, stated plainly:** this is a pure-Python
-implementation with no side-channel/timing hardening (a documented
-non-goal — a Python interpreter can't give real timing guarantees
-regardless of algorithm) and modest throughput (~180 KB/s for AES-GCM).
-Fine for messages, config files, and small-to-medium files; a multi-MB
-file will take real wall-clock time. This is disclosed, not hidden.
+## Known, stated limitations
 
-**Status: Phase 4 (Stretch + polish) complete.** All 3 stretch features
-shipped, plus the file vault promised in PLAN.md's architecture:
+- **No side-channel/timing hardening.** Documented non-goal — a Python
+  interpreter can't give real timing guarantees regardless of
+  algorithm. This is an educational/functional implementation, not a
+  hardened production crypto library.
+- **Modest throughput.** ~180 KB/s for AES-256-GCM, ~2,800 PBKDF2
+  iterations/sec. Fine for messages, config files, and small-to-medium
+  files; a multi-MB file or a 600,000-iteration KDF (the OWASP-recommended
+  minimum, calibrated for compiled implementations doing >1M iter/sec)
+  would take real wall-clock time here. `vault.py`/`cli.py kdf` default
+  to 4,096 iterations (~1.5s, a deliberate bcrypt-like delay) instead;
+  `--iterations` lets you trade speed for a larger margin.
+- **GCM nonce reuse** is the caller's responsibility, as with any GCM
+  implementation. Every shipped tool (`cli.py`, `vault.py`, `session.py`)
+  generates a fresh random IV/uses a strictly-increasing counter per
+  encryption and never accepts a caller-supplied one, so this can't
+  happen through the shipped surface.
 
-- `x25519.py` — Curve25519/X25519 (RFC 7748 Montgomery ladder), verified
-  against real OpenSSL-generated keypairs and derived shared secrets
-  (both directions agree, and match OpenSSL's own derivation byte for
-  byte).
-- `session.py` — ephemeral-X25519 + AES-256-GCM two-party messaging with
-  strictly-increasing per-direction counters; demo exercises handshake,
-  bidirectional messaging, tamper detection, and replay detection.
-- `vault.py` — a real password-based file vault (PBKDF2-HMAC-SHA256 +
-  AES-256-GCM), self-describing container format, wrong-password and
-  corrupted-file failures deliberately indistinguishable.
-- `vulnerable_cbc.py` + `padding_oracle.py` — a from-scratch
-  implementation of Vaudenay's 2002 padding-oracle attack, run against a
-  deliberately unauthenticated CBC box (full plaintext recovered with
-  zero key access), then run again against the real GCM vault where it
-  correctly fails — there's no padding-validity signal to exploit at all.
-- `viz.py` — a self-contained interactive HTML page animating real AES
-  round-by-round state and the SHA-256 compression function step by
-  step, generated from actual execution traces (not a separate,
-  possibly-diverging JS reimplementation).
+## Verification
 
-**Performance, stated honestly:** this is pure Python with no C
-extensions. AES-256-GCM does ~180 KB/s (fine for messages/config/small
-files; a multi-MB file will take real wall-clock time — see REVIEW.md
-finding #1 for the 43s→5.5s/MB fix). PBKDF2 runs at ~2,800 iterations/s,
-which is why `vault.py`/the `kdf` command default to 4,096 iterations
-(~1.5s, a deliberate bcrypt-like delay) rather than the 600,000+ OWASP
-recommends for a fast compiled KDF — that number assumes >1M iter/s and
-would mean a ~3.5-minute vault open here. `--iterations` is exposed for
-anyone who wants to trade speed for a larger margin.
+122 unit tests across 12 files in `tests/`, plus `demo.sh` (test suite +
+16-check CLI walkthrough). Run `./demo.sh` — both are green.
 
-**Status: Phase 5 (Verification) complete.** 122 unit tests across 12
-test files (`tests/`) plus a `demo.sh` that runs the full suite and then
-walks every CLI feature end to end (16 checks total) — all green:
+## Stack
 
-```
-$ ./demo.sh
-...
-  16 passed, 0 failed
-```
+Pure Python 3 stdlib only for every cryptographic primitive (`os` for
+CSPRNG bytes via `os.urandom`, nothing else). `openssl`/`gcc` are used
+*only* in tests, as an independent oracle to cross-check the from-scratch
+implementations — those tests skip gracefully if the tools aren't
+present. `viz.py` generates self-contained HTML/CSS/JS with no
+external dependencies or CDN links.
 
-Coverage highlights: FIPS-197 AES vectors (all 3 key sizes), RFC 4231
-HMAC vectors, hashlib-differential SHA-256/PBKDF2 tests across boundary
-lengths, OpenSSL cross-checks for AES-CBC and X25519 (skipped
-gracefully if `openssl` isn't on PATH), the OAEP-oracle and
-vault-error-message regression tests from REVIEW.md, and a padding-
-oracle attack that's proven to both succeed against the vulnerable box
-and fail against the real GCM vault.
+## Where a human could take this next
 
-See [PLAN.md](./PLAN.md) for the full architecture and [REVIEW.md](./REVIEW.md)
-for the adversarial review. Final feature list and ship notes below.
+- **Argon2id** for the vault's KDF (memory-hard, resists GPU/ASIC
+  attacks far better than PBKDF2) — would need a from-scratch BLAKE2b
+  first.
+- **Full Double Ratchet** (Signal-style) for `session.py` — per-message
+  DH re-keying instead of one shared secret for the whole session, so
+  compromising one message key doesn't affect any other message.
+- **Ed25519 signatures** to pair with X25519 for a complete identity +
+  key-exchange story (right now PSS/RSA and X25519 are separate; a real
+  secure-messaging app wants one signing scheme).
+- **Speed**: a C extension (or `ctypes` binding to libsodium/OpenSSL)
+  for the hot loops — AES rounds and PBKDF2 in particular — would close
+  the ~1000x gap to production throughput while keeping the pure-Python
+  version as the reference/teaching implementation.
+- **A browser demo of the vault/session** using the same AES/SHA
+  visualizer scaffolding, so encryption/decryption of a real message can
+  be watched happening live instead of only via the CLI.
