@@ -163,11 +163,18 @@ def oaep_encrypt(pub, message, label=b""):
 
 
 def oaep_decrypt(priv, ciphertext, label=b""):
+    # RFC 8017 section 7.1.2 step 1 explicitly requires every failure —
+    # bad length, out-of-range representative, or bad padding — to raise
+    # the SAME generic "decryption error", never a distinguishable one.
+    # Letting the out-of-range check leak its own message is exactly the
+    # oracle behind Manger's 2001 attack on OAEP.
     k = priv.k
     if len(ciphertext) != k or k < 2 * _HLEN + 2:
         raise ValueError("decryption error")
 
     c_int = int.from_bytes(ciphertext, "big")
+    if c_int >= priv.n:
+        raise ValueError("decryption error")
     m_int = _rsadp(priv, c_int)
     em = m_int.to_bytes(k, "big")
 
@@ -246,11 +253,8 @@ def pss_verify(pub, message, signature, salt_len=_HLEN):
     if s_int >= pub.n:
         return False
     m_int = _rsaep(pub, s_int)
-    em = m_int.to_bytes(em_len, "big") if m_int.bit_length() <= em_len * 8 else None
-    if em is None:
+    if m_int.bit_length() > em_len * 8:
         return False
-    # m_int.to_bytes may be shorter than em_len if there are leading zero
-    # bytes in EM; re-pad explicitly to be safe.
     em = m_int.to_bytes(em_len, "big")
 
     if len(em) < _HLEN + salt_len + 2 or em[-1] != 0xBC:

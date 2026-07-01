@@ -90,15 +90,22 @@ def is_probable_prime(n, rounds=40, rng=None):
 
 
 def _os_randrange(lo, hi):
-    """Uniform random integer in [lo, hi] using os.urandom (no `random` module)."""
+    """Uniform random integer in [lo, hi] using os.urandom (no `random`
+    module). Rejection sampling: draw from a space several times larger
+    than the target range and reject anything past the last exact
+    multiple of the range, so the accepted region divides evenly and
+    `raw % range` is exactly uniform (not just "close enough")."""
     span = hi - lo
     if span <= 0:
         return lo
+    span_range = span + 1
     nbytes = (span.bit_length() + 7) // 8 + 1
+    draw_space = 1 << (nbytes * 8)
+    limit = (draw_space // span_range) * span_range
     while True:
         raw = int.from_bytes(os.urandom(nbytes), "big")
-        if raw <= span * ((1 << (nbytes * 8)) // (span + 1)):
-            return lo + raw % (span + 1)
+        if raw < limit:
+            return lo + raw % span_range
 
 
 def gen_prime(bits, rng=None):

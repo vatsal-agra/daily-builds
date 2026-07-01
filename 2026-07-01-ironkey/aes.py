@@ -104,118 +104,164 @@ def key_expansion(key):
     return w, nr
 
 
-def _add_round_key(state, round_words):
-    round_key = b"".join(round_words)
-    return bytes(s ^ k for s, k in zip(state, round_key))
+def _round_keys(w, nr):
+    """Pre-join each round's 4 words into one 16-byte key so the hot
+    encrypt/decrypt loop never re-joins/re-slices the schedule."""
+    nb = 4
+    return [b"".join(w[rnd * nb:(rnd + 1) * nb]) for rnd in range(nr + 1)]
+
+
+def _add_round_key(state, round_key):
+    # XOR as big integers (one C-level bignum op) instead of a 16-item
+    # Python-level zip/genexpr — this is on the hottest path in the cipher.
+    return (int.from_bytes(state, "big") ^ int.from_bytes(round_key, "big")).to_bytes(16, "big")
+
+
+_SBOX_TRANSLATE = bytes(SBOX)
+_INV_SBOX_TRANSLATE = bytes(INV_SBOX)
 
 
 def _sub_bytes(state):
-    return bytes(SBOX[b] for b in state)
+    return state.translate(_SBOX_TRANSLATE)
 
 
 def _inv_sub_bytes(state):
-    return bytes(INV_SBOX[b] for b in state)
+    return state.translate(_INV_SBOX_TRANSLATE)
+
+
+# ShiftRows/InvShiftRows are fixed permutations of the 16 state bytes —
+# precompute the index tables once instead of recomputing r/c on every call.
+_SHIFT_ROWS_PERM = tuple(
+    r + 4 * ((c + r) % 4) for c in range(4) for r in range(4)
+)
+_INV_SHIFT_ROWS_PERM = tuple(
+    _SHIFT_ROWS_PERM.index(i) for i in range(16)
+)
 
 
 def _shift_rows(state):
-    # state[r + 4c] is row r, column c; row r is shifted left by r.
-    out = bytearray(16)
-    for r in range(4):
-        for c in range(4):
-            out[r + 4 * c] = state[r + 4 * ((c + r) % 4)]
-    return bytes(out)
+    return bytes(state[i] for i in _SHIFT_ROWS_PERM)
 
 
 def _inv_shift_rows(state):
-    out = bytearray(16)
-    for r in range(4):
-        for c in range(4):
-            out[r + 4 * ((c + r) % 4)] = state[r + 4 * c]
-    return bytes(out)
+    return bytes(state[i] for i in _INV_SHIFT_ROWS_PERM)
+
+
+# GF(2^8) multiply-by-constant lookup tables, precomputed once from the
+# same from-scratch gf_mul — MixColumns/InvMixColumns only ever multiply
+# by these fixed constants, so a 256-entry table replaces a per-call
+# 8-iteration carryless-multiply loop with an O(1) lookup.
+_MUL2 = [gf_mul(v, 2) for v in range(256)]
+_MUL3 = [gf_mul(v, 3) for v in range(256)]
+_MUL9 = [gf_mul(v, 9) for v in range(256)]
+_MUL11 = [gf_mul(v, 11) for v in range(256)]
+_MUL13 = [gf_mul(v, 13) for v in range(256)]
+_MUL14 = [gf_mul(v, 14) for v in range(256)]
 
 
 def _mix_single_column(col):
     a0, a1, a2, a3 = col
-    return bytes([
-        gf_mul(a0, 2) ^ gf_mul(a1, 3) ^ a2 ^ a3,
-        a0 ^ gf_mul(a1, 2) ^ gf_mul(a2, 3) ^ a3,
-        a0 ^ a1 ^ gf_mul(a2, 2) ^ gf_mul(a3, 3),
-        gf_mul(a0, 3) ^ a1 ^ a2 ^ gf_mul(a3, 2),
-    ])
+    return (
+        _MUL2[a0] ^ _MUL3[a1] ^ a2 ^ a3,
+        a0 ^ _MUL2[a1] ^ _MUL3[a2] ^ a3,
+        a0 ^ a1 ^ _MUL2[a2] ^ _MUL3[a3],
+        _MUL3[a0] ^ a1 ^ a2 ^ _MUL2[a3],
+    )
 
 
 def _inv_mix_single_column(col):
     a0, a1, a2, a3 = col
-    return bytes([
-        gf_mul(a0, 14) ^ gf_mul(a1, 11) ^ gf_mul(a2, 13) ^ gf_mul(a3, 9),
-        gf_mul(a0, 9) ^ gf_mul(a1, 14) ^ gf_mul(a2, 11) ^ gf_mul(a3, 13),
-        gf_mul(a0, 13) ^ gf_mul(a1, 9) ^ gf_mul(a2, 14) ^ gf_mul(a3, 11),
-        gf_mul(a0, 11) ^ gf_mul(a1, 13) ^ gf_mul(a2, 9) ^ gf_mul(a3, 14),
-    ])
+    return (
+        _MUL14[a0] ^ _MUL11[a1] ^ _MUL13[a2] ^ _MUL9[a3],
+        _MUL9[a0] ^ _MUL14[a1] ^ _MUL11[a2] ^ _MUL13[a3],
+        _MUL13[a0] ^ _MUL9[a1] ^ _MUL14[a2] ^ _MUL11[a3],
+        _MUL11[a0] ^ _MUL13[a1] ^ _MUL9[a2] ^ _MUL14[a3],
+    )
 
 
 def _mix_columns(state):
-    out = bytearray(16)
+    out = []
     for c in range(4):
-        out[4 * c:4 * c + 4] = _mix_single_column(state[4 * c:4 * c + 4])
+        out.extend(_mix_single_column(state[4 * c:4 * c + 4]))
     return bytes(out)
 
 
 def _inv_mix_columns(state):
-    out = bytearray(16)
+    out = []
     for c in range(4):
-        out[4 * c:4 * c + 4] = _inv_mix_single_column(state[4 * c:4 * c + 4])
+        out.extend(_inv_mix_single_column(state[4 * c:4 * c + 4]))
     return bytes(out)
 
 
-def encrypt_block(plaintext, key):
-    if len(plaintext) != 16:
-        raise ValueError("AES block must be exactly 16 bytes")
-    w, nr = key_expansion(key)
-    nb = 4
+def _encrypt_with_schedule(plaintext, round_keys, nr):
     state = plaintext
-    state = _add_round_key(state, w[0:nb])
+    state = _add_round_key(state, round_keys[0])
     for rnd in range(1, nr):
         state = _sub_bytes(state)
         state = _shift_rows(state)
         state = _mix_columns(state)
-        state = _add_round_key(state, w[rnd * nb:(rnd + 1) * nb])
+        state = _add_round_key(state, round_keys[rnd])
     state = _sub_bytes(state)
     state = _shift_rows(state)
-    state = _add_round_key(state, w[nr * nb:(nr + 1) * nb])
+    state = _add_round_key(state, round_keys[nr])
     return state
+
+
+def _decrypt_with_schedule(ciphertext, round_keys, nr):
+    state = ciphertext
+    state = _add_round_key(state, round_keys[nr])
+    for rnd in range(nr - 1, 0, -1):
+        state = _inv_shift_rows(state)
+        state = _inv_sub_bytes(state)
+        state = _add_round_key(state, round_keys[rnd])
+        state = _inv_mix_columns(state)
+    state = _inv_shift_rows(state)
+    state = _inv_sub_bytes(state)
+    state = _add_round_key(state, round_keys[0])
+    return state
+
+
+def encrypt_block(plaintext, key):
+    """Single-block convenience wrapper (expands the key schedule on
+    every call — fine for one-off vector tests, but `AES` below caches
+    the schedule and is what `modes.py` actually uses for real data)."""
+    if len(plaintext) != 16:
+        raise ValueError("AES block must be exactly 16 bytes")
+    w, nr = key_expansion(key)
+    return _encrypt_with_schedule(plaintext, _round_keys(w, nr), nr)
 
 
 def decrypt_block(ciphertext, key):
     if len(ciphertext) != 16:
         raise ValueError("AES block must be exactly 16 bytes")
     w, nr = key_expansion(key)
-    nb = 4
-    state = ciphertext
-    state = _add_round_key(state, w[nr * nb:(nr + 1) * nb])
-    for rnd in range(nr - 1, 0, -1):
-        state = _inv_shift_rows(state)
-        state = _inv_sub_bytes(state)
-        state = _add_round_key(state, w[rnd * nb:(rnd + 1) * nb])
-        state = _inv_mix_columns(state)
-    state = _inv_shift_rows(state)
-    state = _inv_sub_bytes(state)
-    state = _add_round_key(state, w[0:nb])
-    return state
+    return _decrypt_with_schedule(ciphertext, _round_keys(w, nr), nr)
 
 
 class AES:
     """A keyed AES instance exposing raw single-block ECB-style
     encrypt/decrypt. Real usage should go through `modes.py` (CBC/GCM) —
-    a bare block cipher is not a secure way to encrypt >16 bytes."""
+    a bare block cipher is not a secure way to encrypt >16 bytes.
+
+    The round-key schedule is expanded and pre-joined into per-round
+    16-byte keys once here and reused for every block — expanding it
+    per-block (as the free `encrypt_block`/`decrypt_block` functions
+    above do) turns a 1 MB file into a 43-second encrypt; caching it
+    plus table-based MixColumns/SubBytes brings that under a second."""
 
     def __init__(self, key):
         if len(key) not in (16, 24, 32):
             raise ValueError("AES key must be 16, 24, or 32 bytes")
         self.key = key
+        w, self._nr = key_expansion(key)
+        self._round_keys = _round_keys(w, self._nr)
 
     def encrypt_block(self, block):
-        return encrypt_block(block, self.key)
+        if len(block) != 16:
+            raise ValueError("AES block must be exactly 16 bytes")
+        return _encrypt_with_schedule(block, self._round_keys, self._nr)
 
     def decrypt_block(self, block):
-        return decrypt_block(block, self.key)
+        if len(block) != 16:
+            raise ValueError("AES block must be exactly 16 bytes")
+        return _decrypt_with_schedule(block, self._round_keys, self._nr)

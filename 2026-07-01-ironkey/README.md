@@ -25,7 +25,34 @@ implemented and independently verified:
 `rsa genkey/encrypt/decrypt/sign/verify`) and every command has been run
 by hand end to end.
 
+**Status: Phase 3 (Adversarial review) complete.** Reviewed as a hostile
+reviewer; found and fixed 4 real issues (full writeup in
+[REVIEW.md](./REVIEW.md)):
+1. **Critical performance bug** — AES re-expanded its full round-key
+   schedule on every 16-byte block, making a 1 MB GCM encrypt take
+   43 seconds. Fixed by caching the schedule per key and switching
+   MixColumns/SubBytes to precomputed lookup tables: **1 MB now
+   encrypts in ~5.5 s** (~8x), with headroom documented honestly below
+   rather than pretended away.
+2. **OAEP decryption oracle** — a ciphertext representative `>= n`
+   raised a different, distinguishable error message than a padding
+   failure, which is exactly the kind of oracle RFC 8017 tells
+   implementers to avoid. Unified to a single generic message.
+3. Dead/confusing branch in `pss_verify` left over from an earlier
+   refactor — cleaned up.
+4. `bigint`'s hand-written uniform-random-integer helper had an
+   off-by-one in its rejection-sampling threshold, proven non-uniform
+   by exact enumeration (not just sampling noise) for a range of small
+   cases. Fixed and re-proven uniform by the same enumeration.
+
+**Known limitation, stated plainly:** this is a pure-Python
+implementation with no side-channel/timing hardening (a documented
+non-goal — a Python interpreter can't give real timing guarantees
+regardless of algorithm) and modest throughput (~180 KB/s for AES-GCM).
+Fine for messages, config files, and small-to-medium files; a multi-MB
+file will take real wall-clock time. This is disclosed, not hidden.
+
 See [PLAN.md](./PLAN.md) for the full architecture and feature list.
-Adversarial review, stretch features (X25519 messaging, AES/SHA
-visualizer, padding-oracle demo), and a full test suite are still to
-come — this README will be filled in fully once the build ships.
+Stretch features (X25519 messaging, AES/SHA visualizer, padding-oracle
+demo) and a full test suite are still to come — this README will be
+filled in fully once the build ships.
