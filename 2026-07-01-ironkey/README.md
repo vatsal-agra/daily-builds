@@ -52,7 +52,39 @@ regardless of algorithm) and modest throughput (~180 KB/s for AES-GCM).
 Fine for messages, config files, and small-to-medium files; a multi-MB
 file will take real wall-clock time. This is disclosed, not hidden.
 
-See [PLAN.md](./PLAN.md) for the full architecture and feature list.
-Stretch features (X25519 messaging, AES/SHA visualizer, padding-oracle
-demo) and a full test suite are still to come — this README will be
-filled in fully once the build ships.
+**Status: Phase 4 (Stretch + polish) complete.** All 3 stretch features
+shipped, plus the file vault promised in PLAN.md's architecture:
+
+- `x25519.py` — Curve25519/X25519 (RFC 7748 Montgomery ladder), verified
+  against real OpenSSL-generated keypairs and derived shared secrets
+  (both directions agree, and match OpenSSL's own derivation byte for
+  byte).
+- `session.py` — ephemeral-X25519 + AES-256-GCM two-party messaging with
+  strictly-increasing per-direction counters; demo exercises handshake,
+  bidirectional messaging, tamper detection, and replay detection.
+- `vault.py` — a real password-based file vault (PBKDF2-HMAC-SHA256 +
+  AES-256-GCM), self-describing container format, wrong-password and
+  corrupted-file failures deliberately indistinguishable.
+- `vulnerable_cbc.py` + `padding_oracle.py` — a from-scratch
+  implementation of Vaudenay's 2002 padding-oracle attack, run against a
+  deliberately unauthenticated CBC box (full plaintext recovered with
+  zero key access), then run again against the real GCM vault where it
+  correctly fails — there's no padding-validity signal to exploit at all.
+- `viz.py` — a self-contained interactive HTML page animating real AES
+  round-by-round state and the SHA-256 compression function step by
+  step, generated from actual execution traces (not a separate,
+  possibly-diverging JS reimplementation).
+
+**Performance, stated honestly:** this is pure Python with no C
+extensions. AES-256-GCM does ~180 KB/s (fine for messages/config/small
+files; a multi-MB file will take real wall-clock time — see REVIEW.md
+finding #1 for the 43s→5.5s/MB fix). PBKDF2 runs at ~2,800 iterations/s,
+which is why `vault.py`/the `kdf` command default to 4,096 iterations
+(~1.5s, a deliberate bcrypt-like delay) rather than the 600,000+ OWASP
+recommends for a fast compiled KDF — that number assumes >1M iter/s and
+would mean a ~3.5-minute vault open here. `--iterations` is exposed for
+anyone who wants to trade speed for a larger margin.
+
+See [PLAN.md](./PLAN.md) for the full architecture and [REVIEW.md](./REVIEW.md)
+for the adversarial review. A full test suite is still to come — this
+README will be filled in completely once the build ships.

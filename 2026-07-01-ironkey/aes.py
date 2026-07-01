@@ -221,6 +221,36 @@ def _decrypt_with_schedule(ciphertext, round_keys, nr):
     return state
 
 
+def trace_encrypt(plaintext, key):
+    """Like `encrypt_block`, but returns the full list of (label, state)
+    steps — every SubBytes/ShiftRows/MixColumns/AddRoundKey output —
+    for `viz.py` to animate. Not used on the hot path."""
+    if len(plaintext) != 16:
+        raise ValueError("AES block must be exactly 16 bytes")
+    w, nr = key_expansion(key)
+    round_keys = _round_keys(w, nr)
+
+    steps = [("Input", plaintext)]
+    state = _add_round_key(plaintext, round_keys[0])
+    steps.append(("AddRoundKey (round 0)", state))
+    for rnd in range(1, nr):
+        state = _sub_bytes(state)
+        steps.append((f"SubBytes (round {rnd})", state))
+        state = _shift_rows(state)
+        steps.append((f"ShiftRows (round {rnd})", state))
+        state = _mix_columns(state)
+        steps.append((f"MixColumns (round {rnd})", state))
+        state = _add_round_key(state, round_keys[rnd])
+        steps.append((f"AddRoundKey (round {rnd})", state))
+    state = _sub_bytes(state)
+    steps.append((f"SubBytes (round {nr}, final)", state))
+    state = _shift_rows(state)
+    steps.append((f"ShiftRows (round {nr}, final)", state))
+    state = _add_round_key(state, round_keys[nr])
+    steps.append((f"AddRoundKey (round {nr}, final) = Ciphertext", state))
+    return steps
+
+
 def encrypt_block(plaintext, key):
     """Single-block convenience wrapper (expands the key schedule on
     every call — fine for one-off vector tests, but `AES` below caches

@@ -47,6 +47,58 @@ def _pad(message):
 
 
 def _compress(h, block):
+    # Rotations are inlined (not calling _rotr) purely for CPython speed —
+    # this loop runs millions of times under PBKDF2, and function-call
+    # overhead alone was a measurable fraction of it. The math is
+    # identical to _rotr(x, n): ((x >> n) | (x << (32 - n))) & _MASK32.
+    w = [0] * 64
+    for t in range(16):
+        w[t] = int.from_bytes(block[t * 4:t * 4 + 4], "big")
+    for t in range(16, 64):
+        x = w[t - 15]
+        s0 = ((x >> 7) | (x << 25)) & _MASK32 ^ ((x >> 18) | (x << 14)) & _MASK32 ^ (x >> 3)
+        y = w[t - 2]
+        s1 = ((y >> 17) | (y << 15)) & _MASK32 ^ ((y >> 19) | (y << 13)) & _MASK32 ^ (y >> 10)
+        w[t] = (w[t - 16] + s0 + w[t - 7] + s1) & _MASK32
+
+    a, b, c, d, e, f, g, hh = h
+
+    for t in range(64):
+        S1 = ((e >> 6) | (e << 26)) & _MASK32 ^ ((e >> 11) | (e << 21)) & _MASK32 ^ ((e >> 25) | (e << 7)) & _MASK32
+        ch = (e & f) ^ ((~e & _MASK32) & g)
+        temp1 = (hh + S1 + ch + _K[t] + w[t]) & _MASK32
+        S0 = ((a >> 2) | (a << 30)) & _MASK32 ^ ((a >> 13) | (a << 19)) & _MASK32 ^ ((a >> 22) | (a << 10)) & _MASK32
+        maj = (a & b) ^ (a & c) ^ (b & c)
+        temp2 = (S0 + maj) & _MASK32
+
+        hh = g
+        g = f
+        f = e
+        e = (d + temp1) & _MASK32
+        d = c
+        c = b
+        b = a
+        a = (temp1 + temp2) & _MASK32
+
+    return [
+        (h[0] + a) & _MASK32, (h[1] + b) & _MASK32, (h[2] + c) & _MASK32,
+        (h[3] + d) & _MASK32, (h[4] + e) & _MASK32, (h[5] + f) & _MASK32,
+        (h[6] + g) & _MASK32, (h[7] + hh) & _MASK32,
+    ]
+
+
+def trace_compress_first_block(message):
+    """Like `sha256()`, but returns the message schedule W[0..63] and the
+    (a..h) working-variable state after every one of the 64 rounds of
+    compressing the FIRST 512-bit block only (for `viz.py`). Real
+    multi-block messages still hash correctly via `sha256()` — this is a
+    teaching view of one block's compression function, not a replacement
+    for it.
+    """
+    padded = _pad(message)
+    block = padded[:64]
+    h = list(_H0)
+
     w = [0] * 64
     for t in range(16):
         w[t] = int.from_bytes(block[t * 4:t * 4 + 4], "big")
@@ -56,6 +108,7 @@ def _compress(h, block):
         w[t] = (w[t - 16] + s0 + w[t - 7] + s1) & _MASK32
 
     a, b, c, d, e, f, g, hh = h
+    steps = [{"round": -1, "a": a, "b": b, "c": c, "d": d, "e": e, "f": f, "g": g, "h": hh, "w": None}]
 
     for t in range(64):
         S1 = _rotr(e, 6) ^ _rotr(e, 11) ^ _rotr(e, 25)
@@ -74,11 +127,42 @@ def _compress(h, block):
         b = a
         a = (temp1 + temp2) & _MASK32
 
-    return [
+        steps.append({"round": t, "a": a, "b": b, "c": c, "d": d, "e": e, "f": f, "g": g, "h": hh, "w": w[t]})
+
+    final = [
         (h[0] + a) & _MASK32, (h[1] + b) & _MASK32, (h[2] + c) & _MASK32,
         (h[3] + d) & _MASK32, (h[4] + e) & _MASK32, (h[5] + f) & _MASK32,
         (h[6] + g) & _MASK32, (h[7] + hh) & _MASK32,
     ]
+    is_only_block = len(padded) == 64
+    return {
+        "w": w,
+        "steps": steps,
+        "final_words": final,
+        "is_only_block": is_only_block,
+        "total_blocks": len(padded) // 64,
+    }
+
+
+def _compress_tail(h, prior_len_bytes, tail):
+    """Continue compressing from state `h`, given that exactly
+    `prior_len_bytes` of message have already been absorbed into it
+    (always a whole number of 64-byte blocks), with the remaining
+    message `tail`. Returns the 32-byte digest as if the *entire*
+    message (the already-absorbed prefix + tail) had been hashed from
+    scratch — used to cache the HMAC ipad/opad key block across many
+    PBKDF2 iterations instead of re-absorbing it every time."""
+    total_len_bits = (prior_len_bytes + len(tail)) * 8
+    padded = bytearray(tail)
+    padded.append(0x80)
+    while (prior_len_bytes + len(padded)) % 64 != 56:
+        padded.append(0)
+    padded += total_len_bits.to_bytes(8, "big")
+
+    state = list(h)
+    for offset in range(0, len(padded), 64):
+        state = _compress(state, bytes(padded[offset:offset + 64]))
+    return b"".join(x.to_bytes(4, "big") for x in state)
 
 
 def sha256(message):
