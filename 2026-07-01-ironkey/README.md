@@ -85,6 +85,23 @@ recommends for a fast compiled KDF — that number assumes >1M iter/s and
 would mean a ~3.5-minute vault open here. `--iterations` is exposed for
 anyone who wants to trade speed for a larger margin.
 
+**Status: Phase 5 (Verification) complete.** 122 unit tests across 12
+test files (`tests/`) plus a `demo.sh` that runs the full suite and then
+walks every CLI feature end to end (16 checks total) — all green:
+
+```
+$ ./demo.sh
+...
+  16 passed, 0 failed
+```
+
+Coverage highlights: FIPS-197 AES vectors (all 3 key sizes), RFC 4231
+HMAC vectors, hashlib-differential SHA-256/PBKDF2 tests across boundary
+lengths, OpenSSL cross-checks for AES-CBC and X25519 (skipped
+gracefully if `openssl` isn't on PATH), the OAEP-oracle and
+vault-error-message regression tests from REVIEW.md, and a padding-
+oracle attack that's proven to both succeed against the vulnerable box
+and fail against the real GCM vault.
+
 See [PLAN.md](./PLAN.md) for the full architecture and [REVIEW.md](./REVIEW.md)
-for the adversarial review. A full test suite is still to come — this
-README will be filled in completely once the build ships.
+for the adversarial review. Final feature list and ship notes below.
