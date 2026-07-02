@@ -4,9 +4,10 @@ A version control system built from scratch in pure Python — content-addressab
 object store, staging area, commit DAG, Myers diff, three-way merge and a
 custom packfile format.
 
-**Status: Phase 2 (core build) complete.** The 4 required features work
-end-to-end: object store, staging+status+commit, log/branch/checkout, and a
-from-scratch Myers diff. See [PLAN.md](PLAN.md) for the full architecture.
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features plus
+all 3 stretch features (merge, packfiles/gc, HTML visualizer) work end-to-end.
+Adversarial review (see [REVIEW.md](REVIEW.md)) found and fixed 5 real bugs.
+See [PLAN.md](PLAN.md) for the full architecture.
 
 ## Quick start
 
@@ -18,7 +19,14 @@ python3 /path/to/graft/bin/graft commit -m "message"
 python3 /path/to/graft/bin/graft log
 ```
 
-Blob objects are byte-identical to real Git (`graft hash-object` ==
-`git hash-object`), verified via subprocess differential tests.
+Blob/tree/commit objects are byte-identical to real Git (verified via
+subprocess differential tests against `git hash-object`/`git write-tree`).
 
-Adversarial review and stretch features (merge, packfiles, viz) are next.
+## Commands
+
+`init`, `hash-object`, `cat-file`, `add`, `rm [--cached]`, `status`,
+`commit -m`, `log [rev]`, `branch [name] [start] [-d name]`,
+`checkout <target> [-f]`, `diff [--cached]`, `merge <branch>`, `gc`,
+`viz [-o out.html]`.
+
+Next: full test suite + demo script (Phase 5), then final ship (Phase 6).
