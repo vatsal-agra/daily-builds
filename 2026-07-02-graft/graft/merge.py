@@ -56,9 +56,13 @@ def _reconstruct_side(base, lo, hi, items, seq):
 def merge3_lines(base, ours, theirs, ours_label="ours", theirs_label="theirs"):
     """Line-level 3-way merge. Returns (merged_lines, had_conflict).
 
-    Only *overlapping* changed regions (in base coordinates) are treated as
-    conflicts; adjacent-but-disjoint edits on each side (the common case of
-    two people touching different lines) merge cleanly.
+    Changed regions (in base coordinates) that *overlap or touch* are
+    grouped and conflict if the two sides disagree; changes separated by at
+    least one unchanged base line merge independently. This matches real
+    git's behavior (verified empirically): editing two lines with a blank
+    or unchanged line between them merges cleanly, but editing two
+    immediately-adjacent lines (no separating context) conflicts even
+    though the edited ranges don't literally overlap.
     """
     from . import diffalgo
 
@@ -72,7 +76,7 @@ def merge3_lines(base, ours, theirs, ours_label="ours", theirs_label="theirs"):
     cur, cur_end = [], None
     for c in changes:
         s, e = c[1], c[2]
-        if cur and s < cur_end:
+        if cur and s <= cur_end:
             cur.append(c)
             cur_end = max(cur_end, e)
         else:

@@ -41,6 +41,23 @@ against independent oracles.
    comparison entirely when only one side has a change in the group (no
    conflict is possible when the other side didn't touch it at all).
 
+3b. **HIGH — third-order bug in the same area: "non-overlapping" was too
+   permissive.** Having fixed #2/#3, a unit test asserting that two
+   *directly adjacent* single-line edits (no unchanged line between them)
+   should merge cleanly turned out to encode a wrong assumption. Checked
+   empirically against real `git merge`: editing two immediately-adjacent
+   lines **does** conflict in real git (it only merges cleanly with at
+   least one unchanged line of separation between the two edits — real
+   git's merge is conservative about *touching* hunks, not just
+   *overlapping* ones), and two insertions at the exact same zero-width
+   position also conflict. Changed the interval-grouping condition from
+   strict overlap (`s < group_end`) to touching-or-overlap (`s <=
+   group_end`), and replaced the hand-written assumption with an automated
+   differential fuzzer (`tests/test_merge_git_compat.py`) that shells out
+   to `git merge-file` — the real 3-way file merge — as an oracle. Ran
+   1,000 random base/ours/theirs triples: 0 conflict-detection mismatches
+   and 0 content mismatches on the triples both sides resolved cleanly.
+
 4. **MEDIUM — binary files produced a garbled, misleading text diff.**
    Both `graft diff` and the merge's content-merge path decoded arbitrary
    bytes with `errors="replace"` and ran the *line* diff/merge machinery
@@ -58,6 +75,17 @@ against independent oracles.
    `BrokenPipeError` and exits 0 quietly, matching real git/coreutils
    behavior.
 
+6. **Demo-script bug (not a product bug), caught by running the demo, not
+   just reading it.** `demo.sh`'s conflict-detection check piped `graft
+   merge` into `grep -q` and read `$?` afterward — but the script also sets
+   `pipefail`, so `$?` reflected `graft merge`'s own exit code (1, correct
+   for a real conflict) rather than `grep`'s. The check always failed
+   regardless of whether the conflict message was actually present,
+   turning a *correct* product feature into a *failing* demo step. Fixed
+   by capturing `graft merge`'s stdout via command substitution first and
+   grepping that captured string, sidestepping the pipefail interaction
+   entirely.
+
 ## Things checked and found correct (no fix needed)
 
 - Blob/tree/commit loose-object bytes are **byte-identical to real git**
@@ -70,7 +98,9 @@ against independent oracles.
   — 0 mismatches.
 - Fast-forward, already-up-to-date, and genuine-conflict merge paths all
   produce the expected result end-to-end (checked manually and in
-  `tests/test_merge.py`).
+  `tests/test_merge.py`); merge conflict/clean-content behavior matches
+  real `git merge-file` on 1,000 random fuzz trials with 0 mismatches
+  (`tests/test_merge_git_compat.py`).
 - `graft gc` round-trips every object (loose bytes deleted only after an
   independent re-read of every packed object matches byte-for-byte) and is
   idempotent (running it twice with nothing new packs 0 objects, no
