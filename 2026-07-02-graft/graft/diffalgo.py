@@ -3,6 +3,11 @@ git-style unified-diff formatter built on top of it.
 """
 
 
+def is_binary(content):
+    """Same heuristic real git uses: a NUL byte in the first 8000 bytes."""
+    return b"\0" in content[:8000]
+
+
 def _shortest_edit_trace(a, b):
     n, m = len(a), len(b)
     max_d = n + m

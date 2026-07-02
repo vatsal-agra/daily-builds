@@ -20,6 +20,20 @@ def _repo():
     return Repository.discover()
 
 
+def _to_repo_relpath(repo, p):
+    """Resolve a user-supplied path (relative to cwd, or absolute) to a
+    repo-root-relative posix path, the way real git resolves pathspecs.
+    """
+    abspath = p if os.path.isabs(p) else os.path.join(os.getcwd(), p)
+    abspath = os.path.normpath(abspath)
+    rel = os.path.relpath(abspath, repo.worktree)
+    if rel == os.curdir:
+        return "."
+    if rel.startswith(".." + os.sep) or rel == "..":
+        raise RepoError(f"path {p!r} is outside the repository")
+    return rel.replace(os.sep, "/")
+
+
 # ------------------------------------------------------------------ init --
 
 def cmd_init(args):
@@ -77,13 +91,18 @@ def cmd_add(args):
     all_files = worktree.list_worktree_files(repo.worktree)
     targets = set()
     for p in args.paths:
-        p = p.rstrip("/")
-        abspath = os.path.join(repo.worktree, p)
-        if os.path.isdir(abspath) or p == ".":
-            prefix = "" if p == "." else p + "/"
-            targets |= {f for f in all_files if f.startswith(prefix)}
+        try:
+            rel = _to_repo_relpath(repo, p)
+        except RepoError as e:
+            return _err(str(e))
+        abspath = os.path.join(repo.worktree, rel)
+        if rel == "." or os.path.isdir(abspath):
+            prefix = "" if rel == "." else rel + "/"
+            matched = {f for f in all_files if f == rel or f.startswith(prefix)}
+            if not matched and rel != ".":
+                return _err(f"pathspec '{p}' did not match any tracked files")
+            targets |= matched
         else:
-            rel = os.path.relpath(abspath, repo.worktree).replace(os.sep, "/")
             if rel not in all_files:
                 return _err(f"pathspec '{p}' did not match any tracked files")
             targets.add(rel)
@@ -103,13 +122,17 @@ def cmd_add(args):
 def cmd_rm(args):
     repo = _repo()
     entries = read_index(repo.index_path)
-    missing = [p for p in args.paths if p not in entries]
+    try:
+        rels = [_to_repo_relpath(repo, p) for p in args.paths]
+    except RepoError as e:
+        return _err(str(e))
+    missing = [p for p, rel in zip(args.paths, rels) if rel not in entries]
     if missing:
         return _err(f"pathspec '{missing[0]}' did not match any staged files")
-    for p in args.paths:
-        del entries[p]
+    for rel in rels:
+        del entries[rel]
         if not args.cached:
-            abspath = os.path.join(repo.worktree, p)
+            abspath = os.path.join(repo.worktree, rel)
             if os.path.exists(abspath):
                 os.remove(abspath)
     write_index(repo.index_path, entries)
@@ -203,6 +226,14 @@ def cmd_status(args):
 
 # --------------------------------------------------------------- commit --
 
+def _merge_head_path(repo):
+    return os.path.join(repo.gitdir, "MERGE_HEAD")
+
+
+def _merge_msg_path(repo):
+    return os.path.join(repo.gitdir, "MERGE_MSG")
+
+
 def cmd_commit(args):
     repo = _repo()
     entries = read_index(repo.index_path)
@@ -210,17 +241,27 @@ def cmd_commit(args):
     head_tree = treeops.tree_of_commit(repo, head_sha)
     head_paths = treeops.flatten_tree(repo, head_tree)
 
+    merging = os.path.exists(_merge_head_path(repo))
     paths = {path: (e.mode, e.sha1) for path, e in entries.items()}
-    if paths == head_paths and head_sha is not None:
+    if paths == head_paths and head_sha is not None and not merging:
         return _err("nothing to commit, working tree clean")
-    if not args.message:
+
+    message = args.message
+    if not message and merging and os.path.exists(_merge_msg_path(repo)):
+        with open(_merge_msg_path(repo)) as f:
+            message = f.read()
+    if not message:
         return _err("commit message required (-m)")
 
-    tree_sha = treeops.build_tree_from_paths(repo, paths)
     parents = [head_sha] if head_sha else []
+    if merging:
+        with open(_merge_head_path(repo)) as f:
+            parents.append(f.read().strip())
+
+    tree_sha = treeops.build_tree_from_paths(repo, paths)
     ts = int(args.date) if args.date else int(time.time())
     author = (DEFAULT_AUTHOR_NAME, DEFAULT_AUTHOR_EMAIL, ts, "+0000")
-    content = objecthash.encode_commit(tree_sha, parents, author, author, args.message)
+    content = objecthash.encode_commit(tree_sha, parents, author, author, message)
     commit_sha = repo.write_object("commit", content)
 
     branch = repo.current_branch()
@@ -228,7 +269,13 @@ def cmd_commit(args):
         repo.write_ref(f"refs/heads/{branch}", commit_sha)
     else:
         repo.write_head_detached(commit_sha)
-    print(f"[{branch or 'HEAD detached'} {commit_sha[:10]}] {args.message.splitlines()[0]}")
+
+    if merging:
+        os.remove(_merge_head_path(repo))
+        if os.path.exists(_merge_msg_path(repo)):
+            os.remove(_merge_msg_path(repo))
+
+    print(f"[{branch or 'HEAD detached'} {commit_sha[:10]}] {message.splitlines()[0]}")
     return 0
 
 
@@ -325,6 +372,8 @@ def _apply_tree_to_worktree(repo, target_paths, current_paths):
 
 def cmd_checkout(args):
     repo = _repo()
+    if os.path.exists(_merge_head_path(repo)) and not args.force:
+        return _err("you have an unresolved merge in progress; commit or use --force")
     st = compute_status(repo)
     dirty = st["unstaged_modified"] or st["unstaged_deleted"] or st["staged_new"] or st["staged_modified"] or st["staged_deleted"]
     if dirty and not args.force:
@@ -350,20 +399,23 @@ def cmd_checkout(args):
 
 # ------------------------------------------------------------------ diff --
 
-def _blob_lines(repo, sha1):
-    if sha1 is None:
-        return []
-    _, content = repo.read_object_any(sha1)
-    text = content.decode("utf-8", errors="replace")
-    return text.split("\n")[:-1] if text.endswith("\n") else text.split("\n")
 
+def _diff_one(repo, path, old_content, new_content):
+    """old_content/new_content: bytes or None (absent). Returns output lines."""
+    a_label = f"a/{path}" if old_content is not None else "/dev/null"
+    b_label = f"b/{path}" if new_content is not None else "/dev/null"
+    if (old_content is not None and diffalgo.is_binary(old_content)) or (
+        new_content is not None and diffalgo.is_binary(new_content)
+    ):
+        return [f"Binary files {a_label} and {b_label} differ"]
 
-def _working_lines(abspath):
-    if not os.path.exists(abspath):
-        return None
-    with open(abspath, "rb") as f:
-        text = f.read().decode("utf-8", errors="replace")
-    return text.split("\n")[:-1] if text.endswith("\n") else text.split("\n")
+    def to_lines(content):
+        if content is None:
+            return []
+        text = content.decode("utf-8", errors="replace")
+        return text.split("\n")[:-1] if text.endswith("\n") else text.split("\n")
+
+    return diffalgo.unified_diff(to_lines(old_content), to_lines(new_content), a_label, b_label)
 
 
 def cmd_diff(args):
@@ -379,11 +431,9 @@ def cmd_diff(args):
             new_sha = index_entries[path].sha1 if path in index_entries else None
             if old_sha == new_sha:
                 continue
-            out_lines += diffalgo.unified_diff(
-                _blob_lines(repo, old_sha), _blob_lines(repo, new_sha),
-                f"a/{path}" if old_sha else "/dev/null",
-                f"b/{path}" if new_sha else "/dev/null",
-            )
+            old_content = repo.read_object_any(old_sha)[1] if old_sha else None
+            new_content = repo.read_object_any(new_sha)[1] if new_sha else None
+            out_lines += _diff_one(repo, path, old_content, new_content)
     else:
         index_entries = read_index(repo.index_path)
         wt_files = set(worktree.list_worktree_files(repo.worktree))
@@ -391,20 +441,11 @@ def cmd_diff(args):
         for path in all_paths:
             old_sha = index_entries[path].sha1 if path in index_entries else None
             abspath = os.path.join(repo.worktree, path)
-            new_lines = _working_lines(abspath)
-            old_lines = _blob_lines(repo, old_sha)
-            if new_lines is None:
-                new_lines = []
-            if old_sha is not None:
-                _, old_content = repo.read_object_any(old_sha)
-                new_content = worktree.read_blob_bytes(abspath) if os.path.exists(abspath) else b""
-                if old_content == new_content:
-                    continue
-            out_lines += diffalgo.unified_diff(
-                old_lines, new_lines,
-                f"a/{path}" if old_sha else "/dev/null",
-                f"b/{path}" if os.path.exists(abspath) else "/dev/null",
-            )
+            old_content = repo.read_object_any(old_sha)[1] if old_sha else None
+            new_content = worktree.read_blob_bytes(abspath) if os.path.exists(abspath) else None
+            if old_content == new_content:
+                continue
+            out_lines += _diff_one(repo, path, old_content, new_content)
     print("\n".join(out_lines))
     return 0
 
@@ -414,6 +455,11 @@ def cmd_diff(args):
 def cmd_merge(args):
     from . import merge as merge_mod
     repo = _repo()
+    if os.path.exists(_merge_head_path(repo)):
+        return _err("a merge is already in progress; commit or resolve it first")
+    st = compute_status(repo)
+    if st["unstaged_modified"] or st["unstaged_deleted"] or st["staged_new"] or st["staged_modified"] or st["staged_deleted"]:
+        return _err("you have uncommitted changes; commit them before merging")
     try:
         result = merge_mod.merge(repo, args.branch, DEFAULT_AUTHOR_NAME, DEFAULT_AUTHOR_EMAIL)
     except merge_mod.MergeError as e:
@@ -532,6 +578,11 @@ def main(argv=None):
         return _err(str(e))
     except objecthash.ObjectError as e:
         return _err(str(e))
+    except BrokenPipeError:
+        # e.g. `graft log | head` closing the pipe early; exit quietly like real git.
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        return 0
 
 
 if __name__ == "__main__":
