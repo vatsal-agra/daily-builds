@@ -5,15 +5,12 @@ a real Git-like VCS with a content-addressable object store, a proper
 Myers O(ND) diff engine, merge-base discovery over a commit DAG, and a
 three-way (diff3-style) merge with real conflict markers.
 
-**Status: Phase 4 — stretch features + polish complete.** Both stretch
-features are done: a hardened three-way merge with real conflict
-markers (see [REVIEW.md](./REVIEW.md) for the bugs found and fixed
-during adversarial review), and an interactive, self-contained HTML
-commit-graph visualizer (`strata viz`) — a real DAG layout with
-per-branch lanes, click-to-inspect commits, and per-commit diffs
-computed with the same Myers engine. Verified in an actual browser
-(Playwright/Chromium) in both light and dark mode. Verification suite
-and final ship next.
+**Status: Phase 5 — verification complete.** 98 automated tests
+(`tests/`, `python3 -m unittest discover -s tests`) and a 9-step
+end-to-end `demo.sh` walkthrough all pass, covering every required and
+stretch feature — see [PLAN.md](./PLAN.md) for the feature list and
+[REVIEW.md](./REVIEW.md) for the adversarial-review findings. Final
+ship (this README + LEDGER) next.
 
 See [PLAN.md](./PLAN.md) for the full design and feature list.
 
