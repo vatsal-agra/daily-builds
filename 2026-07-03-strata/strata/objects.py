@@ -34,13 +34,21 @@ class TreeEntry:
     kind: str  # "blob" or "tree"
 
 
+def _validate_entry_name(name):
+    """A tree entry name must be a single path segment: reject path
+    separators and `.`/`..`, which could otherwise let a crafted or
+    corrupted tree object escape the working directory root when its
+    path gets joined onto disk during checkout."""
+    if not name or name in (".", "..") or "/" in name or "\\" in name:
+        raise InvalidObject(f"illegal tree entry name {name!r}")
+    if "\t" in name or "\n" in name or "\0" in name:
+        raise InvalidObject(f"illegal character in tree entry name {name!r}")
+
+
 def encode_tree(entries):
     """entries: iterable of TreeEntry. Serialized sorted by name for determinism."""
     for e in entries:
-        if "\t" in e.name or "\n" in e.name or "\0" in e.name:
-            raise InvalidObject(f"illegal character in tree entry name {e.name!r}")
-        if not e.name or e.name in (".", ".."):
-            raise InvalidObject(f"illegal tree entry name {e.name!r}")
+        _validate_entry_name(e.name)
     lines = []
     for e in sorted(entries, key=lambda e: e.name):
         lines.append(f"{e.mode} {e.kind} {e.object_id}\t{e.name}\n")
@@ -62,6 +70,7 @@ def decode_tree(content):
             raise InvalidObject(f"unknown tree entry kind {kind!r} on line {lineno}")
         if len(object_id) != 64:
             raise InvalidObject(f"malformed object id on line {lineno}: {object_id!r}")
+        _validate_entry_name(name)
         entries.append(TreeEntry(mode=mode, name=name, object_id=object_id, kind=kind))
     return entries
 

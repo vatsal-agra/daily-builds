@@ -5,10 +5,14 @@ a real Git-like VCS with a content-addressable object store, a proper
 Myers O(ND) diff engine, merge-base discovery over a commit DAG, and a
 three-way (diff3-style) merge with real conflict markers.
 
-**Status: Phase 2 — core build complete.** All four required features
-(object store, add/status/commit/log, branching & checkout, Myers
-diffing) work end-to-end, verified by hand and by a brute-force LCS
-oracle for the diff engine. Adversarial review is next.
+**Status: Phase 3 — adversarial review complete.** All four required
+features work end-to-end. 15 real issues were found by hostile testing
+(correctness bugs in diff/merge, two path-traversal vulnerabilities,
+silent data-loss risks on checkout/merge, raw tracebacks on corrupt
+objects, UX gaps, dead code) and every one is fixed — see
+[REVIEW.md](./REVIEW.md) for the full list and how each was verified.
+Stretch features (merge conflicts + HTML visualizer — merge is already
+built and hardened) and final polish are next.
 
 See [PLAN.md](./PLAN.md) for the full design and feature list.
 

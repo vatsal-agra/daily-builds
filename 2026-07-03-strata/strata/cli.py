@@ -6,6 +6,8 @@ import sys
 from .repository import (
     DirtyWorktree, MergeConflict, NotARepository, Repository, RepositoryError,
 )
+from .objects import InvalidObject
+from .store import CorruptObject, ObjectNotFound
 
 
 def _short(commit_id):
@@ -25,9 +27,6 @@ def cmd_init(args):
 
 def cmd_add(args):
     repo = Repository.discover()
-    if not args.paths:
-        print("strata: nothing specified, nothing added.", file=sys.stderr)
-        return 1
     try:
         result = repo.add(args.paths)
     except RepositoryError as exc:
@@ -159,6 +158,8 @@ def cmd_diff(args):
     try:
         if args.ref_a and args.ref_b:
             lines = repo.diff_refs(args.ref_a, args.ref_b)
+        elif args.ref_a:
+            lines = repo.diff_ref_worktree(args.ref_a)
         else:
             lines = repo.diff_worktree()
     except RepositoryError as exc:
@@ -198,6 +199,19 @@ def cmd_viz(args):
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(html)
     print(f"Wrote {out_path}")
+    return 0
+
+
+def cmd_config(args):
+    repo = Repository.discover()
+    if args.value is not None:
+        repo.set_config(args.key, args.value)
+        return 0
+    value = repo.get_config(args.key)
+    if value is None:
+        print(f"strata: no such config key: {args.key}", file=sys.stderr)
+        return 1
+    print(value)
     return 0
 
 
@@ -268,6 +282,11 @@ def build_parser():
     p.add_argument("-o", "--output")
     p.set_defaults(func=cmd_viz)
 
+    p = sub.add_parser("config", help="get or set a repo config value (e.g. user.name)")
+    p.add_argument("key")
+    p.add_argument("value", nargs="?")
+    p.set_defaults(func=cmd_config)
+
     p = sub.add_parser("show", help="show a commit and its diff")
     p.add_argument("ref", nargs="?", default="HEAD")
     p.set_defaults(func=cmd_show)
@@ -282,6 +301,9 @@ def main(argv=None):
         return args.func(args)
     except NotARepository as exc:
         print(f"strata: {exc}", file=sys.stderr)
+        return 1
+    except (ObjectNotFound, CorruptObject, InvalidObject) as exc:
+        print(f"strata: fatal: object store error: {exc}", file=sys.stderr)
         return 1
 
 

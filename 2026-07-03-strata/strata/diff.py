@@ -125,9 +125,12 @@ def _group_opcodes(opcodes, context):
 
 def _hunk_header(a1, a2, b1, b2):
     def fmt(start, length):
+        beginning = start + 1
         if length == 1:
-            return f"{start + 1}"
-        return f"{start + 1},{length}"
+            return f"{beginning}"
+        if length == 0:
+            beginning -= 1  # empty ranges are anchored just before the range
+        return f"{beginning},{length}"
     return f"@@ -{fmt(a1, a2 - a1)} +{fmt(b1, b2 - b1)} @@\n"
 
 

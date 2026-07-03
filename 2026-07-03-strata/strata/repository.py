@@ -65,6 +65,7 @@ class Repository:
         self.head_path = os.path.join(self.strata_dir, "HEAD")
         self.index_path = os.path.join(self.strata_dir, "index")
         self.merge_head_path = os.path.join(self.strata_dir, "MERGE_HEAD")
+        self.config_path = os.path.join(self.strata_dir, "config")
         self.store = ObjectStore(self.objects_dir)
         self.index = Index(self.index_path)
 
@@ -96,6 +97,33 @@ class Repository:
                 )
             cur = parent
 
+    # ------------------------------------------------------------- config --
+
+    def _read_config(self):
+        config = {}
+        if os.path.isfile(self.config_path):
+            for line in _read_text(self.config_path).splitlines():
+                if "=" in line:
+                    key, _, value = line.partition("=")
+                    config[key.strip()] = value.strip()
+        return config
+
+    def get_config(self, key):
+        return self._read_config().get(key)
+
+    def set_config(self, key, value):
+        config = self._read_config()
+        config[key] = value
+        text = "".join(f"{k} = {v}\n" for k, v in sorted(config.items()))
+        _write_text(self.config_path, text)
+
+    def author_string(self):
+        name = self.get_config("user.name")
+        email = self.get_config("user.email")
+        if name and email:
+            return f"{name} <{email}>"
+        return DEFAULT_AUTHOR
+
     # --------------------------------------------------------------- HEAD --
 
     def _read_head(self):
@@ -108,7 +136,12 @@ class Repository:
         return None  # detached HEAD
 
     def _branch_ref_path(self, name):
-        return os.path.join(self.refs_dir, name)
+        if not name or any(part in ("", ".", "..") for part in name.split("/")):
+            raise RepositoryError(f"invalid branch name: {name!r}")
+        path = os.path.normpath(os.path.join(self.refs_dir, name))
+        if path != self.refs_dir and not path.startswith(self.refs_dir + os.sep):
+            raise RepositoryError(f"invalid branch name: {name!r}")
+        return path
 
     def branch_commit(self, name):
         path = self._branch_ref_path(name)
@@ -254,6 +287,8 @@ class Repository:
         removed = set()  # rel_path entries to drop from the index
         for raw_path in paths:
             abs_path = os.path.abspath(os.path.join(self.root, raw_path))
+            if abs_path != self.root and os.path.commonpath([abs_path, self.root]) != self.root:
+                raise RepositoryError(f"pathspec is outside the repository: {raw_path}")
             if os.path.exists(abs_path):
                 if os.path.isdir(abs_path):
                     for rel_path, file_abs in self._walk_worktree():
@@ -356,9 +391,10 @@ class Repository:
         _, content = self.store.read(commit_id)
         return decode_commit(content).tree
 
-    def commit(self, message, author=DEFAULT_AUTHOR, parents=None, timestamp=None):
+    def commit(self, message, author=None, parents=None, timestamp=None):
         if not message or not message.strip():
             raise RepositoryError("cannot commit: empty commit message")
+        author = author or self.author_string()
         path_map = {p: (e["hash"], e["mode"]) for p, e in self.index.entries.items()}
         tree_id = self._build_tree(path_map)
 
@@ -464,6 +500,14 @@ class Repository:
                 raise DirtyWorktree(
                     "checkout would overwrite local changes to: " + ", ".join(clobbered)
                 )
+            # Untracked files aren't "dirty" (they're not tracked at all), but if the
+            # target commit also has a file at that path, checking out would silently
+            # clobber content the user never staged — refuse, matching real VCS behavior.
+            untracked_collisions = sorted(set(status["untracked"]) & would_change)
+            if untracked_collisions:
+                raise DirtyWorktree(
+                    "checkout would overwrite untracked files: " + ", ".join(untracked_collisions)
+                )
 
         current_files = self._flatten_tree(self._head_tree_id())
         self._write_worktree(target_files, current_files)
@@ -495,6 +539,23 @@ class Repository:
             entry = self.index.get(path)
             _, old_content = self.store.read(entry["hash"])
             out.extend(self._render_blob_diff(path, old_content, b""))
+        return out
+
+    def diff_ref_worktree(self, ref):
+        """Unified diffs between a commit's tree and the current working tree."""
+        commit = self.get_commit(self.resolve(ref))
+        ref_files = self._flatten_tree(commit.tree)
+        worktree_files = dict(self._walk_worktree())
+        out = []
+        for path in sorted(set(ref_files) | set(worktree_files)):
+            old_hash = ref_files.get(path, (None, None))[0]
+            old_content = self.store.read(old_hash)[1] if old_hash else b""
+            if path in worktree_files:
+                with open(worktree_files[path], "rb") as fh:
+                    new_content = fh.read()
+            else:
+                new_content = b""
+            out.extend(self._render_blob_diff(path, old_content, new_content))
         return out
 
     def diff_refs(self, ref_a, ref_b):
@@ -574,7 +635,7 @@ class Repository:
         base_id = self.merge_base("HEAD", other_ref)
 
         if base_id == ours_id:
-            self.checkout(other_ref, force=True)
+            self.checkout(other_ref, force=False)
             self.set_branch_commit(current_branch, theirs_id)
             _write_text(self.head_path, f"ref: refs/heads/{current_branch}\n")
             return {"status": "fast-forward", "commit": theirs_id}
@@ -585,6 +646,13 @@ class Repository:
         base_files = self._flatten_tree(self.get_commit(base_id).tree) if base_id else {}
         ours_files = self._flatten_tree(self.get_commit(ours_id).tree)
         theirs_files = self._flatten_tree(self.get_commit(theirs_id).tree)
+
+        untracked = set(self.status()["untracked"])
+        collisions = sorted(untracked & (set(theirs_files) - set(ours_files)))
+        if collisions:
+            raise DirtyWorktree(
+                "merge would overwrite untracked files: " + ", ".join(collisions)
+            )
 
         merged_files = {}
         conflicts = []
