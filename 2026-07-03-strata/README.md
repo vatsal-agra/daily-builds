@@ -5,14 +5,15 @@ a real Git-like VCS with a content-addressable object store, a proper
 Myers O(ND) diff engine, merge-base discovery over a commit DAG, and a
 three-way (diff3-style) merge with real conflict markers.
 
-**Status: Phase 3 — adversarial review complete.** All four required
-features work end-to-end. 15 real issues were found by hostile testing
-(correctness bugs in diff/merge, two path-traversal vulnerabilities,
-silent data-loss risks on checkout/merge, raw tracebacks on corrupt
-objects, UX gaps, dead code) and every one is fixed — see
-[REVIEW.md](./REVIEW.md) for the full list and how each was verified.
-Stretch features (merge conflicts + HTML visualizer — merge is already
-built and hardened) and final polish are next.
+**Status: Phase 4 — stretch features + polish complete.** Both stretch
+features are done: a hardened three-way merge with real conflict
+markers (see [REVIEW.md](./REVIEW.md) for the bugs found and fixed
+during adversarial review), and an interactive, self-contained HTML
+commit-graph visualizer (`strata viz`) — a real DAG layout with
+per-branch lanes, click-to-inspect commits, and per-commit diffs
+computed with the same Myers engine. Verified in an actual browser
+(Playwright/Chromium) in both light and dark mode. Verification suite
+and final ship next.
 
 See [PLAN.md](./PLAN.md) for the full design and feature list.
 

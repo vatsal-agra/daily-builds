@@ -1,7 +1,9 @@
 """The `strata` command-line interface."""
 
 import argparse
+import os
 import sys
+import time
 
 from .repository import (
     DirtyWorktree, MergeConflict, NotARepository, Repository, RepositoryError,
@@ -12,6 +14,10 @@ from .store import CorruptObject, ObjectNotFound
 
 def _short(commit_id):
     return commit_id[:10]
+
+
+def _format_date(timestamp):
+    return time.strftime("%a %b %d %H:%M:%S %Y %z", time.localtime(timestamp))
 
 
 def cmd_init(args):
@@ -109,7 +115,7 @@ def cmd_log(args):
         if len(commit.parents) > 1:
             print(f"Merge: {' '.join(_short(p) for p in commit.parents)}")
         print(f"Author: {commit.author}")
-        print(f"Date:   {commit.timestamp}")
+        print(f"Date:   {_format_date(commit.timestamp)}")
         print()
         for line in commit.message.rstrip("\n").splitlines():
             print(f"    {line}")
@@ -225,7 +231,7 @@ def cmd_show(args):
         return 1
     print(f"commit {commit_id}")
     print(f"Author: {commit.author}")
-    print(f"Date:   {commit.timestamp}")
+    print(f"Date:   {_format_date(commit.timestamp)}")
     print()
     for line in commit.message.rstrip("\n").splitlines():
         print(f"    {line}")
@@ -307,5 +313,16 @@ def main(argv=None):
         return 1
 
 
+def run():
+    """Entry point used by both `python -m strata` and direct script execution;
+    swallows BrokenPipeError so piping output into `head`/`less` doesn't print
+    a Python traceback for what is normal, expected pipe-closing behavior."""
+    try:
+        sys.exit(main())
+    except BrokenPipeError:
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    run()
