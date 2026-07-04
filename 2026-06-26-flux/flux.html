@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Flux — 2D Fluid Simulation</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0d0d0d;
+  color: #ccc;
+  font-family: 'Courier New', monospace;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 16px;
+}
+h1 { color: #ff9040; font-size: 1.5em; margin-bottom: 4px; letter-spacing: 2px; }
+.subtitle { color: #555; font-size: .78em; margin-bottom: 16px; }
+
+#layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+canvas {
+  border: 1px solid #2a2a2a;
+  cursor: crosshair;
+  image-rendering: pixelated;
+  border-radius: 3px;
+}
+
+.panel {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 6px;
+  padding: 14px;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.panel h2 { color: #ff9040; font-size: .85em; letter-spacing: 1px; margin-bottom: 2px; }
+
+.ctrl-group { display: flex; flex-direction: column; gap: 4px; }
+.ctrl-group label { color: #888; font-size: .75em; display: flex; justify-content: space-between; }
+.ctrl-group label span { color: #ccc; }
+input[type=range] {
+  width: 100%;
+  accent-color: #ff9040;
+  height: 4px;
+}
+select, button {
+  background: #1a1a1a;
+  color: #ccc;
+  border: 1px solid #333;
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: .8em;
+  border-radius: 3px;
+  cursor: pointer;
+  width: 100%;
+}
+select:hover, button:hover { background: #252525; border-color: #555; }
+button.active { border-color: #ff9040; color: #ff9040; }
+
+.btn-row { display: flex; gap: 6px; }
+.btn-row button { flex: 1; }
+
+#stats {
+  color: #555;
+  font-size: .72em;
+  line-height: 1.6;
+  padding-top: 6px;
+  border-top: 1px solid #1e1e1e;
+}
+
+.tip {
+  color: #444;
+  font-size: .7em;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+</style>
+</head>
+<body>
+<h1>FLUX</h1>
+<p class="subtitle">2D Navier-Stokes — Stable Fluids (Stam 1999)</p>
+
+<div id="layout">
+  <canvas id="c"></canvas>
+
+  <div class="panel">
+    <h2>SCENE</h2>
+    <div class="ctrl-group">
+      <label>Preset</label>
+      <select id="sel-scene">
+        <option value="smoke">Smoke Plumes</option>
+        <option value="ink">Ink Drops</option>
+        <option value="wind">Wind + Obstacle</option>
+        <option value="vortex">Vortex Pair</option>
+        <option value="fire">Fire</option>
+        <option value="blank">Blank (draw freely)</option>
+      </select>
+    </div>
+
+    <h2>PARAMETERS</h2>
+    <div class="ctrl-group">
+      <label>Viscosity <span id="lbl-visc">0.00</span></label>
+      <input type="range" id="sl-visc" min="0" max="0.001" step="0.00001" value="0"/>
+    </div>
+    <div class="ctrl-group">
+      <label>Diffusion <span id="lbl-diff">0.00</span></label>
+      <input type="range" id="sl-diff" min="0" max="0.001" step="0.00001" value="0"/>
+    </div>
+    <div class="ctrl-group">
+      <label>Vorticity <span id="lbl-vort">3.0</span></label>
+      <input type="range" id="sl-vort" min="0" max="15" step="0.1" value="3.0"/>
+    </div>
+    <div class="ctrl-group">
+      <label>Gravity <span id="lbl-grav">0.00</span></label>
+      <input type="range" id="sl-grav" min="-0.5" max="0.5" step="0.01" value="0"/>
+    </div>
+    <div class="ctrl-group">
+      <label>Brush size <span id="lbl-brush">0.03</span></label>
+      <input type="range" id="sl-brush" min="0.01" max="0.15" step="0.005" value="0.03"/>
+    </div>
+    <div class="ctrl-group">
+      <label>Dye strength <span id="lbl-dye">1.0</span></label>
+      <input type="range" id="sl-dye" min="0.1" max="3" step="0.1" value="1.0"/>
+    </div>
+
+    <h2>VIEW</h2>
+    <div class="ctrl-group">
+      <label>Colormap</label>
+      <select id="sel-cmap">
+        <option value="dye">Dye (colour)</option>
+        <option value="speed">Speed</option>
+        <option value="vorticity">Vorticity</option>
+        <option value="fire">Fire</option>
+      </select>
+    </div>
+
+    <div class="btn-row">
+      <button id="btn-pause">⏸ Pause</button>
+      <button id="btn-reset">↺ Reset</button>
+    </div>
+    <button id="btn-snap">📷 Screenshot</button>
+
+    <div id="stats">Loading…</div>
+    <div class="tip">
+      Drag → inject dye + velocity<br/>
+      Shift+drag → inject velocity only<br/>
+      Right-click → add/remove obstacle
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------------------
+//  Flux JS — same algorithm as fluid.py, adapted for canvas
+//  Grid: (N+2)×(N+2) flat Float32Array, index IX(i,j)=i+(N+2)*j
+// ---------------------------------------------------------------------------
+
+const ITER = 20;    // Gauss-Seidel iterations
+let N = 128;        // resolution (changeable at reset)
+let SIZE, u, v, uPrev, vPrev, obstacles;
+let dyes = [];      // [{density, source, r, g, b}, ...]
+let fluid_dt, fluid_visc, fluid_diff, fluid_vort, fluid_grav;
+let frame = 0;
+let running = true;
+let hue = 0;        // current brush hue (cycles)
+
+function IX(i, j) { return i + (N + 2) * j; }
+
+function initArrays() {
+  SIZE = (N + 2) * (N + 2);
+  u = new Float32Array(SIZE);
+  v = new Float32Array(SIZE);
+  uPrev = new Float32Array(SIZE);
+  vPrev = new Float32Array(SIZE);
+  obstacles = new Uint8Array(SIZE);
+  dyes = [];
+}
+
+function addDye(r, g, b) {
+  dyes.push({ density: new Float32Array(SIZE), source: new Float32Array(SIZE), r, g, b });
+  return dyes.length - 1;
+}
+
+function clearDyes() {
+  dyes.forEach(d => { d.density.fill(0); d.source.fill(0); });
+}
+
+// ------------------------------------------------------------------
+// Boundary conditions
+// ------------------------------------------------------------------
+function setBnd(b, x) {
+  for (let j = 1; j <= N; j++) {
+    if (b === 1) {
+      x[IX(0,j)]   = -x[IX(1,j)];
+      x[IX(N+1,j)] = -x[IX(N,j)];
+    } else {
+      x[IX(0,j)]   =  x[IX(1,j)];
+      x[IX(N+1,j)] =  x[IX(N,j)];
+    }
+    if (b === 2) {
+      x[IX(j,0)]   = -x[IX(j,1)];
+      x[IX(j,N+1)] = -x[IX(j,N)];
+    } else {
+      x[IX(j,0)]   =  x[IX(j,1)];
+      x[IX(j,N+1)] =  x[IX(j,N)];
+    }
+  }
+  x[IX(0,0)]     = 0.5*(x[IX(1,0)]     + x[IX(0,1)]);
+  x[IX(0,N+1)]   = 0.5*(x[IX(1,N+1)]   + x[IX(0,N)]);
+  x[IX(N+1,0)]   = 0.5*(x[IX(N,0)]     + x[IX(N+1,1)]);
+  x[IX(N+1,N+1)] = 0.5*(x[IX(N,N+1)]   + x[IX(N+1,N)]);
+}
+
+// ------------------------------------------------------------------
+// Obstacle boundary enforcement
+// ------------------------------------------------------------------
+function applyObstaclesVel() {
+  for (let i = 1; i <= N; i++) {
+    for (let j = 1; j <= N; j++) {
+      if (obstacles[IX(i,j)]) { u[IX(i,j)] = 0; v[IX(i,j)] = 0; }
+    }
+  }
+}
+
+// ------------------------------------------------------------------
+// Diffusion (Gauss-Seidel)
+// ------------------------------------------------------------------
+function diffuse(b, x, x0, diff, dt) {
+  const a = dt * diff * N * N;
+  if (a === 0) { x.set(x0); return; }
+  const inv = 1.0 / (1.0 + 4.0 * a);
+  for (let k = 0; k < ITER; k++) {
+    for (let i = 1; i <= N; i++) {
+      for (let j = 1; j <= N; j++) {
+        x[IX(i,j)] = (x0[IX(i,j)] + a*(x[IX(i-1,j)]+x[IX(i+1,j)]+x[IX(i,j-1)]+x[IX(i,j+1)])) * inv;
+      }
+    }
+    setBnd(b, x);
+  }
+}
+
+// ------------------------------------------------------------------
+// Pressure projection
+// ------------------------------------------------------------------
+function project(uF, vF, p, div) {
+  const h = 1.0 / N;
+  for (let i = 1; i <= N; i++) {
+    for (let j = 1; j <= N; j++) {
+      div[IX(i,j)] = -0.5*h*(uF[IX(i+1,j)]-uF[IX(i-1,j)]+vF[IX(i,j+1)]-vF[IX(i,j-1)]);
+      p[IX(i,j)] = 0;
+    }
+  }
+  setBnd(0, div);
+  setBnd(0, p);
+  for (let k = 0; k < ITER; k++) {
+    for (let i = 1; i <= N; i++) {
+      for (let j = 1; j <= N; j++) {
+        p[IX(i,j)] = (div[IX(i,j)]+p[IX(i-1,j)]+p[IX(i+1,j)]+p[IX(i,j-1)]+p[IX(i,j+1)])/4;
+      }
+    }
+    setBnd(0, p);
+  }
+  const inv2h = 0.5 / h;
+  for (let i = 1; i <= N; i++) {
+    for (let j = 1; j <= N; j++) {
+      uF[IX(i,j)] -= inv2h*(p[IX(i+1,j)]-p[IX(i-1,j)]);
+      vF[IX(i,j)] -= inv2h*(p[IX(i,j+1)]-p[IX(i,j-1)]);
+    }
+  }
+  setBnd(1, uF);
+  setBnd(2, vF);
+}
+
+// ------------------------------------------------------------------
+// Semi-Lagrangian advection
+// ------------------------------------------------------------------
+function advect(b, d, d0, uF, vF, dt) {
+  const dt0 = dt * N;
+  for (let i = 1; i <= N; i++) {
+    for (let j = 1; j <= N; j++) {
+      let x = i - dt0 * uF[IX(i,j)];
+      let y = j - dt0 * vF[IX(i,j)];
+      if (x < 0.5) x = 0.5; if (x > N+0.5) x = N+0.5;
+      if (y < 0.5) y = 0.5; if (y > N+0.5) y = N+0.5;
+      const i0 = Math.floor(x)|0, i1 = i0+1;
+      const j0 = Math.floor(y)|0, j1 = j0+1;
+      const s1 = x-i0, s0 = 1-s1;
+      const t1 = y-j0, t0 = 1-t1;
+      d[IX(i,j)] = s0*(t0*d0[IX(i0,j0)]+t1*d0[IX(i0,j1)])+s1*(t0*d0[IX(i1,j0)]+t1*d0[IX(i1,j1)]);
+    }
+  }
+  setBnd(b, d);
+}
+
+// ------------------------------------------------------------------
+// Vorticity confinement
+// ------------------------------------------------------------------
+function vorticityConfinement(scale, dt) {
+  const omega = new Float32Array(SIZE);
+  const dw_di = new Float32Array(SIZE);
+  const dw_dj = new Float32Array(SIZE);
+  for (let i = 1; i <= N; i++) {
+    for (let j = 1; j <= N; j++) {
+      // Raw finite differences — no N factor (scale is dimensionless, typically 0-10)
+      omega[IX(i,j)] = 0.5*(v[IX(i+1,j)]-v[IX(i-1,j)]-u[IX(i,j+1)]+u[IX(i,j-1)]);
+    }
+  }
+  for (let i = 1; i <= N; i++) {
+    for (let j = 1; j <= N; j++) {
+      dw_di[IX(i,j)] = 0.5*(Math.abs(omega[IX(i+1,j)])-Math.abs(omega[IX(i-1,j)]));
+      dw_dj[IX(i,j)] = 0.5*(Math.abs(omega[IX(i,j+1)])-Math.abs(omega[IX(i,j-1)]));
+    }
+  }
+  for (let i = 1; i <= N; i++) {
+    for (let j = 1; j <= N; j++) {
+      const norm = Math.sqrt(dw_di[IX(i,j)]**2+dw_dj[IX(i,j)]**2)+1e-5;
+      const nx = dw_di[IX(i,j)]/norm;
+      const ny = dw_dj[IX(i,j)]/norm;
+      u[IX(i,j)] += scale*dt* ny*omega[IX(i,j)];
+      v[IX(i,j)] -= scale*dt* nx*omega[IX(i,j)];
+    }
+  }
+  setBnd(1,u); setBnd(2,v);
+}
+
+// ------------------------------------------------------------------
+// One simulation step
+// ------------------------------------------------------------------
+const _tmp1 = () => new Float32Array(SIZE);
+let _p, _div, _utmp, _vtmp;
+
+function allocTmps() {
+  _p = new Float32Array(SIZE);
+  _div = new Float32Array(SIZE);
+  _utmp = new Float32Array(SIZE);
+  _vtmp = new Float32Array(SIZE);
+}
+
+function step() {
+  const dt = fluid_dt;
+  // Add forces
+  for (let k = 0; k < SIZE; k++) {
+    u[k] += dt * uPrev[k];
+    v[k] += dt * vPrev[k];
+    // gravity: acts in +j direction (screen-down)
+    v[k] += dt * fluid_grav;
+  }
+  uPrev.fill(0); vPrev.fill(0);
+
+  // Diffuse velocity
+  if (fluid_visc > 0) {
+    _utmp.set(u); diffuse(1, u, _utmp, fluid_visc, dt);
+    _vtmp.set(v); diffuse(2, v, _vtmp, fluid_visc, dt);
+    applyObstaclesVel();
+  }
+
+  // Project
+  project(u, v, _p, _div);
+  // Advect velocity
+  _utmp.set(u); _vtmp.set(v);
+  advect(1, u, _utmp, _utmp, _vtmp, dt);
+  advect(2, v, _vtmp, _utmp, _vtmp, dt);
+  applyObstaclesVel();
+  // Project again
+  project(u, v, _p, _div);
+
+  // Vorticity confinement
+  if (fluid_vort > 0) vorticityConfinement(fluid_vort, dt);
+  applyObstaclesVel();
+
+  // Dye step
+  for (const dye of dyes) {
+    for (let k = 0; k < SIZE; k++) dye.density[k] += dt * dye.source[k];
+    dye.source.fill(0);
+    if (fluid_diff > 0) {
+      const tmp = _utmp;
+      tmp.set(dye.density);
+      diffuse(0, dye.density, tmp, fluid_diff, dt);
+    }
+    const tmp = _utmp;
+    tmp.set(dye.density);
+    advect(0, dye.density, tmp, u, v, dt);
+    // Zero inside obstacles
+    for (let k = 0; k < SIZE; k++) {
+      if (obstacles[k]) dye.density[k] = 0;
+      if (dye.density[k] < 0) dye.density[k] = 0;
+    }
+  }
+
+  frame++;
+}
+
+// ------------------------------------------------------------------
+// Injection
+// ------------------------------------------------------------------
+function injectVelocity(cx, cy, radius, vx, vy) {
+  const ic = Math.round(cx * N), jc = Math.round(cy * N);
+  const r = Math.max(1, Math.round(radius * N));
+  for (let i = Math.max(1,ic-r); i <= Math.min(N,ic+r); i++) {
+    for (let j = Math.max(1,jc-r); j <= Math.min(N,jc+r); j++) {
+      const d2 = (i-ic)**2+(j-jc)**2;
+      if (d2 <= r*r) {
+        uPrev[IX(i,j)] += vx;
+        vPrev[IX(i,j)] += vy;
+      }
+    }
+  }
+}
+
+function injectDye(ch, cx, cy, radius, amount) {
+  if (ch >= dyes.length) return;
+  const ic = Math.round(cx * N), jc = Math.round(cy * N);
+  const r = Math.max(1, Math.round(radius * N));
+  for (let i = Math.max(1,ic-r); i <= Math.min(N,ic+r); i++) {
+    for (let j = Math.max(1,jc-r); j <= Math.min(N,jc+r); j++) {
+      const d2 = (i-ic)**2+(j-jc)**2;
+      if (d2 <= r*r) dyes[ch].source[IX(i,j)] += amount;
+    }
+  }
+}
+
+function toggleObstacle(cx, cy, radius) {
+  const ic = Math.round(cx * N), jc = Math.round(cy * N);
+  const r = Math.max(1, Math.round(radius * N));
+  const val = obstacles[IX(ic,jc)] ? 0 : 1;
+  for (let i = Math.max(0,ic-r); i <= Math.min(N+1,ic+r); i++) {
+    for (let j = Math.max(0,jc-r); j <= Math.min(N+1,jc+r); j++) {
+      const d2 = (i-ic)**2+(j-jc)**2;
+      if (d2 <= r*r) obstacles[IX(i,j)] = val;
+    }
+  }
+}
+
+function addObstacleCircle(cx, cy, r) {
+  const ic = Math.round(cx*N)+1, jc = Math.round(cy*N)+1;
+  const ri = Math.round(r*N);
+  for (let i = Math.max(0,ic-ri-1); i <= Math.min(N+1,ic+ri+1); i++) {
+    for (let j = Math.max(0,jc-ri-1); j <= Math.min(N+1,jc+ri+1); j++) {
+      if ((i-ic)**2+(j-jc)**2 <= ri*ri) obstacles[IX(i,j)] = 1;
+    }
+  }
+}
+
+// ------------------------------------------------------------------
+// Colormaps
+// ------------------------------------------------------------------
+function cmapFire(t) {
+  return [Math.min(1,3*t), Math.min(1,Math.max(0,3*t-1)), Math.min(1,Math.max(0,3*t-2))];
+}
+function cmapCool(t) { return [t, 1-t, 1]; }
+function cmapPlasma(t) {
+  return [Math.min(1,Math.max(0,1.66*t+0.14)),
+          Math.min(1,Math.max(0,-0.9*t*t+0.56*t+0.06)),
+          Math.min(1,Math.max(0,-1.45*t+0.82))];
+}
+
+// ------------------------------------------------------------------
+// Canvas rendering
+// ------------------------------------------------------------------
+const canvas = document.getElementById('c');
+let RES = 512; // pixel size
+canvas.width = canvas.height = RES;
+const ctx = canvas.getContext('2d');
+let imgData = ctx.createImageData(RES, RES);
+const SCALE = RES / N;  // pixels per cell (may be non-integer)
+
+function getColormap() {
+  const v = document.getElementById('sel-cmap').value;
+  if (v === 'fire')  return cmapFire;
+  if (v === 'speed') return cmapPlasma;
+  return null;  // null = dye mode
+}
+
+function getSpeed(i, j) {
+  return Math.sqrt(u[IX(i,j)]**2 + v[IX(i,j)]**2);
+}
+function getVorticity(i, j) {
+  return 0.5*(v[IX(i+1,j)]-v[IX(i-1,j)]-u[IX(i,j+1)]+u[IX(i,j-1)]);
+}
+
+let _maxSpeed = 1;
+let _maxVort  = 1;
+
+function renderFrame() {
+  const pix = imgData.data;
+  const cmap = document.getElementById('sel-cmap').value;
+
+  // Recompute normalisation ranges
+  if (cmap === 'speed') {
+    let ms = 0;
+    for (let i = 1; i <= N; i++) for (let j = 1; j <= N; j++) {
+      const s = getSpeed(i,j); if (s > ms) ms = s;
+    }
+    _maxSpeed = ms || 1;
+  } else if (cmap === 'vorticity') {
+    let mv = 0;
+    for (let i = 1; i <= N; i++) for (let j = 1; j <= N; j++) {
+      const o = Math.abs(getVorticity(i,j)); if (o > mv) mv = o;
+    }
+    _maxVort = mv || 1;
+  }
+
+  for (let j = 1; j <= N; j++) {
+    for (let i = 1; i <= N; i++) {
+      let rr, gg, bb;
+      if (cmap === 'dye') {
+        rr = 0; gg = 0; bb = 0;
+        for (const dye of dyes) {
+          const d = Math.min(1, dye.density[IX(i,j)] * 0.5);
+          rr += d * dye.r; gg += d * dye.g; bb += d * dye.b;
+        }
+        rr = Math.min(1,rr); gg = Math.min(1,gg); bb = Math.min(1,bb);
+      } else if (cmap === 'speed') {
+        const t = getSpeed(i,j) / _maxSpeed;
+        [rr,gg,bb] = cmapPlasma(t);
+      } else if (cmap === 'vorticity') {
+        const t = (getVorticity(i,j) / _maxVort * 0.5 + 0.5);
+        [rr,gg,bb] = cmapCool(t);
+      } else { // fire
+        let d = 0;
+        for (const dye of dyes) d = Math.max(d, dye.density[IX(i,j)]);
+        const t = Math.min(1, d * 0.5);
+        [rr,gg,bb] = cmapFire(t);
+      }
+
+      // Obstacle overlay
+      if (obstacles[IX(i,j)]) { rr = 0.25; gg = 0.25; bb = 0.28; }
+
+      // Fill SCALE×SCALE block
+      const pi = (i-1) * SCALE | 0;
+      const pj = (j-1) * SCALE | 0;
+      const pw = Math.ceil(SCALE);
+      for (let dy = 0; dy < pw && pj+dy < RES; dy++) {
+        for (let dx = 0; dx < pw && pi+dx < RES; dx++) {
+          const idx4 = ((pj+dy)*RES + (pi+dx))*4;
+          pix[idx4]   = (rr*255)|0;
+          pix[idx4+1] = (gg*255)|0;
+          pix[idx4+2] = (bb*255)|0;
+          pix[idx4+3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+// ------------------------------------------------------------------
+// Scene presets
+// ------------------------------------------------------------------
+function hsvToRgb(h, s, v) {
+  const i = Math.floor(h*6), f = h*6-i, p = v*(1-s), q = v*(1-f*s), t = v*(1-(1-f)*s);
+  switch(i%6){
+    case 0: return [v,t,p]; case 1: return [q,v,p]; case 2: return [p,v,t];
+    case 3: return [p,q,v]; case 4: return [t,p,v]; case 5: return [v,p,q];
+  }
+  return [0,0,0];
+}
+
+// Per-scene auto-inject callbacks (called each frame by the anim loop)
+let sceneInjectFn = null;
+
+function setupScene(name) {
+  initArrays();
+  allocTmps();
+  frame = 0;
+  fluid_dt   = 0.15;
+  fluid_visc = parseFloat(document.getElementById('sl-visc').value);
+  fluid_diff = parseFloat(document.getElementById('sl-diff').value);
+  fluid_vort = parseFloat(document.getElementById('sl-vort').value);
+  fluid_grav = parseFloat(document.getElementById('sl-grav').value);
+
+  if (name === 'smoke') {
+    document.getElementById('sl-vort').value = '3'; fluid_vort = 3;
+    document.getElementById('lbl-vort').textContent = '3.0';
+    document.getElementById('sl-grav').value = '-0.08'; fluid_grav = -0.08;
+    document.getElementById('lbl-grav').textContent = '-0.08';
+    addDye(0.9, 0.9, 0.9);
+    addDye(1.0, 0.7, 0.3);
+    sceneInjectFn = (fr) => {
+      const t = fr * 0.05;
+      const ox = 0.1 * Math.sin(t);
+      injectDye(0, 0.35+ox, 0.95, 0.04, 1.5);
+      injectVelocity(0.35+ox, 0.95, 0.04, 0, -2.5);
+      injectDye(1, 0.65-ox, 0.95, 0.04, 1.5);
+      injectVelocity(0.65-ox, 0.95, 0.04, 0, -2.5);
+    };
+  } else if (name === 'ink') {
+    document.getElementById('sl-grav').value = '0.12'; fluid_grav = 0.12;
+    document.getElementById('lbl-grav').textContent = '0.12';
+    document.getElementById('sl-vort').value = '1.5'; fluid_vort = 1.5;
+    document.getElementById('lbl-vort').textContent = '1.5';
+    addDye(1.0, 0.15, 0.15);
+    addDye(0.15, 0.6, 1.0);
+    addDye(0.15, 0.95, 0.4);
+    sceneInjectFn = (fr) => {
+      const t = fr * 0.04;
+      const cx = [0.3, 0.5, 0.7];
+      for (let i = 0; i < 3; i++) {
+        const x = cx[i] + 0.04*Math.sin(t + i*2.1);
+        injectDye(i, x, 0.05, 0.035, 1.2);
+        injectVelocity(x, 0.05, 0.035, 0, 1.5);
+      }
+    };
+  } else if (name === 'wind') {
+    document.getElementById('sl-vort').value = '4'; fluid_vort = 4;
+    document.getElementById('lbl-vort').textContent = '4.0';
+    document.getElementById('sl-grav').value = '0'; fluid_grav = 0;
+    document.getElementById('lbl-grav').textContent = '0.00';
+    addObstacleCircle(0.4, 0.5, 0.09);
+    addDye(0.3, 0.7, 1.0);
+    // Prime uniform rightward flow
+    for (let i = 0; i <= N+1; i++) for (let j = 0; j <= N+1; j++) u[IX(i,j)] = 1.5;
+    // Zero inside obstacles
+    for (let k = 0; k < SIZE; k++) if (obstacles[k]) { u[k]=0; v[k]=0; }
+    let pertDone = false;
+    sceneInjectFn = (fr) => {
+      // Continuous left inflow
+      for (let j = 1; j <= N; j++) { u[IX(1,j)] = 1.5; u[IX(0,j)] = 1.5; }
+      injectDye(0, 0.05, 0.5, 0.08, 2.0);
+      injectVelocity(0.05, 0.5, 0.08, 2.0, 0);
+      if (!pertDone && fr === 5) { injectVelocity(0.4, 0.52, 0.03, 0, 0.5); pertDone = true; }
+    };
+  } else if (name === 'vortex') {
+    document.getElementById('sl-vort').value = '0'; fluid_vort = 0;
+    document.getElementById('lbl-vort').textContent = '0.0';
+    document.getElementById('sl-grav').value = '0'; fluid_grav = 0;
+    document.getElementById('lbl-grav').textContent = '0.00';
+    addDye(1.0, 0.4, 0.1);
+    addDye(0.1, 0.5, 1.0);
+    // Seed two Rankine vortices
+    for (let i = 0; i <= N+1; i++) {
+      for (let j = 0; j <= N+1; j++) {
+        const strength = 3.0;
+        for (const [cx,cy,sign] of [[0.35*N,0.5*N,1],[ 0.65*N,0.5*N,-1]]) {
+          const dx = i-cx, dy = j-cy;
+          const r2 = dx*dx+dy*dy+0.01;
+          u[IX(i,j)] -= sign*strength*dy/r2;
+          v[IX(i,j)] += sign*strength*dx/r2;
+        }
+      }
+    }
+    // Cap speed
+    for (let k = 0; k < SIZE; k++) {
+      const spd = Math.sqrt(u[k]**2+v[k]**2);
+      if (spd > 5) { u[k]=u[k]/spd*5; v[k]=v[k]/spd*5; }
+    }
+    sceneInjectFn = (fr) => {
+      const t = fr * 0.04;
+      injectDye(0, 0.35+0.01*Math.sin(t*5), 0.5, 0.06, 0.8);
+      injectDye(1, 0.65+0.01*Math.sin(t*5+1), 0.5, 0.06, 0.8);
+    };
+  } else if (name === 'fire') {
+    document.getElementById('sl-vort').value = '5'; fluid_vort = 5;
+    document.getElementById('lbl-vort').textContent = '5.0';
+    document.getElementById('sl-grav').value = '-0.15'; fluid_grav = -0.15;
+    document.getElementById('lbl-grav').textContent = '-0.15';
+    document.getElementById('sel-cmap').value = 'fire';
+    addDye(1.0, 0.5, 0.05);
+    addDye(0.9, 0.9, 0.9);
+    sceneInjectFn = (fr) => {
+      const t = fr * 0.07;
+      const w = 0.06 + 0.02*Math.sin(t*3.7);
+      const cx = 0.5 + 0.03*Math.sin(t*2.1);
+      injectDye(0, cx, 0.93, w, 2.0);
+      injectVelocity(cx, 0.93, w, 0, -4.0);
+      injectDye(1, cx, 0.9, w*0.6, 0.5);
+      injectVelocity(cx, 0.93, w*0.5, 0.8*Math.sin(t*7.3), 0);
+    };
+  } else { // blank
+    addDye(1, 1, 1);
+    sceneInjectFn = null;
+  }
+}
+
+// ------------------------------------------------------------------
+// Mouse interaction
+// ------------------------------------------------------------------
+let mouseDown = false, lastMX = -1, lastMY = -1, rightBtn = false;
+let brushDyeCh = 0;
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+function canvasPosToGrid(e) {
+  const rect = canvas.getBoundingClientRect();
+  const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  const cx = px / RES, cy = py / RES;
+  return { cx, cy };
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  mouseDown = true;
+  rightBtn = e.button === 2;
+  const {cx, cy} = canvasPosToGrid(e);
+  if (rightBtn) {
+    const r = parseFloat(document.getElementById('sl-brush').value) * 1.5;
+    toggleObstacle(cx, cy, r);
+  }
+  lastMX = cx; lastMY = cy;
+  e.preventDefault();
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!mouseDown) return;
+  const {cx, cy} = canvasPosToGrid(e);
+  const brush = parseFloat(document.getElementById('sl-brush').value);
+  const dyeAmt = parseFloat(document.getElementById('sl-dye').value);
+
+  if (!rightBtn) {
+    const dvx = (cx - lastMX) * N * 8;
+    const dvy = (cy - lastMY) * N * 8;
+    injectVelocity(cx, cy, brush, dvx, dvy);
+    if (!e.shiftKey) {
+      // Cycle hue on each new press
+      const [r,g,b] = hsvToRgb(hue % 1, 0.85, 1.0);
+      if (brushDyeCh >= dyes.length) {
+        addDye(r, g, b);
+      } else {
+        // Update dye colour to current hue
+        dyes[brushDyeCh].r = r;
+        dyes[brushDyeCh].g = g;
+        dyes[brushDyeCh].b = b;
+      }
+      injectDye(brushDyeCh, cx, cy, brush, dyeAmt);
+      hue += 0.0008;
+    }
+  }
+  lastMX = cx; lastMY = cy;
+});
+
+canvas.addEventListener('mouseup', () => {
+  mouseDown = false;
+  if (!rightBtn) hue += 0.05;
+});
+canvas.addEventListener('mouseleave', () => { mouseDown = false; });
+
+// Touch support
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const t = e.touches[0];
+  const me = { clientX: t.clientX, clientY: t.clientY, shiftKey: false, button: 0 };
+  if (!mouseDown) { mouseDown = true; const {cx,cy}=canvasPosToGrid(me); lastMX=cx; lastMY=cy; }
+  canvas.dispatchEvent(new MouseEvent('mousemove', me));
+}, {passive: false});
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault(); mouseDown = true;
+  const t = e.touches[0];
+  const {cx,cy} = canvasPosToGrid({clientX:t.clientX,clientY:t.clientY});
+  lastMX=cx; lastMY=cy;
+}, {passive: false});
+canvas.addEventListener('touchend', () => { mouseDown=false; hue+=0.05; });
+
+// ------------------------------------------------------------------
+// UI controls
+// ------------------------------------------------------------------
+function bindSlider(id, lblId, varName) {
+  const sl = document.getElementById(id);
+  const lbl = document.getElementById(lblId);
+  sl.addEventListener('input', () => {
+    const v = parseFloat(sl.value);
+    lbl.textContent = v.toFixed(Math.abs(v) < 0.01 && v !== 0 ? 5 : 2);
+    if (varName === 'visc') fluid_visc = v;
+    else if (varName === 'diff') fluid_diff = v;
+    else if (varName === 'vort') fluid_vort = v;
+    else if (varName === 'grav') fluid_grav = v;
+  });
+}
+
+bindSlider('sl-visc', 'lbl-visc', 'visc');
+bindSlider('sl-diff', 'lbl-diff', 'diff');
+bindSlider('sl-vort', 'lbl-vort', 'vort');
+bindSlider('sl-grav', 'lbl-grav', 'grav');
+
+document.getElementById('sl-brush').addEventListener('input', e => {
+  document.getElementById('lbl-brush').textContent = parseFloat(e.target.value).toFixed(3);
+});
+document.getElementById('sl-dye').addEventListener('input', e => {
+  document.getElementById('lbl-dye').textContent = parseFloat(e.target.value).toFixed(1);
+});
+
+document.getElementById('sel-scene').addEventListener('change', (e) => {
+  setupScene(e.target.value);
+});
+
+document.getElementById('btn-pause').addEventListener('click', () => {
+  running = !running;
+  document.getElementById('btn-pause').textContent = running ? '⏸ Pause' : '▶ Play';
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  const name = document.getElementById('sel-scene').value;
+  setupScene(name);
+});
+
+document.getElementById('btn-snap').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.download = `flux_frame_${frame}.png`;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+});
+
+// ------------------------------------------------------------------
+// Stats display
+// ------------------------------------------------------------------
+let lastFrameTime = performance.now();
+let fps = 0;
+let fpsSmooth = 0;
+
+function updateStats() {
+  const now = performance.now();
+  fps = 1000 / (now - lastFrameTime);
+  fpsSmooth = 0.9 * fpsSmooth + 0.1 * fps;
+  lastFrameTime = now;
+
+  let maxSpeed = 0;
+  for (let i = 1; i <= N; i++) for (let j = 1; j <= N; j++) {
+    const s = Math.sqrt(u[IX(i,j)]**2+v[IX(i,j)]**2);
+    if (s > maxSpeed) maxSpeed = s;
+  }
+  document.getElementById('stats').innerHTML =
+    `fps: ${fpsSmooth.toFixed(0)}<br>` +
+    `frame: ${frame}<br>` +
+    `grid: ${N}×${N}<br>` +
+    `max speed: ${maxSpeed.toFixed(2)}<br>` +
+    `dye channels: ${dyes.length}<br>` +
+    `vort_scale: ${fluid_vort.toFixed(1)}<br>` +
+    `gravity: ${fluid_grav.toFixed(2)}`;
+}
+
+// ------------------------------------------------------------------
+// Main animation loop
+// ------------------------------------------------------------------
+function loop() {
+  requestAnimationFrame(loop);
+  if (!running) return;
+
+  // Auto-inject from scene preset
+  if (sceneInjectFn) sceneInjectFn(frame);
+
+  step();
+  renderFrame();
+
+  if (frame % 15 === 0) updateStats();
+}
+
+// ------------------------------------------------------------------
+// Boot
+// ------------------------------------------------------------------
+setupScene('smoke');
+loop();
+</script>
+</body>
+</html>
