@@ -330,6 +330,13 @@ class Repository:
             parent_tree = self.objects.read_commit(parent).tree
             if parent_tree == tree_sha and not allow_empty:
                 raise RepoError("nothing to commit, working tree matches HEAD")
+        elif not parent and not extra_parents and not allow_empty:
+            empty_tree = self.objects.write_tree([])
+            if tree_sha == empty_tree:
+                raise RepoError(
+                    "nothing to commit (create/copy files and use "
+                    "'plm add' to track)"
+                )
         ts = timestamp if timestamp is not None else int(time.time())
         commit_obj = Commit(
             tree=tree_sha,

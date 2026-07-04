@@ -42,7 +42,7 @@ def run_git(args: list[str], cwd: str, env_extra: dict | None = None) -> str:
 
 
 def git_init(cwd: str) -> None:
-    run_git(["init", "-q"], cwd)
+    run_git(["-c", "init.defaultBranch=main", "init", "-q"], cwd)
 
 
 def git_hash_object(cwd: str, path: str) -> str:

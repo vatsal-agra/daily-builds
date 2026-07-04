@@ -115,6 +115,34 @@ or `ValueError: not enough values to unpack` instead of a clear message.
 **Fix:** `ObjectStore.read_raw` now catches `zlib.error` and malformed-header
 cases and re-raises as a `ValueError` with the offending sha in the message.
 
+## 9. HIGH (found during Phase 4, stretch feature) — commit message could break out of the `<script>` block in the HTML visualizer
+
+`viz.py` embedded `json.dumps(data)` directly inside a `<script>` tag. A
+commit message containing the literal text `</script>` (attacker-controlled:
+anyone who can commit to a repo controls this text) closes the script block
+early when the browser's HTML tokenizer parses it — an HTML-injection/XSS
+primitive in a file the user might open straight from a cloned repo.
+
+**Fix:** escape `</` to `<\/` in the serialized JSON before embedding (valid
+inside a JS string literal, decodes back to the same string via `\/`'s
+standard JSON escape). Added
+`test_script_tag_in_commit_message_cannot_break_out_of_script_block`.
+
+## 10. MEDIUM (found during Phase 4 polish) — empty initial commit was allowed, unlike real Git
+
+`plm commit` on a brand new repo with nothing ever staged happily created an
+empty root commit — the "nothing to commit" guard only compared against a
+parent's tree, so it never fired when there was no parent yet. Real Git
+refuses this by default (`nothing to commit (create/copy files and use
+"git add" to track)`), and there was no reason for Palimpsest to be looser
+here.
+
+**Fix:** `commit()` now also checks, when there is no parent, whether the
+built tree is the empty tree, and rejects it unless `allow_empty=True` (the
+CLI already exposes `--allow-empty`). Added
+`test_empty_initial_commit_rejected_like_real_git` and
+`test_allow_empty_permits_initial_empty_commit`.
+
 ## What I checked and did *not* change
 
 - Myers diff / unified diff: already differentially verified against a

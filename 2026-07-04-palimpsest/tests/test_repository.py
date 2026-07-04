@@ -133,6 +133,14 @@ class TestCommit(TempRepoTestCase):
         c2 = self.repo.objects.read_commit(sha2)
         self.assertEqual(c2.parents, [sha1])
 
+    def test_empty_initial_commit_rejected_like_real_git(self):
+        with self.assertRaises(RepoError):
+            self.repo.commit("empty initial commit")
+
+    def test_allow_empty_permits_initial_empty_commit(self):
+        sha = self.repo.commit("empty ok", allow_empty=True, timestamp=1000)
+        self.assertIsNotNone(sha)
+
     def test_empty_message_rejected(self):
         self.write("a.txt", "x\n")
         self.repo.add(["a.txt"])

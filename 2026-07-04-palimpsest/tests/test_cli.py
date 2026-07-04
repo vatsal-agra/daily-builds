@@ -128,6 +128,43 @@ class TestCliWorkflow(CliTestCase):
         code, out, _ = self.run_cli("log")
         self.assertIn("remove a", out)
 
+    def test_merge_cli_round_trip(self):
+        self.run_cli("init", ".")
+        with open("f.txt", "w") as f:
+            f.write("line1\nline2\nline3\n")
+        self.run_cli("add", "f.txt")
+        self.run_cli("commit", "-m", "base")
+        self.run_cli("branch", "feature")
+        self.run_cli("checkout", "feature")
+        with open("f.txt", "w") as f:
+            f.write("line1\nline2\nTHEIRS\n")
+        self.run_cli("add", "f.txt")
+        self.run_cli("commit", "-m", "feature change")
+        self.run_cli("checkout", "main")
+        with open("f.txt", "w") as f:
+            f.write("OURS\nline2\nline3\n")
+        self.run_cli("add", "f.txt")
+        self.run_cli("commit", "-m", "main change")
+        code, out, _ = self.run_cli("merge", "feature")
+        self.assertEqual(code, 0)
+        self.assertIn("Merge made", out)
+        with open("f.txt") as f:
+            self.assertEqual(f.read(), "OURS\nline2\nTHEIRS\n")
+
+    def test_viz_writes_html_file(self):
+        self.run_cli("init", ".")
+        with open("a.txt", "w") as f:
+            f.write("hi\n")
+        self.run_cli("add", "a.txt")
+        self.run_cli("commit", "-m", "first")
+        code, out, _ = self.run_cli("viz", "-o", "out.html")
+        self.assertEqual(code, 0)
+        self.assertTrue(os.path.exists("out.html"))
+        with open("out.html") as f:
+            content = f.read()
+        self.assertIn("<html>", content)
+        self.assertIn("first", content)
+
     def test_checkout_unknown_branch_reports_error(self):
         self.run_cli("init", ".")
         with open("a.txt", "w") as f:
