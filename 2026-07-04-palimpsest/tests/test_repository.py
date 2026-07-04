@@ -149,6 +149,72 @@ class TestCommit(TempRepoTestCase):
         self.assertEqual(set(files.keys()), {"dir/sub/deep.txt", "top.txt"})
 
 
+class TestDeletionStaging(TempRepoTestCase):
+    def test_add_stages_deletion_of_tracked_file(self):
+        self.write("a.txt", "hi\n")
+        self.repo.add(["a.txt"])
+        self.repo.commit("add a", timestamp=1000)
+        os.remove(os.path.join(self.root, "a.txt"))
+        staged = self.repo.add(["a.txt"])
+        self.assertEqual(staged, ["a.txt"])
+        st = self.repo.status()
+        self.assertIn("a.txt", st["staged_deleted"])
+        sha = self.repo.commit("remove a", timestamp=1001)
+        files = self.repo.flatten_tree(self.repo.objects.read_commit(sha).tree)
+        self.assertNotIn("a.txt", files)
+
+    def test_add_directory_stages_deletions_within_it(self):
+        self.write("dir/a.txt", "a\n")
+        self.write("dir/b.txt", "b\n")
+        self.repo.add(["dir"])
+        self.repo.commit("add dir", timestamp=1000)
+        os.remove(os.path.join(self.root, "dir", "a.txt"))
+        self.repo.add(["dir"])
+        st = self.repo.status()
+        self.assertIn("dir/a.txt", st["staged_deleted"])
+        self.assertNotIn("dir/b.txt", st["staged_deleted"])
+
+    def test_add_truly_nonexistent_path_still_raises(self):
+        with self.assertRaises(RepoError):
+            self.repo.add(["never_existed.txt"])
+
+
+class TestSymlinks(TempRepoTestCase):
+    def test_symlink_stores_link_target_not_referent_content(self):
+        self.write("a.txt", "real file content\n")
+        os.symlink("a.txt", os.path.join(self.root, "link_to_a"))
+        self.repo.add(["a.txt", "link_to_a"])
+        entries = {e.path: e for e in self.repo.read_index()}
+        self.assertNotEqual(entries["a.txt"].sha, entries["link_to_a"].sha)
+        self.assertEqual(self.repo.objects.read_blob(entries["link_to_a"].sha), b"a.txt")
+
+    def test_checkout_recreates_symlink(self):
+        self.write("a.txt", "content\n")
+        os.symlink("a.txt", os.path.join(self.root, "link_to_a"))
+        self.repo.add(["a.txt", "link_to_a"])
+        self.repo.commit("add symlink", timestamp=1000)
+        link_path = os.path.join(self.root, "link_to_a")
+        os.remove(link_path)
+        self.write("a.txt", "content\n")  # rewrite so working tree is clean
+        self.repo.checkout("main", force=True)
+        self.assertTrue(os.path.islink(link_path))
+        self.assertEqual(os.readlink(link_path), "a.txt")
+
+
+class TestPathCollisions(TempRepoTestCase):
+    def test_file_directory_path_collision_raises_clean_error(self):
+        self.write("conf/settings.txt", "x\n")
+        self.repo.add(["conf"])
+        self.repo.commit("first", timestamp=1000)
+        import shutil
+
+        shutil.rmtree(os.path.join(self.root, "conf"))
+        self.write("conf", "collision\n")
+        self.repo.add(["conf"])
+        with self.assertRaises(RepoError):
+            self.repo.commit("collide", timestamp=1001)
+
+
 class TestLog(TempRepoTestCase):
     def test_log_empty_repo(self):
         self.assertEqual(self.repo.log(), [])

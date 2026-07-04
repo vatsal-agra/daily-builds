@@ -100,6 +100,34 @@ class TestCliWorkflow(CliTestCase):
         self.assertNotEqual(code, 0)
         self.assertIn("not a palimpsest repository", err)
 
+    def test_diff_binary_file_reports_differ_not_garbage(self):
+        self.run_cli("init", ".")
+        with open("bin.dat", "wb") as f:
+            f.write(b"a\x00b\xffc")
+        self.run_cli("add", "bin.dat")
+        self.run_cli("commit", "-m", "add binary")
+        with open("bin.dat", "wb") as f:
+            f.write(b"a\x00b\xffCHANGED")
+        code, out, _ = self.run_cli("diff")
+        self.assertEqual(code, 0)
+        self.assertIn("Binary files", out)
+        self.assertIn("differ", out)
+        self.assertNotIn("\x00", out)
+
+    def test_delete_then_add_then_commit_round_trip(self):
+        self.run_cli("init", ".")
+        with open("a.txt", "w") as f:
+            f.write("hi\n")
+        self.run_cli("add", "a.txt")
+        self.run_cli("commit", "-m", "add a")
+        os.remove("a.txt")
+        code, out, _ = self.run_cli("add", "a.txt")
+        self.assertEqual(code, 0)
+        code, out, _ = self.run_cli("commit", "-m", "remove a")
+        self.assertEqual(code, 0)
+        code, out, _ = self.run_cli("log")
+        self.assertIn("remove a", out)
+
     def test_checkout_unknown_branch_reports_error(self):
         self.run_cli("init", ".")
         with open("a.txt", "w") as f:

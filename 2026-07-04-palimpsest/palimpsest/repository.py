@@ -37,8 +37,6 @@ class IndexEntry:
     path: str  # posix-style, relative to repo root
     mode: str
     sha: str
-    mtime: float = 0.0
-    size: int = 0
 
 
 def find_repo_root(start: str = ".") -> str:
@@ -196,28 +194,54 @@ class Repository:
         return sorted(out)
 
     def add(self, paths: list[str]) -> list[str]:
-        """Stage the given paths (files or directories). Returns staged paths."""
+        """Stage the given paths (files or directories).
+
+        Mirrors `git add`'s handling of removals: a path that no longer
+        exists on disk but is still tracked in the index (directly, or as
+        a directory prefix) has its removal staged rather than erroring.
+        Returns the list of paths that were staged (added/modified or
+        staged-as-deleted).
+        """
         entries = {e.path: e for e in self.read_index()}
-        staged = []
+        staged: list[str] = []
         targets: list[str] = []
+        to_remove: list[str] = []
         for p in paths:
             abspath = os.path.join(self.root, p)
             if os.path.isdir(abspath):
+                present = set()
                 for dirpath, dirnames, filenames in os.walk(abspath):
                     dirnames[:] = [d for d in dirnames if d != PLM_DIR]
                     for fn in filenames:
-                        targets.append(self._relpath(os.path.join(dirpath, fn)))
-            elif os.path.isfile(abspath):
+                        rel = self._relpath(os.path.join(dirpath, fn))
+                        targets.append(rel)
+                        present.add(rel)
+                rel_dir = self._relpath(abspath)
+                prefix = "" if rel_dir == "." else rel_dir + "/"
+                for tracked in entries:
+                    if tracked.startswith(prefix) and tracked not in present:
+                        to_remove.append(tracked)
+            elif os.path.isfile(abspath) or os.path.islink(abspath):
                 targets.append(self._relpath(abspath))
             else:
-                raise RepoError(f"pathspec did not match any files: {p!r}")
+                rel = self._relpath(abspath)
+                if rel in entries:
+                    to_remove.append(rel)
+                else:
+                    raise RepoError(f"pathspec did not match any files: {p!r}")
         for rel in targets:
             full = os.path.join(self.root, rel)
-            with open(full, "rb") as f:
-                data = f.read()
+            if os.path.islink(full):
+                data = os.readlink(full).encode("utf-8")
+            else:
+                with open(full, "rb") as f:
+                    data = f.read()
             sha = self.objects.write_blob(data)
             mode = mode_for_path(full)
             entries[rel] = IndexEntry(path=rel, mode=mode, sha=sha)
+            staged.append(rel)
+        for rel in to_remove:
+            entries.pop(rel, None)
             staged.append(rel)
         self.write_index(list(entries.values()))
         return staged
@@ -242,9 +266,21 @@ class Repository:
         for path, (mode, sha) in flat.items():
             parts = path.split("/")
             node = root
-            for part in parts[:-1]:
+            for i, part in enumerate(parts[:-1]):
+                seen = "/".join(parts[: i + 1])
+                if part in node and not isinstance(node[part], dict):
+                    raise RepoError(
+                        f"{seen!r} cannot be both a file and a directory "
+                        "— remove the old entries first"
+                    )
                 node = node.setdefault(part, {})
-            node[parts[-1]] = (mode, sha)
+            last = parts[-1]
+            if last in node and isinstance(node[last], dict):
+                raise RepoError(
+                    f"{path!r} cannot be both a file and a directory "
+                    "— remove the old entries first"
+                )
+            node[last] = (mode, sha)
 
         def build(node: dict) -> str:
             tree_entries = []
@@ -322,7 +358,6 @@ class Repository:
         sha = start_sha if start_sha is not None else self.head_commit()
         out = []
         seen = set()
-        stack = [sha] if sha else []
         # First-parent-only linear log (matches typical `git log` default view).
         cur = sha
         while cur and cur not in seen:
@@ -444,11 +479,16 @@ class Repository:
             full = os.path.join(self.root, path)
             os.makedirs(os.path.dirname(full), exist_ok=True)
             data = self.objects.read_blob(sha)
-            with open(full, "wb") as f:
-                f.write(data)
-            if mode == MODE_EXEC:
-                st = os.stat(full)
-                os.chmod(full, st.st_mode | 0o111)
+            if mode == MODE_SYMLINK:
+                if os.path.lexists(full):
+                    os.remove(full)
+                os.symlink(data.decode("utf-8"), full)
+            else:
+                with open(full, "wb") as f:
+                    f.write(data)
+                if mode == MODE_EXEC:
+                    st = os.stat(full)
+                    os.chmod(full, st.st_mode | 0o111)
             new_index.append(IndexEntry(path=path, mode=mode, sha=sha))
         self.write_index(new_index)
 
@@ -459,13 +499,12 @@ class Repository:
         return target_sha
 
     def _prune_empty_dirs(self) -> None:
-        for dirpath, dirnames, filenames in os.walk(self.root, topdown=False):
-            if os.path.abspath(dirpath) == os.path.abspath(self.plm_dir):
-                continue
-            if PLM_DIR in dirpath.split(os.sep):
-                continue
-            if dirpath == self.root:
-                continue
+        candidates = []
+        for dirpath, dirnames, filenames in os.walk(self.root, topdown=True):
+            dirnames[:] = [d for d in dirnames if d != PLM_DIR]
+            if dirpath != self.root:
+                candidates.append(dirpath)
+        for dirpath in sorted(candidates, key=len, reverse=True):
             try:
                 if not os.listdir(dirpath):
                     os.rmdir(dirpath)

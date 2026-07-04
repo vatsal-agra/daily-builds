@@ -78,8 +78,14 @@ class ObjectStore:
         if not os.path.exists(path):
             raise KeyError(f"object not found: {sha}")
         with open(path, "rb") as f:
-            store = zlib.decompress(f.read())
-        header, _, payload = store.partition(b"\0")
+            raw = f.read()
+        try:
+            store = zlib.decompress(raw)
+        except zlib.error as e:
+            raise ValueError(f"corrupt object {sha}: {e}") from e
+        header, sep, payload = store.partition(b"\0")
+        if not sep:
+            raise ValueError(f"corrupt object {sha}: missing header separator")
         obj_type, _, _size = header.partition(b" ")
         return obj_type.decode("ascii"), payload
 

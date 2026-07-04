@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
+from typing import Optional
 
 from . import objects as objmod
 from .diffalgo import unified_diff
@@ -14,6 +16,16 @@ from .repository import NotARepository, RepoError, Repository, find_repo_root
 def _repo_from_cwd() -> Repository:
     root = find_repo_root(".")
     return Repository(root)
+
+
+def _format_commit_date(ts: int, tz: str) -> str:
+    sign = 1 if tz.startswith("+") else -1
+    offset = sign * (int(tz[1:3]) * 3600 + int(tz[3:5]) * 60)
+    return time.strftime("%a %b %-d %H:%M:%S %Y", time.gmtime(ts + offset)) + f" {tz}"
+
+
+def _is_binary(data: bytes) -> bool:
+    return b"\0" in data[:8000]
 
 
 def _lines(data: bytes) -> tuple[list[str], bool]:
@@ -142,7 +154,7 @@ def cmd_log(args: argparse.Namespace) -> int:
         for p in commit.parents[1:]:
             print(f"merge:  {p[:8]}")
         print(f"Author: {commit.author_name} <{commit.author_email}>")
-        print(f"Date:   {commit.author_time} {commit.author_tz}")
+        print(f"Date:   {_format_commit_date(commit.author_time, commit.author_tz)}")
         print()
         for line in commit.message.rstrip("\n").split("\n"):
             print(f"    {line}")
@@ -178,35 +190,26 @@ def cmd_checkout(args: argparse.Namespace) -> int:
     return 0
 
 
-def _read_side(repo: Repository, spec: str, path: str) -> tuple[list[str], bool, bool]:
-    """Return (lines, had_trailing_newline, exists) for `spec` on `path`.
-
-    spec is one of "worktree", "index", or a resolved commit sha.
-    """
+def _read_side_bytes(repo: Repository, spec: str, path: str) -> Optional[bytes]:
+    """Return raw file bytes for `spec` on `path`, or None if it doesn't exist."""
     if spec == "worktree":
         full = os.path.join(repo.root, path)
         if not os.path.exists(full):
-            return [], True, False
+            return None
         with open(full, "rb") as f:
-            data = f.read()
-        lines, nl = _lines(data)
-        return lines, nl, True
+            return f.read()
     if spec == "index":
         for e in repo.read_index():
             if e.path == path:
-                data = repo.objects.read_blob(e.sha)
-                lines, nl = _lines(data)
-                return lines, nl, True
-        return [], True, False
+                return repo.objects.read_blob(e.sha)
+        return None
     # commit sha
     commit = repo.objects.read_commit(spec)
     files = repo.flatten_tree(commit.tree)
     if path not in files:
-        return [], True, False
+        return None
     _mode, sha = files[path]
-    data = repo.objects.read_blob(sha)
-    lines, nl = _lines(data)
-    return lines, nl, True
+    return repo.objects.read_blob(sha)
 
 
 def cmd_diff(args: argparse.Namespace) -> int:
@@ -253,15 +256,18 @@ def cmd_diff(args: argparse.Namespace) -> int:
     paths = sorted(all_paths_for(left) | all_paths_for(right))
     out_chunks = []
     for path in paths:
-        if left is None:
-            a_lines, a_nl, a_exists = [], True, False
-        else:
-            a_lines, a_nl, a_exists = _read_side(repo, left, path)
-        b_lines, b_nl, b_exists = _read_side(repo, right, path)
-        if a_lines == b_lines and a_exists == b_exists:
+        a_raw = _read_side_bytes(repo, left, path) if left is not None else None
+        b_raw = _read_side_bytes(repo, right, path)
+        a_exists, b_exists = a_raw is not None, b_raw is not None
+        if a_raw == b_raw:
             continue
         label_a = f"{left_label}:{path}" if a_exists else "/dev/null"
         label_b = f"{right_label}:{path}" if b_exists else "/dev/null"
+        if _is_binary(a_raw or b"") or _is_binary(b_raw or b""):
+            out_chunks.append(f"Binary files {label_a} and {label_b} differ\n")
+            continue
+        a_lines, _nl = _lines(a_raw or b"") if a_exists else ([], True)
+        b_lines, _nl = _lines(b_raw or b"") if b_exists else ([], True)
         diff_text = unified_diff(a_lines, b_lines, label_a, label_b)
         if diff_text:
             out_chunks.append(diff_text)

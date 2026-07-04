@@ -55,6 +55,28 @@ class TestObjectStore(unittest.TestCase):
             with self.assertRaises(KeyError):
                 store.read_blob("0" * 40)
 
+    def test_corrupt_zlib_stream_raises_clean_value_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = ObjectStore(os.path.join(d, "objects"))
+            sha = store.write_blob(b"content")
+            path = store._path(sha)
+            with open(path, "wb") as f:
+                f.write(b"not a valid zlib stream at all")
+            with self.assertRaises(ValueError):
+                store.read_blob(sha)
+
+    def test_missing_header_separator_raises_clean_value_error(self):
+        import zlib
+
+        with tempfile.TemporaryDirectory() as d:
+            store = ObjectStore(os.path.join(d, "objects"))
+            sha = store.write_blob(b"content")
+            path = store._path(sha)
+            with open(path, "wb") as f:
+                f.write(zlib.compress(b"no header separator here"))
+            with self.assertRaises(ValueError):
+                store.read_blob(sha)
+
 
 class TestTreeEncoding(unittest.TestCase):
     def test_round_trip(self):
