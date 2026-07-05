@@ -5,10 +5,11 @@ tokenizer, a real from-scratch Porter stemmer, an inverted index, a
 boolean/phrase query engine, BM25 ranking, and BK-tree fuzzy matching — no
 search library anywhere in the stack.
 
-**Status: Phase 4 (stretch + polish) complete.** All 4 required features and
-all 4 stretch features are implemented and working end-to-end, adversarially
-reviewed, and covered by 123 passing tests. See [PLAN.md](PLAN.md) for the
-architecture and [REVIEW.md](REVIEW.md) for the adversarial-review findings.
+**Status: shipped.** All 4 required features and all 4 stretch features are
+implemented and working end-to-end, adversarially reviewed, covered by 123
+unit tests plus a 30-check `demo.sh` that drives the real CLI and a real
+running HTTP server. See [PLAN.md](PLAN.md) for the architecture and
+[REVIEW.md](REVIEW.md) for the adversarial-review findings.
 
 ## Quick look
 
@@ -32,5 +33,6 @@ python3 -m sift.cli demo                             # build + run a canned quer
 ## Tests
 
 ```
-python3 -m unittest discover -s tests
+python3 -m unittest discover -s tests   # 123 unit tests
+./demo.sh                               # 30-check end-to-end walkthrough (CLI + live HTTP server)
 ```
