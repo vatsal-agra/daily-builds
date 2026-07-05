@@ -45,6 +45,7 @@ class Engine:
         doc = self.index.documents[doc_id]
         with open(doc.path, "r", encoding="utf-8") as fh:
             text = fh.read()
+        text = _strip_title_line(text, doc.title)
         from sift.query import parse_query, collect_positive_leaves, TermLeaf, PhraseLeaf
 
         try:
@@ -60,6 +61,20 @@ class Engine:
             else:
                 query_terms.update(leaf.expand(_Ctx(self.index, self.trie, self.bktree)))
         return make_snippet(text, query_terms)
+
+
+def _strip_title_line(text, title):
+    """Drop the document's own title line before snippeting, so the search
+    result card doesn't show the title twice (once as the card heading,
+    once again inline at the top of the snippet)."""
+    lines = text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        stripped = line.lstrip("#").strip()
+        if stripped:
+            if stripped == title:
+                return "".join(lines[i + 1 :])
+            return text
+    return text
 
 
 class _Ctx:

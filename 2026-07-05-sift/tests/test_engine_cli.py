@@ -55,6 +55,20 @@ class TestEngine(unittest.TestCase):
         snippet = self.engine.snippet_for(doc_id, "fox")
         self.assertIn("<mark>", snippet)
 
+    def test_snippet_for_does_not_repeat_the_title(self):
+        # regression test: the title is already shown as the card heading,
+        # so it should not also appear inline at the top of the snippet.
+        path = os.path.join(self.tmpdir.name, "titled.txt")
+        with open(path, "w") as fh:
+            fh.write("A Distinctive Title About Foxes\n\nThe fox ran through the forest quickly.")
+        with open(path) as fh:
+            text = fh.read()
+        index = InvertedIndex()
+        index.add_document(path, "A Distinctive Title About Foxes", text)
+        engine = Engine(index)
+        snippet = engine.snippet_for(0, "fox")
+        self.assertNotIn("Distinctive Title", snippet)
+
     def test_snippet_for_bad_query_returns_empty_not_crash(self):
         results = self.engine.search("fox")
         doc_id = results[0][0]
@@ -170,6 +184,29 @@ class TestCLISmoke(unittest.TestCase):
         result = self._run("demo")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("search: python", result.stdout)
+
+    def test_negative_k1_rejected(self):
+        self._run("index", CORPUS_DIR, "-o", self.index_path)
+        result = self._run("search", "fox", "-i", self.index_path, "--k1", "-1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--k1", result.stderr)
+
+    def test_out_of_range_b_rejected(self):
+        self._run("index", CORPUS_DIR, "-o", self.index_path)
+        result = self._run("search", "fox", "-i", self.index_path, "--b", "1.5")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--b", result.stderr)
+
+    def test_zero_limit_rejected(self):
+        self._run("index", CORPUS_DIR, "-o", self.index_path)
+        result = self._run("search", "fox", "-i", self.index_path, "-k", "0")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--limit", result.stderr)
+
+    def test_index_nonexistent_directory_fails_cleanly(self):
+        result = self._run("index", "/no/such/directory", "-o", self.index_path)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not a directory", result.stderr)
 
 
 if __name__ == "__main__":

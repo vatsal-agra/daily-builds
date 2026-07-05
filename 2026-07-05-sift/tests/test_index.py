@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from sift.index import InvertedIndex, build_index_from_dir
+from sift.index import InvertedIndex, build_index_from_dir, CorpusReadError
 
 
 class TestInvertedIndex(unittest.TestCase):
@@ -78,6 +78,32 @@ class TestBuildIndexFromDir(unittest.TestCase):
                 fh.write("\n\n   \n")
             index = build_index_from_dir(tmp)
             self.assertEqual(index.documents[0].title, "blank.txt")
+
+    def test_nonexistent_directory_raises_clean_error(self):
+        with self.assertRaises(CorpusReadError):
+            build_index_from_dir("/no/such/directory/at/all")
+
+    def test_file_passed_instead_of_directory_raises_clean_error(self):
+        with tempfile.NamedTemporaryFile() as tmp_file:
+            with self.assertRaises(CorpusReadError):
+                build_index_from_dir(tmp_file.name)
+
+    def test_non_utf8_file_raises_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "bad.txt"), "wb") as fh:
+                fh.write(b"\xff\xfe not valid utf-8 \x80\x81")
+            with self.assertRaises(CorpusReadError):
+                build_index_from_dir(tmp)
+
+    def test_non_utf8_file_skipped_when_requested(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "bad.txt"), "wb") as fh:
+                fh.write(b"\xff\xfe not valid utf-8 \x80\x81")
+            with open(os.path.join(tmp, "good.txt"), "w") as fh:
+                fh.write("A Fine Document\nabout rockets")
+            index = build_index_from_dir(tmp, skip_unreadable=True)
+            self.assertEqual(index.doc_count, 1)
+            self.assertEqual(index.skipped_files, ["bad.txt"])
 
 
 if __name__ == "__main__":

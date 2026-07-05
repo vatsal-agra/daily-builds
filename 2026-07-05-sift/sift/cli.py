@@ -5,7 +5,7 @@ import argparse
 import sys
 import time
 
-from sift.index import build_index_from_dir
+from sift.index import build_index_from_dir, CorpusReadError
 from sift.storage import save_index, load_index
 from sift.engine import Engine
 
@@ -24,12 +24,18 @@ def _load_engine(index_path):
 
 def cmd_index(args):
     t0 = time.time()
-    index = build_index_from_dir(args.corpus_dir)
+    try:
+        index = build_index_from_dir(args.corpus_dir, skip_unreadable=True)
+    except CorpusReadError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
     if index.doc_count == 0:
         print(f"error: no .txt/.md files found in {args.corpus_dir}", file=sys.stderr)
         sys.exit(1)
     save_index(index, args.out)
     elapsed = time.time() - t0
+    for skipped in index.skipped_files:
+        print(f"warning: skipped {skipped} (not valid UTF-8 text)", file=sys.stderr)
     print(
         f"indexed {index.doc_count} documents, {len(index.vocabulary())} unique "
         f"terms, {index.total_length} total tokens -> {args.out} ({elapsed:.2f}s)"
@@ -37,6 +43,16 @@ def cmd_index(args):
 
 
 def cmd_search(args):
+    if args.k1 < 0:
+        print("error: --k1 must be >= 0", file=sys.stderr)
+        sys.exit(1)
+    if not (0.0 <= args.b <= 1.0):
+        print("error: --b must be between 0 and 1", file=sys.stderr)
+        sys.exit(1)
+    if args.limit < 1:
+        print("error: --limit must be >= 1", file=sys.stderr)
+        sys.exit(1)
+
     engine = _load_engine(args.index)
     try:
         results = engine.search(args.query, k1=args.k1, b=args.b, limit=args.limit)

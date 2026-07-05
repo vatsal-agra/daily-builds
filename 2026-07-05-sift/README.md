@@ -1,20 +1,36 @@
 # Sift
 
-A full-text search engine built entirely from scratch in Python: tokenizer,
-a real from-scratch Porter stemmer, an inverted index, a boolean/phrase
-query engine, BM25 ranking, and BK-tree fuzzy matching — no search library
-anywhere in the stack.
+A full-text search engine built entirely from scratch in Python: a
+tokenizer, a real from-scratch Porter stemmer, an inverted index, a
+boolean/phrase query engine, BM25 ranking, and BK-tree fuzzy matching — no
+search library anywhere in the stack.
 
-**Status: Phase 2 (core build) complete**, plus most stretch features
-(wildcard search, snippets, on-disk binary index, HTML UI) are already
-working end-to-end. See [PLAN.md](PLAN.md) for the architecture. Test suite
-and adversarial review are next.
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features and
+all 4 stretch features are implemented and working end-to-end, adversarially
+reviewed, and covered by 123 passing tests. See [PLAN.md](PLAN.md) for the
+architecture and [REVIEW.md](REVIEW.md) for the adversarial-review findings.
 
 ## Quick look
 
 ```
-python3 corpus/generate_corpus.py        # write the 40-doc test corpus
+python3 corpus/generate_corpus.py        # write the 40-doc test corpus (already committed)
 python3 -m sift.cli index corpus -o demo.sift
 python3 -m sift.cli search "mars rover" -i demo.sift
-python3 -m sift.cli serve -i demo.sift   # interactive HTML UI at :8000
+python3 -m sift.cli search "black AND NOT space" -i demo.sift --no-snippets
+python3 -m sift.cli search "quantumm" -i demo.sift   # typo -> "did you mean: quantum?"
+python3 -m sift.cli serve -i demo.sift               # interactive HTML UI at :8000
+python3 -m sift.cli demo                             # build + run a canned query tour
+```
+
+## Query syntax
+
+- `AND` / `OR` / `NOT`, case-insensitive, with `(` `)` grouping
+- `"exact phrase"` — matched via true positional adjacency, not substring search
+- `prefix*` — wildcard/prefix expansion via a trie
+- `term~2` — fuzzy match within edit distance 2 via a BK-tree (also powers "did you mean")
+
+## Tests
+
+```
+python3 -m unittest discover -s tests
 ```

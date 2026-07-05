@@ -69,19 +69,37 @@ class InvertedIndex:
         return doc_id
 
 
-def build_index_from_dir(corpus_dir):
+class CorpusReadError(RuntimeError):
+    pass
+
+
+def build_index_from_dir(corpus_dir, skip_unreadable=False):
     """Build an InvertedIndex from every .txt/.md file in a directory
-    (non-recursive), using the first line of each file as its title."""
+    (non-recursive), using the first non-blank line of each file as its
+    title. Raises CorpusReadError with a clear message for a missing/non-
+    directory path or a file that isn't valid UTF-8 text, unless
+    `skip_unreadable` is set, in which case unreadable files are skipped."""
     import os
+
+    if not os.path.isdir(corpus_dir):
+        raise CorpusReadError(f"{corpus_dir} is not a directory")
 
     index = InvertedIndex()
     filenames = sorted(
         f for f in os.listdir(corpus_dir) if f.endswith((".txt", ".md"))
     )
+    skipped = []
     for filename in filenames:
         path = os.path.join(corpus_dir, filename)
-        with open(path, "r", encoding="utf-8") as fh:
-            text = fh.read()
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                text = fh.read()
+        except UnicodeDecodeError:
+            if skip_unreadable:
+                skipped.append(filename)
+                continue
+            raise CorpusReadError(f"{path} is not valid UTF-8 text")
+
         title = filename
         for line in text.splitlines():
             stripped = line.lstrip("#").strip()
@@ -89,4 +107,5 @@ def build_index_from_dir(corpus_dir):
                 title = stripped
                 break
         index.add_document(path=path, title=title, text=text)
+    index.skipped_files = skipped
     return index
