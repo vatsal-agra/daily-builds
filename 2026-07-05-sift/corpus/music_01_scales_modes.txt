@@ -1,0 +1,3 @@
+Scales and Modes in Western Music Theory
+
+The major scale's seven modes are formed by starting the same set of notes from a different degree: starting on the sixth note of a major scale produces its relative natural minor, which shares every note but centers the melody differently. Dorian mode, common in folk and jazz, sounds like a minor scale but with a raised sixth degree, giving it a brighter character than natural minor. Mixolydian, built from the fifth degree, is common in blues and rock because its lowered seventh degree avoids the strong pull back to the tonic that a major scale's leading tone creates. Composers choose modes partly for these subtle differences in emotional color even though the underlying set of notes barely changes.
