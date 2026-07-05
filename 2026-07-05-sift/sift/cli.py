@@ -49,7 +49,7 @@ def cmd_search(args):
         suggestions = []
         for word in args.query.split():
             word = word.strip('"()*~')
-            if not word:
+            if not word or word.lower() in ("and", "or", "not"):
                 continue
             from sift.analyzer import analyze_query_term
 

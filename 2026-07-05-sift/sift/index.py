@@ -82,6 +82,11 @@ def build_index_from_dir(corpus_dir):
         path = os.path.join(corpus_dir, filename)
         with open(path, "r", encoding="utf-8") as fh:
             text = fh.read()
-        first_line = text.splitlines()[0].lstrip("#").strip() if text.strip() else filename
-        index.add_document(path=path, title=first_line, text=text)
+        title = filename
+        for line in text.splitlines():
+            stripped = line.lstrip("#").strip()
+            if stripped:
+                title = stripped
+                break
+        index.add_document(path=path, title=title, text=text)
     return index

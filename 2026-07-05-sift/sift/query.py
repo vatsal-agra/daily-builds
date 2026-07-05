@@ -271,6 +271,8 @@ class _Parser:
             return node
         if tok.startswith('"'):
             self.advance()
+            if len(tok) < 2 or not tok.endswith('"'):
+                raise QueryError("unterminated phrase — missing closing quote")
             return _build_phrase_leaf(tok[1:-1])
         self.advance()
         return _build_word_leaf(tok)
@@ -287,7 +289,12 @@ def _build_phrase_leaf(phrase_text):
 
 
 def _build_word_leaf(tok):
-    if tok.endswith("*") and len(tok) > 1:
+    if "*" in tok:
+        if tok.count("*") > 1 or not tok.endswith("*") or len(tok) == 1:
+            raise QueryError(
+                f"invalid wildcard {tok!r}: '*' must appear exactly once, "
+                "at the end of a non-empty prefix (e.g. comput*)"
+            )
         return WildcardLeaf(tok[:-1].lower())
     if "~" in tok:
         word, _, dist_str = tok.partition("~")

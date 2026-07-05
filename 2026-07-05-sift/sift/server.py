@@ -94,7 +94,7 @@ def make_handler(engine):
                 seen = set()
                 for word in query.split():
                     cleaned = word.strip('"()*~')
-                    if not cleaned:
+                    if not cleaned or cleaned.lower() in ("and", "or", "not"):
                         continue
                     for w, _ in engine.suggest(analyze_query_term(cleaned)):
                         if w not in seen:
