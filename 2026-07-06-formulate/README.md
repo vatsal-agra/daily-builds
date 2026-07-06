@@ -1,11 +1,12 @@
 # Formulate
 
-Status: **Phase 4 — stretch features + polish complete.** All 4 required
-features plus all 3 planned stretch features (autofill, live charts,
-multi-sheet workbooks) are implemented and verified (82 Python
-unit/fuzz/server tests green + a headless-browser UI smoke test). A hostile
-adversarial-review pass found and fixed 9 real bugs — see
-[REVIEW.md](REVIEW.md). See [PLAN.md](PLAN.md) for the full design.
+Status: **Phase 5 — verification complete.** `./demo.sh` runs the full
+verification suite end-to-end and is green: 82 Python unit/fuzz/server
+tests, an 11-check API walkthrough exercising every required + stretch
+feature over real HTTP, the terminal CLI demo, and a headless-browser UI
+smoke test. A hostile adversarial-review pass (Phase 3) found and fixed 9
+real bugs — see [REVIEW.md](REVIEW.md). See [PLAN.md](PLAN.md) for the
+full design.
 
 ## What's built so far
 
@@ -29,4 +30,5 @@ adversarial-review pass found and fixed 9 real bugs — see
 python3 cli.py demo             # prints a demo budget workbook to the terminal
 python3 cli.py serve            # http://127.0.0.1:8000 — the interactive UI
 python3 cli.py test             # run the test suite
+./demo.sh                       # full verification suite (tests + API walkthrough + UI smoke test)
 ```
