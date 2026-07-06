@@ -1,12 +1,11 @@
 # Formulate
 
-Status: **Phase 3 — adversarial review complete.** All 4 required features
-are implemented and verified (81 Python unit/fuzz/server tests green + a
-headless-browser UI smoke test driving the real server). A hostile pass
-found and fixed 9 real bugs — see [REVIEW.md](REVIEW.md) — including a
-crash from non-finite/complex arithmetic, a cross-sheet-reference
-case-sensitivity bug, and two DOM-event-ordering bugs in the frontend.
-Stretch features + polish are next. See [PLAN.md](PLAN.md) for the design.
+Status: **Phase 4 — stretch features + polish complete.** All 4 required
+features plus all 3 planned stretch features (autofill, live charts,
+multi-sheet workbooks) are implemented and verified (82 Python
+unit/fuzz/server tests green + a headless-browser UI smoke test). A hostile
+adversarial-review pass found and fixed 9 real bugs — see
+[REVIEW.md](REVIEW.md). See [PLAN.md](PLAN.md) for the full design.
 
 ## What's built so far
 

@@ -85,6 +85,7 @@
       }
       renderCell(ref);
     }
+    emptyHint.classList.toggle("show", Object.keys(state.cells).length === 0);
     refreshChartIfOpen();
   }
 
@@ -104,11 +105,14 @@
 
   // -- rendering -------------------------------------------------------------
 
+  const emptyHint = document.getElementById("empty-hint");
+
   function renderAll() {
     renderTabs();
     renderGrid();
     updateUndoRedo(state.can_undo, state.can_redo);
     updateFormulaBar();
+    emptyHint.classList.toggle("show", Object.keys(state.cells).length === 0);
   }
 
   function renderTabs() {

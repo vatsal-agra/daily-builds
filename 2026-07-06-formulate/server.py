@@ -220,7 +220,9 @@ class Handler(BaseHTTPRequestHandler):
         if edits_in is None:
             edits_in = [{"ref": body["ref"], "raw": body.get("raw")}]
         edits = [(sheet_name, *a1_to_ref(e["ref"]), e.get("raw")) for e in edits_in]
-        changed = state.workbook.edit(edits)
+        # An empty batch is a no-op: skip it rather than pushing a pointless
+        # frame onto the undo stack that undo/redo would then have to skip over.
+        changed = state.workbook.edit(edits) if edits else {}
         self._send_json(self._with_flags(state, {"changed": changed_payload(state, changed)}))
 
     def _handle_autofill(self, state, body):
@@ -231,7 +233,7 @@ class Handler(BaseHTTPRequestHandler):
             row, col = a1_to_ref(ref)
             raw = state.workbook.autofill(sheet_name, src_row, src_col, row, col)
             edits.append((sheet_name, row, col, raw))
-        changed = state.workbook.edit(edits)
+        changed = state.workbook.edit(edits) if edits else {}
         self._send_json(self._with_flags(state, {"changed": changed_payload(state, changed)}))
 
     def _handle_import_csv(self, state, body):

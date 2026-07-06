@@ -74,6 +74,16 @@ class TestBasicEditFlow(ServerTestCase):
         status, resp = self.post("/api/redo", {})
         self.assertEqual(resp["changed"]["Sheet1"]["A1"]["value"], 2.0)
 
+    def test_empty_batch_edit_is_a_noop_not_an_undo_frame(self):
+        self.post("/api/edit", {"ref": "A1", "raw": "1"})
+        status, resp = self.post("/api/edit", {"edits": []})
+        self.assertEqual(resp["changed"], {})
+        self.assertFalse(resp["can_redo"])
+        # the no-op must not have pushed a frame: undo should still remove A1's edit
+        status, resp = self.post("/api/undo", {})
+        self.assertIsNone(resp["changed"]["Sheet1"]["A1"])
+        self.assertFalse(resp["can_undo"])
+
     def test_batch_edit_for_clearing_a_range(self):
         self.post("/api/edit", {"ref": "A1", "raw": "1"})
         self.post("/api/edit", {"ref": "A2", "raw": "2"})

@@ -78,6 +78,15 @@
   #add-sheet:hover { color: var(--accent); }
 
   #grid-wrap { flex: 1; overflow: auto; position: relative; background: var(--panel); }
+  #empty-hint {
+    position: absolute; top: 56px; left: 108px; color: var(--muted); font-size: 13px;
+    line-height: 1.7; pointer-events: none; display: none; max-width: 360px;
+  }
+  #empty-hint.show { display: block; }
+  #empty-hint code {
+    background: var(--header-bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 5px; font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
   table#grid { border-collapse: separate; border-spacing: 0; }
   table#grid th, table#grid td {
     border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
@@ -173,6 +182,10 @@
 
   <div id="grid-wrap">
     <table id="grid"></table>
+    <div id="empty-hint">
+      Click a cell and start typing — or type <code>=</code> to enter a formula.<br>
+      Try <b>Import CSV</b> to load data, or <b>fx</b> for a function like <code>=SUM(A1:A5)</code>.
+    </div>
   </div>
 
   <div id="status">
