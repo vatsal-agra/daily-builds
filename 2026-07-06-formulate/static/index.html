@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Formulate</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='23' font-size='19' font-family='monospace' font-weight='bold' fill='white' text-anchor='middle'%3Efx%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #d7dbe0;
+    --border-strong: #b7bec6;
+    --text: #1c2126;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-weak: #dbe8ff;
+    --error: #dc2626;
+    --error-weak: #fdeaea;
+    --header-bg: #eef1f5;
+    --selected: #cfe0ff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+  }
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  #toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  #toolbar .brand { font-weight: 700; font-size: 15px; margin-right: 8px; letter-spacing: 0.2px; }
+  #toolbar .brand span { color: var(--accent); }
+  button, .file-btn {
+    background: var(--panel); border: 1px solid var(--border-strong); border-radius: 6px;
+    padding: 5px 10px; font-size: 13px; cursor: pointer; color: var(--text);
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  button:hover, .file-btn:hover { background: var(--header-bg); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button:active { transform: translateY(1px); }
+  .sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+  input[type=text], input[type=file] { font-size: 13px; }
+  #save-name { width: 110px; padding: 4px 6px; border: 1px solid var(--border-strong); border-radius: 6px; }
+
+  #formula-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  #cell-name {
+    width: 64px; text-align: center; font-weight: 600; font-size: 13px;
+    padding: 5px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--header-bg);
+  }
+  #fx-label { color: var(--muted); font-style: italic; font-size: 14px; width: 18px; text-align: center; }
+  #formula-input {
+    flex: 1; font-size: 13px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 6px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+  #formula-input.error-flash { border-color: var(--error); }
+
+  #sheet-tabs {
+    display: flex; align-items: center; gap: 2px; background: var(--panel);
+    border-bottom: 1px solid var(--border); padding: 0 8px;
+  }
+  .tab {
+    padding: 6px 14px; font-size: 12.5px; cursor: pointer; border-radius: 6px 6px 0 0;
+    border: 1px solid transparent; margin-top: 4px; color: var(--muted);
+  }
+  .tab.active { background: var(--bg); border-color: var(--border); border-bottom-color: var(--bg);
+    color: var(--text); font-weight: 600; margin-bottom: -1px; }
+  .tab:hover:not(.active) { background: var(--header-bg); }
+  #add-sheet { padding: 4px 8px; color: var(--muted); font-size: 15px; cursor: pointer; }
+  #add-sheet:hover { color: var(--accent); }
+
+  #grid-wrap { flex: 1; overflow: auto; position: relative; background: var(--panel); }
+  #empty-hint {
+    position: absolute; top: 56px; left: 108px; color: var(--muted); font-size: 13px;
+    line-height: 1.7; pointer-events: none; display: none; max-width: 360px;
+  }
+  #empty-hint.show { display: block; }
+  #empty-hint code {
+    background: var(--header-bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 5px; font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+  table#grid { border-collapse: separate; border-spacing: 0; }
+  table#grid th, table#grid td {
+    border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    padding: 0; height: 24px; white-space: nowrap; font-size: 13px;
+  }
+  th.corner, th.colhead, th.rowhead {
+    background: var(--header-bg); color: var(--muted); font-weight: 500; text-align: center;
+    position: sticky; user-select: none; font-size: 12px;
+  }
+  th.colhead { top: 0; z-index: 3; min-width: 84px; }
+  th.rowhead { left: 0; z-index: 2; }
+  th.corner { top: 0; left: 0; z-index: 4; }
+  td.cell {
+    position: relative; min-width: 84px; max-width: 280px; overflow: hidden;
+    text-overflow: ellipsis; padding: 0 6px; cursor: cell; text-align: right;
+  }
+  td.cell.text-align-left { text-align: left; }
+  td.cell.selected { outline: 2px solid var(--accent); outline-offset: -1px; background: var(--accent-weak); z-index: 1; }
+  td.cell.in-range { background: var(--selected); }
+  td.cell.error { color: var(--error); background: var(--error-weak); font-weight: 600; }
+  td.cell.editing { outline: 2px solid var(--accent); z-index: 5; padding: 0; }
+  td.cell input {
+    width: 100%; height: 100%; border: none; outline: none; font-size: 13px; padding: 0 6px;
+    font-family: "SF Mono", Menlo, Consolas, monospace; background: white;
+  }
+  .fill-handle {
+    position: absolute; right: -1px; bottom: -1px; width: 7px; height: 7px;
+    background: var(--accent); cursor: crosshair; z-index: 6;
+  }
+
+  #status { padding: 4px 12px; font-size: 12px; color: var(--muted); background: var(--panel);
+    border-top: 1px solid var(--border); display: flex; justify-content: space-between; }
+  #status .msg.err { color: var(--error); font-weight: 600; }
+
+  #chart-panel {
+    position: fixed; right: 16px; bottom: 40px; width: 420px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    display: none; overflow: hidden;
+  }
+  #chart-panel.open { display: block; }
+  #chart-header { display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; }
+  #chart-header button { border: none; background: none; font-size: 16px; cursor: pointer; color: var(--muted); }
+  #chart-canvas { display: block; width: 100%; height: 260px; }
+  #chart-controls { display: flex; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--border); }
+  #chart-controls select { font-size: 12px; }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171b; --panel: #1b1f24; --border: #2c3138; --border-strong: #3b4249;
+      --text: #e6e9ec; --muted: #8b94a0; --accent: #5b8def; --accent-weak: #223252;
+      --error: #f0665e; --error-weak: #3a1f20; --header-bg: #20242a; --selected: #26365a;
+    }
+    td.cell input { background: #10141a; color: var(--text); }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14171b; --panel: #1b1f24; --border: #2c3138; --border-strong: #3b4249;
+    --text: #e6e9ec; --muted: #8b94a0; --accent: #5b8def; --accent-weak: #223252;
+    --error: #f0665e; --error-weak: #3a1f20; --header-bg: #20242a; --selected: #26365a;
+  }
+  :root[data-theme="dark"] td.cell input { background: #10141a; color: var(--text); }
+  :root[data-theme="light"] {
+    --bg: #f6f7f9; --panel: #ffffff; --border: #d7dbe0; --border-strong: #b7bec6;
+    --text: #1c2126; --muted: #6b7280; --accent: #2563eb; --accent-weak: #dbe8ff;
+    --error: #dc2626; --error-weak: #fdeaea; --header-bg: #eef1f5; --selected: #cfe0ff;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <div class="brand">Formulate<span>.</span></div>
+    <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
+    <button id="btn-redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
+    <div class="sep"></div>
+    <input id="save-name" type="text" value="workbook" title="Workbook name">
+    <button id="btn-save">Save</button>
+    <button id="btn-load">Load</button>
+    <div class="sep"></div>
+    <label class="file-btn">Import CSV<input id="csv-input" type="file" accept=".csv" style="display:none"></label>
+    <button id="btn-export-csv">Export CSV</button>
+    <div class="sep"></div>
+    <button id="btn-chart">Chart selection</button>
+  </div>
+
+  <div id="formula-row">
+    <div id="cell-name">A1</div>
+    <div id="fx-label">fx</div>
+    <input id="formula-input" type="text" autocomplete="off" spellcheck="false" placeholder="Enter a value or =FORMULA(...)">
+  </div>
+
+  <div id="sheet-tabs"></div>
+
+  <div id="grid-wrap">
+    <table id="grid"></table>
+    <div id="empty-hint">
+      Click a cell and start typing — or type <code>=</code> to enter a formula.<br>
+      Try <b>Import CSV</b> to load data, or <b>fx</b> for a function like <code>=SUM(A1:A5)</code>.
+    </div>
+  </div>
+
+  <div id="status">
+    <div class="msg" id="status-msg">Ready.</div>
+    <div id="status-selection"></div>
+  </div>
+</div>
+
+<div id="chart-panel">
+  <div id="chart-header"><span id="chart-title">Chart</span><button id="chart-close">&times;</button></div>
+  <canvas id="chart-canvas" width="420" height="260"></canvas>
+  <div id="chart-controls">
+    <label>Type: <select id="chart-type"><option value="bar">Bar</option><option value="line">Line</option></select></label>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
