@@ -1,9 +1,12 @@
 # Formulate
 
-Status: **Phase 2 — core build complete.** All 4 required features are
-implemented and verified (80 Python unit/fuzz/server tests green + a
-headless-browser UI smoke test driving the real server). Adversarial review
-and stretch features are next. See [PLAN.md](PLAN.md) for the full design.
+Status: **Phase 3 — adversarial review complete.** All 4 required features
+are implemented and verified (81 Python unit/fuzz/server tests green + a
+headless-browser UI smoke test driving the real server). A hostile pass
+found and fixed 9 real bugs — see [REVIEW.md](REVIEW.md) — including a
+crash from non-finite/complex arithmetic, a cross-sheet-reference
+case-sensitivity bug, and two DOM-event-ordering bugs in the frontend.
+Stretch features + polish are next. See [PLAN.md](PLAN.md) for the design.
 
 ## What's built so far
 

@@ -40,11 +40,20 @@ class EvalContext:
 
 
 def evaluate(node, ctx):
-    """Evaluate an AST node to a scalar value or ErrorValue (never raises FormulaError)."""
+    """Evaluate an AST node to a scalar value or ErrorValue (never raises FormulaError).
+
+    Every value a cell can end up holding funnels through here, so this is
+    also the single place that guards against non-finite/complex results
+    (huge literals, POWER(-8,0.5), overflow in SUM, ...) turning into a
+    value that would later crash display formatting or JSON serialization.
+    """
     try:
-        return _eval(node, ctx)
+        value = _eval(node, ctx)
     except FormulaError as e:
         return ErrorValue(e.code)
+    if isinstance(value, complex) or (isinstance(value, float) and not math.isfinite(value)):
+        return ErrorValue(NUM)
+    return value
 
 
 def _eval(node, ctx):
@@ -162,7 +171,16 @@ def _eval_funccall(node, ctx):
     for a in args:
         if isinstance(a, ErrorValue) and name not in ("ISERROR",):
             raise FormulaError(a.code)
-    return EAGER_FUNCTIONS[name](args)
+    try:
+        return EAGER_FUNCTIONS[name](args)
+    except FormulaError:
+        raise
+    except (OverflowError, ValueError, ZeroDivisionError, TypeError):
+        # A library function hit a raw Python arithmetic/type failure (e.g.
+        # POWER(10,400) overflowing float**float). One bad formula must
+        # become that cell's error value, not a 500 that drags down every
+        # other cell in the same batch edit.
+        raise FormulaError(NUM)
 
 
 def _eval_lazy(name, arg_nodes, ctx):

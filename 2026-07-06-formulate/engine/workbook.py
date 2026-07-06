@@ -3,6 +3,7 @@ incremental (dirty-propagation) recalculation, circular-reference detection,
 undo/redo, and autofill.
 """
 
+import math
 from collections import deque
 
 from . import parser
@@ -16,7 +17,7 @@ SYNTAX = "#SYNTAX!"
 MAX_RANGE_CELLS = 20000
 
 
-class CircularRangeError(Exception):
+class RangeTooLargeError(Exception):
     pass
 
 
@@ -38,9 +39,12 @@ def parse_literal(text):
     if upper == "FALSE":
         return False
     try:
-        return float(stripped)
+        value = float(stripped)
     except ValueError:
         return text
+    # A literal like "1e400" parses fine but overflows to inf: fall back to
+    # text rather than storing a value that would crash display formatting.
+    return value if math.isfinite(value) else text
 
 
 def display_value(value):
@@ -52,6 +56,8 @@ def display_value(value):
     if isinstance(value, bool):
         return "TRUE" if value else "FALSE"
     if isinstance(value, float):
+        if not math.isfinite(value):
+            return "#NUM!"  # defence in depth; evaluate()/parse_literal should never let this through
         if value == int(value) and abs(value) < 1e15:
             return str(int(value))
         return repr(value)
@@ -167,7 +173,7 @@ class Workbook:
             try:
                 ast = parser.parse_formula(raw[1:])
                 new_precedents = self._extract_precedents(ast, key[0])
-            except (parser.ParseError, LexError, CircularRangeError):
+            except (parser.ParseError, LexError, RangeTooLargeError):
                 sheet.cells[(row, col)] = Cell(raw, None, ErrorValue(SYNTAX))
                 self.precedents[key] = set()
                 return
@@ -190,7 +196,7 @@ class Workbook:
                 lo_r, hi_r = min(r1, r2), max(r1, r2)
                 lo_c, hi_c = min(c1, c2), max(c1, c2)
                 if (hi_r - lo_r + 1) * (hi_c - lo_c + 1) > MAX_RANGE_CELLS:
-                    raise CircularRangeError("range too large")
+                    raise RangeTooLargeError("range too large")
                 for r in range(lo_r, hi_r + 1):
                     for c in range(lo_c, hi_c + 1):
                         cells.add((sheet, r, c))

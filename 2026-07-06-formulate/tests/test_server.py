@@ -146,6 +146,14 @@ class TestChartEndpoint(ServerTestCase):
         data = self.get("/api/chart?sheet=Sheet1&range=A1:A3")
         self.assertEqual(data["series"][0]["values"], [10.0, 20.0, 30.0])
 
+    def test_single_row_chart_treats_each_column_as_a_point(self):
+        self.post("/api/edit", {"ref": "A1", "raw": "10"})
+        self.post("/api/edit", {"ref": "B1", "raw": "20"})
+        self.post("/api/edit", {"ref": "C1", "raw": "30"})
+        data = self.get("/api/chart?sheet=Sheet1&range=A1:C1")
+        self.assertEqual(data["labels"], ["A", "B", "C"])
+        self.assertEqual(data["series"], [{"name": "value", "values": [10.0, 20.0, 30.0]}])
+
     def test_two_column_chart_uses_first_as_labels(self):
         self.post("/api/edit", {"ref": "A1", "raw": "jan"})
         self.post("/api/edit", {"ref": "B1", "raw": "5"})

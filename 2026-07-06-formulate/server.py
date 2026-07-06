@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from engine import csvio, persistence
+from engine.ast_nodes import col_to_letters
 from engine.errors import ErrorValue
 from engine.workbook import Workbook, a1_to_ref, display_value, ref_to_a1
 
@@ -282,11 +283,24 @@ class Handler(BaseHTTPRequestHandler):
         rows = []
         for r in range(r1, r2 + 1):
             rows.append([sheet.get_computed(r, c) for c in range(c1, c2 + 1)])
-        ncols = c2 - c1 + 1
+        nrows, ncols = len(rows), c2 - c1 + 1
+
         if ncols == 1:
+            # A single column: each row is one bar/point.
             labels = [str(r - r1 + 1) for r in range(r1, r2 + 1)]
             series = [{"name": "value", "values": [_num_or_zero(v[0]) for v in rows]}]
+        elif nrows == 1:
+            # A single row: each column is one bar/point (the "ncols==1" case
+            # transposed) -- without this branch a row selection like A1:C1
+            # would fall into the categories+series case below and render as
+            # one lonely label with (ncols-1) single-point series, which is
+            # never what a horizontal selection means.
+            labels = [col_to_letters(c) for c in range(c1, c2 + 1)]
+            series = [{"name": "value", "values": [_num_or_zero(v) for v in rows[0]]}]
         else:
+            # Multiple rows and columns: first column is treated as category
+            # labels, remaining columns are one series each (the common
+            # "Month | Sales | Costs" table shape).
             labels = [display_value(row[0]) for row in rows]
             series = []
             for col_idx in range(1, ncols):
