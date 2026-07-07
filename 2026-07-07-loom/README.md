@@ -5,7 +5,7 @@ autograd engine, a byte-level BPE tokenizer, a decoder-only Transformer,
 and a real training loop — no PyTorch/TensorFlow/JAX/`transformers`, no
 autograd library. NumPy is used only as an array/BLAS substrate.
 
-**Status: Phase 3 (adversarial review) complete.** See [PLAN.md](PLAN.md) for
+**Status: Phase 4 (stretch + polish) complete.** See [PLAN.md](PLAN.md) for
 the full architecture and feature list, and [REVIEW.md](REVIEW.md) for the
 adversarial review: 8 independent review passes found 8 real bugs (a
 `Dataset` off-by-one, a silently-broken `top_k=0`, a wrong-gradient bug in
@@ -13,7 +13,17 @@ adversarial review: 8 independent review passes found 8 real bugs (a
 `KeyError` from bad tokenizer input, and more) plus a deeper architectural
 fix (a `no_grad()` inference mode - 4x less peak memory, ~20% faster
 generation, byte-for-byte identical output) - all fixed, all with regression
-tests. Test suite: **63/63 passing** (was 44 before this phase).
+tests.
+
+Both planned stretch features shipped during the core build: sampling
+strategies (greedy/temperature/top-k/top-p + a `loom chat` REPL) and the
+interactive HTML visualizer. Phase 4 polish: every CLI command now validates
+its inputs and prints a clean `loom: error: ...` message instead of a raw
+Python traceback (missing checkpoints/corpora/tokenizer files, malformed
+token ids, out-of-range ids), `loom chat` exits gracefully on Ctrl-C instead
+of a KeyboardInterrupt traceback, and the visualizer got a final hover/
+transition pass. Test suite: **67/67 passing** (was 44 after Phase 2, 63
+after Phase 3).
 
 Built and verified:
 - `loom/tensor.py` — reverse-mode autograd engine (add/mul/matmul/pow/exp/

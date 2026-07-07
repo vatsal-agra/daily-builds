@@ -120,9 +120,9 @@ _TEMPLATE = r"""<!doctype html>
     max-width: 280px;
   }
   #tooltip .val { font-weight: 700; }
-  .heat-cell { stroke: var(--surface-1); stroke-width: 1; }
+  .heat-cell { stroke: var(--surface-1); stroke-width: 1; transition: stroke 0.1s; }
   .heat-cell:hover { stroke: var(--text-primary); stroke-width: 1.5; }
-  .scatter-pt { fill: var(--series-1); opacity: 0.75; }
+  .scatter-pt { fill: var(--series-1); opacity: 0.75; transition: opacity 0.1s; }
   .scatter-pt:hover { opacity: 1; stroke: var(--text-primary); stroke-width: 1; }
   .empty-note { color: var(--muted); font-size: 13px; font-style: italic; }
 </style>

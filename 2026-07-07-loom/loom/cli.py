@@ -1,5 +1,6 @@
 """`loom` command-line entry point."""
 import argparse
+import os
 import sys
 
 import numpy as np
@@ -9,7 +10,19 @@ from .tokenizer import BPETokenizer
 from .train import load_checkpoint, train
 
 
+def _require_checkpoint(path):
+    if not os.path.isdir(path):
+        raise FileNotFoundError(f"checkpoint directory not found: {path!r}")
+    missing = [f for f in ("config.json", "weights.npz", "tokenizer.json")
+               if not os.path.exists(os.path.join(path, f))]
+    if missing:
+        raise FileNotFoundError(
+            f"{path!r} is missing {missing} - is this a complete `loom train` output dir?")
+
+
 def cmd_tokenizer_train(args):
+    if not os.path.exists(args.corpus):
+        raise FileNotFoundError(f"corpus file not found: {args.corpus!r}")
     text = open(args.corpus, encoding="utf-8").read()
     tok = BPETokenizer()
     tok.train(text, vocab_size=args.vocab_size, verbose=True)
@@ -18,18 +31,29 @@ def cmd_tokenizer_train(args):
 
 
 def cmd_tokenizer_encode(args):
+    if not os.path.exists(args.tokenizer):
+        raise FileNotFoundError(f"tokenizer file not found: {args.tokenizer!r}")
     tok = BPETokenizer.load(args.tokenizer)
     ids = tok.encode(args.text)
     print(" ".join(map(str, ids)))
 
 
 def cmd_tokenizer_decode(args):
+    if not os.path.exists(args.tokenizer):
+        raise FileNotFoundError(f"tokenizer file not found: {args.tokenizer!r}")
     tok = BPETokenizer.load(args.tokenizer)
-    ids = [int(x) for x in args.ids.split()]
+    try:
+        ids = [int(x) for x in args.ids.split()]
+    except ValueError:
+        raise ValueError(f"expected space-separated integer token ids, got {args.ids!r}")
+    if not ids:
+        raise ValueError("no token ids given")
     print(tok.decode(ids))
 
 
 def cmd_train(args):
+    if not os.path.exists(args.corpus):
+        raise FileNotFoundError(f"corpus file not found: {args.corpus!r}")
     train(
         corpus_path=args.corpus,
         out_dir=args.out,
@@ -46,6 +70,9 @@ def cmd_train(args):
 
 
 def cmd_generate(args):
+    _require_checkpoint(args.checkpoint)
+    if args.max_new_tokens < 1:
+        raise ValueError(f"--max-new-tokens must be >= 1, got {args.max_new_tokens}")
     model, tok, config = load_checkpoint(args.checkpoint)
     text = generate(
         model, tok, args.prompt, max_new_tokens=args.max_new_tokens,
@@ -56,22 +83,32 @@ def cmd_generate(args):
 
 
 def cmd_chat(args):
+    _require_checkpoint(args.checkpoint)
     model, tok, config = load_checkpoint(args.checkpoint)
-    print("Loom completion REPL. Type a prompt and press enter (Ctrl-D to quit).")
+    print("Loom completion REPL. Type a prompt and press enter "
+          "(Ctrl-D or Ctrl-C to quit).")
     while True:
         try:
             prompt = input("\n>>> ")
         except EOFError:
             print()
             break
+        except KeyboardInterrupt:
+            print("\nbye")
+            break
         if not prompt.strip():
             continue
-        text = generate(model, tok, prompt, max_new_tokens=args.max_new_tokens,
-                         temperature=args.temperature, top_k=args.top_k, top_p=args.top_p)
+        try:
+            text = generate(model, tok, prompt, max_new_tokens=args.max_new_tokens,
+                             temperature=args.temperature, top_k=args.top_k, top_p=args.top_p)
+        except KeyboardInterrupt:
+            print("\n(interrupted)")
+            continue
         print(text)
 
 
 def cmd_viz(args):
+    _require_checkpoint(args.checkpoint)
     from .viz import render_visualizer
     render_visualizer(args.checkpoint, args.out, prompt=args.prompt)
     print(f"wrote visualizer to {args.out}")
@@ -145,7 +182,12 @@ def build_parser():
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
-    args.func(args)
+    try:
+        args.func(args)
+    except (FileNotFoundError, ValueError, KeyError) as e:
+        msg = str(e).strip("'") if isinstance(e, KeyError) else str(e)
+        print(f"loom: error: {msg}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

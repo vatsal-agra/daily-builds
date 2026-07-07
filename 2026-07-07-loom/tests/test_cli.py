@@ -75,3 +75,51 @@ def test_cli_missing_args_exits_cleanly():
     import pytest
     with pytest.raises(SystemExit):
         main(["train"])  # missing required --corpus/--out
+
+
+def test_cli_missing_checkpoint_gives_clean_error_not_traceback(capsys):
+    import pytest
+    with pytest.raises(SystemExit) as excinfo:
+        main(["generate", "--checkpoint", "/tmp/loom-does-not-exist-xyz", "--prompt", "hi"])
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "loom: error:" in err
+    assert "checkpoint directory not found" in err
+
+
+def test_cli_missing_corpus_gives_clean_error(capsys):
+    import pytest
+    with pytest.raises(SystemExit) as excinfo:
+        main(["train", "--corpus", "/tmp/loom-no-such-corpus.txt", "--out", "/tmp/loom-out"])
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "corpus file not found" in err
+
+
+def test_cli_decode_bad_id_gives_clean_error_not_keyerror(capsys):
+    import pytest
+    with tempfile.TemporaryDirectory() as d:
+        corpus = _write_corpus(d)
+        tok_path = os.path.join(d, "tok.json")
+        main(["tokenizer", "train", "--corpus", corpus, "--vocab-size", "270", "--out", tok_path])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as excinfo:
+            main(["tokenizer", "decode", "--tokenizer", tok_path, "999999"])
+        assert excinfo.value.code == 1
+        err = capsys.readouterr().err
+        assert "loom: error:" in err
+        assert "outside this tokenizer's vocab" in err
+
+
+def test_cli_decode_non_integer_ids_gives_clean_error(capsys):
+    import pytest
+    with tempfile.TemporaryDirectory() as d:
+        corpus = _write_corpus(d)
+        tok_path = os.path.join(d, "tok.json")
+        main(["tokenizer", "train", "--corpus", corpus, "--vocab-size", "270", "--out", tok_path])
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as excinfo:
+            main(["tokenizer", "decode", "--tokenizer", tok_path, "not-a-number"])
+        assert excinfo.value.code == 1
+        err = capsys.readouterr().err
+        assert "loom: error:" in err
