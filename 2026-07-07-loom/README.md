@@ -5,8 +5,12 @@ autograd engine, a byte-level BPE tokenizer, a decoder-only Transformer,
 and a real training loop — no PyTorch/TensorFlow/JAX/`transformers`, no
 autograd library. NumPy is used only as an array/BLAS substrate.
 
-**Status: Phase 4 (stretch + polish) complete.** See [PLAN.md](PLAN.md) for
-the full architecture and feature list, and [REVIEW.md](REVIEW.md) for the
+**Status: Phase 5 (verification) complete.** `./demo.sh` runs the full test
+suite plus a live walkthrough of every feature (tokenizer round-trip, greedy/
+temperature+top-k/nucleus generation, HTML visualizer) against the real
+Shakespeare checkpoint - green end to end, first run, no fixes needed. See
+[PLAN.md](PLAN.md) for the full architecture and feature list, and
+[REVIEW.md](REVIEW.md) for the
 adversarial review: 8 independent review passes found 8 real bugs (a
 `Dataset` off-by-one, a silently-broken `top_k=0`, a wrong-gradient bug in
 `Tensor.transpose` for negative axes, missing checkpoint validation, a raw
@@ -40,8 +44,10 @@ Built and verified:
   from-scratch PCA, interactive HTML visualizer, `loom` CLI.
 - Correctness gates passing: gradient checks, an overfit-tiny-batch test
   (loss 200x lower after 200 steps - proves forward+backward+optimizer are
-  wired correctly), causal-mask leakage tests, checkpoint round-trip, plus
-  19 regression tests from the Phase 3 adversarial review - 63 tests total.
+  wired correctly), causal-mask leakage tests, checkpoint round-trip, 19
+  regression tests from the Phase 3 adversarial review, and CLI error-path
+  tests from Phase 4 - **67 tests total**, all passing via `./demo.sh` or
+  `python3 -m pytest tests/`.
 
 **Real training run complete**, `checkpoints/shakespeare/` (4 layers, 4
 heads, 96-dim, ~506K params, vocab 512, 2000 steps on Tiny Shakespeare,
