@@ -3,7 +3,7 @@ analytic gradient (computed by Tensor.backward()) is compared against a
 central-difference numerical gradient on random inputs."""
 import numpy as np
 
-from loom.tensor import Tensor
+from loom.tensor import Tensor, no_grad
 from loom.functional import softmax, log_softmax, cross_entropy, layer_norm, gelu
 
 RNG = np.random.default_rng(42)
@@ -82,6 +82,23 @@ def test_reshape_transpose():
     check(lambda a: (a.reshape(4, 3).transpose(1, 0)).sum(), [(3, 4)])
 
 
+def test_transpose_with_negative_axes():
+    """np.argsort on raw axes like (0, -1, 1) sorts by literal value, not by
+    position, so it used to compute the wrong inverse permutation whenever
+    an axis list mixed negative and positive indices - this crashed (or,
+    for other shapes, would have silently produced a wrong gradient)."""
+    check(lambda a: a.transpose(0, -1, 1).sum(), [(2, 3, 4)])
+
+    # gradient must match the equivalent all-positive-axes call exactly
+    rng = np.random.default_rng(0)
+    data = rng.normal(size=(2, 3, 4))
+    a = Tensor(data.copy(), requires_grad=True)
+    (a.transpose(0, -1, 1) ** 2).sum().backward()
+    b = Tensor(data.copy(), requires_grad=True)
+    (b.transpose(0, 2, 1) ** 2).sum().backward()
+    assert np.allclose(a.grad, b.grad)
+
+
 def test_getitem():
     def f(a):
         return a[np.array([0, 2]), np.array([1, 3])].sum()
@@ -140,6 +157,64 @@ def test_embedding_gradient_accumulates_over_duplicate_indices():
         return float((w[idx] ** 2).sum())
     numeric = numeric_grad(f, emb.weight.data[0].copy())
     assert np.allclose(analytic, numeric, atol=1e-4)
+
+
+def test_no_grad_produces_graph_free_tensors_with_correct_values():
+    a = Tensor(RNG.normal(size=(3, 4)), requires_grad=True)
+    b = Tensor(RNG.normal(size=(4, 5)), requires_grad=True)
+
+    normal_out = (a @ b).exp().sum(axis=0)
+    assert normal_out.requires_grad
+    assert normal_out._prev != ()
+
+    with no_grad():
+        nograd_out = (a @ b).exp().sum(axis=0)
+    assert nograd_out.requires_grad is False
+    assert nograd_out._prev == ()
+    assert np.allclose(normal_out.data, nograd_out.data)
+
+
+def test_no_grad_restores_previous_state_on_exit_and_on_exception():
+    assert no_grad.__module__  # sanity the import above resolved
+    from loom import tensor as tensor_mod
+
+    assert tensor_mod._grad_enabled is True
+    with no_grad():
+        assert tensor_mod._grad_enabled is False
+    assert tensor_mod._grad_enabled is True
+
+    try:
+        with no_grad():
+            assert tensor_mod._grad_enabled is False
+            raise RuntimeError("boom")
+    except RuntimeError:
+        pass
+    assert tensor_mod._grad_enabled is True
+
+
+def test_softmax_under_no_grad_matches_normal_softmax():
+    """softmax()/log_softmax() build a custom 'shift' node with its own
+    hand-written backward (the one hand-derived gradient in functional.py) -
+    it needs the same no_grad short-circuit as every primitive Tensor op, or
+    attention's softmax call would keep building a graph during inference."""
+    x = Tensor(RNG.normal(size=(3, 5)), requires_grad=True)
+    normal = softmax(x, axis=-1)
+    assert normal.requires_grad
+
+    with no_grad():
+        nograd = softmax(x, axis=-1)
+    assert nograd.requires_grad is False
+    assert nograd._prev == ()
+    assert np.allclose(normal.data, nograd.data)
+
+
+def test_no_grad_nests_correctly():
+    from loom import tensor as tensor_mod
+    with no_grad():
+        with no_grad():
+            assert tensor_mod._grad_enabled is False
+        assert tensor_mod._grad_enabled is False, "inner exit must not re-enable grad early"
+    assert tensor_mod._grad_enabled is True
 
 
 def test_deep_chain_no_nan():

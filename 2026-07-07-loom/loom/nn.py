@@ -12,17 +12,12 @@ from . import functional as F
 
 class Module:
     def parameters(self):
-        params = []
-        for v in self.__dict__.values():
-            if isinstance(v, Tensor) and v.requires_grad:
-                params.append(v)
-            elif isinstance(v, Module):
-                params.extend(v.parameters())
-            elif isinstance(v, (list, tuple)):
-                for item in v:
-                    if isinstance(item, Module):
-                        params.extend(item.parameters())
-        return params
+        # Derived from _named_params() rather than re-implementing the same
+        # __dict__ tree-walk a second time - the two used to be independent
+        # copies, which meant a new submodule container type only had to be
+        # taught to one of them to silently desync what the optimizer trains
+        # from what state_dict()/load_state_dict() save and restore.
+        return [t for _, t in self._named_params()]
 
     def zero_grad(self):
         for p in self.parameters():
@@ -32,8 +27,18 @@ class Module:
         return {name: t.data.copy() for name, t in self._named_params()}
 
     def load_state_dict(self, state):
-        for name, t in self._named_params():
-            t.data = state[name].copy()
+        named = self._named_params()
+        missing = [name for name, _ in named if name not in state]
+        if missing:
+            raise KeyError(f"checkpoint is missing parameter(s): {missing}")
+        for name, t in named:
+            arr = state[name]
+            if arr.shape != t.data.shape:
+                raise ValueError(
+                    f"shape mismatch for {name!r}: checkpoint has {arr.shape}, "
+                    f"model expects {t.data.shape} (config.json and weights.npz "
+                    "likely came from different runs)")
+            t.data = arr.copy()
 
     def _named_params(self, prefix=""):
         out = []

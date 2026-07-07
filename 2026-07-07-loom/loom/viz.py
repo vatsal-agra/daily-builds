@@ -281,6 +281,11 @@ function escapeLabel(s) {
 
   function draw() {
     svg.innerHTML = '';
+    if (DATA.nLayer === 0) {
+      svg.appendChild(el('text', { x: 20, y: 30, fill: 'var(--muted)', 'font-style': 'italic' }))
+        .textContent = 'this model has 0 transformer blocks - no attention to show';
+      return;
+    }
     const T = DATA.tokenLabels.length;
     const grid = DATA.attnLayers[curLayer][curHead]; // T x T
     const W = 560, pad = 90, size = W - pad;

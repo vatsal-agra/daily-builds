@@ -75,3 +75,32 @@ def test_no_unknown_token_on_arbitrary_bytes():
     # codepoints that never appear in the training corpus at all
     weird = " " + chr(0x2603) + chr(0x1F600)
     assert tok.decode(tok.encode(weird)) == weird
+
+
+def test_train_rejects_vocab_size_below_256():
+    import pytest
+    tok = BPETokenizer()
+    with pytest.raises(ValueError, match="vocab_size"):
+        tok.train(SAMPLE, vocab_size=100)
+
+
+def test_decode_rejects_out_of_range_ids():
+    """decode() used to raise a raw, confusing KeyError for any id outside
+    the trained vocab (including negative ids) - e.g. reachable directly via
+    `loom tokenizer decode` on arbitrary user input."""
+    import pytest
+    tok = _trained_tokenizer(300)
+    with pytest.raises(ValueError, match="outside this tokenizer's vocab"):
+        tok.decode([999999])
+    with pytest.raises(ValueError, match="outside this tokenizer's vocab"):
+        tok.decode([-1])
+
+
+def test_encode_ranks_cache_is_populated_after_train_and_load():
+    tok = _trained_tokenizer(300)
+    assert len(tok._ranks) == len(tok.merges)
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "tok.json")
+        tok.save(path)
+        loaded = BPETokenizer.load(path)
+    assert loaded._ranks == tok._ranks

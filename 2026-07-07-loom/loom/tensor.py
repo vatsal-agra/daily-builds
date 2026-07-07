@@ -7,6 +7,29 @@ autograd library (PyTorch/JAX/autograd/etc.) is used anywhere.
 """
 import numpy as np
 
+_grad_enabled = True
+
+
+class no_grad:
+    """Context manager for pure inference (mirrors torch.no_grad()). Ops
+    still compute their forward value but skip building _children/_backward,
+    so no graph - and no reference cycle - is created at all. Use this for
+    forward passes that will never have .backward() called on them (model
+    evaluation, autoregressive sampling): it is both faster (no closures
+    allocated) and the deeper fix for the reference-cycle memory behavior
+    noted below, not just a bigger hammer for gc.collect() to swing."""
+
+    def __enter__(self):
+        global _grad_enabled
+        self._prev = _grad_enabled
+        _grad_enabled = False
+        return self
+
+    def __exit__(self, *exc):
+        global _grad_enabled
+        _grad_enabled = self._prev
+        return False
+
 
 def _unbroadcast(grad, shape):
     """Reduce `grad` (which may have extra/broadcast dims from a numpy
@@ -52,10 +75,11 @@ class Tensor:
             self.grad = np.zeros_like(self.data)
 
     def zero_grad(self):
-        self.grad = np.zeros_like(self.data)
-
-    def detach(self):
-        return Tensor(self.data.copy(), requires_grad=False)
+        # None (not a zero array) so Adam.step()'s `if p.grad is None: skip`
+        # keeps working the same way regardless of which zero_grad a caller
+        # reaches for - Tensor.zero_grad(), Module.zero_grad(), or
+        # Adam.zero_grad() are now one convention, not two.
+        self.grad = None
 
     def __repr__(self):
         return f"Tensor(shape={self.data.shape}, requires_grad={self.requires_grad})"
@@ -63,9 +87,11 @@ class Tensor:
     # -- elementwise ops ---------------------------------------------------
     def __add__(self, other):
         other = Tensor._coerce(other)
+        data = self.data + other.data
+        if not _grad_enabled:
+            return Tensor(data)
         req = self.requires_grad or other.requires_grad
-        out = Tensor(self.data + other.data, requires_grad=req,
-                     _children=(self, other), _op="add")
+        out = Tensor(data, requires_grad=req, _children=(self, other), _op="add")
 
         def _backward():
             if self.requires_grad:
@@ -80,8 +106,10 @@ class Tensor:
     __radd__ = __add__
 
     def __neg__(self):
-        out = Tensor(-self.data, requires_grad=self.requires_grad,
-                     _children=(self,), _op="neg")
+        data = -self.data
+        if not _grad_enabled:
+            return Tensor(data)
+        out = Tensor(data, requires_grad=self.requires_grad, _children=(self,), _op="neg")
 
         def _backward():
             if self.requires_grad:
@@ -98,9 +126,11 @@ class Tensor:
 
     def __mul__(self, other):
         other = Tensor._coerce(other)
+        data = self.data * other.data
+        if not _grad_enabled:
+            return Tensor(data)
         req = self.requires_grad or other.requires_grad
-        out = Tensor(self.data * other.data, requires_grad=req,
-                     _children=(self, other), _op="mul")
+        out = Tensor(data, requires_grad=req, _children=(self, other), _op="mul")
 
         def _backward():
             if self.requires_grad:
@@ -116,8 +146,10 @@ class Tensor:
 
     def __pow__(self, p):
         assert isinstance(p, (int, float)), "only scalar exponents supported"
-        out = Tensor(self.data ** p, requires_grad=self.requires_grad,
-                     _children=(self,), _op=f"pow{p}")
+        data = self.data ** p
+        if not _grad_enabled:
+            return Tensor(data)
+        out = Tensor(data, requires_grad=self.requires_grad, _children=(self,), _op=f"pow{p}")
 
         def _backward():
             if self.requires_grad:
@@ -135,8 +167,10 @@ class Tensor:
 
     # -- reductions ---------------------------------------------------------
     def sum(self, axis=None, keepdims=False):
-        out = Tensor(self.data.sum(axis=axis, keepdims=keepdims),
-                     requires_grad=self.requires_grad, _children=(self,), _op="sum")
+        data = self.data.sum(axis=axis, keepdims=keepdims)
+        if not _grad_enabled:
+            return Tensor(data)
+        out = Tensor(data, requires_grad=self.requires_grad, _children=(self,), _op="sum")
 
         def _backward():
             if self.requires_grad:
@@ -158,8 +192,10 @@ class Tensor:
     def reshape(self, *shape):
         if len(shape) == 1 and isinstance(shape[0], (tuple, list)):
             shape = tuple(shape[0])
-        out = Tensor(self.data.reshape(*shape), requires_grad=self.requires_grad,
-                     _children=(self,), _op="reshape")
+        data = self.data.reshape(*shape)
+        if not _grad_enabled:
+            return Tensor(data)
+        out = Tensor(data, requires_grad=self.requires_grad, _children=(self,), _op="reshape")
 
         def _backward():
             if self.requires_grad:
@@ -171,9 +207,16 @@ class Tensor:
     def transpose(self, *axes):
         if len(axes) == 1 and isinstance(axes[0], (tuple, list)):
             axes = tuple(axes[0])
-        out = Tensor(self.data.transpose(*axes), requires_grad=self.requires_grad,
-                     _children=(self,), _op="transpose")
-        inv = np.argsort(axes)
+        data = self.data.transpose(*axes)
+        if not _grad_enabled:
+            return Tensor(data)
+        out = Tensor(data, requires_grad=self.requires_grad, _children=(self,), _op="transpose")
+        # Normalize to non-negative axes before inverting the permutation -
+        # np.argsort on raw axes (e.g. (0, -1, 1)) sorts by literal value,
+        # not by position, and silently computes the wrong inverse whenever
+        # an axis list mixes negative and positive indices.
+        axes_norm = [a % self.ndim for a in axes]
+        inv = np.argsort(axes_norm)
 
         def _backward():
             if self.requires_grad:
@@ -182,14 +225,11 @@ class Tensor:
         out._backward = _backward
         return out
 
-    def swapaxes(self, a, b):
-        axes = list(range(self.ndim))
-        axes[a], axes[b] = axes[b], axes[a]
-        return self.transpose(*axes)
-
     def __getitem__(self, idx):
-        out = Tensor(self.data[idx], requires_grad=self.requires_grad,
-                     _children=(self,), _op="getitem")
+        data = self.data[idx]
+        if not _grad_enabled:
+            return Tensor(data)
+        out = Tensor(data, requires_grad=self.requires_grad, _children=(self,), _op="getitem")
 
         def _backward():
             if self.requires_grad:
@@ -201,9 +241,11 @@ class Tensor:
     # -- matmul ---------------------------------------------------------------
     def matmul(self, other):
         other = Tensor._coerce(other)
+        data = np.matmul(self.data, other.data)
+        if not _grad_enabled:
+            return Tensor(data)
         req = self.requires_grad or other.requires_grad
-        out = Tensor(np.matmul(self.data, other.data), requires_grad=req,
-                     _children=(self, other), _op="matmul")
+        out = Tensor(data, requires_grad=req, _children=(self, other), _op="matmul")
 
         def _backward():
             if self.requires_grad:
@@ -222,8 +264,10 @@ class Tensor:
 
     # -- unary math -------------------------------------------------------------
     def exp(self):
-        out = Tensor(np.exp(self.data), requires_grad=self.requires_grad,
-                     _children=(self,), _op="exp")
+        data = np.exp(self.data)
+        if not _grad_enabled:
+            return Tensor(data)
+        out = Tensor(data, requires_grad=self.requires_grad, _children=(self,), _op="exp")
 
         def _backward():
             if self.requires_grad:
@@ -233,8 +277,10 @@ class Tensor:
         return out
 
     def log(self):
-        out = Tensor(np.log(self.data), requires_grad=self.requires_grad,
-                     _children=(self,), _op="log")
+        data = np.log(self.data)
+        if not _grad_enabled:
+            return Tensor(data)
+        out = Tensor(data, requires_grad=self.requires_grad, _children=(self,), _op="log")
 
         def _backward():
             if self.requires_grad:
@@ -245,6 +291,8 @@ class Tensor:
 
     def tanh(self):
         t = np.tanh(self.data)
+        if not _grad_enabled:
+            return Tensor(t)
         out = Tensor(t, requires_grad=self.requires_grad, _children=(self,), _op="tanh")
 
         def _backward():
@@ -261,9 +309,11 @@ class Tensor:
     @staticmethod
     def cat(tensors, axis=-1):
         tensors = [Tensor._coerce(t) for t in tensors]
+        data = np.concatenate([t.data for t in tensors], axis=axis)
+        if not _grad_enabled:
+            return Tensor(data)
         req = any(t.requires_grad for t in tensors)
-        out = Tensor(np.concatenate([t.data for t in tensors], axis=axis),
-                     requires_grad=req, _children=tuple(tensors), _op="cat")
+        out = Tensor(data, requires_grad=req, _children=tuple(tensors), _op="cat")
         sizes = [t.data.shape[axis] for t in tensors]
 
         def _backward():

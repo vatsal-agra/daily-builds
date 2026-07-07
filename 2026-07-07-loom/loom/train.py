@@ -10,6 +10,7 @@ from .data import Dataset
 from .functional import cross_entropy
 from .nn import GPT
 from .optim import Adam, lr_schedule
+from .tensor import no_grad
 from .tokenizer import BPETokenizer
 
 
@@ -31,6 +32,8 @@ def train(
     seed=0,
     log_fn=print,
 ):
+    if eval_every < 1:
+        raise ValueError(f"eval_every must be >= 1, got {eval_every}")
     os.makedirs(out_dir, exist_ok=True)
     text = open(corpus_path, encoding="utf-8").read()
 
@@ -56,14 +59,17 @@ def train(
     history = {"step": [], "train_loss": [], "val_loss": []}
 
     def eval_loss(split):
+        # Evaluation never calls .backward(), so run it under no_grad(): ops
+        # skip building a graph entirely, which sidesteps the reference-cycle
+        # memory behavior at the source instead of cleaning it up after the
+        # fact (see the comment on the training step below).
         losses = []
-        for _ in range(eval_iters):
-            x, y = ds.get_batch(split, batch_size, block_size, rng)
-            logits = model(x)
-            loss = cross_entropy(logits.reshape(-1, tok.vocab_size), y.reshape(-1))
-            losses.append(loss.item())
-            del logits, loss, x, y
-        gc.collect()
+        with no_grad():
+            for _ in range(eval_iters):
+                x, y = ds.get_batch(split, batch_size, block_size, rng)
+                logits = model(x)
+                loss = cross_entropy(logits.reshape(-1, tok.vocab_size), y.reshape(-1))
+                losses.append(loss.item())
         return float(np.mean(losses))
 
     t0 = time.time()
@@ -126,4 +132,9 @@ def load_checkpoint(out_dir):
     state = {k.replace("__", "."): npz[k] for k in npz.files}
     model.load_state_dict(state)
     tok = BPETokenizer.load(os.path.join(out_dir, "tokenizer.json"))
+    if tok.vocab_size != config["vocab_size"]:
+        raise ValueError(
+            f"checkpoint at {out_dir!r} is inconsistent: tokenizer.json has "
+            f"vocab_size {tok.vocab_size} but config.json says {config['vocab_size']} "
+            "(the two files were likely copied from different runs)")
     return model, tok, config

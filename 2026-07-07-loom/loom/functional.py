@@ -6,17 +6,25 @@ file hand-derives a backward pass.
 """
 import numpy as np
 
+from . import tensor as _tensor_mod
 from .tensor import Tensor
 
 NEG_INF = -1e9
 
 
-def softmax(x, axis=-1):
-    # Subtracting the row max is a numerically-stabilizing constant shift
-    # (softmax is shift-invariant), so it is applied directly to the raw
-    # array rather than as a graph node - there is nothing to differentiate
-    # through, the true softmax gradient is unaffected either way.
+def _stable_shift(x, axis):
+    """Subtract the row max as a numerically-stabilizing constant shift
+    (softmax/log_softmax are both shift-invariant, so this changes nothing
+    mathematically) - applied directly to the raw array rather than as a
+    differentiated graph node, since there is nothing to differentiate
+    through: the true gradient is identical either way. Shared by softmax()
+    and log_softmax() so a stability tweak only ever needs to happen once."""
     shifted_data = x.data - x.data.max(axis=axis, keepdims=True)
+    # Read _grad_enabled through the module (not `from .tensor import
+    # _grad_enabled`, which would freeze the value at import time and never
+    # see no_grad() toggle it).
+    if not _tensor_mod._grad_enabled:
+        return Tensor(shifted_data)
     shifted = Tensor(shifted_data, requires_grad=x.requires_grad, _children=(x,), _op="shift")
 
     def _backward():
@@ -24,22 +32,18 @@ def softmax(x, axis=-1):
             x._ensure_grad()
             x.grad += shifted.grad
     shifted._backward = _backward
+    return shifted
 
+
+def softmax(x, axis=-1):
+    shifted = _stable_shift(x, axis)
     e = shifted.exp()
     denom = e.sum(axis=axis, keepdims=True)
     return e / denom
 
 
 def log_softmax(x, axis=-1):
-    shifted_data = x.data - x.data.max(axis=axis, keepdims=True)
-    shifted = Tensor(shifted_data, requires_grad=x.requires_grad, _children=(x,), _op="shift")
-
-    def _backward():
-        if x.requires_grad:
-            x._ensure_grad()
-            x.grad += shifted.grad
-    shifted._backward = _backward
-
+    shifted = _stable_shift(x, axis)
     logsumexp = shifted.exp().sum(axis=axis, keepdims=True).log()
     return shifted - logsumexp
 

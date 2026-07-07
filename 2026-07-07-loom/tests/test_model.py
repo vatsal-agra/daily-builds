@@ -88,7 +88,9 @@ def test_dataset_batches_are_shifted_by_one():
 
 
 def test_checkpoint_roundtrip_reproduces_logits():
-    vocab = 40
+    # vocab_size must match a real tokenizer's (>= 256, the base byte vocab)
+    # so this exercises load_checkpoint()'s tokenizer/config cross-check too.
+    vocab = 256
     model = GPT(vocab, n_embd=16, n_head=2, n_layer=2, block_size=16, seed=4)
     x = np.random.default_rng(0).integers(0, vocab, size=(1, 8))
     logits_before = model(x).data.copy()
@@ -98,7 +100,7 @@ def test_checkpoint_roundtrip_reproduces_logits():
             "vocab_size": vocab, "n_embd": 16, "n_head": 2, "n_layer": 2, "block_size": 16,
         })
         tok = BPETokenizer()
-        tok.train("hello world", vocab_size=256)
+        tok.train("hello world", vocab_size=vocab)
         tok.save(os.path.join(d, "tokenizer.json"))
         loaded_model, loaded_tok, config = load_checkpoint(d)
 
@@ -150,3 +152,98 @@ def test_generate_respects_block_size_beyond_context():
     model = GPT(tok.vocab_size, n_embd=16, n_head=2, n_layer=2, block_size=8, seed=8)
     out = generate(model, tok, "the quick brown fox jumps over the lazy dog", max_new_tokens=30, seed=0)
     assert isinstance(out, str) and len(out) > 0
+
+
+def test_generate_rejects_top_k_zero_or_negative():
+    """top_k=0 used to be silently a no-op (Python's -0 == 0, so the
+    'keep the top 0' filter never actually filtered anything) instead of
+    being rejected - now it's a clear error."""
+    import pytest
+    tok = BPETokenizer()
+    tok.train("the quick brown fox", vocab_size=270)
+    model = GPT(tok.vocab_size, n_embd=16, n_head=2, n_layer=1, block_size=16, seed=9)
+    with pytest.raises(ValueError):
+        generate(model, tok, "the", max_new_tokens=5, top_k=0, seed=0)
+    with pytest.raises(ValueError):
+        generate(model, tok, "the", max_new_tokens=5, top_k=-3, seed=0)
+
+
+def test_generate_under_no_grad_builds_no_graph():
+    """generate() never calls .backward(), so its forward passes should run
+    under no_grad() and produce plain, graph-free tensors (requires_grad is
+    False and there are no _prev children) - not just eventually-collectible
+    cyclic ones."""
+    tok = BPETokenizer()
+    tok.train("the quick brown fox jumps over the lazy dog", vocab_size=270)
+    model = GPT(tok.vocab_size, n_embd=16, n_head=2, n_layer=2, block_size=16, seed=10)
+    x = np.array([[1, 2, 3]])
+    out = model(x)
+    assert out.requires_grad, "sanity: a normal forward pass should be graph-tracked"
+
+    from loom.tensor import no_grad
+    with no_grad():
+        out2 = model(x)
+    assert out2.requires_grad is False
+    assert out2._prev == ()
+    assert np.allclose(out.data, out2.data), "no_grad must not change the forward computation"
+
+
+def test_module_zero_grad_matches_optimizer_zero_grad():
+    """Tensor.zero_grad()/Module.zero_grad() and Adam.zero_grad() used to
+    disagree (one set grad to a zero array, the other to None); Adam.step()
+    skips params whose grad `is None`, so the two are no longer allowed to
+    drift apart."""
+    rng = np.random.default_rng(0)
+    model = GPT(256, n_embd=16, n_head=2, n_layer=1, block_size=8, seed=11)
+    x = rng.integers(0, 256, size=(2, 8))
+    loss = (model(x) * model(x)).sum()
+    loss.backward()
+    assert any(p.grad is not None for p in model.parameters())
+    model.zero_grad()
+    assert all(p.grad is None for p in model.parameters())
+
+
+def test_load_state_dict_rejects_shape_mismatch():
+    import pytest
+    model_a = GPT(256, n_embd=16, n_head=2, n_layer=1, block_size=8, seed=0)
+    model_b = GPT(256, n_embd=32, n_head=2, n_layer=1, block_size=8, seed=0)  # different n_embd
+    with pytest.raises(ValueError, match="shape mismatch"):
+        model_a.load_state_dict(model_b.state_dict())
+
+
+def test_load_state_dict_rejects_missing_keys():
+    import pytest
+    model = GPT(256, n_embd=16, n_head=2, n_layer=1, block_size=8, seed=0)
+    state = model.state_dict()
+    del state["tok_emb.weight"]
+    with pytest.raises(KeyError):
+        model.load_state_dict(state)
+
+
+def test_load_checkpoint_rejects_vocab_size_mismatch():
+    """config.json and tokenizer.json disagreeing on vocab size (e.g. from
+    being copied out of two different runs) used to load silently and only
+    fail later, deep inside a forward pass, with a confusing IndexError."""
+    import pytest
+    from loom.train import load_checkpoint, save_checkpoint
+    model = GPT(256, n_embd=16, n_head=2, n_layer=1, block_size=8, seed=0)
+    with tempfile.TemporaryDirectory() as d:
+        save_checkpoint(d, model, {
+            "vocab_size": 256, "n_embd": 16, "n_head": 2, "n_layer": 1, "block_size": 8,
+        })
+        tok = BPETokenizer()
+        tok.train("hello world", vocab_size=300)  # mismatched vocab_size
+        tok.save(os.path.join(d, "tokenizer.json"))
+        with pytest.raises(ValueError, match="inconsistent"):
+            load_checkpoint(d)
+
+
+def test_gpt_with_zero_layers_still_forwards():
+    """A 0-layer GPT is a degenerate but fully valid config (--n-layer has no
+    CLI minimum) - it must not crash, since loom/viz.py has to handle it too."""
+    rng = np.random.default_rng(0)
+    model = GPT(256, n_embd=16, n_head=2, n_layer=0, block_size=8, seed=0)
+    x = rng.integers(0, 256, size=(1, 3))
+    out = model(x)
+    assert out.shape == (1, 3, 256)
+    assert model.blocks == []

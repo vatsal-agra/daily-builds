@@ -58,3 +58,25 @@ def test_render_visualizer_handles_labels_with_script_breakout_chars():
         assert "<\\/script>" in html or "</script>" in html
         # the page must still parse as one coherent document: the final tag is </html>
         assert html.strip().endswith("</html>")
+
+
+def test_render_visualizer_handles_zero_layer_model():
+    """n_layer=0 is a degenerate but valid model (no CLI minimum enforces
+    otherwise) - render_visualizer must not crash producing its data, and
+    the page must ship the empty-attention guard rather than assume
+    DATA.attnLayers[0] always exists."""
+    with tempfile.TemporaryDirectory() as d:
+        corpus_path = os.path.join(d, "corpus.txt")
+        with open(corpus_path, "w") as f:
+            f.write(SMALL_CORPUS)
+        ckpt_dir = os.path.join(d, "ckpt")
+        train(
+            corpus_path=corpus_path, out_dir=ckpt_dir, vocab_size=280,
+            n_embd=16, n_head=2, n_layer=0, block_size=32, batch_size=8,
+            steps=3, eval_every=3, eval_iters=2, log_fn=lambda *a: None,
+        )
+        out_path = os.path.join(d, "viz.html")
+        render_visualizer(ckpt_dir, out_path, prompt="ROMEO:")
+        html = open(out_path).read()
+        assert '"nLayer": 0' in html.replace(" ", "") or '"nLayer":0' in html.replace(" ", "")
+        assert "no attention to show" in html

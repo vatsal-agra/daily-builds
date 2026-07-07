@@ -23,13 +23,18 @@ class BPETokenizer:
     def __init__(self):
         self.merges = []            # list[(id_a, id_b)] in learned order
         self.vocab_bytes = {i: bytes([i]) for i in range(256)}  # id -> raw bytes
+        self._ranks = {}            # pair -> merge rank, cached (see _merge_ranks)
 
     @property
     def vocab_size(self):
         return 256 + len(self.merges)
 
     def train(self, text, vocab_size, verbose=False):
-        assert vocab_size >= 256, "vocab_size must be >= 256 (the base byte vocab)"
+        # An `assert` here would be stripped entirely under `python -O`,
+        # silently training a smaller-than-requested (or, for vocab_size < 0,
+        # a plain 256-token) tokenizer instead of rejecting bad input.
+        if vocab_size < 256:
+            raise ValueError(f"vocab_size must be >= 256 (the base byte vocab), got {vocab_size}")
         num_merges = vocab_size - 256
 
         word_counts = Counter(_pre_tokenize(text))
@@ -67,13 +72,11 @@ class BPETokenizer:
                 print(f"  merge {merge_i + 1}/{num_merges}: {best_pair} "
                       f"-> {new_id} (freq {pair_counts[best_pair]})")
 
+        self._ranks = {pair: i for i, pair in enumerate(self.merges)}
         return self
 
-    def _merge_ranks(self):
-        return {pair: i for i, pair in enumerate(self.merges)}
-
     def encode(self, text):
-        ranks = self._merge_ranks()
+        ranks = self._ranks
         out = []
         for w in _pre_tokenize(text):
             ids = list(w.encode("utf-8"))
@@ -89,7 +92,15 @@ class BPETokenizer:
         return out
 
     def decode(self, ids):
-        raw = b"".join(self.vocab_bytes[int(i)] for i in ids)
+        pieces = []
+        for i in ids:
+            i = int(i)
+            if i not in self.vocab_bytes:
+                raise ValueError(
+                    f"token id {i} is outside this tokenizer's vocab "
+                    f"(valid range is 0..{self.vocab_size - 1})")
+            pieces.append(self.vocab_bytes[i])
+        raw = b"".join(pieces)
         # Sequences produced by encode() on real text always concatenate to
         # valid UTF-8 (merges only ever group byte-aligned substrings), so
         # this is lossless for anything this tokenizer actually encoded.
@@ -113,4 +124,5 @@ class BPETokenizer:
         for merge_i, pair in enumerate(tok.merges):
             new_id = 256 + merge_i
             tok.vocab_bytes[new_id] = tok.vocab_bytes[pair[0]] + tok.vocab_bytes[pair[1]]
+        tok._ranks = {pair: i for i, pair in enumerate(tok.merges)}
         return tok
