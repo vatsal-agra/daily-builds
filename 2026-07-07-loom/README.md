@@ -5,10 +5,10 @@ autograd engine, a byte-level BPE tokenizer, a decoder-only Transformer,
 and a real training loop — no PyTorch/TensorFlow/JAX/`transformers`, no
 autograd library. NumPy is used only as an array/BLAS substrate.
 
-**Status: Phase 2 (core build) in progress.** See [PLAN.md](PLAN.md) for the
+**Status: Phase 2 (core build) complete.** See [PLAN.md](PLAN.md) for the
 full architecture and feature list.
 
-Built and verified so far:
+Built and verified:
 - `loom/tensor.py` — reverse-mode autograd engine (add/mul/matmul/pow/exp/
   log/tanh/sum/mean/reshape/transpose/getitem/cat, broadcasting-aware),
   verified against central-difference numerical gradient checks (17 tests).
@@ -26,6 +26,31 @@ Built and verified so far:
   wired correctly), causal-mask leakage tests, checkpoint round-trip, 44
   tests total.
 
-A full training run on Tiny Shakespeare (~1.1MB, public domain) is in
-progress at `checkpoints/shakespeare/` to produce the final checkpoint for
-generation and the HTML visualizer.
+**Real training run complete**, `checkpoints/shakespeare/` (4 layers, 4
+heads, 96-dim, ~506K params, vocab 512, 2000 steps on Tiny Shakespeare,
+~1.1MB public domain corpus):
+
+| step | train loss | val loss | val perplexity |
+|---|---|---|---|
+| 0 | 6.27 | 6.27 | 528.9 |
+| 500 | 3.42 | 3.46 | 31.7 |
+| 1000 | 3.20 | 3.22 | 25.1 |
+| 1999 | 2.96 | 3.12 | 22.6 |
+
+An **untrained** (random-init) model sampled the same way produces
+byte-garbage with no word boundaries (`con<?>bletheylaprentastbl...`). The
+**trained** checkpoint produces real structure it was never told about:
+`NAME:`-then-newline speaker headers, capitalization, word-spacing,
+archaic pronouns (thou/thee), and verse-like punctuation - e.g.:
+
+```
+First Citizen:
+We then hest of race unfre strery and, your mouble desance;
+Where death the and have thy do mam, thee.
+
+FAUTESE:
+And, my aty with nevery all man now at with the
+```
+
+Not memorized, real Shakespeare (2000 steps on a 506K-param model doesn't
+get there) - but unmistakably *learned*, which is the actual gate.
