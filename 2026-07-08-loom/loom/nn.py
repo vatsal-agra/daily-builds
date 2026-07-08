@@ -5,6 +5,7 @@ autograd primitives, exactly the way a real framework's nn.Module library
 works on top of its tensor core.
 """
 import math
+import warnings
 
 import numpy as np
 
@@ -246,7 +247,17 @@ class GPT(Module):
             # path never forgets earlier positions (unlike the sliding-window
             # non-cached path below), so the fixed context window bounds how
             # many new tokens we can generate this call.
+            requested = max_new_tokens
             max_new_tokens = max(0, min(max_new_tokens, self.block_size - idx.shape[1]))
+            if max_new_tokens < requested:
+                warnings.warn(
+                    f"requested {requested} new tokens, but block_size={self.block_size} "
+                    f"and a prompt of length {idx.shape[1]} leave room for only "
+                    f"{max_new_tokens} with the KV-cached decoder; generating "
+                    f"{max_new_tokens} instead. Pass use_kv_cache=False for sliding-window "
+                    "generation past the context window.",
+                    RuntimeWarning,
+                )
         with no_grad():
             kv_caches = self.new_kv_caches() if use_kv_cache else None
             first = True

@@ -50,7 +50,7 @@ loom/
   tokenizer.py  — Byte-level BPE: trains merges from corpus statistics,
                   encode/decode, round-trip verified on arbitrary text
                   including unicode.
-  data/corpus.txt — an original (not copied) ~150 KB text corpus written
+  data/corpus.txt — an original (not copied) ~85 KB text corpus written
                   for this project so training data has no license/
                   accuracy concerns.
   train.py      — batches the corpus, runs the training loop, logs loss,

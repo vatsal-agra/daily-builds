@@ -125,8 +125,26 @@ class TestGPTForward(unittest.TestCase):
     def test_generate_respects_block_size(self):
         model = make_gpt(block_size=8)
         prompt = np.random.randint(0, 17, size=(1, 6))
-        out = model.generate(prompt, max_new_tokens=20, use_kv_cache=True)
+        with self.assertWarns(RuntimeWarning):
+            out = model.generate(prompt, max_new_tokens=20, use_kv_cache=True)
         self.assertLessEqual(out.shape[1], 8)
+
+    def test_generate_warns_when_prompt_already_exceeds_block_size(self):
+        model = make_gpt(block_size=8)
+        prompt = np.random.randint(0, 17, size=(1, 12))  # already over block_size
+        with self.assertWarns(RuntimeWarning):
+            out = model.generate(prompt, max_new_tokens=5, use_kv_cache=True)
+        self.assertEqual(out.shape, (1, 12))  # 0 new tokens, prompt returned unchanged
+
+    def test_generate_no_warning_when_kv_cache_disabled(self):
+        import warnings
+
+        model = make_gpt(block_size=8)
+        prompt = np.random.randint(0, 17, size=(1, 12))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            out = model.generate(prompt, max_new_tokens=5, use_kv_cache=False)
+        self.assertEqual(out.shape, (1, 17))
 
     def test_generate_without_cache_matches_shape(self):
         model = make_gpt(block_size=8)

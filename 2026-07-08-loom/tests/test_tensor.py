@@ -96,6 +96,9 @@ class TestOps(unittest.TestCase, GradCheckMixin):
     def test_sum_axis(self):
         self.assert_gradcheck(lambda a: a.sum(axis=1).sum(), (3, 4))
 
+    def test_sum_multi_axis_tuple(self):
+        self.assert_gradcheck(lambda a: (a.sum(axis=(0, 2)) ** 2).sum(), (3, 4, 5))
+
     def test_mean(self):
         self.assert_gradcheck(lambda a: a.mean(), (3, 4))
 
