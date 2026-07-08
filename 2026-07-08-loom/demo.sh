@@ -21,11 +21,9 @@ check() {
 echo "=== Loom demo ==="
 
 echo
-echo "-- D1: unit + gradient-check test suite --"
-check "tensor engine gradient checks (27 tests)" python3 -m unittest tests.test_tensor -v
-check "transformer module tests (11 tests)" python3 -m unittest tests.test_nn -v
-check "BPE tokenizer tests (11 tests)" python3 -m unittest tests.test_tokenizer -v
-check "training/checkpoint integration tests (6 tests)" python3 -m unittest tests.test_integration -v
+echo "-- D1: full unit + gradient-check + integration test suite --"
+check "run every test module (python3 -m unittest discover)" \
+    python3 -m unittest discover -s tests -v
 
 echo
 echo "-- D2: tokenizer CLI --"

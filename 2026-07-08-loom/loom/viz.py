@@ -57,8 +57,11 @@ def render_html(tok, token_ids, attn_steps, prompt_len, n_layer, n_head):
     for i, layers in enumerate(attn_steps):
         layer_data = []
         for layer_attn in layers:
-            # (1, n_head, T, T) -> list of n_head TxT matrices
-            heads = layer_attn[0].tolist()
+            # (1, n_head, T, T) -> list of n_head TxT matrices. Rounded to
+            # 3 decimal places: a heatmap only needs ~3 significant digits,
+            # and full float64 precision roughly triples the embedded JSON
+            # size (and thus the HTML file) for no visible benefit.
+            heads = np.round(layer_attn[0], 3).tolist()
             layer_data.append(heads)
         steps_json.append({"generated_index": prompt_len + i, "layers": layer_data})
 
