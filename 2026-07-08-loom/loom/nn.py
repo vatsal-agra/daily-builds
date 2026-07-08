@@ -113,6 +113,7 @@ class CausalSelfAttention(Module):
         self.block_size = block_size
         self.c_attn = Linear(n_embd, 3 * n_embd)
         self.c_proj = Linear(n_embd, n_embd)
+        self.last_attn = None
 
     def _split_heads(self, x, B, T):
         x = x.reshape(B, T, self.n_head, self.head_dim)
@@ -151,6 +152,7 @@ class CausalSelfAttention(Module):
         past_len = T_kv - T
         scores = scores + Tensor(causal_mask(T, past_len=past_len))
         attn = scores.softmax(axis=-1)
+        self.last_attn = attn.data  # (B, n_head, T, T_kv); read by the viz module
         out = attn @ v  # (B, n_head, T, head_dim)
         out = out.transpose(0, 2, 1, 3).reshape(B, T, C)
         out = self.c_proj(out)
@@ -268,6 +270,4 @@ class GPT(Module):
                     [rng.choice(len(p), p=p) for p in probs]
                 ).reshape(-1, 1)
                 idx = np.concatenate([idx, next_tok], axis=1)
-                if not use_kv_cache:
-                    pass
         return idx

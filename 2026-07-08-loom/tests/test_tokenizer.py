@@ -79,6 +79,15 @@ class TestBPETokenizer(unittest.TestCase):
         tok.train("ab" * 5, vocab_size=1000)  # tiny corpus, can't reach 1000
         self.assertLess(tok.vocab_size, 1000)
 
+    def test_decode_never_crashes_on_invalid_byte_boundaries(self):
+        tok = BPETokenizer()
+        tok.train(TRAIN_TEXT, vocab_size=300)
+        # id 205 (0xCD) alone is a stray UTF-8 continuation-lead byte with no
+        # valid follow-up in this sequence -- a real risk when decoding
+        # arbitrary/model-sampled ids rather than ids from encode().
+        result = tok.decode([205, 32, 32])
+        self.assertIn("�", result)
+
     def test_pair_occurring_once_is_not_merged(self):
         tok = BPETokenizer()
         # "qz" appears exactly once across the whole corpus -> must not merge

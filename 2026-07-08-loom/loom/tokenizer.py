@@ -104,9 +104,16 @@ class BPETokenizer:
             ids.extend(self._encode_chunk(chunk.encode("utf-8")))
         return ids
 
-    def decode(self, ids):
+    def decode(self, ids, errors="replace"):
+        """`errors='replace'` (the default) never raises: a byte sequence
+        that doesn't land on valid UTF-8 boundaries (possible when decoding
+        an arbitrary/model-sampled token sequence, as opposed to one that
+        came from `encode()`) is rendered with U+FFFD instead of crashing --
+        the same convention real BPE tokenizers use. `encode()` output always
+        round-trips exactly regardless of this setting, since it always
+        produces valid UTF-8 byte boundaries by construction."""
         byte_seq = b"".join(self.vocab[i] for i in ids)
-        return byte_seq.decode("utf-8")
+        return byte_seq.decode("utf-8", errors=errors)
 
     def save(self, path):
         with open(path, "w") as f:

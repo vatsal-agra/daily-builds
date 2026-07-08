@@ -378,6 +378,22 @@ class Tensor:
             if v.requires_grad:
                 v._backward()
 
+        # Every op's backward closure captures its own `out` (to read
+        # out.grad), which makes out._backward -> closure -> out a reference
+        # cycle. Refcounting alone can't free those, so a training loop that
+        # builds a fresh graph every step relies on the generational cyclic
+        # GC to keep up -- in practice it lags behind allocation and memory
+        # balloons. Since a graph is single-use (no retain_graph support
+        # here), explicitly drop the closures and parent links right after
+        # backward() so refcounting reclaims the graph immediately. Only
+        # touch nodes that actually HAVE children: leaf/parameter tensors
+        # (empty _prev) persist across training steps and must keep their
+        # harmless default no-op _backward intact for reuse in later graphs.
+        for v in topo:
+            if v._prev:
+                v._backward = None
+                v._prev = ()
+
     def item(self):
         return float(self.data)
 

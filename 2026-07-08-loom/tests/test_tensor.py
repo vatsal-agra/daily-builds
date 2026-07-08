@@ -168,6 +168,32 @@ class TestOps(unittest.TestCase, GradCheckMixin):
             b = (a * 2).sum()
         self.assertFalse(b.requires_grad)
 
+    def test_leaf_reused_across_multiple_backward_graphs(self):
+        # simulates a training loop: the same parameter Tensor is reused as
+        # a child in a fresh graph every "step". A prior bug nulled out
+        # leaf tensors' (harmless, no-op) _backward while cleaning up
+        # cyclic references from the PREVIOUS step's graph, crashing the
+        # very next step's backward() with "'NoneType' object is not
+        # callable".
+        w = Tensor(np.array([1.0, 2.0, 3.0]), requires_grad=True)
+        for step in range(5):
+            w.zero_grad()
+            out = (w * w).sum()  # fresh graph each "step"
+            out.backward()
+            self.assertTrue(np.allclose(w.grad, 2 * w.data))
+
+    def test_graph_nodes_freed_after_backward(self):
+        import gc
+        import weakref
+
+        a = Tensor(np.array([1.0, 2.0]), requires_grad=True)
+        b = (a * a).sum()
+        ref = weakref.ref(b)
+        b.backward()
+        del b
+        gc.collect(0)  # a real generational collection should NOT be needed
+        self.assertIsNone(ref(), "op-output tensor was not freed by refcounting alone")
+
     def test_deep_chain_backward(self):
         # a diamond graph: same tensor used twice must accumulate gradients
         a = Tensor(np.array(2.0), requires_grad=True)
