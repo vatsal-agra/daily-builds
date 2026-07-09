@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+checkpoints/*.npz
+checkpoints/*.json
+viz/attention_data.json
