@@ -7,12 +7,12 @@ language model that writes new text — no PyTorch/TensorFlow/JAX anywhere.
 NumPy is used strictly as a raw array/BLAS library; every gradient in the
 system is derived and coded by hand in `loom/tensor.py`.
 
-**Status: Phase 4 (stretch + polish) complete.** All 4 required features
-plus both stretch features (interactive attention visualizer,
-configurable model presets + checkpointing) work end to end and have
-survived a hostile adversarial pass (see [REVIEW.md](REVIEW.md)). See
-[PLAN.md](PLAN.md) for the full architecture and feature list. A full
-automated test suite (Phase 5) is still in progress.
+**Status: Phase 5 (verification) complete.** All 4 required features plus
+both stretch features work end to end, survived a hostile adversarial
+pass (see [REVIEW.md](REVIEW.md)), and are covered by a 43-test automated
+suite plus `./demo.sh`, a runnable script exercising the entire pipeline
+live (`gradcheck` → `train` → `generate` → `viz`). See [PLAN.md](PLAN.md)
+for the full architecture and feature list.
 
 ## Requirements
 
@@ -75,8 +75,11 @@ cd 2026-07-09-loom
   heatmaps with hover tooltips, plus the real train/val loss curve).
 - `loom/cli.py` — the `loom_cli` command-line entry point:
   `gradcheck` / `info` / `train` / `generate` / `chat` / `viz` / `demo`.
-- `checkpoints/model.npz` — a model trained on the bundled corpus (800
-  steps, train loss 4.03 → 1.25) and `viz/attention.html` — a real
-  visualizer export from it, both checked in as working examples.
-
-Still to come: a full automated test suite (Phase 5).
+- `checkpoints/model.npz` — a model trained on the bundled corpus and
+  `viz/attention.html` — a real visualizer export from it, both checked
+  in as working examples.
+- `tests/test_loom.py` — 43 tests covering the autograd engine, the
+  Transformer, the optimizer, tokenizer/data, training, generation, the
+  visualizer export, and the CLI (including regression tests for every
+  bug found in Phase 3).
+- `demo.sh` — runs the test suite, then the full CLI pipeline live.
