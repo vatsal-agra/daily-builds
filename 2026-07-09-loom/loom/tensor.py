@@ -21,6 +21,31 @@ import math
 import numpy as np
 
 
+def _pow(x, power):
+    """x ** power via exponentiation by squaring for integer powers.
+
+    NumPy's own `**` falls back to a slow generic ufunc path for integer
+    exponents outside {-1, 0, 1, 2} on some builds (measured >50x slower
+    than plain multiplication for exponent 3 -- exactly the exponent GELU
+    uses), so every integer power in this engine's hot path goes through
+    here instead of `x ** power` directly.
+    """
+    if isinstance(power, float) and not power.is_integer():
+        return x ** power
+    n = int(power)
+    if n == 0:
+        return np.ones_like(x)
+    neg, n = n < 0, abs(n)
+    result, base = np.ones_like(x), x
+    while n:
+        if n & 1:
+            result = result * base
+        n >>= 1
+        if n:
+            base = base * base
+    return (1.0 / result) if neg else result
+
+
 class Tensor:
     __slots__ = ("data", "requires_grad", "grad", "_backward", "_prev", "_op")
 
@@ -133,11 +158,15 @@ class Tensor:
 
     def __pow__(self, power):
         assert isinstance(power, (int, float)), "Tensor ** Tensor is not supported"
-        out = Tensor(self.data ** power, self.requires_grad, (self,), f"**{power}")
+        out = Tensor(_pow(self.data, power), self.requires_grad, (self,), f"**{power}")
 
         def _backward():
             if self.requires_grad:
-                self.grad += (power * self.data ** (power - 1)) * out.grad
+                if power == 0:
+                    deriv = np.zeros_like(self.data)
+                else:
+                    deriv = power * _pow(self.data, power - 1)
+                self.grad += deriv * out.grad
 
         out._backward = _backward
         return out

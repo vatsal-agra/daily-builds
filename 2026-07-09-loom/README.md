@@ -7,11 +7,13 @@ language model that writes new text — no PyTorch/TensorFlow/JAX anywhere.
 NumPy is used strictly as a raw array/BLAS library; every gradient in the
 system is derived and coded by hand in `loom/tensor.py`.
 
-**Status: Phase 2 (core build) complete.** All 4 required features work
-end to end. See [PLAN.md](PLAN.md) for the full architecture and feature
-list. Adversarial review, stretch features (attention visualizer), and
-polish are still in progress — this README will keep growing as each
-phase lands.
+**Status: Phase 3 (adversarial review) complete.** All 4 required features
+work end to end and have survived a hostile pass (see
+[REVIEW.md](REVIEW.md) — 1 critical performance bug, 1 critical crash,
+and 4 UX/dead-code issues found and fixed). See [PLAN.md](PLAN.md) for
+the full architecture and feature list. Stretch features (attention
+visualizer) and a full test suite are still in progress — this README
+will keep growing as each phase lands.
 
 ## Requirements
 
@@ -33,8 +35,12 @@ cd 2026-07-09-loom
 # See the bundled corpora and model size presets:
 ./loom_cli info
 
-# Train a tiny GPT on the bundled fantasy-chronicle corpus:
-./loom_cli train --corpus all --preset tiny --steps 3000
+# Train a tiny GPT on the bundled fantasy-chronicle corpus
+# (~165ms/step on the "tiny" preset at batch_size=16 on a single CPU core —
+# this is a from-scratch pure-NumPy autograd engine, not cuDNN, so a few
+# thousand steps genuinely takes a few minutes; --preset quickstart trains
+# in seconds if you just want to see the pipeline run):
+./loom_cli train --corpus all --preset tiny --steps 1500
 
 # Generate text from the trained checkpoint:
 ./loom_cli generate --ckpt checkpoints/model.npz --prompt "Mira" --temperature 0.8 --top-k 20

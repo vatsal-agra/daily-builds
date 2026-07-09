@@ -9,9 +9,14 @@ class Dataset:
     def __init__(self, ids, block_size, val_fraction=0.1, seed=0):
         self.ids = np.asarray(ids, dtype=np.int64)
         self.block_size = block_size
-        if len(self.ids) < block_size + 1:
+        # Both the train and val splits need at least block_size+1 tokens
+        # to form a single batch element, so the corpus needs twice that.
+        min_len = 2 * (block_size + 1)
+        if len(self.ids) < min_len:
             raise ValueError(
-                f"corpus has only {len(self.ids)} tokens, need at least block_size+1={block_size + 1}"
+                f"corpus has only {len(self.ids)} tokens, need at least "
+                f"2*(block_size+1)={min_len} to form both a train and a val split "
+                f"(reduce --block-size or use a larger corpus)"
             )
         split = int(len(self.ids) * (1 - val_fraction))
         split = max(block_size + 1, min(split, len(self.ids) - (block_size + 1)))

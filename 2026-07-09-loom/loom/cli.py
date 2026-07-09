@@ -4,12 +4,9 @@ Run as `python3 -m loom <command> ...` (or via the `./loom` wrapper script
 in the project root).
 """
 import argparse
-import json
 import os
 import sys
 import time
-
-import numpy as np
 
 from . import gradcheck as gc
 from .attention_trace import export as export_attention
@@ -18,7 +15,7 @@ from .generate import chat as chat_loop
 from .generate import generate as generate_text
 from .nn import GPT
 from .tokenizer import CharTokenizer
-from .train import load_checkpoint, save_checkpoint, train as run_training
+from .train import load_checkpoint, train as run_training
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORPUS_DIR = os.path.join(PROJECT_ROOT, "corpus")
@@ -98,6 +95,9 @@ def build_model_and_data(args):
 
 
 def cmd_train(args):
+    for path in (args.out, args.log):
+        if path and os.path.dirname(path):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
     model, tokenizer, dataset, text = build_model_and_data(args)
     n_params = sum(p.data.size for p in model.parameters())
     print(f"corpus {args.corpus!r}: {len(text):,} chars, vocab {tokenizer.vocab_size}, "
@@ -137,6 +137,9 @@ def cmd_viz(args):
     model, tokenizer, meta = load_checkpoint(args.ckpt)
     loss_history = meta.get("extra", {}).get("history")
     out_path = args.out or os.path.join(VIZ_DIR, "attention_data.json")
+    if len(args.prompt) > model.max_len:
+        print(f"note: prompt is {len(args.prompt)} chars, truncating to the model's "
+              f"context length ({model.max_len})")
     data = export_attention(model, tokenizer, args.prompt, out_path, loss_history=loss_history)
     print(f"exported {len(data['layers'])} layers x {model.n_head} heads over "
           f"{len(data['tokens'])} tokens to {out_path}")
@@ -158,7 +161,7 @@ def cmd_demo(args):
     print("\n--- 2. training a tiny GPT on the bundled corpus ---")
     train_args = argparse.Namespace(corpus="all", preset="tiny", block_size=None,
                                      val_fraction=0.1, seed=0, steps=args.steps,
-                                     batch_size=32, lr=3e-3, warmup=max(20, args.steps // 20),
+                                     batch_size=16, lr=3e-3, warmup=max(20, args.steps // 20),
                                      grad_clip=1.0, weight_decay=0.0, eval_interval=max(1, args.steps // 10),
                                      eval_iters=10, out=args.ckpt, log=args.log)
     if cmd_train(train_args) != 0:
@@ -195,8 +198,8 @@ def build_parser():
     sp.add_argument("--preset", default="tiny", choices=sorted(PRESETS))
     sp.add_argument("--block-size", type=int, default=None, help="override preset context length")
     sp.add_argument("--val-fraction", type=float, default=0.1)
-    sp.add_argument("--steps", type=int, default=2000)
-    sp.add_argument("--batch-size", type=int, default=32)
+    sp.add_argument("--steps", type=int, default=1500)
+    sp.add_argument("--batch-size", type=int, default=16)
     sp.add_argument("--lr", type=float, default=3e-3)
     sp.add_argument("--warmup", type=int, default=100)
     sp.add_argument("--grad-clip", type=float, default=1.0)
@@ -234,7 +237,7 @@ def build_parser():
     sp.set_defaults(func=cmd_viz)
 
     sp = sub.add_parser("demo", help="run the full pipeline end to end: gradcheck, train, generate, export viz")
-    sp.add_argument("--steps", type=int, default=1500)
+    sp.add_argument("--steps", type=int, default=700)
     sp.add_argument("--ckpt", default=os.path.join(PROJECT_ROOT, "checkpoints", "demo_model.npz"))
     sp.add_argument("--log", default=os.path.join(PROJECT_ROOT, "checkpoints", "demo_loss_history.json"))
     sp.set_defaults(func=cmd_demo)
@@ -246,7 +249,18 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     os.makedirs(os.path.join(PROJECT_ROOT, "checkpoints"), exist_ok=True)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except FileNotFoundError as e:
+        print(f"error: file not found: {e.filename or e} "
+              f"(if this is a checkpoint, run `train` first to produce one)", file=sys.stderr)
+        return 1
+    except (ValueError, AssertionError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\ninterrupted", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":
