@@ -2,4 +2,6 @@ __pycache__/
 *.pyc
 checkpoints/*.npz
 checkpoints/*.json
-viz/attention_data.json
+# ...except the checked-in example checkpoint from the bundled corpus:
+!checkpoints/model.npz
+!checkpoints/loss_history.json

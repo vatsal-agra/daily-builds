@@ -136,15 +136,14 @@ def cmd_chat(args):
 def cmd_viz(args):
     model, tokenizer, meta = load_checkpoint(args.ckpt)
     loss_history = meta.get("extra", {}).get("history")
-    out_path = args.out or os.path.join(VIZ_DIR, "attention_data.json")
+    out_path = args.out or os.path.join(VIZ_DIR, "attention.html")
     if len(args.prompt) > model.max_len:
         print(f"note: prompt is {len(args.prompt)} chars, truncating to the model's "
               f"context length ({model.max_len})")
     data = export_attention(model, tokenizer, args.prompt, out_path, loss_history=loss_history)
     print(f"exported {len(data['layers'])} layers x {model.n_head} heads over "
-          f"{len(data['tokens'])} tokens to {out_path}")
-    print(f"open {os.path.join(VIZ_DIR, 'attention.html')} in a browser "
-          f"(it loads attention_data.json from the same folder)")
+          f"{len(data['tokens'])} tokens -- self-contained visualizer written to {out_path}")
+    print(f"open it directly in a browser (file://{os.path.abspath(out_path)})")
     return 0
 
 
@@ -176,7 +175,7 @@ def cmd_demo(args):
 
     print("\n--- 4. exporting attention weights + loss curve for the visualizer ---")
     viz_args = argparse.Namespace(ckpt=args.ckpt, prompt="Mira Ashgrove kept every wrong map",
-                                   out=os.path.join(VIZ_DIR, "attention_data.json"))
+                                   out=os.path.join(VIZ_DIR, "attention.html"))
     cmd_viz(viz_args)
 
     print("\nDEMO COMPLETE.")

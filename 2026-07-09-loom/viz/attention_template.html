@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loom — Attention Visualizer</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #12151d;
+    --panel-2: #171b26;
+    --border: #232838;
+    --text: #e6e9f2;
+    --text-dim: #8992a8;
+    --accent: #7c9eff;
+    --accent-2: #ff9d7c;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .subtitle { color: var(--text-dim); font-size: 0.92rem; margin: 0 0 22px; }
+  .subtitle code { color: var(--accent); background: none; }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 20px;
+  }
+  .panel h2 {
+    font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-dim); margin: 0 0 14px; font-weight: 600;
+  }
+
+  .tokens {
+    font-family: var(--mono); font-size: 0.95rem; line-height: 1.9;
+    white-space: pre-wrap; word-break: break-all;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px;
+  }
+  .tokens span { padding: 1px 0; border-radius: 3px; }
+  .tokens span.hi-q { background: rgba(124,158,255,0.35); }
+  .tokens span.hi-k { background: rgba(255,157,124,0.35); }
+
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .tab-group { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tab-group label { color: var(--text-dim); font-size: 0.8rem; margin-right: 2px; }
+  button.tab {
+    background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--border);
+    padding: 6px 13px; border-radius: 999px; cursor: pointer; font-size: 0.85rem;
+    font-family: var(--mono); transition: all 0.12s ease;
+  }
+  button.tab:hover { border-color: var(--accent); color: var(--text); }
+  button.tab.active { background: var(--accent); color: #0b0d12; border-color: var(--accent); font-weight: 600; }
+
+  .heatmap-row { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  .heatmap-col { flex: 1 1 520px; min-width: 320px; }
+  canvas#heatmap { border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); cursor: crosshair; max-width: 100%; }
+  .legend { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 0.78rem; color: var(--text-dim); }
+  .legend .bar { width: 140px; height: 10px; border-radius: 5px; background: linear-gradient(90deg, #12151d, #7c9eff); border: 1px solid var(--border); }
+
+  .tooltip {
+    font-family: var(--mono); font-size: 0.82rem; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+    min-height: 74px; color: var(--text-dim);
+  }
+  .tooltip b { color: var(--text); }
+  .tooltip .val { color: var(--accent); font-weight: 700; }
+
+  .heads-mini { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 10px; flex: 0 0 220px; max-width: 260px; }
+  .head-thumb {
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px;
+    background: var(--panel-2); cursor: pointer; text-align: center;
+  }
+  .head-thumb.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .head-thumb canvas { width: 100%; aspect-ratio: 1; border-radius: 4px; display: block; }
+  .head-thumb .lbl { font-size: 0.68rem; color: var(--text-dim); margin-top: 4px; font-family: var(--mono); }
+
+  .stat-row { display: flex; gap: 26px; flex-wrap: wrap; color: var(--text-dim); font-size: 0.82rem; margin-top: 4px; }
+  .stat-row b { color: var(--text); font-family: var(--mono); }
+
+  #losschart { width: 100%; height: 260px; display: block; }
+  .loss-legend { display: flex; gap: 18px; font-size: 0.8rem; color: var(--text-dim); margin-top: 6px; }
+  .loss-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+  .empty { color: var(--text-dim); font-size: 0.88rem; font-style: italic; }
+  footer { color: var(--text-dim); font-size: 0.76rem; margin-top: 28px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Loom &mdash; Attention Visualizer</h1>
+  <p class="subtitle">Real post-softmax attention weights captured from an actual forward pass, over the actual tokens of one prompt. No mock data &mdash; this is <code>model.attention_maps()</code>, JSON-embedded at export time.</p>
+
+  <div class="panel">
+    <h2>Prompt</h2>
+    <div id="tokens" class="tokens"></div>
+    <div id="stats" class="stat-row"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Attention weights</h2>
+    <div class="tab-group">
+      <label>layer</label>
+      <div id="layerTabs" class="tabs"></div>
+    </div>
+    <div class="heatmap-row">
+      <div class="heatmap-col">
+        <canvas id="heatmap" width="560" height="560"></canvas>
+        <div class="legend"><span>0.0</span><span class="bar"></span><span>1.0 attention weight</span></div>
+      </div>
+      <div style="flex:0 0 260px; display:flex; flex-direction:column; gap:14px;">
+        <div>
+          <div style="color:var(--text-dim); font-size:0.78rem; margin-bottom:8px;">heads (click to select)</div>
+          <div id="headsMini" class="heads-mini"></div>
+        </div>
+        <div id="tooltip" class="tooltip">Hover the heatmap to inspect a query/key pair.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="lossPanel">
+    <h2>Training loss</h2>
+    <div id="lossEmpty" class="empty" style="display:none;">No training-loss history was embedded in this export.</div>
+    <canvas id="losschart"></canvas>
+    <div class="loss-legend">
+      <span><span class="swatch" style="background:#7c9eff;"></span>train</span>
+      <span><span class="swatch" style="background:#ff9d7c;"></span>val</span>
+    </div>
+  </div>
+
+  <footer>Loom &middot; from-scratch tensor autograd &rarr; GPT-style Transformer &rarr; trained language model</footer>
+</div>
+
+<script>
+const DATA = __LOOM_DATA_JSON__;
+
+const state = { layer: 0, head: 0 };
+
+function renderTokens() {
+  const el = document.getElementById('tokens');
+  el.innerHTML = '';
+  DATA.tokens.forEach((ch, i) => {
+    const span = document.createElement('span');
+    span.textContent = ch === '\n' ? '↵\n' : (ch === ' ' ? '·' : ch);
+    span.dataset.idx = i;
+    el.appendChild(span);
+  });
+  const cfg = DATA.config || {};
+  document.getElementById('stats').innerHTML =
+    `<div>tokens <b>${DATA.tokens.length}</b></div>` +
+    `<div>layers <b>${cfg.n_layer ?? DATA.layers.length}</b></div>` +
+    `<div>heads/layer <b>${cfg.n_head ?? (DATA.layers[0] || []).length}</b></div>` +
+    `<div>dim <b>${cfg.dim ?? '?'}</b></div>` +
+    `<div>context (max_len) <b>${cfg.max_len ?? '?'}</b></div>`;
+}
+
+function renderLayerTabs() {
+  const box = document.getElementById('layerTabs');
+  box.innerHTML = '';
+  DATA.layers.forEach((_, li) => {
+    const b = document.createElement('button');
+    b.className = 'tab' + (li === state.layer ? ' active' : '');
+    b.textContent = 'layer ' + li;
+    b.onclick = () => { state.layer = li; state.head = 0; renderAll(); };
+    box.appendChild(b);
+  });
+}
+
+function colorFor(v) {
+  // v in [0,1] -> dark panel color to accent blue, gamma-boosted for legibility
+  const t = Math.pow(Math.max(0, Math.min(1, v)), 0.6);
+  const r = Math.round(18 + t * (124 - 18));
+  const g = Math.round(21 + t * (158 - 21));
+  const b = Math.round(29 + t * (255 - 29));
+  return `rgb(${r},${g},${b})`;
+}
+
+function drawHeatmap(canvasId, matrix, size) {
+  const canvas = document.getElementById(canvasId);
+  const T = matrix.length;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = size * dpr;
+  canvas.height = size * dpr;
+  canvas.style.width = size + 'px';
+  canvas.style.height = size + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const cell = size / T;
+  for (let q = 0; q < T; q++) {
+    for (let k = 0; k < T; k++) {
+      ctx.fillStyle = colorFor(matrix[q][k]);
+      ctx.fillRect(k * cell, q * cell, Math.ceil(cell), Math.ceil(cell));
+    }
+  }
+  return cell;
+}
+
+function currentMatrix() {
+  return DATA.layers[state.layer][state.head];
+}
+
+function renderHeadsMini() {
+  const box = document.getElementById('headsMini');
+  box.innerHTML = '';
+  const heads = DATA.layers[state.layer];
+  heads.forEach((mat, hi) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'head-thumb' + (hi === state.head ? ' active' : '');
+    const cv = document.createElement('canvas');
+    cv.id = 'mini-' + hi;
+    wrap.appendChild(cv);
+    const lbl = document.createElement('div');
+    lbl.className = 'lbl';
+    lbl.textContent = 'head ' + hi;
+    wrap.appendChild(lbl);
+    wrap.onclick = () => { state.head = hi; renderHeatmapPanel(); renderHeadsMini(); };
+    box.appendChild(wrap);
+  });
+  heads.forEach((mat, hi) => drawHeatmap('mini-' + hi, mat, 72));
+}
+
+function renderHeatmapPanel() {
+  const T = DATA.tokens.length;
+  const size = Math.min(560, Math.max(260, T * 16));
+  const cell = drawHeatmap('heatmap', currentMatrix(), size);
+  const canvas = document.getElementById('heatmap');
+  const tooltip = document.getElementById('tooltip');
+  const tokensEl = document.getElementById('tokens');
+
+  function clearHi() {
+    tokensEl.querySelectorAll('span').forEach(s => s.classList.remove('hi-q', 'hi-k'));
+  }
+
+  canvas.onmousemove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const k = Math.floor(x / (rect.width / T));
+    const q = Math.floor(y / (rect.height / T));
+    if (q < 0 || q >= T || k < 0 || k >= T) return;
+    const w = currentMatrix()[q][k];
+    const qTok = DATA.tokens[q], kTok = DATA.tokens[k];
+    tooltip.innerHTML =
+      `query <b>[${q}] '${qTok === ' ' ? '·' : qTok}'</b> attends to ` +
+      `key <b>[${k}] '${kTok === ' ' ? '·' : kTok}'</b><br>weight <span class="val">${w.toFixed(4)}</span>` +
+      (k > q ? '<br><i>(masked/future position &mdash; should read 0.0000)</i>' : '');
+    clearHi();
+    tokensEl.children[q].classList.add('hi-q');
+    tokensEl.children[k].classList.add('hi-k');
+  };
+  canvas.onmouseleave = () => { clearHi(); };
+}
+
+function renderLossChart() {
+  const canvas = document.getElementById('losschart');
+  const hist = DATA.loss_history;
+  const emptyMsg = document.getElementById('lossEmpty');
+  if (!hist || !hist.length) {
+    emptyMsg.style.display = 'block';
+    canvas.style.display = 'none';
+    return;
+  }
+  emptyMsg.style.display = 'none';
+  canvas.style.display = 'block';
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 900, h = 260;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  const pad = { l: 42, r: 14, t: 14, b: 26 };
+  const steps = hist.map(r => r.step);
+  const trainL = hist.map(r => r.train_loss);
+  const valL = hist.map(r => r.val_loss);
+  const allL = trainL.concat(valL);
+  const minY = Math.min(...allL) * 0.95, maxY = Math.max(...allL) * 1.05;
+  const minX = Math.min(...steps), maxX = Math.max(...steps) || 1;
+
+  const px = s => pad.l + (w - pad.l - pad.r) * (s - minX) / Math.max(1, (maxX - minX));
+  const py = v => pad.t + (h - pad.t - pad.b) * (1 - (v - minY) / Math.max(1e-9, (maxY - minY)));
+
+  ctx.strokeStyle = '#232838'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (h - pad.t - pad.b) * i / 4;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    const val = maxY - (maxY - minY) * i / 4;
+    ctx.fillStyle = '#8992a8'; ctx.font = '11px monospace';
+    ctx.fillText(val.toFixed(2), 4, y + 3);
+  }
+
+  function line(vals, color) {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+    steps.forEach((s, i) => {
+      const x = px(s), y = py(vals[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+  line(trainL, '#7c9eff');
+  line(valL, '#ff9d7c');
+
+  ctx.fillStyle = '#8992a8'; ctx.font = '11px monospace';
+  ctx.fillText('step ' + minX, pad.l, h - 6);
+  ctx.textAlign = 'right';
+  ctx.fillText('step ' + maxX, w - pad.r, h - 6);
+  ctx.textAlign = 'left';
+}
+
+function renderAll() {
+  renderLayerTabs();
+  renderHeadsMini();
+  renderHeatmapPanel();
+}
+
+renderTokens();
+renderAll();
+renderLossChart();
+window.addEventListener('resize', renderLossChart);
+</script>
+</body>
+</html>
