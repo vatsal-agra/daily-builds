@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Faraday — circuit simulator</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E">
 <style>
   :root {
     --bg: #0e1116;
@@ -613,12 +614,22 @@ function renderSeriesPlot(container, xs, seriesMap, xlabel, ylabel, logX, uid) {
 
     visible.forEach(name => {
       const color = PALETTE[names.indexOf(name) % PALETTE.length];
+      const pts = seriesMap[name];
       ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
-      seriesMap[name].forEach((v, i) => {
+      pts.forEach((v, i) => {
         const px = xOf(xs[i]), py = yOf(isFinite(v) ? v : yMin);
         if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
       });
       ctx.stroke();
+      // A lone point (e.g. a 1-point sweep) draws no visible line segment —
+      // mark every point so single/sparse-sample data isn't a blank canvas.
+      if (pts.length < 6) {
+        ctx.fillStyle = color;
+        pts.forEach((v, i) => {
+          const px = xOf(xs[i]), py = yOf(isFinite(v) ? v : yMin);
+          ctx.beginPath(); ctx.arc(px, py, 3, 0, 2 * Math.PI); ctx.fill();
+        });
+      }
     });
 
     canvas.onmousemove = ev => {

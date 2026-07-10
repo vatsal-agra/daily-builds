@@ -4,13 +4,18 @@ A SPICE-like analog circuit simulator, built from scratch in pure Python —
 real Modified Nodal Analysis, a hand-rolled LU solver, Newton-Raphson
 nonlinear iteration, and backward-Euler transient stepping.
 
-**Status: Phase 3 (adversarial review) complete.** All 4 required + both
+**Status: Phase 4 (stretch + polish) complete.** All 4 required + both
 stretch features are implemented and passing analytic-oracle checks. A
 dedicated hostile-review pass (see [REVIEW.md](REVIEW.md)) found and fixed
 8 real issues, the worst being a bug that broke the AC/Bode view for every
 circuit and one that silently dropped a preset's waveform on export — both
 confirmed fixed and re-verified against the same repro scripts that found
-them.
+them. The UI has now been driven in a real headless-Chromium browser
+end-to-end (presets, DC/transient/AC, manual add/delete, error paths) with
+zero console errors, and a set of invalid/edge-case inputs (bad files,
+negative component values, `dt > t_stop`, floating nodes, `Is<=0` diodes,
+0Hz AC sweeps) all fail with a clean one-line message instead of a raw
+traceback.
 
 - DC operating-point solver (voltage dividers, multi-node resistor meshes)
 - Transient analysis (RC charge curve and RL current-rise curve both match
@@ -21,8 +26,8 @@ them.
 - AC small-signal Bode sweep (RLC resonance, RC cutoff both verified)
 - Ideal op-amp (inverting/non-inverting gains match `-Rf/Rin` / `1+Rf/Rin`)
 
-See [PLAN.md](PLAN.md) for the full concept and architecture. Polish, the
-full automated test suite, and final docs are still to come.
+See [PLAN.md](PLAN.md) for the full concept and architecture. The full
+automated test suite and final docs are still to come.
 
 ## Quick look
 
