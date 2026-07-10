@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faraday — circuit simulator</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel2: #1c2229;
+    --border: #2a3138;
+    --text: #e6edf3;
+    --dim: #8b96a5;
+    --accent: #4fd1c5;
+    --accent2: #f0b429;
+    --danger: #f47174;
+    --mono: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+  }
+  header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    background: linear-gradient(180deg, #161b22, #12161c);
+  }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: 0.02em; }
+  header h1 span { color: var(--accent); }
+  header .tag { color: var(--dim); font-size: 12px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 380px 1fr 380px;
+    gap: 12px;
+    padding: 12px;
+    align-items: start;
+  }
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .panel h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    margin: 0 0 10px 0;
+  }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+  .tab-btn {
+    flex: 1;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--dim);
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .tab-btn.active { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+
+  select, input, textarea, button {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #04201d; border-color: var(--accent); font-weight: 700; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.danger { color: var(--danger); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; color: var(--dim); font-weight: 500; padding: 4px 4px; border-bottom: 1px solid var(--border); }
+  td { padding: 3px 4px; }
+  td input { width: 100%; padding: 3px 5px; font-size: 12px; }
+  td.type-badge { font-family: var(--mono); color: var(--accent2); }
+  .row-del { background: transparent; border: none; color: var(--danger); padding: 2px 6px; }
+
+  #compTable-wrap { max-height: 260px; overflow-y: auto; margin-bottom: 8px; }
+  .toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .toolbar select { flex: 1; }
+
+  textarea#netlistText {
+    width: 100%; height: 200px; font-family: var(--mono); font-size: 12px;
+    resize: vertical; white-space: pre;
+  }
+  .hint { color: var(--dim); font-size: 11px; margin-top: 6px; line-height: 1.5; }
+
+  #schematic { width: 100%; height: 260px; background: #0b0e13; border: 1px solid var(--border); border-radius: 8px; }
+  .schematic-empty { color: var(--dim); text-align: center; padding-top: 100px; font-size: 12px; }
+
+  .field-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .field-row label { color: var(--dim); font-size: 12px; min-width: 46px; }
+  .field-row input[type=text], .field-row input[type=number] { width: 90px; }
+  .field-row.wide input { width: 100%; }
+
+  #errorBanner {
+    display: none; background: #3a1414; border: 1px solid var(--danger); color: #ffb3b3;
+    padding: 8px 12px; border-radius: 8px; margin: 0 12px 12px 12px; font-size: 13px;
+    white-space: pre-wrap;
+  }
+
+  #dcTable td, #dcTable th { font-family: var(--mono); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; font-size: 12px; }
+  .legend label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  canvas.plot { width: 100%; height: 220px; background: #0b0e13; border: 1px solid var(--border); border-radius: 8px; display: block; }
+  #readout { font-family: var(--mono); font-size: 11px; color: var(--dim); min-height: 16px; margin-top: 4px; }
+  .plot-wrap { margin-bottom: 10px; }
+  .placeholder { color: var(--dim); text-align: center; padding: 60px 0; font-size: 12px; }
+  footer { text-align: center; color: var(--dim); font-size: 11px; padding: 16px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ <span>Faraday</span></h1>
+  <span class="tag">a SPICE-like analog circuit simulator, running the real Python MNA/Newton-Raphson engine on every click</span>
+</header>
+
+<div id="errorBanner"></div>
+
+<div class="layout">
+
+  <!-- LEFT: circuit editor -->
+  <div class="panel">
+    <h2>Circuit</h2>
+    <div class="toolbar">
+      <select id="presetSelect"><option value="">— load a preset —</option></select>
+    </div>
+
+    <div class="tabs" style="margin-top:10px;">
+      <button class="tab-btn active" data-editor="table">Component Table</button>
+      <button class="tab-btn" data-editor="text">Netlist Text</button>
+    </div>
+
+    <div id="editor-table">
+      <div id="compTable-wrap">
+        <table id="compTable">
+          <thead><tr><th>Type</th><th>Name</th><th>N1</th><th>N2</th><th>N3</th><th>Value</th><th>AC</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="toolbar">
+        <select id="addType">
+          <option value="R">Resistor (R)</option>
+          <option value="C">Capacitor (C)</option>
+          <option value="L">Inductor (L)</option>
+          <option value="V">Voltage source (V)</option>
+          <option value="I">Current source (I)</option>
+          <option value="D">Diode (D)</option>
+          <option value="O">Ideal op-amp (O)</option>
+        </select>
+        <button id="addRowBtn">+ Add</button>
+      </div>
+      <p class="hint">Nodes are any text label; <b>0</b> is always ground. N3 is only used by op-amps (output node).</p>
+    </div>
+
+    <div id="editor-text" style="display:none;">
+      <textarea id="netlistText" spellcheck="false"></textarea>
+      <p class="hint">R/C/L: <code>name n1 n2 value</code>. Sources: <code>name n+ n- DC v [AC mag]</code>.
+      Diode: <code>name anode cathode</code>. Op-amp: <code>name n+ n- nout</code>. Suffixes: k meg m u n p f.</p>
+    </div>
+  </div>
+
+  <!-- MIDDLE: schematic -->
+  <div class="panel">
+    <h2>Schematic (node-rail view)</h2>
+    <svg id="schematic"></svg>
+    <div class="hint">Each horizontal rail is one electrical node; boxes are components spanning between the rails they touch. This isn't a routed schematic — it's a direct visualization of the netlist graph.</div>
+  </div>
+
+  <!-- RIGHT: analysis + results -->
+  <div class="panel">
+    <h2>Analysis</h2>
+    <div class="tabs">
+      <button class="tab-btn active" data-analysis="dc">DC</button>
+      <button class="tab-btn" data-analysis="tran">Transient</button>
+      <button class="tab-btn" data-analysis="ac">AC / Bode</button>
+    </div>
+
+    <div id="params-dc"></div>
+    <div id="params-tran" style="display:none;">
+      <div class="field-row"><label>Stop</label><input id="tranStop" type="text" value="5m"><label>dt</label><input id="tranDt" type="text" value="10u">
+        <label><input id="tranUic" type="checkbox"> use IC</label></div>
+    </div>
+    <div id="params-ac" style="display:none;">
+      <div class="field-row"><label>Start</label><input id="acStart" type="text" value="1"><label>Stop</label><input id="acStop" type="text" value="1meg">
+      <label>Pts</label><input id="acPoints" type="number" value="80" style="width:60px;"></div>
+    </div>
+
+    <button class="primary" id="runBtn" style="width:100%; padding:9px;">▶ Simulate</button>
+
+    <div id="results" style="margin-top:14px;"></div>
+  </div>
+
+</div>
+
+<footer>Faraday — pure-Python Modified Nodal Analysis engine, zero client-side circuit math. Every waveform above was solved server-side.</footer>
+
+<script>
+"use strict";
+
+// ---------- state ----------
+let components = []; // {type,name,n1,n2,n3,value,acMag}
+let presets = {};
+let currentEditor = "table";
+let currentAnalysis = "dc";
+let lastResult = null;
+
+const el = id => document.getElementById(id);
+
+// ---------- netlist text generation from table ----------
+function componentToLine(c) {
+  switch (c.type) {
+    case "R": case "C": case "L":
+      return `${c.name} ${c.n1} ${c.n2} ${c.value}`;
+    case "V": case "I": {
+      let line = `${c.name} ${c.n1} ${c.n2} DC ${c.value || 0}`;
+      if (c.acMag) line += ` AC ${c.acMag}`;
+      return line;
+    }
+    case "D":
+      return `${c.name} ${c.n1} ${c.n2}`;
+    case "O":
+      return `${c.name} ${c.n1} ${c.n2} ${c.n3}`;
+    default:
+      return "";
+  }
+}
+
+function generateNetlistText() {
+  return components.map(componentToLine).join("\n") + (components.length ? "\n" : "");
+}
+
+// Minimal tokenizer for the *regular* format our own componentToLine()/
+// Python to_netlist() produce — used only to populate the table when a
+// preset loads. Free-form pasted text in the "Netlist Text" tab is sent
+// to the server as-is and never needs to round-trip back into the table.
+function tryParsePresetIntoTable(text) {
+  const rows = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("*") || line.startsWith(".")) continue;
+    const toks = line.split(/\s+/);
+    if (toks.length < 3) continue;
+    const name = toks[0];
+    const type = name[0].toUpperCase();
+    if (type === "R" || type === "C" || type === "L") {
+      rows.push({ type, name, n1: toks[1], n2: toks[2], n3: "", value: toks[3] || "1", acMag: "" });
+    } else if (type === "V" || type === "I") {
+      const dcIdx = toks.indexOf("DC");
+      const acIdx = toks.indexOf("AC");
+      const value = dcIdx >= 0 ? toks[dcIdx + 1] : (toks[3] || "0");
+      const acMag = acIdx >= 0 ? toks[acIdx + 1] : "";
+      rows.push({ type, name, n1: toks[1], n2: toks[2], n3: "", value, acMag });
+    } else if (type === "D") {
+      rows.push({ type, name, n1: toks[1], n2: toks[2], n3: "", value: "", acMag: "" });
+    } else if (type === "O") {
+      rows.push({ type, name, n1: toks[1], n2: toks[2], n3: toks[3] || "0", value: "", acMag: "" });
+    }
+  }
+  return rows;
+}
+
+// ---------- table rendering ----------
+function renderTable() {
+  const tbody = document.querySelector("#compTable tbody");
+  tbody.innerHTML = "";
+  components.forEach((c, idx) => {
+    const tr = document.createElement("tr");
+    const showN3 = c.type === "O";
+    const showAc = c.type === "V" || c.type === "I";
+    tr.innerHTML = `
+      <td class="type-badge">${c.type}</td>
+      <td><input data-f="name" value="${c.name}"></td>
+      <td><input data-f="n1" value="${c.n1}"></td>
+      <td><input data-f="n2" value="${c.n2}"></td>
+      <td>${showN3 ? `<input data-f="n3" value="${c.n3 || ''}">` : ""}</td>
+      <td>${c.type === "D" ? "" : `<input data-f="value" value="${c.value || ''}">`}</td>
+      <td>${showAc ? `<input data-f="acMag" value="${c.acMag || ''}" placeholder="0">` : ""}</td>
+      <td><button class="row-del" data-idx="${idx}">✕</button></td>
+    `;
+    tr.querySelectorAll("input").forEach(inp => {
+      inp.addEventListener("input", () => {
+        components[idx][inp.dataset.f] = inp.value;
+        syncNetlistText();
+        renderSchematic();
+      });
+    });
+    tr.querySelector(".row-del").addEventListener("click", () => {
+      components.splice(idx, 1);
+      renderTable();
+      syncNetlistText();
+      renderSchematic();
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function nextName(type) {
+  const n = components.filter(c => c.type === type).length + 1;
+  return `${type}${n}`;
+}
+
+el("addRowBtn").addEventListener("click", () => {
+  const type = el("addType").value;
+  const defaults = { R: "1k", C: "1u", L: "10m", V: "0", I: "0", D: "", O: "" };
+  components.push({ type, name: nextName(type), n1: "1", n2: "0", n3: "out", value: defaults[type], acMag: "" });
+  renderTable();
+  syncNetlistText();
+  renderSchematic();
+});
+
+function syncNetlistText() {
+  if (currentEditor === "table") el("netlistText").value = generateNetlistText();
+}
+
+// ---------- editor tabs ----------
+document.querySelectorAll("[data-editor]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-editor]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentEditor = btn.dataset.editor;
+    el("editor-table").style.display = currentEditor === "table" ? "" : "none";
+    el("editor-text").style.display = currentEditor === "text" ? "" : "none";
+    if (currentEditor === "table") syncNetlistText();
+  });
+});
+
+function activeNetlistText() {
+  return currentEditor === "table" ? generateNetlistText() : el("netlistText").value;
+}
+
+// ---------- schematic (node-rail view) ----------
+function renderSchematic() {
+  const svg = el("schematic");
+  const text = activeNetlistText();
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("*") && !l.startsWith("."));
+  if (!lines.length) {
+    svg.innerHTML = `<text x="50%" y="50%" text-anchor="middle" fill="#8b96a5" font-size="12">Add a component to see the schematic</text>`;
+    return;
+  }
+  const parsed = lines.map(l => {
+    const t = l.split(/\s+/);
+    return { name: t[0], nodes: t[0][0].toUpperCase() === "O" ? [t[1], t[2], t[3]] : [t[1], t[2]] };
+  });
+  const nodeSet = [];
+  parsed.forEach(p => p.nodes.forEach(n => { if (n !== undefined && !nodeSet.includes(n)) nodeSet.push(n); }));
+  nodeSet.sort((a, b) => (a === "0") - (b === "0") || a.localeCompare(b, undefined, { numeric: true }));
+
+  const width = Math.max(500, 90 * parsed.length + 120);
+  const height = Math.max(140, 40 * nodeSet.length + 40);
+  const railY = {};
+  nodeSet.forEach((n, i) => railY[n] = 30 + i * 40);
+  const xStep = (width - 140) / Math.max(1, parsed.length);
+
+  let svgEls = "";
+  nodeSet.forEach(n => {
+    const y = railY[n];
+    svgEls += `<line x1="80" y1="${y}" x2="${width - 20}" y2="${y}" stroke="#2a3138" stroke-width="1"/>`;
+    svgEls += `<text x="10" y="${y + 4}" fill="${n === '0' ? '#f0b429' : '#8b96a5'}" font-size="11" font-family="monospace">${n === '0' ? 'GND' : n}</text>`;
+  });
+  parsed.forEach((p, i) => {
+    const x = 110 + i * xStep;
+    const ys = p.nodes.filter(n => n !== undefined).map(n => railY[n]);
+    const yTop = Math.min(...ys), yBot = Math.max(...ys);
+    svgEls += `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${yBot}" stroke="#4fd1c5" stroke-width="2"/>`;
+    ys.forEach(y => svgEls += `<circle cx="${x}" cy="${y}" r="3" fill="#4fd1c5"/>`);
+    const midY = (yTop + yBot) / 2;
+    svgEls += `<rect x="${x - 24}" y="${midY - 10}" width="48" height="20" rx="4" fill="#161b22" stroke="#4fd1c5"/>`;
+    svgEls += `<text x="${x}" y="${midY + 4}" text-anchor="middle" fill="#e6edf3" font-size="10" font-family="monospace">${p.name}</text>`;
+  });
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.innerHTML = svgEls;
+}
+
+// ---------- analysis tabs ----------
+document.querySelectorAll("[data-analysis]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-analysis]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentAnalysis = btn.dataset.analysis;
+    ["dc", "tran", "ac"].forEach(a => el(`params-${a}`).style.display = a === currentAnalysis ? "" : "none");
+  });
+});
+
+// ---------- presets ----------
+async function loadPresets() {
+  const res = await fetch("/api/presets");
+  presets = await res.json();
+  const sel = el("presetSelect");
+  Object.keys(presets).sort().forEach(name => {
+    const opt = document.createElement("option");
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  });
+  sel.addEventListener("change", () => {
+    if (!sel.value) return;
+    const text = presets[sel.value];
+    components = tryParsePresetIntoTable(text);
+    renderTable();
+    el("netlistText").value = text;
+    renderSchematic();
+  });
+}
+
+// ---------- error banner ----------
+function showError(msg) {
+  const banner = el("errorBanner");
+  banner.textContent = msg;
+  banner.style.display = "block";
+}
+function clearError() { el("errorBanner").style.display = "none"; }
+
+// ---------- run simulation ----------
+el("runBtn").addEventListener("click", runSimulation);
+
+async function runSimulation() {
+  clearError();
+  const netlist = activeNetlistText().trim();
+  if (!netlist) { showError("Add at least one component first."); return; }
+  const payload = { netlist, analysis: currentAnalysis };
+  if (currentAnalysis === "tran") {
+    payload.tstop = suffixToNumber(el("tranStop").value);
+    payload.dt = suffixToNumber(el("tranDt").value);
+    payload.uic = el("tranUic").checked;
+  } else if (currentAnalysis === "ac") {
+    payload.fstart = suffixToNumber(el("acStart").value);
+    payload.fstop = suffixToNumber(el("acStop").value);
+    payload.points = parseInt(el("acPoints").value || "50", 10);
+    payload.scale = "log";
+  }
+  el("runBtn").disabled = true;
+  el("runBtn").textContent = "solving…";
+  try {
+    const res = await fetch("/api/simulate", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) { showError(data.error || "unknown server error"); el("results").innerHTML = ""; return; }
+    lastResult = data;
+    renderResults(data);
+  } catch (e) {
+    showError("Could not reach the Faraday server: " + e.message);
+  } finally {
+    el("runBtn").disabled = false;
+    el("runBtn").textContent = "▶ Simulate";
+  }
+}
+
+const SUFFIX = { t: 1e12, g: 1e9, meg: 1e6, k: 1e3, m: 1e-3, u: 1e-6, n: 1e-9, p: 1e-12, f: 1e-15 };
+function suffixToNumber(s) {
+  s = String(s).trim();
+  const m = s.match(/^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)([a-zA-Z]*)$/);
+  if (!m) return parseFloat(s);
+  const num = parseFloat(m[1]);
+  const suf = m[2].toLowerCase();
+  if (suf.startsWith("meg")) return num * 1e6;
+  for (const k in SUFFIX) if (suf.startsWith(k)) return num * SUFFIX[k];
+  return num;
+}
+
+// ---------- results rendering ----------
+const PALETTE = ["#4fd1c5", "#f0b429", "#f47174", "#8ab4f8", "#c792ea", "#7ee787"];
+
+function renderResults(data) {
+  const container = el("results");
+  container.innerHTML = "";
+  if (data.type === "dc") {
+    let html = `<table id="dcTable"><thead><tr><th>Node/Branch</th><th>Value</th></tr></thead><tbody>`;
+    Object.entries(data.voltages).sort().forEach(([n, v]) => {
+      html += `<tr><td>V(${n})</td><td>${v.toFixed(6)} V</td></tr>`;
+    });
+    Object.entries(data.currents).sort().forEach(([n, i]) => {
+      html += `<tr><td>I(${n})</td><td>${i.toExponential(4)} A</td></tr>`;
+    });
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+  } else if (data.type === "tran") {
+    renderSeriesPlot(container, data.times, { ...data.voltages, ...prefixKeys(data.currents, "I:") },
+      "time (s)", "value", false);
+  } else if (data.type === "ac") {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `<div class="hint">Magnitude (dB)</div>`;
+    container.appendChild(wrap);
+    renderSeriesPlot(container, data.freqs, data.magnitude_db, "freq (Hz)", "dB", true, "mag");
+    const wrap2 = document.createElement("div");
+    wrap2.innerHTML = `<div class="hint" style="margin-top:8px;">Phase (degrees)</div>`;
+    container.appendChild(wrap2);
+    renderSeriesPlot(container, data.freqs, data.phase, "freq (Hz)", "deg", true, "phase");
+  }
+}
+
+function prefixKeys(obj, prefix) {
+  const out = {};
+  for (const k in obj) out[prefix + k] = obj[k];
+  return out;
+}
+
+let seriesVisibility = {};
+function renderSeriesPlot(container, xs, seriesMap, xlabel, ylabel, logX, uid) {
+  uid = uid || "s";
+  const names = Object.keys(seriesMap);
+  const legendDiv = document.createElement("div");
+  legendDiv.className = "legend";
+  names.forEach((name, i) => {
+    const key = uid + ":" + name;
+    if (!(key in seriesVisibility)) seriesVisibility[key] = true;
+    const color = PALETTE[i % PALETTE.length];
+    const label = document.createElement("label");
+    label.innerHTML = `<input type="checkbox" ${seriesVisibility[key] ? "checked" : ""}> <span class="swatch" style="background:${color}"></span> ${name}`;
+    label.querySelector("input").addEventListener("change", e => {
+      seriesVisibility[key] = e.target.checked;
+      draw();
+    });
+    legendDiv.appendChild(label);
+  });
+  container.appendChild(legendDiv);
+
+  const wrap = document.createElement("div");
+  wrap.className = "plot-wrap";
+  const canvas = document.createElement("canvas");
+  canvas.className = "plot";
+  wrap.appendChild(canvas);
+  const readout = document.createElement("div");
+  readout.id = "readout-" + uid;
+  readout.className = "hint";
+  wrap.appendChild(readout);
+  container.appendChild(wrap);
+
+  function draw() {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.max(300, rect.width || 600), h = 220;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    canvas.style.height = h + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const visible = names.filter(n => seriesVisibility[uid + ":" + n]);
+    const pad = { l: 54, r: 12, t: 10, b: 26 };
+    const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+
+    let xMin = Math.min(...xs), xMax = Math.max(...xs);
+    if (logX) { xMin = Math.log10(Math.max(xMin, 1e-12)); xMax = Math.log10(Math.max(xMax, xMin + 1e-12)); }
+    let yMin = Infinity, yMax = -Infinity;
+    visible.forEach(n => seriesMap[n].forEach(v => {
+      if (isFinite(v)) { yMin = Math.min(yMin, v); yMax = Math.max(yMax, v); }
+    }));
+    if (!isFinite(yMin) || !isFinite(yMax)) { yMin = 0; yMax = 1; }
+    if (yMin === yMax) { yMin -= 1; yMax += 1; }
+    const yPad = (yMax - yMin) * 0.08;
+    yMin -= yPad; yMax += yPad;
+
+    const xOf = x => pad.l + ((logX ? Math.log10(Math.max(x, 1e-12)) : x) - xMin) / (xMax - xMin || 1) * plotW;
+    const yOf = y => pad.t + plotH - (y - yMin) / (yMax - yMin || 1) * plotH;
+
+    ctx.strokeStyle = "#20262e"; ctx.lineWidth = 1; ctx.font = "10px monospace"; ctx.fillStyle = "#8b96a5";
+    for (let i = 0; i <= 4; i++) {
+      const gy = pad.t + plotH * i / 4;
+      ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(w - pad.r, gy); ctx.stroke();
+      const val = yMax - (yMax - yMin) * i / 4;
+      ctx.fillText(val.toPrecision(3), 2, gy + 3);
+    }
+    for (let i = 0; i <= 4; i++) {
+      const gx = pad.l + plotW * i / 4;
+      ctx.beginPath(); ctx.moveTo(gx, pad.t); ctx.lineTo(gx, h - pad.b); ctx.stroke();
+      const frac = xMin + (xMax - xMin) * i / 4;
+      const val = logX ? Math.pow(10, frac) : frac;
+      ctx.fillText(val.toPrecision(3), gx - 14, h - 8);
+    }
+
+    visible.forEach(name => {
+      const color = PALETTE[names.indexOf(name) % PALETTE.length];
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
+      seriesMap[name].forEach((v, i) => {
+        const px = xOf(xs[i]), py = yOf(isFinite(v) ? v : yMin);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+    });
+
+    canvas.onmousemove = ev => {
+      const r = canvas.getBoundingClientRect();
+      const mx = ev.clientX - r.left;
+      const frac = Math.max(0, Math.min(1, (mx - pad.l) / plotW));
+      const xVal = logX ? Math.pow(10, xMin + frac * (xMax - xMin)) : xMin + frac * (xMax - xMin);
+      let closest = 0, best = Infinity;
+      xs.forEach((x, i) => { const d = Math.abs(x - xVal); if (d < best) { best = d; closest = i; } });
+      let txt = `${xlabel}=${xs[closest].toPrecision(5)}  `;
+      visible.forEach(n => txt += `${n}=${seriesMap[n][closest].toPrecision(5)}  `);
+      readout.textContent = txt;
+    };
+  }
+  draw();
+  window.addEventListener("resize", draw);
+}
+
+// ---------- init ----------
+loadPresets();
+renderTable();
+syncNetlistText();
+renderSchematic();
+el("results").innerHTML = '<div class="placeholder">Run a simulation to see results here.</div>';
+</script>
+</body>
+</html>
