@@ -88,10 +88,14 @@ def _parse_kv(tokens):
 
 def _parse_source_spec(name, tokens):
     dc_value, waveform, ac_mag, ac_phase = 0.0, None, 0.0, 0.0
+    spec = ("DC", (0.0,))
     i = 0
     if i < len(tokens) and tokens[i].upper() == "DC":
         i += 1
+        if i >= len(tokens):
+            raise ValueError(f"{name}: DC needs a value")
         dc_value = parse_value(tokens[i])
+        spec = ("DC", (dc_value,))
         i += 1
     elif i < len(tokens) and tokens[i].upper().startswith("PULSE"):
         parts = [parse_value(p) for p in _inner_paren(tokens[i]).split()]
@@ -101,6 +105,7 @@ def _parse_source_spec(name, tokens):
         v1, v2, delay, rise, fall, width, period = parts
         dc_value = v1
         waveform = _pulse(v1, v2, delay, rise, fall, width, period)
+        spec = ("PULSE", tuple(parts))
         i += 1
     elif i < len(tokens) and tokens[i].upper().startswith("SIN"):
         parts = [parse_value(p) for p in _inner_paren(tokens[i]).split()]
@@ -112,9 +117,11 @@ def _parse_source_spec(name, tokens):
         damping = parts[4] if len(parts) > 4 else 0.0
         dc_value = offset
         waveform = _sine(offset, amplitude, freq, delay, damping)
+        spec = ("SIN", (offset, amplitude, freq, delay, damping))
         i += 1
     elif i < len(tokens) and tokens[i].upper() != "AC":
         dc_value = parse_value(tokens[i])
+        spec = ("DC", (dc_value,))
         i += 1
 
     if i < len(tokens) and tokens[i].upper() == "AC":
@@ -128,7 +135,7 @@ def _parse_source_spec(name, tokens):
             i += 1
     if i != len(tokens):
         raise ValueError(f"{name}: unexpected trailing tokens {tokens[i:]!r}")
-    return dc_value, waveform, ac_mag, ac_phase
+    return dc_value, waveform, ac_mag, ac_phase, spec
 
 
 def parse_netlist(text):
@@ -161,11 +168,11 @@ def parse_netlist(text):
                 ic = parse_value(kv["IC"]) if "IC" in kv else 0.0
                 elements.append(Inductor(name, tokens[1], tokens[2], parse_value(tokens[3]), ic=ic))
             elif prefix == "V":
-                dc_v, wf, ac_m, ac_p = _parse_source_spec(name, tokens[3:])
-                elements.append(VSource(name, tokens[1], tokens[2], dc_v, wf, ac_m, ac_p))
+                dc_v, wf, ac_m, ac_p, spec = _parse_source_spec(name, tokens[3:])
+                elements.append(VSource(name, tokens[1], tokens[2], dc_v, wf, ac_m, ac_p, spec))
             elif prefix == "I":
-                dc_v, wf, ac_m, ac_p = _parse_source_spec(name, tokens[3:])
-                elements.append(ISource(name, tokens[1], tokens[2], dc_v, wf, ac_m, ac_p))
+                dc_v, wf, ac_m, ac_p, spec = _parse_source_spec(name, tokens[3:])
+                elements.append(ISource(name, tokens[1], tokens[2], dc_v, wf, ac_m, ac_p, spec))
             elif prefix == "D":
                 kv = _parse_kv(tokens[3:])
                 elements.append(Diode(
@@ -197,9 +204,17 @@ def to_netlist(elements, directives=None, title=None):
             ic = f" IC={format_value(e.ic)}" if e.ic else ""
             lines.append(f"{e.name} {e.n1} {e.n2} {format_value(e.inductance)}{ic}")
         elif isinstance(e, (VSource, ISource)):
-            spec = f"DC {format_value(e.dc_value)}"
+            kind, params = e.spec
+            if kind == "DC":
+                spec_str = f"DC {format_value(params[0])}"
+            elif kind == "PULSE":
+                spec_str = "PULSE(" + " ".join(format_value(p) for p in params) + ")"
+            elif kind == "SIN":
+                spec_str = "SIN(" + " ".join(format_value(p) for p in params) + ")"
+            else:
+                raise ValueError(f"{e.name}: unknown waveform spec kind {kind!r}")  # pragma: no cover
             ac = f" AC {format_value(e.ac_mag)}" if e.ac_mag else ""
-            lines.append(f"{e.name} {e.n_pos} {e.n_neg} {spec}{ac}")
+            lines.append(f"{e.name} {e.n_pos} {e.n_neg} {spec_str}{ac}")
         elif isinstance(e, Diode):
             lines.append(f"{e.name} {e.n_pos} {e.n_neg} IS={e.Is} N={e.n}")
         elif isinstance(e, OpAmp):

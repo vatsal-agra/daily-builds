@@ -13,6 +13,13 @@ from . import linalg
 
 GROUND = "0"
 
+# Standard SPICE numerical regularization: a tiny conductance stamped in
+# parallel with every nonlinear junction. Real diode conductance underflows
+# to exact 0.0 at ordinary reverse-bias voltages (float64 exp() underflow
+# starts well within plausible operating ranges), which can otherwise leave
+# a node with no DC-connected path to ground and a singular MNA matrix.
+GMIN = 1e-12
+
 
 class Circuit:
     def __init__(self, elements, name="circuit"):
@@ -21,6 +28,16 @@ class Circuit:
         self._number_unknowns()
 
     def _number_unknowns(self):
+        # Name-specific duplicate check first, so "two op-amps both named
+        # O1" reports the actual offending name instead of the generic
+        # "duplicate names among V/L/OpAmp branches" check below.
+        by_name = {}
+        for e in self.elements:
+            if e.name in by_name and by_name[e.name] is not e:
+                raise ValueError(f"duplicate element name {e.name!r}")
+            by_name[e.name] = e
+        self.by_name = by_name
+
         node_names = []
         seen = set()
         for e in self.elements:
@@ -42,19 +59,6 @@ class Circuit:
             raise ValueError("duplicate element names among V/L/OpAmp branches")
         self.extra_index = {name: self.n_nodes + i for i, name in enumerate(extra)}
         self.size = self.n_nodes + len(extra)
-
-        by_name = {}
-        for e in self.elements:
-            if e.name in by_name and by_name[e.name] is not e:
-                raise ValueError(f"duplicate element name {e.name!r}")
-            by_name[e.name] = e
-        self.by_name = by_name
-
-        for e in self.elements:
-            for attr in ("n1", "n2", "n_pos", "n_neg", "n_plus", "n_minus", "n_out"):
-                n = getattr(e, attr, None)
-                if n is not None and n != GROUND and n not in self.node_index:
-                    raise AssertionError(f"unregistered node {n!r}")  # pragma: no cover
 
     def vidx(self, node):
         """Row/col index for a node's voltage unknown, or None for ground."""
@@ -195,7 +199,9 @@ def stamp(circuit, mode, t=0.0, h=None, omega=None, prev_state=None, diode_bias=
             id0 = e.current(vd)
             ieq = id0 - gd * vd
             diode_updates[e.name] = vd
-            _stamp_conductance(A, i1, i2, gd)
+            # GMIN is a literal extra parallel conductance (passes through
+            # the origin), so it's stamped separately and never touches ieq.
+            _stamp_conductance(A, i1, i2, gd + GMIN)
             if i1 is not None:
                 z[i1] -= ieq
             if i2 is not None:

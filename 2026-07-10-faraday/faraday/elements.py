@@ -91,7 +91,13 @@ class VSource:
     value for transient analysis; ``dc_value`` is used for DC operating
     point; ``ac_mag``/``ac_phase_deg`` give the small-signal phasor used
     only during AC sweeps (all other independent sources are zeroed, per
-    the usual AC small-signal convention)."""
+    the usual AC small-signal convention). ``spec`` is a serializable
+    description of the waveform — ``("DC", (value,))``, ``("PULSE",
+    (v1,v2,delay,rise,fall,width,period))``, or ``("SIN", (offset,
+    amplitude,freq,delay,damping))`` — used by netlist.to_netlist() so a
+    PULSE/SIN source round-trips through export/import instead of the
+    waveform closure (which can't be serialized) silently getting dropped
+    down to its DC value."""
     name: str
     n_pos: str
     n_neg: str
@@ -99,6 +105,11 @@ class VSource:
     waveform: object = None  # callable t -> volts, or None to use dc_value
     ac_mag: float = 0.0
     ac_phase_deg: float = 0.0
+    spec: tuple = None
+
+    def __post_init__(self):
+        if self.spec is None:
+            self.spec = ("DC", (self.dc_value,))
 
     def value_at(self, t):
         return self.dc_value if self.waveform is None else self.waveform(t)
@@ -109,17 +120,19 @@ class VSource:
 
     @staticmethod
     def dc(name, n_pos, n_neg, value):
-        return VSource(name, n_pos, n_neg, dc_value=value)
+        return VSource(name, n_pos, n_neg, dc_value=value, spec=("DC", (value,)))
 
     @staticmethod
     def pulse(name, n_pos, n_neg, v1, v2, delay, rise, fall, width, period):
         return VSource(name, n_pos, n_neg, dc_value=v1,
-                        waveform=_pulse(v1, v2, delay, rise, fall, width, period))
+                        waveform=_pulse(v1, v2, delay, rise, fall, width, period),
+                        spec=("PULSE", (v1, v2, delay, rise, fall, width, period)))
 
     @staticmethod
     def sine(name, n_pos, n_neg, offset, amplitude, freq, delay=0.0, damping=0.0):
         return VSource(name, n_pos, n_neg, dc_value=offset,
-                        waveform=_sine(offset, amplitude, freq, delay, damping))
+                        waveform=_sine(offset, amplitude, freq, delay, damping),
+                        spec=("SIN", (offset, amplitude, freq, delay, damping)))
 
 
 @dataclass
@@ -131,6 +144,11 @@ class ISource:
     waveform: object = None
     ac_mag: float = 0.0
     ac_phase_deg: float = 0.0
+    spec: tuple = None
+
+    def __post_init__(self):
+        if self.spec is None:
+            self.spec = ("DC", (self.dc_value,))
 
     def value_at(self, t):
         return self.dc_value if self.waveform is None else self.waveform(t)
@@ -141,7 +159,7 @@ class ISource:
 
     @staticmethod
     def dc(name, n_pos, n_neg, value):
-        return ISource(name, n_pos, n_neg, dc_value=value)
+        return ISource(name, n_pos, n_neg, dc_value=value, spec=("DC", (value,)))
 
 
 @dataclass
@@ -153,6 +171,14 @@ class Diode:
     Is: float = 1e-14
     n: float = 1.0
     Vt: float = 0.025852  # thermal voltage at ~300K
+
+    def __post_init__(self):
+        if self.Is <= 0:
+            raise ValueError(f"{self.name}: Is (saturation current) must be > 0")
+        if self.n <= 0:
+            raise ValueError(f"{self.name}: n (ideality factor) must be > 0")
+        if self.Vt <= 0:
+            raise ValueError(f"{self.name}: Vt (thermal voltage) must be > 0")
 
     @property
     def nVt(self):

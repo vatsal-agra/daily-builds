@@ -25,8 +25,12 @@ class ACResult:
     currents: dict = field(default_factory=dict)  # branch -> [complex]
 
     def magnitude_db(self, node):
-        return [20 * math.log10(abs(v)) if abs(v) > 0 else float("-inf")
-                for v in self.voltages[node]]
+        # Floored at -300dB (a standard "digital silence" convention)
+        # instead of computing log10(0) -> -inf, which is not valid JSON
+        # and previously broke every AC/Bode request through the HTTP API
+        # the instant a 0V node (e.g. ground, always present) was included.
+        floor = 1e-15
+        return [20 * math.log10(max(abs(v), floor)) for v in self.voltages[node]]
 
     def magnitude(self, node):
         return [abs(v) for v in self.voltages[node]]

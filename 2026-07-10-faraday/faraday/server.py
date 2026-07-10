@@ -8,6 +8,7 @@ backward-Euler engine — the exact same code path as the CLI.
 """
 
 import json
+import math
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -70,6 +71,24 @@ def _run_ac(circuit, params):
 _ANALYSES = {"dc": _run_dc, "tran": _run_tran, "ac": _run_ac}
 
 
+def _json_safe(obj):
+    """Recursively replace non-finite floats (inf/-inf/nan) with None.
+
+    `json.dumps` will happily emit the literal tokens Infinity/-Infinity/
+    NaN, which are not legal JSON — a browser's JSON.parse throws on them.
+    This is the last line of defense at the HTTP boundary (ac.py already
+    floors dB values sanely; this catches anything else, e.g. a
+    pathological user-supplied component value overflowing to inf).
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_json_safe(v) for v in obj]
+    return obj
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "Faraday/1.0"
 
@@ -77,7 +96,7 @@ class Handler(BaseHTTPRequestHandler):
         pass  # keep the terminal quiet; errors still surface in HTTP responses
 
     def _send_json(self, obj, status=200):
-        body = json.dumps(obj).encode("utf-8")
+        body = json.dumps(_json_safe(obj)).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))

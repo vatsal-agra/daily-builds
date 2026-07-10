@@ -258,6 +258,12 @@ function generateNetlistText() {
 // Python to_netlist() produce — used only to populate the table when a
 // preset loads. Free-form pasted text in the "Netlist Text" tab is sent
 // to the server as-is and never needs to round-trip back into the table.
+//
+// Returns null (instead of a lossy/garbled table) if the netlist uses a
+// PULSE/SIN source: the table only has a plain "value" field, so trying
+// to cram "SIN(0 10 60 0 0)" into it would silently corrupt the source
+// into a handful of meaningless split tokens. The caller falls back to
+// the Netlist Text tab, which represents it exactly.
 function tryParsePresetIntoTable(text) {
   const rows = [];
   for (const raw of text.split("\n")) {
@@ -270,6 +276,7 @@ function tryParsePresetIntoTable(text) {
     if (type === "R" || type === "C" || type === "L") {
       rows.push({ type, name, n1: toks[1], n2: toks[2], n3: "", value: toks[3] || "1", acMag: "" });
     } else if (type === "V" || type === "I") {
+      if (/PULSE|SIN/i.test(line)) return null;
       const dcIdx = toks.indexOf("DC");
       const acIdx = toks.indexOf("AC");
       const value = dcIdx >= 0 ? toks[dcIdx + 1] : (toks[3] || "0");
@@ -338,15 +345,15 @@ function syncNetlistText() {
 }
 
 // ---------- editor tabs ----------
+function switchEditor(mode) {
+  currentEditor = mode;
+  document.querySelectorAll("[data-editor]").forEach(b => b.classList.toggle("active", b.dataset.editor === mode));
+  el("editor-table").style.display = mode === "table" ? "" : "none";
+  el("editor-text").style.display = mode === "text" ? "" : "none";
+  if (mode === "table") syncNetlistText();
+}
 document.querySelectorAll("[data-editor]").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll("[data-editor]").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    currentEditor = btn.dataset.editor;
-    el("editor-table").style.display = currentEditor === "table" ? "" : "none";
-    el("editor-text").style.display = currentEditor === "text" ? "" : "none";
-    if (currentEditor === "table") syncNetlistText();
-  });
+  btn.addEventListener("click", () => switchEditor(btn.dataset.editor));
 });
 
 function activeNetlistText() {
@@ -419,9 +426,20 @@ async function loadPresets() {
   sel.addEventListener("change", () => {
     if (!sel.value) return;
     const text = presets[sel.value];
-    components = tryParsePresetIntoTable(text);
-    renderTable();
     el("netlistText").value = text;
+    const parsed = tryParsePresetIntoTable(text);
+    if (parsed) {
+      components = parsed;
+      renderTable();
+      switchEditor("table");
+    } else {
+      // This preset uses a PULSE/SIN source the table can't represent
+      // faithfully (see tryParsePresetIntoTable) — show the exact text
+      // instead of a silently-corrupted table.
+      components = [];
+      renderTable();
+      switchEditor("text");
+    }
     renderSchematic();
   });
 }

@@ -77,6 +77,9 @@ def simulate(circuit, t_stop, dt, use_ic=False, max_iter=dc.MAX_ITER, tol=dc.TOL
         raise ValueError("dt must be > 0")
     if t_stop < 0:
         raise ValueError("t_stop must be >= 0")
+    if 0 < t_stop < dt:
+        raise ValueError(f"dt ({dt:g}) is larger than t_stop ({t_stop:g}) — "
+                          f"no timesteps would run; shrink dt or grow t_stop")
 
     result = TransientResult()
     voltages, currents, prev_state = _initial_state(circuit, use_ic)
