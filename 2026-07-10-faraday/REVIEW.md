@@ -105,6 +105,35 @@ finding — all still pass after the fix).
    build `node_index` in the first place, so this can never fire. Removed
    per "don't add error handling for scenarios that can't happen."
 
+## Found during Phase 5 (verification), not this pass
+
+9. **CRITICAL — `--uic` transient runs on any Capacitor could crash the
+   CLI/server output writer.** `transient._initial_state`'s `use_ic=True`
+   path builds a t=0 IC snapshot by substituting every `Capacitor` with a
+   same-named `VSource` (a capacitor instantaneously held at a fixed
+   voltage *is* a voltage source — see the docstring). But it then passed
+   that snapshot's raw `currents` dict straight through: since the
+   substitute VSource shares the capacitor's name, `currents` picked up a
+   phantom one-sample-long series keyed by the *capacitor's* name (e.g.
+   `"C1"`) that never appears again at any later timestep (real capacitors
+   have no branch-current unknown once behind their normal MNA companion
+   model). Every other series has one sample per timestep; this one had
+   exactly one sample, period — a silent length mismatch that only
+   surfaced as an `IndexError` deep in the CLI's CSV writer, on whichever
+   row index first exceeded 1.
+   Only caught because `demo.sh` writes and measures a *real* CSV file
+   end-to-end (2000+ rows) instead of the earlier ad-hoc checks, which
+   only ever sampled a handful of hand-picked timesteps and never noticed
+   a 1-vs-2001-sample-long series. Every unit test written before this
+   point was too — a good reminder that spot-checks and a real
+   full-length run catch different bugs.
+   **Fix:** rebuild `currents` explicitly from the *original* circuit's
+   real branch-bearing elements (`VSource`/`OpAmp` pass straight through
+   unaffected by the substitution; `Inductor` uses its `ic` directly)
+   instead of trusting the substitute circuit's raw current dict. Added a
+   regression test that runs every preset through `--uic` and asserts
+   every current series' length matches the time series'.
+
 ## Not fixed (documented limitations, not bugs)
 
 - The ideal op-amp model has no output-voltage saturation/rail limiting

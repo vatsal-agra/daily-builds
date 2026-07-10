@@ -10,7 +10,7 @@ then advances to the just-solved value and the loop repeats.
 
 from dataclasses import dataclass, field
 
-from .elements import Capacitor, Inductor, VSource, ISource
+from .elements import Capacitor, Inductor, OpAmp, VSource, ISource
 from . import dc, mna
 
 
@@ -62,13 +62,23 @@ def _initial_state(circuit, use_ic):
         else:
             substitutes.append(e)
     snapshot_circuit = mna.Circuit(substitutes, name=circuit.name + " (t=0 IC)")
-    voltages, currents = dc.operating_point(snapshot_circuit)
-    # Inductor "currents" from the snapshot came from an ISource stamp
-    # (not a branch unknown), so they aren't in `currents` — but we
-    # already know them: they're exactly the requested ic.
+    voltages, snapshot_currents = dc.operating_point(snapshot_circuit)
+    # snapshot_currents has one entry per branch-current unknown in the
+    # *substitute* circuit — which includes a phantom entry named after
+    # every substituted Capacitor (it became a VSource, and VSources always
+    # carry a branch current). Rebuild `currents` from only the ORIGINAL
+    # circuit's real branches instead of passing that dict through as-is:
+    # otherwise a capacitor-named key would appear at t=0 with exactly one
+    # sample and then vanish from every later timestep (Capacitors never
+    # have a branch current once behind a real MNA companion model),
+    # silently desyncing that series' length from `times` for the rest of
+    # the run.
+    currents = {}
     for e in circuit.elements:
         if isinstance(e, Inductor):
-            currents[e.name] = e.ic
+            currents[e.name] = e.ic  # ISource substitute -> not in snapshot_currents at all
+        elif isinstance(e, (VSource, OpAmp)):  # real branches, untouched by substitution
+            currents[e.name] = snapshot_currents[e.name]
     return voltages, currents, prev_state
 
 
