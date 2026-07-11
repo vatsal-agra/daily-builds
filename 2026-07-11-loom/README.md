@@ -1,11 +1,10 @@
 # Loom
 
-*Status: Phase 4 (stretch + polish) complete. All 3 stretch features shipped:
-temperature/top-k/top-p sampling, an interactive HTML attention +
-generation-replay visualizer (browser-verified: zero console errors,
-screenshot-checked), and a one-command `demo` that trains a real model on
-the bundled corpus in ~17s and contrasts it against an untrained baseline.
-Automated test suite and `demo.sh` still to come.*
+*Status: Shipped. All 4 required + 3 stretch features complete, adversarially
+reviewed, and verified: 84/84 automated tests green (unit tests, finite-
+difference gradient checks, a full end-to-end GPT gradient check, a headless-
+Chromium UI smoke test) plus an 8-check `demo.sh` walking the real CLI
+end-to-end. See "Verification" below for how to reproduce.*
 
 A Transformer language model trained on a from-scratch tensor autodiff
 engine — no PyTorch, no JAX, no `autograd`. `numpy` is used only as a fast
@@ -44,5 +43,23 @@ See [`PLAN.md`](./PLAN.md) for the full architecture and feature list.
 - `loom/cli.py` — `python -m loom.cli {train, generate, tokenize, gradcheck,
   viz, demo}`.
 
-Not yet built: the automated test suite and `demo.sh` — coming in the
-verification phase.
+## Verification
+
+```
+python3 -m unittest discover -s tests -q   # 84 tests: ~7s
+bash demo.sh                                # full CLI walkthrough: ~35s
+```
+
+`tests/` covers: every `tensor.py` op against finite-difference gradients,
+a full end-to-end GPT gradient check across all 28 parameter tensors, a
+functional causal-masking correctness check (not just gradients), BPE
+round-trips (unicode, full byte range, empty input), Adam convergence on a
+convex quadratic, the `TextDataset` val-split crash regression from
+`REVIEW.md`, sampling edge cases (including the empty-prompt/zero-tokens
+regression), a checkpoint save/load round trip that reproduces identical
+generations, a full tokenizer→train→generate→viz pipeline smoke test, and a
+headless-Chromium test that loads the real visualizer and checks for
+JavaScript console errors while exercising its controls.
+
+Full feature list, architecture rationale, and phase-by-phase history in
+[`PLAN.md`](./PLAN.md) and [`REVIEW.md`](./REVIEW.md).
