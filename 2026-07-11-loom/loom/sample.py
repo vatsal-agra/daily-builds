@@ -40,8 +40,13 @@ def generate(model, tokenizer, prompt, max_new_tokens=100, temperature=1.0, top_
     HTML visualizer's generation replay."""
     rng = np.random.default_rng(seed)
     ids = tokenizer.encode(prompt) if prompt else []
-    if not ids:
-        ids = [rng.integers(0, tokenizer.vocab_size)]
+    if not ids and max_new_tokens > 0:
+        # No prompt was given but at least one token must be generated: seed
+        # with a random starting token (there is no dedicated BOS token in
+        # this byte-level vocabulary). If max_new_tokens is 0, skip this --
+        # an empty prompt asking for zero tokens should return "", not one
+        # unrequested random character.
+        ids = [int(rng.integers(0, tokenizer.vocab_size))]
 
     trace = []
     for _ in range(max_new_tokens):
@@ -57,8 +62,12 @@ def generate(model, tokenizer, prompt, max_new_tokens=100, temperature=1.0, top_
             "prob": float(probs[next_id]),
         }
         if capture_attn:
-            # attention weights for the just-consumed context, one array per layer
-            step_info["attn"] = [layer_att[0].tolist() for layer_att in model._last_attn]
+            # Only the *last query row* of each layer's (nh, T, T) attention
+            # matrix: the distribution the just-generated token actually used
+            # to attend over its context. Storing the full T x T matrix at
+            # every generation step would make the exported trace grow
+            # quadratically in context length for no visualization benefit.
+            step_info["attn"] = [layer_att[0][:, -1, :].tolist() for layer_att in model._last_attn]
             step_info["context_ids"] = list(context)
         trace.append(step_info)
         ids.append(next_id)

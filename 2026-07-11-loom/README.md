@@ -1,11 +1,11 @@
 # Loom
 
-*Status: Phase 3 (adversarial review) complete. Core build verified,
-7 real issues found and fixed (see `REVIEW.md`) — including a genuine crash
-(small corpora could carve out a too-small validation split and die
-mid-training), dead code, `assert`-based validation that `-O` would strip,
-and a code-duplication hazard in the attention-visualization path. Stretch
-features still to come.*
+*Status: Phase 4 (stretch + polish) complete. All 3 stretch features shipped:
+temperature/top-k/top-p sampling, an interactive HTML attention +
+generation-replay visualizer (browser-verified: zero console errors,
+screenshot-checked), and a one-command `demo` that trains a real model on
+the bundled corpus in ~17s and contrasts it against an untrained baseline.
+Automated test suite and `demo.sh` still to come.*
 
 A Transformer language model trained on a from-scratch tensor autodiff
 engine — no PyTorch, no JAX, no `autograd`. `numpy` is used only as a fast
@@ -32,7 +32,17 @@ See [`PLAN.md`](./PLAN.md) for the full architecture and feature list.
   from ~6.3 to ~0.6 on the bundled corpus).
 - `loom/sample.py` + `loom/checkpoint.py` — temperature/top-k/top-p
   generation from a saved checkpoint.
-- `loom/cli.py` — `python -m loom.cli {train, generate, tokenize, gradcheck}`.
+- `loom/viz.py` — a self-contained interactive HTML page: the real loss
+  curve, a scrubbable/playable token-by-token generation replay, and
+  per-layer/per-head attention heatmaps, all populated from an actual
+  forward pass. Verified with headless Chromium: zero console errors,
+  tabs/scrubbing/hover tooltips all exercised and screenshotted.
+- `loom/demo.py` — `python -m loom.cli demo` trains a tokenizer + model on
+  the bundled corpus in ~17s on CPU, prints an untrained-vs-trained
+  comparison (both the generated text and an objective cross-entropy
+  number), and writes `loom_demo_viz.html`.
+- `loom/cli.py` — `python -m loom.cli {train, generate, tokenize, gradcheck,
+  viz, demo}`.
 
-Not yet built: the interactive HTML attention visualizer, the one-command
-`demo`, and the automated test suite — coming in later phases.
+Not yet built: the automated test suite and `demo.sh` — coming in the
+verification phase.
