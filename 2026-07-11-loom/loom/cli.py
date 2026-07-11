@@ -174,7 +174,11 @@ def build_parser():
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
-    args.func(args)
+    try:
+        args.func(args)
+    except (FileNotFoundError, ValueError, OSError) as e:
+        print(f"loom: error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

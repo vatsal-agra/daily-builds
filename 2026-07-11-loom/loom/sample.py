@@ -25,6 +25,10 @@ def _logits_to_probs(logits_row, temperature, top_k, top_p):
         probs = np.where(mask, probs, 0.0)
         probs /= probs.sum()
 
+    # Defensive final renormalization: chained float64 masking/division can
+    # leave probs summing to e.g. 0.9999999998 rather than exactly 1.0,
+    # which np.random.Generator.choice rejects outright.
+    probs = probs / probs.sum()
     return probs
 
 

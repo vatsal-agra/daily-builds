@@ -1,8 +1,11 @@
 # Loom
 
-*Status: Phase 2 (core build) complete. All 4 required features implemented
-and manually verified end-to-end. Adversarial review and stretch features
-still to come.*
+*Status: Phase 3 (adversarial review) complete. Core build verified,
+7 real issues found and fixed (see `REVIEW.md`) — including a genuine crash
+(small corpora could carve out a too-small validation split and die
+mid-training), dead code, `assert`-based validation that `-O` would strip,
+and a code-duplication hazard in the attention-visualization path. Stretch
+features still to come.*
 
 A Transformer language model trained on a from-scratch tensor autodiff
 engine — no PyTorch, no JAX, no `autograd`. `numpy` is used only as a fast
@@ -32,5 +35,4 @@ See [`PLAN.md`](./PLAN.md) for the full architecture and feature list.
 - `loom/cli.py` — `python -m loom.cli {train, generate, tokenize, gradcheck}`.
 
 Not yet built: the interactive HTML attention visualizer, the one-command
-`demo`, the adversarial review, and the automated test suite — coming in
-later phases.
+`demo`, and the automated test suite — coming in later phases.

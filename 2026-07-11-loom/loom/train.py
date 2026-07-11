@@ -40,7 +40,7 @@ def train(
             f"corpus encodes to only {len(ids)} tokens, need > block_size+1={block_size + 1}; "
             "use a longer corpus or pass a smaller --block-size"
         )
-    dataset = TextDataset(ids)
+    dataset = TextDataset(ids, block_size=block_size)
 
     model = GPT(
         vocab_size=tokenizer.vocab_size,
@@ -63,7 +63,7 @@ def train(
         opt.step()
 
         if step % eval_every == 0 or step == 1 or step == steps:
-            xv, yv = dataset.get_batch("val", min(batch_size, max(1, len(dataset.val_ids) - block_size - 1)), block_size, rng)
+            xv, yv = dataset.get_batch("val", batch_size, block_size, rng)
             _, vloss = model(xv, yv)
             entry = {"step": step, "train_loss": float(loss.data), "val_loss": float(vloss.data),
                       "elapsed_s": round(time.time() - t0, 2)}

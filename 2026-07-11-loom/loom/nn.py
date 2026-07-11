@@ -66,13 +66,14 @@ def _causal_mask(T):
 
 class CausalSelfAttention:
     def __init__(self, n_embd, n_head, rng):
-        assert n_embd % n_head == 0
+        if n_embd % n_head != 0:
+            raise ValueError(f"n_embd={n_embd} must be divisible by n_head={n_head}")
         self.n_head = n_head
         self.head_dim = n_embd // n_head
         self.qkv = Linear(n_embd, 3 * n_embd, rng)
         self.proj = Linear(n_embd, n_embd, rng)
 
-    def __call__(self, x):
+    def __call__(self, x, return_attn=False):
         B, T, C = x.shape
         nh, hs = self.n_head, self.head_dim
         qkv = self.qkv(x)  # (B, T, 3C)
@@ -91,7 +92,10 @@ class CausalSelfAttention:
         out = att @ v  # (B, nh, T, hs)
 
         out = out.transpose(0, 2, 1, 3).reshape(B, T, C)
-        return self.proj(out)
+        out = self.proj(out)
+        if return_attn:
+            return out, att.data.copy()  # (B, nh, T, T), detached for visualization
+        return out
 
     def parameters(self):
         return self.qkv.parameters() + self.proj.parameters()
@@ -116,7 +120,12 @@ class Block:
         self.ln2 = LayerNorm(n_embd)
         self.mlp = MLP(n_embd, rng)
 
-    def __call__(self, x):
+    def __call__(self, x, return_attn=False):
+        if return_attn:
+            attn_out, att = self.attn(self.ln1(x), return_attn=True)
+            x = x + attn_out
+            x = x + self.mlp(self.ln2(x))
+            return x, att
         x = x + self.attn(self.ln1(x))
         x = x + self.mlp(self.ln2(x))
         return x
@@ -150,15 +159,22 @@ class GPT:
         return params
 
     def forward(self, idx, capture_attn=False):
-        """idx: numpy int array (B, T) with T <= block_size.
-        Returns logits Tensor (B, T, vocab_size)."""
+        """idx: numpy int array (B, T) with T <= block_size, values in
+        [0, vocab_size). Returns logits Tensor (B, T, vocab_size)."""
         B, T = idx.shape
-        assert T <= self.block_size, f"sequence length {T} exceeds block_size {self.block_size}"
+        if T > self.block_size:
+            raise ValueError(f"sequence length {T} exceeds block_size {self.block_size}")
+        idx_min, idx_max = int(idx.min()), int(idx.max())
+        if idx_min < 0 or idx_max >= self.vocab_size:
+            raise ValueError(
+                f"token id out of range: got id in [{idx_min}, {idx_max}], "
+                f"but vocab_size={self.vocab_size} (valid range [0, {self.vocab_size - 1}])"
+            )
         x = self.tok_emb(idx) + self.pos_emb[0:T]
         if capture_attn:
             self._last_attn = []
             for blk in self.blocks:
-                x, att = self._block_with_attn(blk, x)
+                x, att = blk(x, return_attn=True)
                 self._last_attn.append(att)
         else:
             for blk in self.blocks:
@@ -166,27 +182,6 @@ class GPT:
         x = self.ln_f(x)
         logits = x @ self.tok_emb.weight.transpose(1, 0)
         return logits
-
-    def _block_with_attn(self, blk, x):
-        """Same math as Block.__call__ but also returns the attention
-        weights (as a plain numpy array, detached) for visualization."""
-        ln1 = blk.ln1(x)
-        B, T, C = ln1.shape
-        nh, hs = blk.attn.n_head, blk.attn.head_dim
-        qkv = blk.attn.qkv(ln1)
-        q = qkv[:, :, 0:C].reshape(B, T, nh, hs).transpose(0, 2, 1, 3)
-        k = qkv[:, :, C:2 * C].reshape(B, T, nh, hs).transpose(0, 2, 1, 3)
-        v = qkv[:, :, 2 * C:3 * C].reshape(B, T, nh, hs).transpose(0, 2, 1, 3)
-        att_t = (q @ k.swapaxes(-2, -1)) * (1.0 / np.sqrt(hs))
-        att_t = att_t.masked_fill(_causal_mask(T), -1e9)
-        att_t = att_t.softmax(axis=-1)
-        att_weights = att_t.data.copy()  # (B, nh, T, T)
-        out = att_t @ v
-        out = out.transpose(0, 2, 1, 3).reshape(B, T, C)
-        attn_out = blk.attn.proj(out)
-        x = x + attn_out
-        x = x + blk.mlp(blk.ln2(x))
-        return x, att_weights
 
     def __call__(self, idx, targets=None, capture_attn=False):
         logits = self.forward(idx, capture_attn=capture_attn)

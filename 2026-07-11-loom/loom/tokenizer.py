@@ -11,7 +11,6 @@ class ByteBPETokenizer:
         # id -> bytes, for the base 256 byte vocab plus merges
         self.id_to_bytes = {i: bytes([i]) for i in range(256)}
         self.merges = []  # list of ((id1, id2), new_id) in the order they were learned
-        self._merge_rank = {}  # (id1, id2) -> rank (lower = applied first)
 
     @property
     def vocab_size(self):
@@ -36,13 +35,10 @@ class ByteBPETokenizer:
             new_id = 256 + len(self.merges)
             self.id_to_bytes[new_id] = self.id_to_bytes[best_pair[0]] + self.id_to_bytes[best_pair[1]]
             self.merges.append((best_pair, new_id))
-            self._merge_rank[best_pair] = step
             data = self._merge_sequence(data, best_pair, new_id)
             if verbose:
                 print(f"merge {step + 1}/{num_merges}: {best_pair} -> {new_id} "
                       f"({self.id_to_bytes[new_id]!r}), count={count}")
-
-        return data
 
     @staticmethod
     def _merge_sequence(seq, pair, new_id):
@@ -100,5 +96,4 @@ class ByteBPETokenizer:
             pair = (a, b)
             tok.id_to_bytes[new_id] = tok.id_to_bytes[a] + tok.id_to_bytes[b]
             tok.merges.append((pair, new_id))
-            tok._merge_rank[pair] = len(tok.merges) - 1
         return tok
