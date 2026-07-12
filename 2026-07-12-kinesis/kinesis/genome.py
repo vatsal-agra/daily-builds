@@ -194,10 +194,14 @@ class Genome:
 
     @staticmethod
     def crossover(a, b, rng=None):
-        """Subtree-swap crossover (GP-style): clone `a`, pick a random
-        non-root node in the clone, and replace its subtree with a clone
-        of a random subtree from `b`. Falls back to cloning `a` if either
-        parent has no non-root nodes."""
+        """Subtree-graft crossover (GP-style): clone `a`, pick a random
+        subtree from `b`, and graft a clone of it onto a random node in
+        the `a`-clone (root included, as an additional limb) -- not a
+        replace/swap, an addition, so both parents' structures tend to
+        show up in the child rather than one replacing the other.
+        `_repair_bounds` then prunes back under MAX_DEPTH/MAX_SEGMENTS if
+        the graft pushed the child over either limit. Falls back to
+        cloning `a` untouched if `b` has no non-root nodes to donate."""
         rng = rng or random
         child = a.clone()
         a_nodes = [n for n in child.root.all_nodes()]

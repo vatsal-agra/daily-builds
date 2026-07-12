@@ -1,8 +1,9 @@
 # Kinesis
 
-Status: **Phase 2 — core build complete.** All 4 required features work
-end-to-end through the real CLI. Adversarial review, stretch features,
-and final polish are still to come.
+Status: **Phase 3 — adversarial review complete.** 9 real issues found
+and fixed (2 critical physics bugs, 2 genome-invariant bugs, 3 GA/CLI
+robustness bugs, 1 NaN-propagation correctness bug, 1 doc bug) — see
+[REVIEW.md](REVIEW.md). Stretch features and final polish are next.
 
 Evolving virtual creatures from scratch: procedural body plans, a
 from-scratch 2D constraint-based physics engine, evolved CPG motor

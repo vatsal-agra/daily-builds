@@ -4,6 +4,7 @@ mutation (both from genome.py), scored by simulate.run_simulation.
 """
 import random
 import json
+import os
 
 from .genome import Genome
 from .simulate import run_simulation
@@ -61,6 +62,11 @@ class Population:
         return max(contenders, key=lambda ind: ind.fitness)
 
     def best(self):
+        # step_generation() leaves non-elite members of the *new*
+        # generation unevaluated (fitness=None) until the next
+        # evaluate_all() call; evaluate defensively here so best() is
+        # safe to call at any point, not just after run().
+        self.evaluate_all()
         return max(self.individuals, key=lambda ind: ind.fitness)
 
     def step_generation(self):
@@ -118,6 +124,17 @@ class Population:
         }
 
     def save(self, path):
+        # Guarantee every serialized individual has a real fitness (never
+        # a null from an unevaluated fresh population) so anything reading
+        # the checkpoint back -- gallery/replay/fitness-chart, or a future
+        # resumed run -- can rely on it without a defensive null-check.
+        self.evaluate_all()
+        # An evolve run can take many minutes; failing to write the result
+        # because the output directory doesn't exist yet would throw the
+        # whole run away, so create it rather than erroring.
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         with open(path, "w") as f:
             json.dump(self.to_dict(), f)
 

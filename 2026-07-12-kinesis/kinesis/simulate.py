@@ -48,6 +48,7 @@ def run_simulation(genome, duration=8.0, record_trace=False):
 
     t = 0.0
     stopped_at = duration
+    nan_detected = False
     for i in range(steps):
         phenotype.update_controller(genome.base_freq, t)
         world.step(DT)
@@ -56,6 +57,20 @@ def run_simulation(genome, duration=8.0, record_trace=False):
         if record_trace and i % TRACE_STRIDE == 0:
             frame = [(b.pos[0], b.pos[1], b.angle) for b in phenotype.bodies]
             trace.append((t, frame))
+
+        if any(math_isnan(b.pos[0]) or math_isnan(b.pos[1]) for b in phenotype.bodies):
+            # A numerically unstable genome must fail fitness cleanly, not
+            # crash the whole GA run -- and NOT via a NaN fitness value:
+            # max(individuals, key=...) treats every NaN comparison as
+            # False, so a NaN that lands first in iteration order would
+            # never be beaten by a later, genuinely-finite individual and
+            # could corrupt selection for the whole generation. Bail out
+            # with an explicit finite sentinel instead of letting NaN
+            # propagate through the distance/fitness arithmetic below.
+            nan_detected = True
+            toppled = True
+            stopped_at = t
+            break
 
         angle_dev = abs(_wrap_pi(phenotype.root_body.angle - rest_angle))
         if angle_dev > TOPPLE_ANGLE:
@@ -67,12 +82,9 @@ def run_simulation(genome, duration=8.0, record_trace=False):
         else:
             toppled_streak = 0
 
-        if any(math_isnan(b.pos[0]) or math_isnan(b.pos[1]) for b in phenotype.bodies):
-            # a numerically unstable genome (e.g. degenerate zero-mass edge
-            # case) must fail fitness cleanly, not crash the whole GA run.
-            toppled = True
-            stopped_at = t
-            break
+    if nan_detected:
+        return SimResult(fitness=-1e6, distance=0.0, energy=0.0, toppled=True,
+                          duration_simulated=stopped_at, trace=[], body_dims=[])
 
     end_x = phenotype.root_body.pos[0]
     distance = end_x - start_x

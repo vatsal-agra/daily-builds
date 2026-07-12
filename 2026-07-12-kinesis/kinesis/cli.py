@@ -9,6 +9,23 @@ from .ga import Population
 from .simulate import run_simulation
 
 
+class CliError(Exception):
+    """A user-facing error (bad path, malformed file) -- caught once in
+    main() and printed cleanly instead of surfacing a raw traceback."""
+
+
+def _read_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        raise CliError(f"file not found: {path}")
+    except json.JSONDecodeError as e:
+        raise CliError(f"{path} is not valid JSON ({e})")
+    except IsADirectoryError:
+        raise CliError(f"{path} is a directory, not a file")
+
+
 def cmd_evolve(args):
     if args.generations <= 0:
         print("error: --generations must be positive", file=sys.stderr)
@@ -37,15 +54,34 @@ def cmd_evolve(args):
 
 
 def _load_checkpoint(path):
-    with open(path) as f:
-        return json.load(f)
+    d = _read_json(path)
+    if "individuals" not in d or "generation" not in d:
+        raise CliError(f"{path} doesn't look like a Kinesis population checkpoint "
+                        "(missing 'individuals'/'generation')")
+    return d
+
+
+def _load_bare_genome(path):
+    d = _read_json(path)
+    try:
+        return Genome.from_dict(d)
+    except (KeyError, TypeError) as e:
+        raise CliError(f"{path} doesn't look like a Kinesis genome file ({e})")
+
+
+def _write_text(path, content):
+    import os
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "w") as f:
+        f.write(content)
 
 
 def cmd_replay(args):
     from . import viz
     if args.genome:
-        with open(args.genome) as f:
-            genome = Genome.from_dict(json.load(f))
+        genome = _load_bare_genome(args.genome)
         label = args.genome
         fitness_hint = None
     else:
@@ -66,8 +102,7 @@ def cmd_replay(args):
     print(f"replayed {label}: distance={result.distance:.3f} energy={result.energy:.1f} "
           f"toppled={result.toppled} fitness={result.fitness:.3f}")
     html = viz.render_replay(genome, result, title=label, fitness_hint=fitness_hint)
-    with open(args.out, "w") as f:
-        f.write(html)
+    _write_text(args.out, html)
     print(f"wrote replay viewer -> {args.out}")
     return 0
 
@@ -76,8 +111,7 @@ def cmd_gallery(args):
     from . import viz
     d = _load_checkpoint(args.checkpoint)
     html = viz.render_gallery(d, args.checkpoint)
-    with open(args.out, "w") as f:
-        f.write(html)
+    _write_text(args.out, html)
     print(f"wrote gallery -> {args.out} ({len(d['individuals'])} creatures, "
           f"generation {d['generation']})")
     return 0
@@ -87,8 +121,7 @@ def cmd_fitness_chart(args):
     from . import viz
     d = _load_checkpoint(args.checkpoint)
     html = viz.render_fitness_chart(d["history"], args.checkpoint)
-    with open(args.out, "w") as f:
-        f.write(html)
+    _write_text(args.out, html)
     print(f"wrote fitness chart -> {args.out} ({len(d['history'])} generations)")
     return 0
 
@@ -183,7 +216,11 @@ def build_parser():
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except CliError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
