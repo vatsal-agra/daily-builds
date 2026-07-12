@@ -1,0 +1,1 @@
+error: file not found: output/does_not_exist.json
