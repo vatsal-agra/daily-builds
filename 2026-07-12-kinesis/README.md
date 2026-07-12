@@ -1,9 +1,11 @@
 # Kinesis
 
-Status: **Phase 3 — adversarial review complete.** 9 real issues found
-and fixed (2 critical physics bugs, 2 genome-invariant bugs, 3 GA/CLI
-robustness bugs, 1 NaN-propagation correctness bug, 1 doc bug) — see
-[REVIEW.md](REVIEW.md). Stretch features and final polish are next.
+Status: **Phase 4 — stretch features + polish complete.** All 3 planned
+stretch features are shipped (HTML replay viewer, population gallery,
+and now checkpoint resume via `evolve --resume`), verified visually in
+headless Chromium, plus CLI input validation and clean error messages
+throughout. See [REVIEW.md](REVIEW.md) for every bug found (including
+one caught while building the resume feature itself).
 
 Evolving virtual creatures from scratch: procedural body plans, a
 from-scratch 2D constraint-based physics engine, evolved CPG motor

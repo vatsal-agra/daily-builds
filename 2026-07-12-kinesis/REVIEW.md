@@ -124,6 +124,22 @@ final code.
   run from a checkpoint — `kinesis evolve` always started from a fresh
   random population. Completed in Phase 4 with `evolve --resume`.
 
+- **Found while building that feature:** the first `evolve --resume`
+  implementation produced a duplicate, out-of-order entry in
+  `history` at the resume boundary (`[0, 1, 2, 2, 3, 4]` instead of
+  `[0, 1, 2, 3, 4]`). Cause: `step_generation()` records the *current*
+  population's fitness before advancing to the next generation, and
+  `run()` also records once more after its loop finishes for whichever
+  generation it lands on — so a fresh run's history is `[0..N]` for `N`
+  requested generations (N+1 entries, intentionally, to include the
+  outcome of the last generation produced). But a checkpoint already has
+  its "current" generation recorded before being saved, so the first
+  `step_generation()` after resuming redundantly re-records that same
+  generation number. Fixed by making `_record_history()` idempotent per
+  generation number (skip if the last entry already has this
+  generation), verified by asserting the resumed history is exactly
+  `[0, 1, 2, 3, 4]` with no duplicates and no gaps.
+
 ## Fresh run-through after fixes
 
 Re-ran the full pipeline end-to-end after all fixes above: `evolve` (6

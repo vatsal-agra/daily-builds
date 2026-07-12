@@ -49,6 +49,15 @@ class Population:
                 ind.evaluate(self.sim_duration)
 
     def _record_history(self):
+        # Idempotent per generation number: step_generation() records the
+        # *current* population before advancing, and run() also records
+        # once more after its loop for the final generation reached. When
+        # resuming from a checkpoint, the loaded population's generation
+        # was already recorded before it was saved -- without this guard
+        # the first step_generation() call after a resume would append a
+        # second, duplicate entry for that same generation number.
+        if self.history and self.history[-1]["generation"] == self.generation:
+            return
         fits = [ind.fitness for ind in self.individuals]
         self.history.append({
             "generation": self.generation,

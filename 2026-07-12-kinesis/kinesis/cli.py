@@ -8,6 +8,9 @@ from .genome import Genome
 from .ga import Population
 from .simulate import run_simulation
 
+DEFAULT_POP_SIZE = 60
+DEFAULT_DURATION = 6.0
+
 
 class CliError(Exception):
     """A user-facing error (bad path, malformed file) -- caught once in
@@ -30,11 +33,25 @@ def cmd_evolve(args):
     if args.generations <= 0:
         print("error: --generations must be positive", file=sys.stderr)
         return 1
-    if args.pop_size < 4:
-        print("error: --pop-size must be at least 4 (tournament size is 4)", file=sys.stderr)
+    if args.duration <= 0:
+        print("error: --duration must be positive", file=sys.stderr)
         return 1
 
-    pop = Population(pop_size=args.pop_size, seed=args.seed, sim_duration=args.duration)
+    if args.resume:
+        checkpoint = _load_checkpoint(args.resume)
+        pop = Population.from_dict(checkpoint, seed=args.seed)
+        if args.pop_size != DEFAULT_POP_SIZE or args.duration != DEFAULT_DURATION:
+            print(f"note: --resume continues with the checkpoint's own "
+                  f"pop-size={pop.pop_size} / duration={pop.sim_duration}s "
+                  f"(--pop-size/--duration are ignored when resuming)")
+        print(f"resumed from {args.resume}: generation {pop.generation}, "
+              f"{pop.pop_size} individuals, best-so-far={pop.best().fitness:.3f}")
+    else:
+        if args.pop_size < 4:
+            print("error: --pop-size must be at least 4 (tournament size is 4)", file=sys.stderr)
+            return 1
+        pop = Population(pop_size=args.pop_size, seed=args.seed, sim_duration=args.duration)
+
     start = time.time()
 
     def log(h):
@@ -177,11 +194,16 @@ def build_parser():
     sub = p.add_subparsers(dest="command", required=True)
 
     pe = sub.add_parser("evolve", help="run a genetic algorithm evolution")
-    pe.add_argument("--generations", type=int, default=40)
-    pe.add_argument("--pop-size", type=int, default=60)
-    pe.add_argument("--duration", type=float, default=6.0, help="simulated seconds per evaluation")
+    pe.add_argument("--generations", type=int, default=40, help="additional generations to run")
+    pe.add_argument("--pop-size", type=int, default=DEFAULT_POP_SIZE)
+    pe.add_argument("--duration", type=float, default=DEFAULT_DURATION,
+                     help="simulated seconds per evaluation")
     pe.add_argument("--seed", type=int, default=None)
     pe.add_argument("--out", default="data/population.json")
+    pe.add_argument("--resume", default=None,
+                     help="continue evolving from a saved population checkpoint JSON "
+                          "instead of starting a fresh random population "
+                          "(uses the checkpoint's own pop-size/duration)")
     pe.set_defaults(func=cmd_evolve)
 
     pr = sub.add_parser("replay", help="render an HTML replay of one creature")
