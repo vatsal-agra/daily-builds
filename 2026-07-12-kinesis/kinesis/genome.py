@@ -166,7 +166,7 @@ class Genome:
     def random(rng=None, max_depth=MAX_DEPTH):
         rng = rng or random
         root = GenomeNode(_rand_in(rng, LEN_RANGE) * 1.4, _rand_in(rng, WID_RANGE) * 1.3)
-        _grow(root, rng, depth=1, max_depth=max_depth)
+        _grow(root, rng, depth=1, max_depth=max_depth, root=root)
         return Genome(root, _rand_in(rng, BASE_FREQ_RANGE))
 
     # ---- mutation ----
@@ -225,14 +225,20 @@ def _renumber(node):
         _renumber(c)
 
 
-def _grow(node, rng, depth, max_depth):
+def _grow(node, rng, depth, max_depth, root):
     if depth >= max_depth:
         return
     n_children = 0
     if rng.random() < 0.85:
         n_children = rng.randint(1, 2 if depth > 1 else 3)
     for _ in range(n_children):
-        if node.count_nodes() >= MAX_SEGMENTS:
+        # Must check the *whole tree's* node count, not this node's own
+        # local subtree -- `node` is frequently not the root once we're
+        # a few levels deep, so `node.count_nodes()` only sees nodes
+        # built under it so far and stays blind to what sibling
+        # subtrees elsewhere in the tree already used from the shared
+        # MAX_SEGMENTS budget, letting the total overshoot it.
+        if root.count_nodes() >= MAX_SEGMENTS:
             break
         child = GenomeNode(
             length=_rand_in(rng, LEN_RANGE),
@@ -244,7 +250,7 @@ def _grow(node, rng, depth, max_depth):
             mirror=(rng.random() < 0.5),
         )
         node.children.append(child)
-        _grow(child, rng, depth + 1, max_depth)
+        _grow(child, rng, depth + 1, max_depth, root)
 
 
 def _perturb(node, rng, is_root):

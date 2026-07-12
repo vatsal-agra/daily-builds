@@ -62,9 +62,24 @@ final code.
    further. Fixed by computing real depth-from-root before filtering
    candidates.
 
+5. **CRITICAL (found by the Phase 5 test suite, not the manual Phase 3
+   pass) — `_grow`'s node-count check was scoped to the wrong subtree,
+   so a *freshly random-generated* genome (not just one produced by
+   crossover) could exceed `MAX_SEGMENTS`.** `_grow(node, ...)` checked
+   `node.count_nodes() >= MAX_SEGMENTS`, but `node` is only the root on
+   the very first call; every recursive call further down only sees the
+   node-count of its *own* subtree built so far, with zero visibility
+   into how much of the shared 14-node budget sibling subtrees elsewhere
+   in the tree already spent. `tests/test_genome.py`'s
+   `test_random_genome_respects_bounds` (a plain, un-clever "generate 20
+   genomes and check the documented invariant" test) caught a genome
+   with 16 nodes on the very first run. Fixed by threading the actual
+   `root` reference through the recursion and checking `root.count_nodes()`
+   at every level. Re-verified across 500 random genomes.
+
 ## GA API / persistence
 
-5. **`Population.best()` crashed (`TypeError`) if called between
+6. **`Population.best()` crashed (`TypeError`) if called between
    `step_generation()` and the next evaluation.** `step_generation()`
    only carries fitness forward for the elite fraction; the rest of the
    new generation starts at `fitness=None`, and `max(..., key=lambda
@@ -75,7 +90,7 @@ final code.
    making `best()` (and `save()`) defensively call `evaluate_all()`
    first (a no-op for anything already evaluated).
 
-6. **`Population.save()` and every HTML-writing CLI command
+7. **`Population.save()` and every HTML-writing CLI command
    (`replay`/`gallery`/`fitness-chart`) crashed with a raw
    `FileNotFoundError` traceback if `--out`'s parent directory didn't
    exist** — which is especially bad for `save()`, since it happens
@@ -83,7 +98,7 @@ final code.
    it. Fixed by creating the parent directory (`os.makedirs(...,
    exist_ok=True)`) before every write.
 
-7. **Malformed or missing input files (`--checkpoint`, `--genome`)
+8. **Malformed or missing input files (`--checkpoint`, `--genome`)
    crashed with a raw Python traceback** instead of a clean error — the
    exact failure mode called out in this repo's own `LEDGER.md` for
    *multiple* past projects (Ironkey's OAEP oracle aside, Cryptex,
@@ -94,7 +109,7 @@ final code.
 
 ## Correctness edge case
 
-8. **A numerically unstable genome producing NaN positions propagated
+9. **A numerically unstable genome producing NaN positions propagated
    NaN all the way into `fitness`, which can silently corrupt GA
    selection.** `max(individuals, key=lambda ind: ind.fitness)` treats
    every comparison against `NaN` as `False` — so if the *first*
@@ -110,7 +125,7 @@ final code.
 
 ## Documentation bug
 
-9. `Genome.crossover`'s docstring claimed it "replaces" a subtree at the
+10. `Genome.crossover`'s docstring claimed it "replaces" a subtree at the
    chosen point; the actual (and, on reflection, better) behavior is a
    graft/append — both parents' structure tends to appear in the child
    rather than one overwriting the other. Fixed the docstring to
