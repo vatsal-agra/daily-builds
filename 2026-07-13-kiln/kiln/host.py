@@ -7,7 +7,7 @@ through the normal import-linking path, not a shortcut."""
 
 import sys
 
-from .wasm.interpreter import HostFunc
+from .wasm.interpreter import HostFunc, WasmTrap
 
 I32 = 0x7F
 
@@ -51,6 +51,10 @@ def default_imports(instance_holder=None):
     holder = instance_holder if instance_holder is not None else []
 
     def get_memory():
+        if not holder:
+            raise WasmTrap(
+                "host function called before the module finished instantiating "
+                "(e.g. from a start function) -- its memory isn't available yet")
         return holder[0].memory
 
     return {

@@ -177,6 +177,8 @@ def call_function(instance, func_index, args):
         exec_instrs(func.body, frame, stack)
     except _Return:
         pass
+    except RecursionError:
+        raise WasmTrap("call stack exhausted")
     nres = len(ftype.results)
     if nres == 0:
         return []

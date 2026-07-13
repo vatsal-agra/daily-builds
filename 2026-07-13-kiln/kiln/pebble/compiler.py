@@ -46,23 +46,36 @@ def compile_program(funcdecls, entry_export=None):
 
 
 class _FuncCtx:
+    """Tracks Pebble's lexical scoping over WASM's flat local-index space:
+    each `let` still gets a fresh, never-reused WASM local index (blocks
+    don't exist at the bytecode level), but name *visibility* follows
+    normal block scoping — a `let x` in one `if` branch doesn't collide
+    with an unrelated `let x` in a sibling branch."""
+
     def __init__(self, params, func_index):
-        self.locals = {name: i for i, name in enumerate(params)}
+        self.scopes = [{name: i for i, name in enumerate(params)}]
         self.next_local = len(params)
         self.func_index = func_index
 
     def declare(self, name):
-        if name in self.locals:
-            raise PebbleCompileError(f"redeclaration of {name!r}")
+        if name in self.scopes[-1]:
+            raise PebbleCompileError(f"redeclaration of {name!r} in the same scope")
         idx = self.next_local
-        self.locals[name] = idx
+        self.scopes[-1][name] = idx
         self.next_local += 1
         return idx
 
     def lookup(self, name):
-        if name not in self.locals:
-            raise PebbleCompileError(f"undefined variable {name!r}")
-        return self.locals[name]
+        for scope in reversed(self.scopes):
+            if name in scope:
+                return scope[name]
+        raise PebbleCompileError(f"undefined variable {name!r}")
+
+    def push_scope(self):
+        self.scopes.append({})
+
+    def pop_scope(self):
+        self.scopes.pop()
 
 
 def _compile_func(f, func_index):
@@ -75,9 +88,11 @@ def _compile_func(f, func_index):
 
 
 def _compile_block(stmts, ctx):
+    ctx.push_scope()
     out = []
     for s in stmts:
         out.extend(_compile_stmt(s, ctx))
+    ctx.pop_scope()
     return out
 
 

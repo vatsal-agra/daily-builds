@@ -296,62 +296,78 @@ def _assemble_body(tokens, local_names, label_stack, type_names, func_names, glo
             continue
 
         imm = None
-        if kind in (ops.LOCALIDX,):
-            t = tokens[i]; i += 1
-            imm = _lookup(local_names, t, "local") if _is_name(t) else int(t)
-        elif kind == ops.GLOBALIDX:
-            t = tokens[i]; i += 1
-            imm = _lookup(global_names, t, "global") if _is_name(t) else int(t)
-        elif kind == ops.FUNCIDX:
-            t = tokens[i]; i += 1
-            imm = _lookup(func_names, t, "function") if _is_name(t) else int(t)
-        elif kind == ops.LABELIDX:
-            t = tokens[i]; i += 1
-            if _is_name(t):
-                imm = _resolve_label(label_stack, t)
+        try:
+            if kind in (ops.LOCALIDX,):
+                t = tokens[i]; i += 1
+                imm = _lookup(local_names, t, "local") if _is_name(t) else int(t)
+            elif kind == ops.GLOBALIDX:
+                t = tokens[i]; i += 1
+                imm = _lookup(global_names, t, "global") if _is_name(t) else int(t)
+                if tok == "global.set" and not _global_mutable(module, imm):
+                    raise AssembleError(f"global.set targets immutable global {t}")
+            elif kind == ops.FUNCIDX:
+                t = tokens[i]; i += 1
+                imm = _lookup(func_names, t, "function") if _is_name(t) else int(t)
+            elif kind == ops.LABELIDX:
+                t = tokens[i]; i += 1
+                if _is_name(t):
+                    imm = _resolve_label(label_stack, t)
+                else:
+                    imm = int(t)
+            elif kind == ops.MEMARG:
+                align, offset = 0, 0
+                while i < n and isinstance(tokens[i], str) and ("=" in tokens[i]) and not isinstance(tokens[i], Str):
+                    key, val = tokens[i].split("=", 1)
+                    if key == "align":
+                        align = int(val)
+                    elif key == "offset":
+                        offset = int(val)
+                    i += 1
+                imm = (align, offset)
+            elif kind == ops.MEMORY_IMM:
+                imm = None
+            elif kind == ops.CALL_INDIRECT:
+                t = tokens[i]; i += 1
+                if isinstance(t, list) and t[0] == "type":
+                    ref = t[1]
+                    imm = type_names[ref] if _is_name(ref) else int(ref)
+                else:
+                    imm = int(t)
+            elif kind == ops.BR_TABLE:
+                t = tokens[i]; i += 1
+                if not isinstance(t, list):
+                    raise AssembleError(
+                        "br_table requires a parenthesized label list after the mnemonic: br_table (0 1 2)")
+                labels = [_resolve_label(label_stack, x) if _is_name(x) else int(x) for x in t[:-1]]
+                default = _resolve_label(label_stack, t[-1]) if _is_name(t[-1]) else int(t[-1])
+                imm = (labels, default)
+            elif kind == ops.I32:
+                imm = int(tokens[i], 0) & 0xFFFFFFFF; i += 1
+            elif kind == ops.I64:
+                imm = int(tokens[i], 0) & 0xFFFFFFFFFFFFFFFF; i += 1
+            elif kind == ops.F32 or kind == ops.F64:
+                imm = float(tokens[i]); i += 1
+            elif kind is None:
+                imm = None
             else:
-                imm = int(t)
-        elif kind == ops.MEMARG:
-            align, offset = 0, 0
-            while i < n and isinstance(tokens[i], str) and ("=" in tokens[i]) and not isinstance(tokens[i], Str):
-                key, val = tokens[i].split("=", 1)
-                if key == "align":
-                    align = int(val)
-                elif key == "offset":
-                    offset = int(val)
-                i += 1
-            imm = (align, offset)
-        elif kind == ops.MEMORY_IMM:
-            imm = None
-        elif kind == ops.CALL_INDIRECT:
-            t = tokens[i]; i += 1
-            if isinstance(t, list) and t[0] == "type":
-                ref = t[1]
-                imm = type_names[ref] if _is_name(ref) else int(ref)
-            else:
-                imm = int(t)
-        elif kind == ops.BR_TABLE:
-            t = tokens[i]; i += 1
-            if not isinstance(t, list):
-                raise AssembleError(
-                    "br_table requires a parenthesized label list after the mnemonic: br_table (0 1 2)")
-            labels = [_resolve_label(label_stack, x) if _is_name(x) else int(x) for x in t[:-1]]
-            default = _resolve_label(label_stack, t[-1]) if _is_name(t[-1]) else int(t[-1])
-            imm = (labels, default)
-        elif kind == ops.I32:
-            imm = int(tokens[i], 0) & 0xFFFFFFFF; i += 1
-        elif kind == ops.I64:
-            imm = int(tokens[i], 0) & 0xFFFFFFFFFFFFFFFF; i += 1
-        elif kind == ops.F32 or kind == ops.F64:
-            imm = float(tokens[i]); i += 1
-        elif kind is None:
-            imm = None
-        else:
-            raise AssembleError(f"unhandled immediate kind {kind}")
+                raise AssembleError(f"unhandled immediate kind {kind}")
+        except IndexError:
+            raise AssembleError(f"{tok!r} is missing its immediate operand")
+        except ValueError as e:
+            raise AssembleError(f"{tok!r} has a malformed immediate operand: {e}")
+        except KeyError as e:
+            raise AssembleError(f"{tok!r} references undefined name {e}")
 
         out.append(Instr(tok, opcode, imm))
 
     return out, None, i
+
+
+def _global_mutable(module, index):
+    imported_globals = [i for i in module.imports if i.kind == "global"]
+    if index < len(imported_globals):
+        return imported_globals[index].global_mutable
+    return module.globals[index - len(imported_globals)].mutable
 
 
 def _lookup(table, name, kind):
