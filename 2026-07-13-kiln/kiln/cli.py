@@ -4,7 +4,8 @@
   kiln run out.wasm funcname arg1 arg2 ...
   kiln compile in.pebble -o out.wasm [--entry main]
   kiln disasm out.wasm
-  kiln verify out.wasm funcname arg1 arg2 ...   (cross-check vs Node)
+  kiln verify out.wasm funcname arg1 arg2 ...        (cross-check vs Node)
+  kiln trace out.wasm funcname arg1 arg2 ... --html -o trace.html
 """
 
 import argparse
@@ -22,9 +23,13 @@ from .wasm.types import I32, I64, F32, F64
 from .pebble.parser import parse as pebble_parse, PebbleSyntaxError
 from .pebble.compiler import compile_program, PebbleCompileError
 from .disasm import disassemble
+from .trace import trace_call
 from . import host
 
-NODE_RUNNER = Path(__file__).resolve().parent.parent / "tools" / "node_runner.js"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+NODE_RUNNER = ROOT_DIR / "tools" / "node_runner.js"
+VIZ_TEMPLATE = ROOT_DIR / "viz" / "template.html"
+RESULT_PREFIX = "KILN_RESULT:"
 
 
 class CliError(Exception):
@@ -128,8 +133,10 @@ def cmd_verify(args):
         [node, str(NODE_RUNNER), args.wasm, args.export_name] + [str(a) for a in call_args],
         capture_output=True, text=True, timeout=30,
     )
-    last_line = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else "{}"
-    node_json = json.loads(last_line)
+    idx = proc.stdout.rfind(RESULT_PREFIX)
+    if idx == -1:
+        raise CliError(f"node_runner produced no result line (stderr: {proc.stderr.strip()})")
+    node_json = json.loads(proc.stdout[idx + len(RESULT_PREFIX):].strip())
     node_outcome = ("trap", node_json["trap"]) if "trap" in node_json else ("ok", node_json.get("results", []))
 
     print(f"kiln : {kiln_outcome[0]:5s} {kiln_outcome[1]}")
@@ -156,6 +163,31 @@ def _values_equal_mod_sign(kiln_value, node_value):
     if nv < 0:
         nv += 1 << 32 if -nv <= (1 << 32) else 1 << 64
     return int(kiln_value) == nv
+
+
+def cmd_trace(args):
+    inst = _load_instance(args.wasm)
+    call_args = _resolve_export_call(inst, args.export_name, args.args)
+    result = trace_call(inst, args.export_name, call_args, max_steps=args.max_steps)
+    payload = {
+        "title": f"{args.export_name}({', '.join(str(a) for a in call_args)})",
+        "export": args.export_name,
+        "args": call_args,
+        **result,
+    }
+    if args.html:
+        if not VIZ_TEMPLATE.exists():
+            raise CliError(f"missing visualizer template: {VIZ_TEMPLATE}")
+        template = VIZ_TEMPLATE.read_text()
+        html = template.replace("__TRACE_JSON__", json.dumps(payload))
+        Path(args.output).write_text(html)
+        print(f"wrote {args.output} ({len(result['steps'])} steps, open it in a browser)")
+    else:
+        Path(args.output).write_text(json.dumps(payload, indent=2))
+        print(f"wrote {args.output} ({len(result['steps'])} steps)")
+    if result["truncated"]:
+        print(f"note: trace truncated at {args.max_steps} steps", file=sys.stderr)
+    return 0
 
 
 def build_parser():
@@ -188,6 +220,15 @@ def build_parser():
     pv.add_argument("export_name")
     pv.add_argument("args", nargs="*")
     pv.set_defaults(func=cmd_verify)
+
+    pt = sub.add_parser("trace", help="record a step-by-step execution trace (JSON or standalone HTML viewer)")
+    pt.add_argument("wasm")
+    pt.add_argument("export_name")
+    pt.add_argument("args", nargs="*")
+    pt.add_argument("-o", "--output", required=True)
+    pt.add_argument("--html", action="store_true", help="emit a standalone interactive HTML viewer instead of raw JSON")
+    pt.add_argument("--max-steps", type=int, default=4000)
+    pt.set_defaults(func=cmd_trace)
 
     return p
 

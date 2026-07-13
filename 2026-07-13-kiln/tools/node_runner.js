@@ -2,7 +2,14 @@
 // with Node's real, spec-compliant WebAssembly engine, call one exported
 // function with the given arguments, and print the result(s) as JSON.
 // Usage: node node_runner.js <module.wasm> <exportName> <arg1> <arg2> ...
+//
+// The traced module can itself write to stdout (env.print, WASI fd_write),
+// so the structured result is never mixed into stdout: it's always the
+// last line and always carries the RESULT: prefix, making it trivial to
+// pick out even when the module's own output has no trailing newline.
 "use strict";
+
+const RESULT_PREFIX = "KILN_RESULT:";
 
 const fs = require("fs");
 
@@ -40,7 +47,7 @@ async function main() {
   }
   const fn = instance.exports[exportName];
   if (typeof fn !== "function") {
-    console.error(JSON.stringify({ error: `export ${exportName} is not callable (or missing)` }));
+    console.log(RESULT_PREFIX + JSON.stringify({ error: `export ${exportName} is not callable (or missing)` }));
     process.exit(1);
   }
   const args = rawArgs.map((a) => {
@@ -52,14 +59,14 @@ async function main() {
   try {
     result = fn(...args);
   } catch (e) {
-    console.log(JSON.stringify({ trap: String(e && e.message || e) }));
+    console.log(RESULT_PREFIX + JSON.stringify({ trap: String(e && e.message || e) }));
     return;
   }
   const normalize = (v) => (typeof v === "bigint" ? v.toString() : v);
   const values = Array.isArray(result) ? result.map(normalize) : result === undefined ? [] : [normalize(result)];
-  console.log(JSON.stringify({ results: values }));
+  console.log(RESULT_PREFIX + JSON.stringify({ results: values }));
 }
 
 main().catch((e) => {
-  console.log(JSON.stringify({ trap: String(e && e.message || e) }));
+  console.log(RESULT_PREFIX + JSON.stringify({ trap: String(e && e.message || e) }));
 });

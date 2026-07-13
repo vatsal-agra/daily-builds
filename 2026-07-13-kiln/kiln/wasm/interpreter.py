@@ -81,6 +81,7 @@ class Instance:
         self.globals = []
         self.table = []
         self.funcs = []  # list of ("host", HostFunc) or ("wasm", func_index)
+        self.tracer = None  # optional trace.Tracer; see kiln/trace.py
 
         for imp in module.imports:
             if imp.kind == "func":
@@ -166,13 +167,20 @@ def call_function(instance, func_index, args):
     kind, ref = instance.funcs[func_index]
     if kind == "host":
         hf = ref
-        return list(hf.fn(*args))
+        if instance.tracer is not None:
+            instance.tracer.enter_host(func_index, args)
+        results = list(hf.fn(*args))
+        if instance.tracer is not None:
+            instance.tracer.exit_call(func_index, results)
+        return results
 
     func = instance.module.functions[ref]
     ftype = instance.module.types[func.type_index]
     locals_ = list(args) + [0 for _ in func.locals]
     frame = Frame(locals_, instance)
     stack = []
+    if instance.tracer is not None:
+        instance.tracer.enter(func_index, locals_)
     try:
         exec_instrs(func.body, frame, stack)
     except _Return:
@@ -180,14 +188,18 @@ def call_function(instance, func_index, args):
     except RecursionError:
         raise WasmTrap("call stack exhausted")
     nres = len(ftype.results)
-    if nres == 0:
-        return []
-    return stack[-nres:]
+    results = stack[-nres:] if nres else []
+    if instance.tracer is not None:
+        instance.tracer.exit_call(func_index, results)
+    return results
 
 
 def exec_instrs(instrs, frame, stack):
+    tracer = frame.instance.tracer
     for instr in instrs:
         op = instr.op
+        if tracer is not None:
+            tracer.step(instr, stack, frame.locals)
 
         if op == "block":
             try:

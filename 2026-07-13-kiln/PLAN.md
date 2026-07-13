@@ -82,12 +82,19 @@ demo.sh
    functions, if/while, recursion, arithmetic/comparison) with a real
    lexer → parser → AST → WASM-emitting compiler; Pebble programs run
    end-to-end inside Kiln's own interpreter.
-5. **[stretch] Interactive HTML visualizer** — single-file browser page that
-   steps through an execution trace (operand stack, locals, linear memory,
-   call stack) instruction by instruction.
-6. **[stretch] WASI-lite host imports** — minimal `fd_write`-style host
-   function linking so a Pebble/`.kwat` program can print output, exercising
-   the import section end-to-end.
+5. **[stretch — shipped] Interactive HTML visualizer** — `kiln trace
+   mod.wasm func args... --html -o out.html` records a step-by-step
+   execution trace (operand stack, locals, call stack, depth) and bakes it
+   into a self-contained, single-file HTML page with play/pause/step/scrub
+   controls (`viz/index.html`, `viz/template.html`). Verified rendering
+   and interaction with Playwright in headless Chromium — no JS errors,
+   works in both light and dark themes.
+6. **[stretch — shipped] WASI-lite host imports** — `env.print` and a real
+   `wasi_snapshot_preview1.fd_write` (the same ABI shape a real WASI
+   runtime exposes) let a Pebble/`.kwat` program produce actual stdout
+   output through the normal import-linking path, not a shortcut. See
+   `examples/hello_wasi.kwat`, cross-checked against Node in
+   `test_wasi_lite_hello_matches_node`.
 
 ## Verification strategy
 

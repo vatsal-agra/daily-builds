@@ -1,0 +1,23 @@
+;; A minimal WASI-lite "hello world": writes a string to stdout through the
+;; real wasi_snapshot_preview1.fd_write ABI (fd, iovs_ptr, iovs_len,
+;; nwritten_ptr) -> errno. The string bytes and the iovec (a (ptr, len)
+;; pair WASI expects at iovs_ptr) are both baked in as data segments, so
+;; $main only has to make one host call.
+(module
+  (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
+  (memory $mem 1)
+
+  ;; offset 0..16: the message, 17 bytes ("Hello from Kiln!" + "\n")
+  (data (i32.const 0) "Hello from Kiln!\0a")
+  ;; offset 100..107: one iovec { buf_ptr: i32 = 0, buf_len: i32 = 17 }
+  (data (i32.const 100) "\00\00\00\00\11\00\00\00")
+
+  (func $main (result i32)
+    i32.const 1     ;; fd = stdout
+    i32.const 100   ;; iovs_ptr
+    i32.const 1     ;; iovs_len
+    i32.const 200   ;; nwritten_ptr (scratch space, unread by us)
+    call $fd_write)
+
+  (export "main" (func $main))
+  (export "memory" (memory $mem)))

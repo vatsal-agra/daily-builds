@@ -1,0 +1,376 @@
+<title>Kiln — WASM Execution Visualizer</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #12161f;
+    --panel2: #171c28;
+    --border: #262d3d;
+    --text: #e6e9f0;
+    --dim: #8891a7;
+    --accent: #5ec9ff;
+    --accent2: #ffb454;
+    --good: #7fd88f;
+    --bad: #ff7a7a;
+    --mono: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f6f9;
+    --panel: #ffffff;
+    --panel2: #eef0f5;
+    --border: #dbe0ea;
+    --text: #1b2130;
+    --dim: #5b6478;
+    --accent: #0a7ea4;
+    --accent2: #b5690a;
+    --good: #1f8a3c;
+    --bad: #c93838;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f5f6f9; --panel: #ffffff; --panel2: #eef0f5; --border: #dbe0ea;
+      --text: #1b2130; --dim: #5b6478; --accent: #0a7ea4; --accent2: #b5690a;
+      --good: #1f8a3c; --bad: #c93838;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0 0 4px;
+    font-size: 1.3rem;
+    letter-spacing: -0.01em;
+  }
+  header h1 .kiln-mark { color: var(--accent); }
+  header p { margin: 0; color: var(--dim); font-size: 0.88rem; }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 1.1fr) minmax(320px, 0.9fr);
+    gap: 16px;
+    padding: 16px 24px 24px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel > .panel-title {
+    padding: 10px 14px;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+    border-bottom: 1px solid var(--border);
+    background: var(--panel2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #trace-list {
+    overflow-y: auto;
+    max-height: 60vh;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+  }
+  .step-row {
+    display: flex;
+    gap: 8px;
+    padding: 3px 14px;
+    cursor: pointer;
+    white-space: pre;
+    border-left: 3px solid transparent;
+  }
+  .step-row:hover { background: var(--panel2); }
+  .step-row.current {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border-left-color: var(--accent);
+  }
+  .step-row .idx { color: var(--dim); width: 3.4em; flex: none; text-align: right; }
+  .step-row .indent { color: var(--dim); }
+  .step-row .op { color: var(--text); }
+  .step-row.enter .op { color: var(--good); font-weight: 600; }
+  .step-row.exit .op { color: var(--accent2); font-weight: 600; }
+  .step-row .imm { color: var(--accent); }
+
+  .side { display: flex; flex-direction: column; gap: 16px; }
+  .cards { display: flex; flex-direction: column; gap: 16px; }
+  .kv-list { padding: 10px 14px; font-family: var(--mono); font-size: 0.85rem; }
+  .kv-row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .kv-row .k { color: var(--dim); }
+  .stack-vals, .locals-vals { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 14px; }
+  .chip {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+  }
+  .chip.top { border-color: var(--accent); color: var(--accent); }
+  .empty-hint { color: var(--dim); font-size: 0.82rem; padding: 12px 14px; font-style: italic; }
+  .callstack-row {
+    display: flex; justify-content: space-between; padding: 4px 14px;
+    font-family: var(--mono); font-size: 0.85rem;
+    border-bottom: 1px dashed var(--border);
+  }
+  .callstack-row:last-child { border-bottom: none; background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 24px;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  button {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.primary { background: var(--accent); color: #06131c; border-color: var(--accent); font-weight: 600; }
+  #scrub { flex: 1; accent-color: var(--accent); }
+  #step-label { font-family: var(--mono); font-size: 0.8rem; color: var(--dim); width: 8em; text-align: right; }
+  #file-input { display: none; }
+  .file-btn { font-size: 0.8rem; }
+  .result-banner {
+    margin: 0 24px 0;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    background: color-mix(in srgb, var(--good) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--good) 40%, transparent);
+    color: var(--good);
+  }
+</style>
+
+<header>
+  <h1><span class="kiln-mark">Kiln</span> — WASM execution visualizer</h1>
+  <p id="subtitle">Loading…</p>
+</header>
+
+<div class="controls">
+  <button id="btn-reset" title="Reset to start">⏮</button>
+  <button id="btn-back" title="Step back">◀</button>
+  <button id="btn-play" class="primary" title="Play/Pause">▶ Play</button>
+  <button id="btn-fwd" title="Step forward">▶</button>
+  <button id="btn-end" title="Jump to end">⏭</button>
+  <input type="range" id="scrub" min="0" value="0" step="1">
+  <span id="step-label">0 / 0</span>
+  <label class="file-btn" for="file-input">
+    <button type="button" onclick="document.getElementById('file-input').click()">Load trace…</button>
+  </label>
+  <input type="file" id="file-input" accept="application/json">
+</div>
+
+<div id="result-banner" class="result-banner" style="display:none"></div>
+
+<div class="layout">
+  <div class="panel">
+    <div class="panel-title"><span>Instruction trace</span><span id="trace-count"></span></div>
+    <div id="trace-list"></div>
+  </div>
+
+  <div class="side">
+    <div class="panel">
+      <div class="panel-title">Call stack</div>
+      <div id="callstack"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Operand stack <span id="stack-note" style="text-transform:none;letter-spacing:0"></span></div>
+      <div id="stack-vals" class="stack-vals"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Locals (current frame)</div>
+      <div id="locals-vals" class="locals-vals"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const EMBEDDED_TRACE = {"title": "fib(6)", "export": "fib", "args": [6], "steps": [{"kind": "enter", "depth": 0, "func": "fib", "locals": [6]}, {"kind": "instr", "depth": 1, "op": "local.get", "imm": 0, "stack": [], "locals": [6]}, {"kind": "instr", "depth": 1, "op": "i32.const", "imm": 2, "stack": [6], "locals": [6]}, {"kind": "instr", "depth": 1, "op": "i32.lt_s", "imm": null, "stack": [6, 2], "locals": [6]}, {"kind": "instr", "depth": 1, "op": "if", "imm": null, "stack": [0], "locals": [6]}, {"kind": "instr", "depth": 1, "op": "local.get", "imm": 0, "stack": [], "locals": [6]}, {"kind": "instr", "depth": 1, "op": "i32.const", "imm": 1, "stack": [6], "locals": [6]}, {"kind": "instr", "depth": 1, "op": "i32.sub", "imm": null, "stack": [6, 1], "locals": [6]}, {"kind": "instr", "depth": 1, "op": "call", "imm": 1, "stack": [5], "locals": [6]}, {"kind": "enter", "depth": 1, "func": "fib", "locals": [5]}, {"kind": "instr", "depth": 2, "op": "local.get", "imm": 0, "stack": [], "locals": [5]}, {"kind": "instr", "depth": 2, "op": "i32.const", "imm": 2, "stack": [5], "locals": [5]}, {"kind": "instr", "depth": 2, "op": "i32.lt_s", "imm": null, "stack": [5, 2], "locals": [5]}, {"kind": "instr", "depth": 2, "op": "if", "imm": null, "stack": [0], "locals": [5]}, {"kind": "instr", "depth": 2, "op": "local.get", "imm": 0, "stack": [], "locals": [5]}, {"kind": "instr", "depth": 2, "op": "i32.const", "imm": 1, "stack": [5], "locals": [5]}, {"kind": "instr", "depth": 2, "op": "i32.sub", "imm": null, "stack": [5, 1], "locals": [5]}, {"kind": "instr", "depth": 2, "op": "call", "imm": 1, "stack": [4], "locals": [5]}, {"kind": "enter", "depth": 2, "func": "fib", "locals": [4]}, {"kind": "instr", "depth": 3, "op": "local.get", "imm": 0, "stack": [], "locals": [4]}, {"kind": "instr", "depth": 3, "op": "i32.const", "imm": 2, "stack": [4], "locals": [4]}, {"kind": "instr", "depth": 3, "op": "i32.lt_s", "imm": null, "stack": [4, 2], "locals": [4]}, {"kind": "instr", "depth": 3, "op": "if", "imm": null, "stack": [0], "locals": [4]}, {"kind": "instr", "depth": 3, "op": "local.get", "imm": 0, "stack": [], "locals": [4]}, {"kind": "instr", "depth": 3, "op": "i32.const", "imm": 1, "stack": [4], "locals": [4]}, {"kind": "instr", "depth": 3, "op": "i32.sub", "imm": null, "stack": [4, 1], "locals": [4]}, {"kind": "instr", "depth": 3, "op": "call", "imm": 1, "stack": [3], "locals": [4]}, {"kind": "enter", "depth": 3, "func": "fib", "locals": [3]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [3]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 2, "stack": [3], "locals": [3]}, {"kind": "instr", "depth": 4, "op": "i32.lt_s", "imm": null, "stack": [3, 2], "locals": [3]}, {"kind": "instr", "depth": 4, "op": "if", "imm": null, "stack": [0], "locals": [3]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [3]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 1, "stack": [3], "locals": [3]}, {"kind": "instr", "depth": 4, "op": "i32.sub", "imm": null, "stack": [3, 1], "locals": [3]}, {"kind": "instr", "depth": 4, "op": "call", "imm": 1, "stack": [2], "locals": [3]}, {"kind": "enter", "depth": 4, "func": "fib", "locals": [2]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [2]}, {"kind": "instr", "depth": 5, "op": "i32.const", "imm": 2, "stack": [2], "locals": [2]}, {"kind": "instr", "depth": 5, "op": "i32.lt_s", "imm": null, "stack": [2, 2], "locals": [2]}, {"kind": "instr", "depth": 5, "op": "if", "imm": null, "stack": [0], "locals": [2]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [2]}, {"kind": "instr", "depth": 5, "op": "i32.const", "imm": 1, "stack": [2], "locals": [2]}, {"kind": "instr", "depth": 5, "op": "i32.sub", "imm": null, "stack": [2, 1], "locals": [2]}, {"kind": "instr", "depth": 5, "op": "call", "imm": 1, "stack": [1], "locals": [2]}, {"kind": "enter", "depth": 5, "func": "fib", "locals": [1]}, {"kind": "instr", "depth": 6, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 6, "op": "i32.const", "imm": 2, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 6, "op": "i32.lt_s", "imm": null, "stack": [1, 2], "locals": [1]}, {"kind": "instr", "depth": 6, "op": "if", "imm": null, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 6, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 6, "op": "return", "imm": null, "stack": [1], "locals": [1]}, {"kind": "exit", "depth": 5, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [1], "locals": [2]}, {"kind": "instr", "depth": 5, "op": "i32.const", "imm": 2, "stack": [1, 2], "locals": [2]}, {"kind": "instr", "depth": 5, "op": "i32.sub", "imm": null, "stack": [1, 2, 2], "locals": [2]}, {"kind": "instr", "depth": 5, "op": "call", "imm": 1, "stack": [1, 0], "locals": [2]}, {"kind": "enter", "depth": 5, "func": "fib", "locals": [0]}, {"kind": "instr", "depth": 6, "op": "local.get", "imm": 0, "stack": [], "locals": [0]}, {"kind": "instr", "depth": 6, "op": "i32.const", "imm": 2, "stack": [0], "locals": [0]}, {"kind": "instr", "depth": 6, "op": "i32.lt_s", "imm": null, "stack": [0, 2], "locals": [0]}, {"kind": "instr", "depth": 6, "op": "if", "imm": null, "stack": [1], "locals": [0]}, {"kind": "instr", "depth": 6, "op": "local.get", "imm": 0, "stack": [], "locals": [0]}, {"kind": "instr", "depth": 6, "op": "return", "imm": null, "stack": [0], "locals": [0]}, {"kind": "exit", "depth": 5, "func": "fib", "results": [0]}, {"kind": "instr", "depth": 5, "op": "i32.add", "imm": null, "stack": [1, 0], "locals": [2]}, {"kind": "instr", "depth": 5, "op": "return", "imm": null, "stack": [1], "locals": [2]}, {"kind": "exit", "depth": 4, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [1], "locals": [3]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 2, "stack": [1, 3], "locals": [3]}, {"kind": "instr", "depth": 4, "op": "i32.sub", "imm": null, "stack": [1, 3, 2], "locals": [3]}, {"kind": "instr", "depth": 4, "op": "call", "imm": 1, "stack": [1, 1], "locals": [3]}, {"kind": "enter", "depth": 4, "func": "fib", "locals": [1]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "i32.const", "imm": 2, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "i32.lt_s", "imm": null, "stack": [1, 2], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "if", "imm": null, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "return", "imm": null, "stack": [1], "locals": [1]}, {"kind": "exit", "depth": 4, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 4, "op": "i32.add", "imm": null, "stack": [1, 1], "locals": [3]}, {"kind": "instr", "depth": 4, "op": "return", "imm": null, "stack": [2], "locals": [3]}, {"kind": "exit", "depth": 3, "func": "fib", "results": [2]}, {"kind": "instr", "depth": 3, "op": "local.get", "imm": 0, "stack": [2], "locals": [4]}, {"kind": "instr", "depth": 3, "op": "i32.const", "imm": 2, "stack": [2, 4], "locals": [4]}, {"kind": "instr", "depth": 3, "op": "i32.sub", "imm": null, "stack": [2, 4, 2], "locals": [4]}, {"kind": "instr", "depth": 3, "op": "call", "imm": 1, "stack": [2, 2], "locals": [4]}, {"kind": "enter", "depth": 3, "func": "fib", "locals": [2]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 2, "stack": [2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.lt_s", "imm": null, "stack": [2, 2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "if", "imm": null, "stack": [0], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 1, "stack": [2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.sub", "imm": null, "stack": [2, 1], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "call", "imm": 1, "stack": [1], "locals": [2]}, {"kind": "enter", "depth": 4, "func": "fib", "locals": [1]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "i32.const", "imm": 2, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "i32.lt_s", "imm": null, "stack": [1, 2], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "if", "imm": null, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "return", "imm": null, "stack": [1], "locals": [1]}, {"kind": "exit", "depth": 4, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [1], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 2, "stack": [1, 2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.sub", "imm": null, "stack": [1, 2, 2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "call", "imm": 1, "stack": [1, 0], "locals": [2]}, {"kind": "enter", "depth": 4, "func": "fib", "locals": [0]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "i32.const", "imm": 2, "stack": [0], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "i32.lt_s", "imm": null, "stack": [0, 2], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "if", "imm": null, "stack": [1], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "return", "imm": null, "stack": [0], "locals": [0]}, {"kind": "exit", "depth": 4, "func": "fib", "results": [0]}, {"kind": "instr", "depth": 4, "op": "i32.add", "imm": null, "stack": [1, 0], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "return", "imm": null, "stack": [1], "locals": [2]}, {"kind": "exit", "depth": 3, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 3, "op": "i32.add", "imm": null, "stack": [2, 1], "locals": [4]}, {"kind": "instr", "depth": 3, "op": "return", "imm": null, "stack": [3], "locals": [4]}, {"kind": "exit", "depth": 2, "func": "fib", "results": [3]}, {"kind": "instr", "depth": 2, "op": "local.get", "imm": 0, "stack": [3], "locals": [5]}, {"kind": "instr", "depth": 2, "op": "i32.const", "imm": 2, "stack": [3, 5], "locals": [5]}, {"kind": "instr", "depth": 2, "op": "i32.sub", "imm": null, "stack": [3, 5, 2], "locals": [5]}, {"kind": "instr", "depth": 2, "op": "call", "imm": 1, "stack": [3, 3], "locals": [5]}, {"kind": "enter", "depth": 2, "func": "fib", "locals": [3]}, {"kind": "instr", "depth": 3, "op": "local.get", "imm": 0, "stack": [], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "i32.const", "imm": 2, "stack": [3], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "i32.lt_s", "imm": null, "stack": [3, 2], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "if", "imm": null, "stack": [0], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "local.get", "imm": 0, "stack": [], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "i32.const", "imm": 1, "stack": [3], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "i32.sub", "imm": null, "stack": [3, 1], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "call", "imm": 1, "stack": [2], "locals": [3]}, {"kind": "enter", "depth": 3, "func": "fib", "locals": [2]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 2, "stack": [2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.lt_s", "imm": null, "stack": [2, 2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "if", "imm": null, "stack": [0], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 1, "stack": [2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.sub", "imm": null, "stack": [2, 1], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "call", "imm": 1, "stack": [1], "locals": [2]}, {"kind": "enter", "depth": 4, "func": "fib", "locals": [1]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "i32.const", "imm": 2, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "i32.lt_s", "imm": null, "stack": [1, 2], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "if", "imm": null, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "return", "imm": null, "stack": [1], "locals": [1]}, {"kind": "exit", "depth": 4, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [1], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 2, "stack": [1, 2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.sub", "imm": null, "stack": [1, 2, 2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "call", "imm": 1, "stack": [1, 0], "locals": [2]}, {"kind": "enter", "depth": 4, "func": "fib", "locals": [0]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "i32.const", "imm": 2, "stack": [0], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "i32.lt_s", "imm": null, "stack": [0, 2], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "if", "imm": null, "stack": [1], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "return", "imm": null, "stack": [0], "locals": [0]}, {"kind": "exit", "depth": 4, "func": "fib", "results": [0]}, {"kind": "instr", "depth": 4, "op": "i32.add", "imm": null, "stack": [1, 0], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "return", "imm": null, "stack": [1], "locals": [2]}, {"kind": "exit", "depth": 3, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 3, "op": "local.get", "imm": 0, "stack": [1], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "i32.const", "imm": 2, "stack": [1, 3], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "i32.sub", "imm": null, "stack": [1, 3, 2], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "call", "imm": 1, "stack": [1, 1], "locals": [3]}, {"kind": "enter", "depth": 3, "func": "fib", "locals": [1]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 2, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "i32.lt_s", "imm": null, "stack": [1, 2], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "if", "imm": null, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "return", "imm": null, "stack": [1], "locals": [1]}, {"kind": "exit", "depth": 3, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 3, "op": "i32.add", "imm": null, "stack": [1, 1], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "return", "imm": null, "stack": [2], "locals": [3]}, {"kind": "exit", "depth": 2, "func": "fib", "results": [2]}, {"kind": "instr", "depth": 2, "op": "i32.add", "imm": null, "stack": [3, 2], "locals": [5]}, {"kind": "instr", "depth": 2, "op": "return", "imm": null, "stack": [5], "locals": [5]}, {"kind": "exit", "depth": 1, "func": "fib", "results": [5]}, {"kind": "instr", "depth": 1, "op": "local.get", "imm": 0, "stack": [5], "locals": [6]}, {"kind": "instr", "depth": 1, "op": "i32.const", "imm": 2, "stack": [5, 6], "locals": [6]}, {"kind": "instr", "depth": 1, "op": "i32.sub", "imm": null, "stack": [5, 6, 2], "locals": [6]}, {"kind": "instr", "depth": 1, "op": "call", "imm": 1, "stack": [5, 4], "locals": [6]}, {"kind": "enter", "depth": 1, "func": "fib", "locals": [4]}, {"kind": "instr", "depth": 2, "op": "local.get", "imm": 0, "stack": [], "locals": [4]}, {"kind": "instr", "depth": 2, "op": "i32.const", "imm": 2, "stack": [4], "locals": [4]}, {"kind": "instr", "depth": 2, "op": "i32.lt_s", "imm": null, "stack": [4, 2], "locals": [4]}, {"kind": "instr", "depth": 2, "op": "if", "imm": null, "stack": [0], "locals": [4]}, {"kind": "instr", "depth": 2, "op": "local.get", "imm": 0, "stack": [], "locals": [4]}, {"kind": "instr", "depth": 2, "op": "i32.const", "imm": 1, "stack": [4], "locals": [4]}, {"kind": "instr", "depth": 2, "op": "i32.sub", "imm": null, "stack": [4, 1], "locals": [4]}, {"kind": "instr", "depth": 2, "op": "call", "imm": 1, "stack": [3], "locals": [4]}, {"kind": "enter", "depth": 2, "func": "fib", "locals": [3]}, {"kind": "instr", "depth": 3, "op": "local.get", "imm": 0, "stack": [], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "i32.const", "imm": 2, "stack": [3], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "i32.lt_s", "imm": null, "stack": [3, 2], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "if", "imm": null, "stack": [0], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "local.get", "imm": 0, "stack": [], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "i32.const", "imm": 1, "stack": [3], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "i32.sub", "imm": null, "stack": [3, 1], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "call", "imm": 1, "stack": [2], "locals": [3]}, {"kind": "enter", "depth": 3, "func": "fib", "locals": [2]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 2, "stack": [2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.lt_s", "imm": null, "stack": [2, 2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "if", "imm": null, "stack": [0], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 1, "stack": [2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.sub", "imm": null, "stack": [2, 1], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "call", "imm": 1, "stack": [1], "locals": [2]}, {"kind": "enter", "depth": 4, "func": "fib", "locals": [1]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "i32.const", "imm": 2, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "i32.lt_s", "imm": null, "stack": [1, 2], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "if", "imm": null, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 5, "op": "return", "imm": null, "stack": [1], "locals": [1]}, {"kind": "exit", "depth": 4, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [1], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 2, "stack": [1, 2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "i32.sub", "imm": null, "stack": [1, 2, 2], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "call", "imm": 1, "stack": [1, 0], "locals": [2]}, {"kind": "enter", "depth": 4, "func": "fib", "locals": [0]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "i32.const", "imm": 2, "stack": [0], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "i32.lt_s", "imm": null, "stack": [0, 2], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "if", "imm": null, "stack": [1], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "local.get", "imm": 0, "stack": [], "locals": [0]}, {"kind": "instr", "depth": 5, "op": "return", "imm": null, "stack": [0], "locals": [0]}, {"kind": "exit", "depth": 4, "func": "fib", "results": [0]}, {"kind": "instr", "depth": 4, "op": "i32.add", "imm": null, "stack": [1, 0], "locals": [2]}, {"kind": "instr", "depth": 4, "op": "return", "imm": null, "stack": [1], "locals": [2]}, {"kind": "exit", "depth": 3, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 3, "op": "local.get", "imm": 0, "stack": [1], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "i32.const", "imm": 2, "stack": [1, 3], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "i32.sub", "imm": null, "stack": [1, 3, 2], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "call", "imm": 1, "stack": [1, 1], "locals": [3]}, {"kind": "enter", "depth": 3, "func": "fib", "locals": [1]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 2, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "i32.lt_s", "imm": null, "stack": [1, 2], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "if", "imm": null, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "return", "imm": null, "stack": [1], "locals": [1]}, {"kind": "exit", "depth": 3, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 3, "op": "i32.add", "imm": null, "stack": [1, 1], "locals": [3]}, {"kind": "instr", "depth": 3, "op": "return", "imm": null, "stack": [2], "locals": [3]}, {"kind": "exit", "depth": 2, "func": "fib", "results": [2]}, {"kind": "instr", "depth": 2, "op": "local.get", "imm": 0, "stack": [2], "locals": [4]}, {"kind": "instr", "depth": 2, "op": "i32.const", "imm": 2, "stack": [2, 4], "locals": [4]}, {"kind": "instr", "depth": 2, "op": "i32.sub", "imm": null, "stack": [2, 4, 2], "locals": [4]}, {"kind": "instr", "depth": 2, "op": "call", "imm": 1, "stack": [2, 2], "locals": [4]}, {"kind": "enter", "depth": 2, "func": "fib", "locals": [2]}, {"kind": "instr", "depth": 3, "op": "local.get", "imm": 0, "stack": [], "locals": [2]}, {"kind": "instr", "depth": 3, "op": "i32.const", "imm": 2, "stack": [2], "locals": [2]}, {"kind": "instr", "depth": 3, "op": "i32.lt_s", "imm": null, "stack": [2, 2], "locals": [2]}, {"kind": "instr", "depth": 3, "op": "if", "imm": null, "stack": [0], "locals": [2]}, {"kind": "instr", "depth": 3, "op": "local.get", "imm": 0, "stack": [], "locals": [2]}, {"kind": "instr", "depth": 3, "op": "i32.const", "imm": 1, "stack": [2], "locals": [2]}, {"kind": "instr", "depth": 3, "op": "i32.sub", "imm": null, "stack": [2, 1], "locals": [2]}, {"kind": "instr", "depth": 3, "op": "call", "imm": 1, "stack": [1], "locals": [2]}, {"kind": "enter", "depth": 3, "func": "fib", "locals": [1]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 2, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "i32.lt_s", "imm": null, "stack": [1, 2], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "if", "imm": null, "stack": [1], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [1]}, {"kind": "instr", "depth": 4, "op": "return", "imm": null, "stack": [1], "locals": [1]}, {"kind": "exit", "depth": 3, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 3, "op": "local.get", "imm": 0, "stack": [1], "locals": [2]}, {"kind": "instr", "depth": 3, "op": "i32.const", "imm": 2, "stack": [1, 2], "locals": [2]}, {"kind": "instr", "depth": 3, "op": "i32.sub", "imm": null, "stack": [1, 2, 2], "locals": [2]}, {"kind": "instr", "depth": 3, "op": "call", "imm": 1, "stack": [1, 0], "locals": [2]}, {"kind": "enter", "depth": 3, "func": "fib", "locals": [0]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [0]}, {"kind": "instr", "depth": 4, "op": "i32.const", "imm": 2, "stack": [0], "locals": [0]}, {"kind": "instr", "depth": 4, "op": "i32.lt_s", "imm": null, "stack": [0, 2], "locals": [0]}, {"kind": "instr", "depth": 4, "op": "if", "imm": null, "stack": [1], "locals": [0]}, {"kind": "instr", "depth": 4, "op": "local.get", "imm": 0, "stack": [], "locals": [0]}, {"kind": "instr", "depth": 4, "op": "return", "imm": null, "stack": [0], "locals": [0]}, {"kind": "exit", "depth": 3, "func": "fib", "results": [0]}, {"kind": "instr", "depth": 3, "op": "i32.add", "imm": null, "stack": [1, 0], "locals": [2]}, {"kind": "instr", "depth": 3, "op": "return", "imm": null, "stack": [1], "locals": [2]}, {"kind": "exit", "depth": 2, "func": "fib", "results": [1]}, {"kind": "instr", "depth": 2, "op": "i32.add", "imm": null, "stack": [2, 1], "locals": [4]}, {"kind": "instr", "depth": 2, "op": "return", "imm": null, "stack": [3], "locals": [4]}, {"kind": "exit", "depth": 1, "func": "fib", "results": [3]}, {"kind": "instr", "depth": 1, "op": "i32.add", "imm": null, "stack": [5, 3], "locals": [6]}, {"kind": "instr", "depth": 1, "op": "return", "imm": null, "stack": [8], "locals": [6]}, {"kind": "exit", "depth": 0, "func": "fib", "results": [8]}], "truncated": false, "result": [8]};
+
+let trace = EMBEDDED_TRACE;
+let cur = 0;
+let playing = false;
+let playTimer = null;
+
+const $ = (id) => document.getElementById(id);
+
+function renderStepList() {
+  const list = $('trace-list');
+  list.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  trace.steps.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'step-row' + (s.kind === 'enter' || s.kind === 'enter_host' ? ' enter' : s.kind === 'exit' ? ' exit' : '');
+    row.dataset.i = i;
+    const indent = '  '.repeat(s.depth);
+    let label;
+    if (s.kind === 'enter') label = `${indent}→ call ${s.func}(${(s.locals||[]).join(', ')})`;
+    else if (s.kind === 'enter_host') label = `${indent}→ host ${s.func}(${(s.args||[]).join(', ')})`;
+    else if (s.kind === 'exit') label = `${indent}← ${s.func} = [${(s.results||[]).join(', ')}]`;
+    else label = `${indent}${s.op}${s.imm !== null && s.imm !== undefined ? ' ' + fmtImm(s.imm) : ''}`;
+    row.innerHTML = `<span class="idx">${i}</span><span class="op">${escapeHtml(label)}</span>`;
+    row.addEventListener('click', () => { goto(i); pause(); });
+    frag.appendChild(row);
+  });
+  list.appendChild(frag);
+  $('trace-count').textContent = trace.steps.length + ' steps' + (trace.truncated ? ' (truncated)' : '');
+  $('scrub').max = Math.max(0, trace.steps.length - 1);
+}
+
+function fmtImm(imm) {
+  if (Array.isArray(imm)) return '(' + imm.join(' ') + ')';
+  return String(imm);
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+function render() {
+  const rows = document.querySelectorAll('.step-row');
+  rows.forEach(r => r.classList.remove('current'));
+  const row = document.querySelector(`.step-row[data-i="${cur}"]`);
+  if (row) {
+    row.classList.add('current');
+    row.scrollIntoView({ block: 'nearest' });
+  }
+
+  const step = trace.steps[cur];
+  $('step-label').textContent = `${cur} / ${trace.steps.length - 1}`;
+  $('scrub').value = cur;
+
+  const stackVals = (step && step.stack) || (step && step.kind === 'exit' ? step.results : []) || [];
+  const stackEl = $('stack-vals');
+  if (!step || (step.kind !== 'instr')) {
+    stackEl.innerHTML = step && step.kind === 'exit'
+      ? step.results.map((v, idx) => `<span class="chip${idx === step.results.length - 1 ? ' top' : ''}">${v}</span>`).join('')
+      : '<span class="empty-hint">—</span>';
+  } else if (stackVals.length === 0) {
+    stackEl.innerHTML = '<span class="empty-hint">empty</span>';
+  } else {
+    stackEl.innerHTML = stackVals.map((v, idx) =>
+      `<span class="chip${idx === stackVals.length - 1 ? ' top' : ''}">${v}</span>`).join('');
+  }
+
+  const localsVals = (step && step.locals) || [];
+  const localsEl = $('locals-vals');
+  localsEl.innerHTML = localsVals.length
+    ? localsVals.map((v, idx) => `<span class="chip">$${idx}=${v}</span>`).join('')
+    : '<span class="empty-hint">none</span>';
+
+  renderCallStack();
+
+  $('btn-back').disabled = cur === 0;
+  $('btn-fwd').disabled = cur >= trace.steps.length - 1;
+}
+
+function renderCallStack() {
+  const frames = [];
+  for (let i = 0; i <= cur; i++) {
+    const s = trace.steps[i];
+    if (s.kind === 'enter') frames.push({ func: s.func, depth: s.depth });
+    else if (s.kind === 'enter_host') frames.push({ func: s.func + ' (host)', depth: s.depth });
+    else if (s.kind === 'exit') frames.pop();
+  }
+  const el = $('callstack');
+  el.innerHTML = frames.length
+    ? frames.map(f => `<div class="callstack-row"><span>${'  '.repeat(f.depth)}${escapeHtml(f.func)}</span><span>depth ${f.depth}</span></div>`).join('')
+    : '<div class="empty-hint">(not yet entered)</div>';
+}
+
+function goto(i) {
+  cur = Math.max(0, Math.min(trace.steps.length - 1, i));
+  render();
+}
+
+function pause() {
+  playing = false;
+  clearInterval(playTimer);
+  $('btn-play').textContent = '▶ Play';
+}
+
+function play() {
+  if (trace.steps.length === 0) return;
+  playing = true;
+  $('btn-play').textContent = '⏸ Pause';
+  playTimer = setInterval(() => {
+    if (cur >= trace.steps.length - 1) { pause(); return; }
+    goto(cur + 1);
+  }, 45);
+}
+
+$('btn-reset').addEventListener('click', () => { pause(); goto(0); });
+$('btn-back').addEventListener('click', () => { pause(); goto(cur - 1); });
+$('btn-fwd').addEventListener('click', () => { pause(); goto(cur + 1); });
+$('btn-end').addEventListener('click', () => { pause(); goto(trace.steps.length - 1); });
+$('btn-play').addEventListener('click', () => playing ? pause() : play());
+$('scrub').addEventListener('input', (e) => { pause(); goto(parseInt(e.target.value, 10)); });
+
+$('file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      loadTrace(JSON.parse(reader.result));
+    } catch (err) {
+      alert('Could not parse trace JSON: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+});
+
+function loadTrace(t) {
+  pause();
+  trace = t;
+  cur = 0;
+  renderTitle();
+  renderStepList();
+  render();
+}
+
+function renderTitle() {
+  $('subtitle').textContent = trace.title || `${trace.export || 'call'}(${(trace.args || []).join(', ')})`;
+  const banner = $('result-banner');
+  if (trace.result !== undefined) {
+    banner.style.display = '';
+    banner.textContent = `result = [${trace.result.join(', ')}]${trace.truncated ? '  (trace truncated at step cap)' : ''}`;
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+renderTitle();
+renderStepList();
+render();
+</script>

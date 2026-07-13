@@ -105,6 +105,22 @@ accepted limitation of the lazy-memory-getter pattern (real embedders
 solve it with two-phase instantiation, which is out of scope here) rather
 than a silent crash.
 
+## Bonus: the differential-testing strategy caught a real bug in Phase 4
+
+While building the WASI-lite stretch feature (`examples/hello_wasi.kwat`),
+the first version declared its iovec's `buf_len` as 18 when the message
+("Hello from Kiln!\n") is actually 17 bytes. The module still "worked" —
+it returned errno 0 in both engines — but `kiln verify` printed the
+message with a trailing NUL byte read one past the end of the string,
+identically in *both* Kiln's interpreter and Node's real engine. Neither
+engine's return value caught it (division/traps aren't involved; it's
+just wrong I/O), which is exactly the class of bug a return-value-only
+test suite misses and only a genuine differential run against a real
+engine — comparing actual output bytes, not just outcomes — catches. Fixed
+by correcting the length constant; a regression test
+(`test_wasi_lite_hello_matches_node`) now asserts the exact stdout bytes,
+not just the errno.
+
 ## Accepted, out-of-scope limitations (not bugs)
 
 - **Table/element imports** aren't supported (only single-module-owned

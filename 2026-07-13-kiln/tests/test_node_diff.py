@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from .helpers import assemble_bytes, compile_pebble, instantiate, node_available, run_in_node
+from .helpers import ROOT, assemble_bytes, compile_pebble, instantiate, node_available, run_in_node
 
 
 def _normalize_int(v):
@@ -150,6 +150,32 @@ class TestNodeDifferential(unittest.TestCase):
         """)
         for n in [1, 2, 7, 27, 97]:
             self._check(wasm, "collatz_steps", [n])
+
+    def test_wasi_lite_hello_matches_node(self):
+        # Regression test for a real off-by-one bug this differential
+        # testing approach caught: examples/hello_wasi.kwat originally
+        # declared its iovec one byte too long, so both engines faithfully
+        # printed the message plus one stray NUL byte read past its end.
+        # Checking only the errno return value would have missed that bug
+        # entirely -- it's the printed *bytes* that were wrong -- so this
+        # captures and compares actual stdout output from both engines.
+        import contextlib
+        import io
+        from kiln.asm.assembler import assemble
+        from kiln.wasm.encoder import encode_module
+        src = (ROOT / "examples" / "hello_wasi.kwat").read_text()
+        wasm = encode_module(assemble(src))
+
+        self._check(wasm, "main", [])
+
+        captured = io.StringIO()
+        with contextlib.redirect_stdout(captured):
+            instantiate(wasm).call("main", [])
+        kiln_stdout = captured.getvalue()
+
+        node_result = run_in_node(wasm, "main", [], self.tmp_path)
+        self.assertEqual(kiln_stdout, "Hello from Kiln!\n")
+        self.assertEqual(node_result["results"], [0])
 
 
 if __name__ == "__main__":
