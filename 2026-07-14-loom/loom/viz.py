@@ -146,6 +146,7 @@ renderLoss();
 
 
 def render(prompt, model, tokenizer, log_path=None, out_path="viz.html", max_context=48):
+    max_context = min(max_context, model.max_seq_len)
     ids = tokenizer.encode(prompt)[:max_context] or [0]
     tokens = [tokenizer.decode([i]) for i in ids]
 
@@ -165,7 +166,14 @@ def render(prompt, model, tokenizer, log_path=None, out_path="viz.html", max_con
                 loss_points.append({"step": rec["step"], "loss": rec["loss"]})
 
     data = {"tokens": tokens, "attn": attn, "loss": loss_points}
-    html = _TEMPLATE.replace("__DATA_JSON__", json.dumps(data))
+    # Escape "</" so no embedded token/prompt content can prematurely close
+    # the surrounding <script> block (defense in depth for arbitrary
+    # --prompt / corpus content flowing into this generated HTML).
+    data_json = json.dumps(data).replace("</", "<\\/")
+    html = _TEMPLATE.replace("__DATA_JSON__", data_json)
+
+    out_dir = os.path.dirname(os.path.abspath(out_path))
+    os.makedirs(out_dir, exist_ok=True)
     with open(out_path, "w") as f:
         f.write(html)
     return out_path

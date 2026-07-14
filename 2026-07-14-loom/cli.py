@@ -90,21 +90,21 @@ def cmd_demo(args):
         warmup_steps=30, seed=0, log_every=50, ckpt_every=300,
     )
     print("\n== 2. gradcheck ==")
-    class A: pass
-    a = A(); a.vocab_size = 17; a.d_model = 8; a.n_heads = 2; a.n_layers = 2
-    a.seq_len = 5; a.batch_size = 2; a.samples = 3; a.seed = 0
-    cmd_gradcheck(a)
+    cmd_gradcheck(argparse.Namespace(
+        vocab_size=17, d_model=8, n_heads=2, n_layers=2, seq_len=5,
+        batch_size=2, samples=3, seed=0,
+    ))
 
     print("\n== 3. sample from the trained checkpoint ==")
-    class B: pass
-    b = B(); b.run = run_dir; b.prompt = "ROMEO:"; b.max_new_tokens = 120
-    b.temperature = 0.8; b.top_k = 40; b.top_p = 0.0; b.seed = 0
-    cmd_sample(b)
+    cmd_sample(argparse.Namespace(
+        run=run_dir, prompt="ROMEO:", max_new_tokens=120, temperature=0.8,
+        top_k=40, top_p=0.0, seed=0,
+    ))
 
     print("\n== 4. render visualizer ==")
-    class C: pass
-    c = C(); c.run = run_dir; c.prompt = "ROMEO: what light"; c.out = os.path.join(run_dir, "viz.html")
-    cmd_viz(c)
+    cmd_viz(argparse.Namespace(
+        run=run_dir, prompt="ROMEO: what light", out=os.path.join(run_dir, "viz.html"),
+    ))
     print("\ndemo complete.")
 
 
@@ -172,7 +172,11 @@ def build_parser():
 def main():
     parser = build_parser()
     args = parser.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except (ValueError, FileNotFoundError, KeyError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

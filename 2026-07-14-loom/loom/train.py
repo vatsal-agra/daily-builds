@@ -56,6 +56,9 @@ def train(
     ckpt_every=500,
     verbose=True,
 ):
+    if d_model % n_heads != 0:
+        raise ValueError("d_model must be divisible by n_heads")
+
     os.makedirs(out_dir, exist_ok=True)
     with open(corpus_path, encoding="utf-8") as f:
         text = f.read()

@@ -4,9 +4,13 @@ A GPT-style transformer language model, built entirely from scratch in
 NumPy — tokenizer, architecture, backpropagation, training, and sampling,
 all hand-written, with no PyTorch/TensorFlow/JAX and no autodiff library.
 
-> **Status: Phase 2 complete (core build).** The 4 required features work
-> end-to-end. Phase 3 (adversarial review), Phase 4 (stretch features +
-> polish), and Phase 5 (verification) are still to come — see PLAN.md.
+> **Status: Phase 3 complete (adversarial review).** The 4 required features
+> work end-to-end and have survived a hostile review pass — see REVIEW.md
+> for the 6 real issues found (a visualizer crash, an XSS-adjacent
+> unescaped-`</script>` gap, raw tracebacks leaking on ordinary bad input,
+> a missing-directory crash, a code-quality shortcut, and a test-coverage
+> gap) and their fixes. Phase 4 (stretch features + polish) and Phase 5
+> (verification) are still to come — see PLAN.md.
 
 ## What's here so far
 
@@ -21,10 +25,11 @@ all hand-written, with no PyTorch/TensorFlow/JAX and no autodiff library.
   grad clipping, and the minibatched training loop with checkpointing.
 - `loom/sample.py` — temperature / top-k / top-p autoregressive generation.
 - `cli.py` — `tokenizer-train`, `gradcheck`, `train`, `sample`, `demo`.
-- `tests/` — 43 unit tests (all green) covering tokenizer round-trips,
+- `tests/` — 51 unit tests (all green) covering tokenizer round-trips,
   gradient checks across depths/batch sizes/edge cases (seq_len=1, batch=1),
-  causal-mask leakage, checkpoint round-tripping, and loss-decreases-with-
-  training regression tests.
+  causal-mask leakage, checkpoint round-tripping, loss-decreases-with-
+  training regression tests, and (new in Phase 3) the visualizer's crash
+  and script-injection regressions.
 
 ## Try it
 
