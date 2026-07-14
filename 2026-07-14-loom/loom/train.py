@@ -58,6 +58,12 @@ def train(
 ):
     if d_model % n_heads != 0:
         raise ValueError("d_model must be divisible by n_heads")
+    if steps < 1:
+        raise ValueError(f"steps must be >= 1 (got {steps})")
+    if batch_size < 1:
+        raise ValueError(f"batch_size must be >= 1 (got {batch_size})")
+    if seq_len < 1:
+        raise ValueError(f"seq_len must be >= 1 (got {seq_len})")
 
     os.makedirs(out_dir, exist_ok=True)
     with open(corpus_path, encoding="utf-8") as f:

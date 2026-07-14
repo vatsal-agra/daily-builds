@@ -121,6 +121,28 @@ class TestTrain(unittest.TestCase):
             train(corpus_path=empty_path, out_dir=os.path.join(self.tmpdir, "run3"),
                   vocab_size=256, steps=1, verbose=False)
 
+    def test_zero_steps_raises_cleanly(self):
+        with self.assertRaises(ValueError):
+            train(corpus_path=self.corpus_path, out_dir=os.path.join(self.tmpdir, "run4"),
+                  vocab_size=256, steps=0, verbose=False)
+
+    def test_zero_batch_size_raises_cleanly(self):
+        with self.assertRaises(ValueError):
+            train(corpus_path=self.corpus_path, out_dir=os.path.join(self.tmpdir, "run5"),
+                  vocab_size=256, steps=2, batch_size=0, verbose=False)
+
+    def test_zero_seq_len_raises_cleanly(self):
+        with self.assertRaises(ValueError):
+            train(corpus_path=self.corpus_path, out_dir=os.path.join(self.tmpdir, "run6"),
+                  vocab_size=256, steps=2, seq_len=0, verbose=False)
+
+    def test_indivisible_heads_raises_before_expensive_work(self):
+        with self.assertRaises(ValueError):
+            train(corpus_path=self.corpus_path, out_dir=os.path.join(self.tmpdir, "run7"),
+                  vocab_size=256, d_model=10, n_heads=3, steps=2, verbose=False)
+        # must fail before writing a tokenizer file (i.e. before the expensive part)
+        self.assertFalse(os.path.exists(os.path.join(self.tmpdir, "run7", "tokenizer.json")))
+
 
 if __name__ == "__main__":
     unittest.main()

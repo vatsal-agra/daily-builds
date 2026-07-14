@@ -4,13 +4,16 @@ A GPT-style transformer language model, built entirely from scratch in
 NumPy — tokenizer, architecture, backpropagation, training, and sampling,
 all hand-written, with no PyTorch/TensorFlow/JAX and no autodiff library.
 
-> **Status: Phase 3 complete (adversarial review).** The 4 required features
-> work end-to-end and have survived a hostile review pass — see REVIEW.md
-> for the 6 real issues found (a visualizer crash, an XSS-adjacent
-> unescaped-`</script>` gap, raw tracebacks leaking on ordinary bad input,
-> a missing-directory crash, a code-quality shortcut, and a test-coverage
-> gap) and their fixes. Phase 4 (stretch features + polish) and Phase 5
-> (verification) are still to come — see PLAN.md.
+> **Status: Phase 4 complete (stretch features + polish).** Both stretch
+> features are shipped: temperature/top-k/top-p sampling, and an interactive
+> HTML attention/loss visualizer with a proper light/dark theme, a
+> sequential-blue attention heatmap with a legend, and hover tooltips on
+> both the heatmap and the loss curve. Polish pass added upfront validation
+> for zero/negative `steps`/`batch_size`/`seq_len` (previously confusing
+> low-level NumPy errors) and fixed a dark-mode theming bug found by
+> actually screenshotting the visualizer (the page background and tooltip
+> box weren't inheriting the dark palette because they sat outside the
+> themed root element). Phase 5 (verification) is next — see PLAN.md.
 
 ## What's here so far
 
@@ -25,11 +28,16 @@ all hand-written, with no PyTorch/TensorFlow/JAX and no autodiff library.
   grad clipping, and the minibatched training loop with checkpointing.
 - `loom/sample.py` — temperature / top-k / top-p autoregressive generation.
 - `cli.py` — `tokenizer-train`, `gradcheck`, `train`, `sample`, `demo`.
-- `tests/` — 51 unit tests (all green) covering tokenizer round-trips,
+- `tests/` — 55 unit tests (all green) covering tokenizer round-trips,
   gradient checks across depths/batch sizes/edge cases (seq_len=1, batch=1),
   causal-mask leakage, checkpoint round-tripping, loss-decreases-with-
-  training regression tests, and (new in Phase 3) the visualizer's crash
-  and script-injection regressions.
+  training regression tests, the visualizer's crash and script-injection
+  regressions (Phase 3), and zero/negative-hyperparameter validation
+  (Phase 4).
+- `loom/viz.py` — self-contained HTML visualizer: per-layer/per-head
+  attention heatmaps (sequential blue ramp + legend + hover tooltip with the
+  exact weight and both token labels) and a training-loss line chart (hover
+  crosshair, direct end-label). Light/dark theme aware.
 
 ## Try it
 
