@@ -4,16 +4,11 @@ A GPT-style transformer language model, built entirely from scratch in
 NumPy — tokenizer, architecture, backpropagation, training, and sampling,
 all hand-written, with no PyTorch/TensorFlow/JAX and no autodiff library.
 
-> **Status: Phase 4 complete (stretch features + polish).** Both stretch
-> features are shipped: temperature/top-k/top-p sampling, and an interactive
-> HTML attention/loss visualizer with a proper light/dark theme, a
-> sequential-blue attention heatmap with a legend, and hover tooltips on
-> both the heatmap and the loss curve. Polish pass added upfront validation
-> for zero/negative `steps`/`batch_size`/`seq_len` (previously confusing
-> low-level NumPy errors) and fixed a dark-mode theming bug found by
-> actually screenshotting the visualizer (the page background and tooltip
-> box weren't inheriting the dark palette because they sat outside the
-> themed root element). Phase 5 (verification) is next — see PLAN.md.
+> **Status: Phase 5 complete (verification).** `demo.sh` drives the real CLI
+> end-to-end — unit tests, gradcheck, tokenizer training + round-trip,
+> model training with an asserted loss drop, deterministic sampling,
+> visualizer rendering, and clean-error checks on bad input — 23/23 checks
+> green. Phase 6 (final README + ledger entry) is next — see PLAN.md.
 
 ## What's here so far
 
@@ -38,6 +33,10 @@ all hand-written, with no PyTorch/TensorFlow/JAX and no autodiff library.
   attention heatmaps (sequential blue ramp + legend + hover tooltip with the
   exact weight and both token labels) and a training-loss line chart (hover
   crosshair, direct end-label). Light/dark theme aware.
+- `demo.sh` — 23-check end-to-end verification script that drives the real
+  CLI (not internal function calls): unit tests, gradcheck, tokenizer
+  train+round-trip, model training with an asserted loss drop, deterministic
+  sampling, visualizer rendering, and clean-error checks on bad input.
 
 ## Try it
 
