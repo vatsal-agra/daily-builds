@@ -36,7 +36,22 @@ class _Tok:
         return f"_Tok({self.kind!r}, {self.value!r})"
 
 
+def _word_node(raw):
+    """A bare lexer WORD token may itself split into several sub-words at
+    index time (e.g. "well-known" -> "well", "known", or "don't" -> "don",
+    "t"). Route it through the same tokenizer used for indexing so a query
+    for "well-known" matches the way "well-known" was actually indexed,
+    instead of failing to match anything because "well-known" itself was
+    never stored as a single term."""
+    subtokens = [w for w, _s, _e in tokenizer.tokenize(raw)]
+    if len(subtokens) == 1:
+        return TermNode(raw)
+    return PhraseNode(raw)
+
+
 def _lex(query):
+    if query.count('"') % 2 != 0:
+        raise QuerySyntaxError('unterminated phrase: missing a closing "')
     toks = []
     for raw in _LEX_RE.findall(query):
         if raw == "(":
@@ -233,7 +248,7 @@ class _Parser:
                 raise QuerySyntaxError("empty phrase")
             return PhraseNode(t.value)
         if t.kind == "WORD":
-            left = TermNode(t.value)
+            left = _word_node(t.value)
             nxt = self.peek()
             if nxt is not None and nxt.kind == "NEAR":
                 self.advance()
@@ -241,7 +256,7 @@ class _Parser:
                 rhs = self.advance()
                 if rhs is None or rhs.kind not in ("WORD", "PHRASE"):
                     raise QuerySyntaxError("NEAR requires a term on both sides")
-                right_node = TermNode(rhs.value) if rhs.kind == "WORD" else PhraseNode(rhs.value)
+                right_node = _word_node(rhs.value) if rhs.kind == "WORD" else PhraseNode(rhs.value)
                 return NearNode(left, right_node, k)
             return left
         raise QuerySyntaxError(f"unexpected token {t.value!r}")

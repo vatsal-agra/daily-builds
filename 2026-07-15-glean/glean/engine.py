@@ -28,6 +28,7 @@ class SearchEngine:
     def search(self, query_string, top_k=10):
         """Parse `query_string`, execute it, rank candidates with BM25, and
         return SearchResult objects with highlighted snippets."""
+        top_k = max(0, top_k)
         ast = query_mod.parse(query_string)
         candidates = ast.match(self.index)
         terms = [t for t in query_mod.positive_terms(ast) if t]

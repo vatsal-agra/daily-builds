@@ -1,4 +1,6 @@
 import itertools
+import random
+import re
 import unittest
 
 from glean.index import InvertedIndex
@@ -87,6 +89,56 @@ class DifferentialQueryTests(unittest.TestCase):
             with self.subTest(query=f"{a} NEAR/5 {b}"):
                 self._check(f"{a} NEAR/5 {b}")
 
+    def test_hyphenated_word_matches_as_implicit_phrase(self):
+        # "well-known" is indexed as two adjacent tokens ("well", "known");
+        # the query word "well-known" must route through the same tokenizer
+        # so it becomes an implicit phrase instead of a single unmatchable term.
+        idx = InvertedIndex()
+        doc = idx.add_document("T", "a well-known fact")
+        ast = parse("well-known")
+        self.assertEqual(ast.match(idx), {doc})
+
+    def test_apostrophe_word_matches_as_implicit_phrase(self):
+        idx = InvertedIndex()
+        doc = idx.add_document("T", "I don't know")
+        ast = parse("don't")
+        self.assertEqual(ast.match(idx), {doc})
+
+    def test_punctuation_only_word_matches_nothing_not_crashes(self):
+        ast = parse("----")
+        self.assertEqual(ast.match(self.index), set())
+
+    def test_randomized_fuzz_against_oracle(self):
+        vocab = sorted(
+            {
+                w.lower()
+                for article in load_corpus()
+                for w in re.findall(r"[A-Za-z]+", article["text"])
+                if len(w) > 3
+            }
+        )
+        rng = random.Random(20260715)
+
+        def gen(depth=0):
+            if depth >= 3 or rng.random() < 0.35:
+                if rng.random() < 0.25:
+                    words = [rng.choice(vocab) for _ in range(rng.randint(2, 3))]
+                    return '"' + " ".join(words) + '"'
+                return rng.choice(vocab)
+            choice = rng.choice(["AND", "OR", "NOT", "NEAR", "PAREN"])
+            if choice == "NOT":
+                return f"NOT {gen(depth + 1)}"
+            if choice == "PAREN":
+                return f"({gen(depth + 1)})"
+            if choice == "NEAR":
+                return f"{rng.choice(vocab)} NEAR/{rng.randint(1, 5)} {rng.choice(vocab)}"
+            return f"{gen(depth + 1)} {choice} {gen(depth + 1)}"
+
+        for _ in range(300):
+            q = gen()
+            with self.subTest(query=q):
+                self._check(q)
+
 
 class ParserErrorTests(unittest.TestCase):
     def test_empty_query(self):
@@ -108,6 +160,10 @@ class ParserErrorTests(unittest.TestCase):
     def test_empty_phrase(self):
         with self.assertRaises(QuerySyntaxError):
             parse('""')
+
+    def test_unterminated_phrase(self):
+        with self.assertRaises(QuerySyntaxError):
+            parse('"unterminated phrase')
 
     def test_dangling_near(self):
         with self.assertRaises(QuerySyntaxError):

@@ -22,14 +22,25 @@ _VOWELS = "aeiou"
 
 
 def _is_consonant(word, i):
+    """True if word[i] is a consonant. 'y' alternates: a consonant unless the
+    letter before it is itself a consonant. Computed iteratively (not via
+    self-recursion) so a pathological run of thousands of 'y's can't blow
+    the interpreter's call stack."""
     c = word[i]
     if c in _VOWELS:
         return False
-    if c == "y":
-        if i == 0:
-            return True
-        return not _is_consonant(word, i - 1)
-    return True
+    if c != "y":
+        return True
+    status = True  # a leading 'y' is always a consonant
+    for j in range(1, i + 1):
+        cj = word[j]
+        if cj in _VOWELS:
+            status = False
+        elif cj == "y":
+            status = not status
+        else:
+            status = True
+    return status
 
 
 def _measure(stem):

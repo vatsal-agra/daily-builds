@@ -95,6 +95,14 @@ class StemmerTests(unittest.TestCase):
             with self.subTest(word=w):
                 self.assertEqual(once, twice, f"not idempotent: {w} -> {once} -> {twice}")
 
+    def test_no_recursion_error_on_long_y_run(self):
+        # _is_consonant used to recurse once per leading 'y', so a long run
+        # of them could blow the interpreter's call stack.
+        try:
+            porter_stem("y" * 5000)
+        except RecursionError:
+            self.fail("porter_stem raised RecursionError on a long run of 'y's")
+
     def test_never_lengthens_much(self):
         # Porter only ever appends a single trailing e/i, never grows a word
         # by more than one character.

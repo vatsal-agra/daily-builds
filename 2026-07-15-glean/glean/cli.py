@@ -60,6 +60,9 @@ def _open_engine(index_path):
 
 
 def cmd_search(args):
+    if args.top_k < 0:
+        print(f"error: --top-k must be >= 0, got {args.top_k}", file=sys.stderr)
+        sys.exit(1)
     engine = _open_engine(args.index)
     try:
         results = engine.search(args.query, top_k=args.top_k)

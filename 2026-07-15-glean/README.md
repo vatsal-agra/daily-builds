@@ -5,11 +5,13 @@ Porter stemmer, a positional inverted index with a real on-disk binary
 format, a boolean/phrase/proximity query language, and Okapi BM25 ranking
 with highlighted snippets.
 
-**Status: Phase 2 (core build) complete.** All 4 required features are
-implemented and covered by a 62-test suite (green), including a
-differential oracle that cross-checks every boolean/phrase/proximity query
-result against a brute-force scan of the raw token stream. See `PLAN.md`
-for architecture and the full feature list.
+**Status: Phase 3 (adversarial review) complete.** All 4 required features
+are implemented and covered by a 77-test suite (green), including a
+300-query randomized fuzz test and a differential oracle that cross-checks
+every boolean/phrase/proximity query result against a brute-force scan of
+the raw token stream. Phase 3 hunted down and fixed 7 real bugs — see
+`REVIEW.md` for the full hostile-testing writeup. See `PLAN.md` for
+architecture and the full feature list.
 
 ## Try it now
 
