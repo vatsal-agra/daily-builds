@@ -5,11 +5,19 @@ Porter stemmer, a positional inverted index with a real on-disk binary
 format, a boolean/phrase/proximity query language, and Okapi BM25 ranking
 with highlighted snippets.
 
-**Status: Phase 4 (stretch + polish) complete.** All 4 required features
-and all 3 stretch features are implemented, covered by a 111-test suite
-(green). See `PLAN.md` for architecture and the full feature list, and
-`REVIEW.md` for the Phase 3 adversarial-review writeup (7 real bugs found
-and fixed).
+**Status: Phase 5 (verification) complete — shipped.** All 4 required
+features and all 3 stretch features are implemented, covered by a
+111-test Python suite plus a 22-check `demo.sh` (unit tests, CLI query
+walkthrough, persistence round trip, live JSON API, and a headless-browser
+UI smoke test), all green. See `PLAN.md` for architecture and the full
+feature list, and `REVIEW.md` for the Phase 3 adversarial-review writeup
+(7 real bugs found and fixed).
+
+Run the whole thing end to end with:
+
+```
+./demo.sh
+```
 
 ## Try it now
 
