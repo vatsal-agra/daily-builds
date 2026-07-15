@@ -49,6 +49,35 @@ class SearchEngineTests(unittest.TestCase):
         self.assertEqual(stats["documents"], 50)
         self.assertGreater(stats["vocabulary"], 0)
 
+    def test_autocomplete_returns_real_words(self):
+        completions = self.engine.autocomplete("phot")
+        self.assertIn("photosynthesis", completions)
+
+    def test_autocomplete_empty_prefix(self):
+        self.assertEqual(self.engine.autocomplete(""), [])
+
+    def test_autocomplete_unknown_prefix(self):
+        self.assertEqual(self.engine.autocomplete("zzqzq"), [])
+
+    def test_did_you_mean_for_typo(self):
+        suggestions = self.engine.did_you_mean("photosinthesis")
+        self.assertTrue(suggestions)
+        all_words = [w for cands in suggestions.values() for w, _d in cands]
+        self.assertIn("photosynthesis", all_words)
+
+    def test_did_you_mean_empty_for_correct_query(self):
+        self.assertEqual(self.engine.did_you_mean("roman empire"), {})
+
+    def test_did_you_mean_handles_syntax_errors_gracefully(self):
+        self.assertEqual(self.engine.did_you_mean("(unterminated"), {})
+
+    def test_vocabulary_change_invalidates_cached_fuzzy_and_trie(self):
+        engine = SearchEngine()
+        engine.add_document("A", "aardvark armadillo antelope")
+        self.assertIn("aardvark", engine.autocomplete("aard"))
+        engine.add_document("B", "aardwolf appears too")
+        self.assertIn("aardwolf", engine.autocomplete("aard"))
+
     def test_save_load_round_trip_preserves_search_results(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "e.idx")

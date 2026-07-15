@@ -71,6 +71,10 @@ def cmd_search(args):
         sys.exit(1)
     if not results:
         print("no results")
+        suggestions = engine.did_you_mean(args.query)
+        for term, candidates in suggestions.items():
+            words = ", ".join(word for word, _distance in candidates[:3])
+            print(f"did you mean: {words}?")
         return
     for i, r in enumerate(results, start=1):
         snippet = rank.snippet_to_text(r.snippet_pieces)
