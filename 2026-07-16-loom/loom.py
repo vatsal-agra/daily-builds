@@ -20,14 +20,48 @@ import numpy as np
 
 from loom.tokenizer import BPETokenizer
 from loom.model import GPT
-from loom.train import train as train_loop, save_checkpoint, load_checkpoint
+from loom.train import train as train_loop, save_checkpoint, load_checkpoint, min_tokens_required
 from loom.generate import generate as sample_generate
 from loom import gradcheck as gradcheck_mod
 
 
+def _read_text_file(path: str, what: str) -> str:
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        print(f"ERROR: {what} not found: {path}", file=sys.stderr)
+        sys.exit(1)
+    except OSError as e:
+        print(f"ERROR: could not read {what} {path}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _load_tokenizer(path: str) -> BPETokenizer:
+    try:
+        return BPETokenizer.load(path)
+    except FileNotFoundError:
+        print(f"ERROR: tokenizer file not found: {path} "
+              f"(run 'train-tokenizer' first)", file=sys.stderr)
+        sys.exit(1)
+    except (ValueError, KeyError, IndexError) as e:
+        print(f"ERROR: tokenizer file {path} is corrupt or invalid: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _load_model_checkpoint(path: str) -> GPT:
+    try:
+        return load_checkpoint(path)
+    except FileNotFoundError:
+        print(f"ERROR: checkpoint file not found: {path} (run 'train' first)", file=sys.stderr)
+        sys.exit(1)
+    except (ValueError, KeyError, OSError) as e:
+        print(f"ERROR: checkpoint file {path} is corrupt or invalid: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_train_tokenizer(args):
-    with open(args.corpus, encoding="utf-8") as f:
-        text = f.read()
+    text = _read_text_file(args.corpus, "corpus")
     tok = BPETokenizer()
     print(f"Training BPE tokenizer to vocab_size={args.vocab_size} on {len(text)} chars...")
     tok.train(text, args.vocab_size, verbose=args.verbose)
@@ -45,19 +79,23 @@ def cmd_train_tokenizer(args):
 
 
 def cmd_train(args):
-    with open(args.corpus, encoding="utf-8") as f:
-        text = f.read()
-    tok = BPETokenizer.load(args.tokenizer)
+    if args.steps < 1:
+        print(f"ERROR: --steps must be >= 1 (got {args.steps})", file=sys.stderr)
+        sys.exit(1)
+
+    text = _read_text_file(args.corpus, "corpus")
+    tok = _load_tokenizer(args.tokenizer)
     ids = np.array(tok.encode(text), dtype=np.int64)
     print(f"Corpus: {len(text)} chars -> {len(ids)} tokens (vocab_size={tok.vocab_size})")
 
-    if len(ids) <= args.block_size:
-        print(f"ERROR: corpus has only {len(ids)} tokens, need more than "
-              f"block_size={args.block_size}", file=sys.stderr)
+    required = min_tokens_required(args.block_size)
+    if len(ids) < required:
+        print(f"ERROR: corpus has only {len(ids)} tokens, need at least {required} "
+              f"for block_size={args.block_size}", file=sys.stderr)
         sys.exit(1)
 
     model = GPT(vocab_size=tok.vocab_size, d_model=args.d_model, n_layer=args.n_layer,
-                n_head=args.n_head, block_size=args.block_size)
+                n_head=args.n_head, block_size=args.block_size, seed=args.seed)
     print(f"Model: {model.num_params():,} parameters "
           f"(d_model={args.d_model}, n_layer={args.n_layer}, n_head={args.n_head}, "
           f"block_size={args.block_size})")
@@ -81,8 +119,8 @@ def cmd_train(args):
 
 
 def _load_for_inference(checkpoint_path, tokenizer_path):
-    model = load_checkpoint(checkpoint_path)
-    tok = BPETokenizer.load(tokenizer_path)
+    model = _load_model_checkpoint(checkpoint_path)
+    tok = _load_tokenizer(tokenizer_path)
     if tok.vocab_size != model.vocab_size:
         print(f"ERROR: tokenizer vocab_size={tok.vocab_size} does not match "
               f"checkpoint vocab_size={model.vocab_size}", file=sys.stderr)
@@ -111,6 +149,9 @@ def cmd_chat(args):
         try:
             prompt = input("> ")
         except EOFError:
+            print()
+            break
+        except KeyboardInterrupt:
             print()
             break
         if prompt.strip().lower() in ("quit", "exit"):

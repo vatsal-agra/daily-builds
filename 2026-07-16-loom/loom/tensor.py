@@ -32,7 +32,7 @@ def _as_tensor(x) -> "Tensor":
 
 
 class Tensor:
-    __slots__ = ("data", "grad", "requires_grad", "_children", "_backward", "_op", "shape")
+    __slots__ = ("data", "grad", "requires_grad", "_children", "_backward", "_op")
 
     def __init__(self, data, requires_grad: bool = False, _children=(), _op: str = ""):
         self.data = np.asarray(data, dtype=np.float64)
@@ -41,7 +41,10 @@ class Tensor:
         self._children = _children
         self._backward = lambda: None
         self._op = _op
-        self.shape = self.data.shape
+
+    @property
+    def shape(self):
+        return self.data.shape
 
     # ---- graph plumbing -------------------------------------------------
     def _accumulate(self, grad: np.ndarray) -> None:
@@ -221,36 +224,8 @@ class Tensor:
         out._backward = _backward
         return out
 
-    def __getitem__(self, idx):
-        out = Tensor(self.data[idx], self.requires_grad, (self,), "getitem")
-
-        def _backward():
-            if self.requires_grad:
-                g = np.zeros_like(self.data)
-                g[idx] += out.grad
-                self._accumulate(g)
-        out._backward = _backward
-        return out
-
     def __repr__(self):
         return f"Tensor(shape={self.shape}, requires_grad={self.requires_grad})"
-
-
-def cat(tensors, axis=-1) -> Tensor:
-    """Concatenate tensors along `axis`, splitting the gradient back out on
-    the way down."""
-    datas = [t.data for t in tensors]
-    sizes = [d.shape[axis] for d in datas]
-    requires_grad = any(t.requires_grad for t in tensors)
-    out = Tensor(np.concatenate(datas, axis=axis), requires_grad, tuple(tensors), "cat")
-
-    def _backward():
-        splits = np.split(out.grad, np.cumsum(sizes)[:-1], axis=axis)
-        for t, g in zip(tensors, splits):
-            if t.requires_grad:
-                t._accumulate(g)
-    out._backward = _backward
-    return out
 
 
 def embedding(weight: Tensor, idx: np.ndarray) -> Tensor:

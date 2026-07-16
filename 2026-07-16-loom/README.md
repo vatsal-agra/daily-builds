@@ -22,9 +22,17 @@ end-to-end:
 - `python3 loom.py generate` / `chat` sample from a trained checkpoint with
   greedy, temperature, top-k, or top-p (nucleus) decoding.
 
-Adversarial review, stretch features (attention visualizer), polish, and
-verification are still to come — this README will be filled out fully in
-Phase 6.
+**Status: Phase 3 (adversarial review) complete.** See [REVIEW.md](REVIEW.md)
+for the full hostile-review pass — 6 real issues found and fixed, including
+a reproducibility bug (`--seed` silently didn't control weight
+initialization), an off-by-one in corpus-length validation that crashed
+with a raw NumPy error instead of a clean message, an unhandled crash on
+`--steps 0`, raw tracebacks on missing/corrupt files, dead unused autodiff
+ops, and a latent `Tensor.shape` staleness trap. All 17 gradient checks
+still pass after the fixes.
+
+Stretch features (attention visualizer), polish, and verification are
+still to come — this README will be filled out fully in Phase 6.
 
 ## Quick start
 

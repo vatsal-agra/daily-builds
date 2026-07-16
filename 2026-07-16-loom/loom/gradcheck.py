@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from loom.tensor import Tensor, cat, embedding, gather_rows, softmax, layer_norm, gelu, cross_entropy
+from loom.tensor import Tensor, embedding, gather_rows, softmax, layer_norm, gelu, cross_entropy
 
 EPS = 1e-6
 RNG = np.random.default_rng(0)
@@ -124,12 +124,6 @@ def run_all(verbose=True) -> bool:
         a = Tensor(RNG.normal(size=(2, 3, 4)), requires_grad=True)
         return [a], lambda: scalarize(a.reshape(2, 12).reshape(2, 3, 4).permute(1, 0, 2))
     results.append(check_op("reshape+permute", build_reshape_permute))
-
-    def build_cat():
-        a = Tensor(RNG.normal(size=(2, 3)), requires_grad=True)
-        b = Tensor(RNG.normal(size=(2, 5)), requires_grad=True)
-        return [a, b], lambda: scalarize(cat([a, b], axis=1))
-    results.append(check_op("cat", build_cat))
 
     def build_softmax():
         a = Tensor(RNG.normal(size=(3, 5)), requires_grad=True)

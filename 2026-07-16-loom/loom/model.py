@@ -1,23 +1,26 @@
 """A decoder-only, GPT-style Transformer, built entirely out of the
 Tensor ops in loom/tensor.py. No `torch.nn` anywhere.
+
+Every parameter tensor is drawn from an explicit `np.random.Generator`
+threaded down from `GPT(seed=...)` -- there is no hidden module-level RNG,
+so two `GPT(..., seed=N)` constructions are byte-identical and two
+different seeds give genuinely different initializations.
 """
 from __future__ import annotations
 
 import math
 import numpy as np
 
-from loom.tensor import Tensor, cat, embedding, layer_norm, gelu, softmax
-
-_RNG = np.random.default_rng(1234)
+from loom.tensor import Tensor, embedding, layer_norm, gelu, softmax
 
 
-def _param(shape, scale) -> Tensor:
-    return Tensor(_RNG.normal(0.0, scale, size=shape), requires_grad=True)
+def _param(rng: np.random.Generator, shape, scale) -> Tensor:
+    return Tensor(rng.normal(0.0, scale, size=shape), requires_grad=True)
 
 
 class Linear:
-    def __init__(self, in_features: int, out_features: int, bias: bool = True):
-        self.W = _param((in_features, out_features), scale=1.0 / math.sqrt(in_features))
+    def __init__(self, rng: np.random.Generator, in_features: int, out_features: int, bias: bool = True):
+        self.W = _param(rng, (in_features, out_features), scale=1.0 / math.sqrt(in_features))
         self.b = Tensor(np.zeros(out_features), requires_grad=True) if bias else None
 
     def __call__(self, x: Tensor) -> Tensor:
@@ -43,14 +46,14 @@ class LayerNorm:
 
 
 class CausalSelfAttention:
-    def __init__(self, d_model: int, n_head: int, block_size: int):
+    def __init__(self, rng: np.random.Generator, d_model: int, n_head: int, block_size: int):
         assert d_model % n_head == 0, "d_model must be divisible by n_head"
         self.d_model, self.n_head = d_model, n_head
         self.head_size = d_model // n_head
-        self.q_proj = Linear(d_model, d_model)
-        self.k_proj = Linear(d_model, d_model)
-        self.v_proj = Linear(d_model, d_model)
-        self.out_proj = Linear(d_model, d_model)
+        self.q_proj = Linear(rng, d_model, d_model)
+        self.k_proj = Linear(rng, d_model, d_model)
+        self.v_proj = Linear(rng, d_model, d_model)
+        self.out_proj = Linear(rng, d_model, d_model)
         # additive causal mask: 0 where allowed, -inf where disallowed (future tokens)
         mask = np.triu(np.full((block_size, block_size), -1e9), k=1)
         self._mask_full = mask
@@ -84,9 +87,9 @@ class CausalSelfAttention:
 
 
 class MLP:
-    def __init__(self, d_model: int, expansion: int = 4):
-        self.fc = Linear(d_model, expansion * d_model)
-        self.proj = Linear(expansion * d_model, d_model)
+    def __init__(self, rng: np.random.Generator, d_model: int, expansion: int = 4):
+        self.fc = Linear(rng, d_model, expansion * d_model)
+        self.proj = Linear(rng, expansion * d_model, d_model)
 
     def __call__(self, x: Tensor) -> Tensor:
         return self.proj(gelu(self.fc(x)))
@@ -96,11 +99,12 @@ class MLP:
 
 
 class Block:
-    def __init__(self, d_model: int, n_head: int, block_size: int):
+    def __init__(self, d_model: int, n_head: int, block_size: int, rng: np.random.Generator | None = None):
+        rng = rng or np.random.default_rng()
         self.ln1 = LayerNorm(d_model)
-        self.attn = CausalSelfAttention(d_model, n_head, block_size)
+        self.attn = CausalSelfAttention(rng, d_model, n_head, block_size)
         self.ln2 = LayerNorm(d_model)
-        self.mlp = MLP(d_model)
+        self.mlp = MLP(rng, d_model)
 
     def __call__(self, x: Tensor, capture_attn: bool = False) -> Tensor:
         x = x + self.attn(self.ln1(x), capture_attn=capture_attn)
@@ -113,18 +117,21 @@ class Block:
 
 
 class GPT:
-    def __init__(self, vocab_size: int, d_model: int, n_layer: int, n_head: int, block_size: int):
+    def __init__(self, vocab_size: int, d_model: int, n_layer: int, n_head: int, block_size: int,
+                 seed: int = 0):
         self.vocab_size = vocab_size
         self.d_model = d_model
         self.n_layer = n_layer
         self.n_head = n_head
         self.block_size = block_size
+        self.seed = seed
 
-        self.wte = _param((vocab_size, d_model), scale=0.02)
-        self.wpe = _param((block_size, d_model), scale=0.02)
-        self.blocks = [Block(d_model, n_head, block_size) for _ in range(n_layer)]
+        rng = np.random.default_rng(seed)
+        self.wte = _param(rng, (vocab_size, d_model), scale=0.02)
+        self.wpe = _param(rng, (block_size, d_model), scale=0.02)
+        self.blocks = [Block(d_model, n_head, block_size, rng=rng) for _ in range(n_layer)]
         self.ln_f = LayerNorm(d_model)
-        self.head = Linear(d_model, vocab_size, bias=False)
+        self.head = Linear(rng, d_model, vocab_size, bias=False)
 
     def __call__(self, idx: np.ndarray, capture_attn: bool = False) -> Tensor:
         B, T = idx.shape
@@ -155,4 +162,4 @@ class GPT:
 
     def config(self) -> dict:
         return dict(vocab_size=self.vocab_size, d_model=self.d_model, n_layer=self.n_layer,
-                    n_head=self.n_head, block_size=self.block_size)
+                    n_head=self.n_head, block_size=self.block_size, seed=self.seed)

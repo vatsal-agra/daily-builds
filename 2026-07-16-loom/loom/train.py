@@ -12,10 +12,17 @@ from loom.optim import Adam, clip_grad_norm, lr_schedule
 from loom.tensor import cross_entropy
 
 
+def min_tokens_required(block_size: int) -> int:
+    """Need one extra token past the final window so every sampled x has a
+    valid shifted-by-one target y."""
+    return block_size + 2
+
+
 def get_batch(ids: np.ndarray, block_size: int, batch_size: int, rng: np.random.Generator):
-    if len(ids) <= block_size:
+    if len(ids) < min_tokens_required(block_size):
         raise ValueError(
-            f"corpus has only {len(ids)} tokens, need more than block_size={block_size}")
+            f"corpus has only {len(ids)} tokens, need at least "
+            f"{min_tokens_required(block_size)} for block_size={block_size}")
     starts = rng.integers(0, len(ids) - block_size - 1, size=batch_size)
     x = np.stack([ids[s:s + block_size] for s in starts])
     y = np.stack([ids[s + 1:s + block_size + 1] for s in starts])
@@ -64,5 +71,4 @@ def load_checkpoint(path: str) -> GPT:
     params = model.parameters()
     for i, p in enumerate(params):
         p.data = data[f"param_{i}"]
-        p.shape = p.data.shape
     return model
