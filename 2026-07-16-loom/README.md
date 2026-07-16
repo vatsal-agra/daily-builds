@@ -1,66 +1,172 @@
 # Loom
 
-A tiny GPT-style language model built from scratch in Python: a hand-rolled
-tensor autodiff engine, a byte-pair-encoding tokenizer, a decoder-only
-Transformer, an Adam-trained optimizer loop, and autoregressive sampling —
-no PyTorch, no JAX, no autograd library. See [PLAN.md](PLAN.md) for the
-full architecture and feature list.
+A tiny GPT-style language model built entirely from scratch in Python: a
+hand-rolled reverse-mode tensor autodiff engine, a byte-pair-encoding
+tokenizer, a decoder-only multi-head causal-attention Transformer, an
+Adam-trained optimizer loop with LR warmup/cosine decay and gradient
+clipping, and autoregressive sampling (greedy / temperature / top-k /
+top-p). No PyTorch, no JAX, no autograd library — every operator's forward
+*and* backward pass is written by hand and gradient-checked against
+numerical finite differences.
 
-**Status: Phase 2 (core build) complete.** All 4 required features work
-end-to-end:
+See [PLAN.md](PLAN.md) for the original design and [REVIEW.md](REVIEW.md)
+for the adversarial-review pass that hardened it.
 
-- `python3 loom.py train-tokenizer` trains a byte-level BPE tokenizer from
-  scratch on `data/corpus.txt` and round-trips it exactly.
-- `loom/tensor.py` is a from-scratch reverse-mode autodiff engine over
-  NumPy arrays; `loom/model.py` builds a real multi-head causal-attention
-  Transformer out of it. Every op is gradient-checked against numerical
-  finite differences (`python3 loom.py gradcheck` — 18/18 passing,
-  including a full transformer block).
-- `python3 loom.py train` trains the model with Adam + LR warmup/cosine
-  decay + gradient clipping; loss measurably decreases (e.g. 6.49 -> 2.51
-  over 150 steps on the bundled corpus) and checkpoints save/reload.
-- `python3 loom.py generate` / `chat` sample from a trained checkpoint with
-  greedy, temperature, top-k, or top-p (nucleus) decoding.
+## Why this, today
 
-**Status: Phase 3 (adversarial review) complete.** See [REVIEW.md](REVIEW.md)
-for the full hostile-review pass — 6 real issues found and fixed, including
-a reproducibility bug (`--seed` silently didn't control weight
-initialization), an off-by-one in corpus-length validation that crashed
-with a raw NumPy error instead of a clean message, an unhandled crash on
-`--steps 0`, raw tracebacks on missing/corrupt files, dead unused autodiff
-ops, and a latent `Tensor.shape` staleness trap. All 17 gradient checks
-still pass after the fixes.
+Every prior build in this repo's ledger has picked one classical system —
+a renderer, a SAT solver, a database, a VCS, a chess engine, a compression
+codec, even a scalar autodiff engine + MLP (Cotangent, 2026-06-16) — and
+implemented it from first principles. None had built the architecture that
+defines this era: a Transformer language model. Loom closes that gap, and
+does it the hard way: the backward pass through causal softmax attention,
+LayerNorm, and GELU each require real matrix calculus, not just
+chain-ruling scalar multiplies — a meaningfully harder derivation than
+Cotangent's scalar case, applied to the architecture that actually matters
+right now.
 
-**Status: Phase 4 (stretch + polish) complete.** Shipped stretch feature:
-`python3 loom.py attn-viz` runs a real forward pass on a prompt and renders
-an interactive, theme-aware, self-contained HTML heatmap of the actual
-per-layer/per-head attention weights (layer/head picker, hover tooltip with
-exact weight + token pair, causally-masked cells visually distinguished
-from near-zero-but-valid attention) — verified with a headless-Chromium
-smoke test (renders, zero JS console errors, tooltip and layer/head
-switching all confirmed working, both light and dark). Polish pass added:
-clean errors on empty/whitespace prompts, a truncation notice when a
-prompt exceeds the model's context window, and Ctrl-C handling in the chat
-REPL.
+## Honesty about scale
 
-**Status: Phase 5 (verification) complete.** `tests/test_loom.py` (32 unit
-tests covering tensor ops, tokenizer round-trips incl. unicode/emoji/empty
-string, model shape/causality/seed-determinism, training loss-decrease,
-checkpoint round-trips, and generation determinism/vocab-safety) and
-`demo.sh` (17 end-to-end checks driving the real CLI, including edge cases:
-missing files, `--steps 0`, whitespace-only prompts) both run green —
-`bash demo.sh` in full.
-
-Final shipping polish (Phase 6) still to come.
+This is a **nanoGPT-scale** model: small `d_model`, a handful of layers and
+heads, a short context window, trained for a few minutes of CPU-only NumPy
+on an ~8.7 KB original corpus (`data/corpus.txt`, an authored fable written
+for this project — no scraped or copyrighted text). At the settings below,
+training loss drops from ~6.5 (random-guess territory for a ~400-token
+vocabulary) to well under 1.0 within a few hundred steps — at that point the
+tiny model is substantially *memorizing* its small corpus rather than
+learning generalizable language structure, and generated text reads as
+recognizable, sometimes verbatim, fragments of the training fable rather
+than novel prose. That's an honest, expected outcome of "a few thousand
+words of training data + a few-hundred-thousand-parameter model" — the
+point of this build is a complete, correct, from-scratch pipeline
+(tokenizer -> autodiff -> transformer -> optimizer -> sampler), gradient-
+checked at every step, not a large or fluent model. Train on more/your own
+text via `--corpus` for less memorization-flavored output.
 
 ## Quick start
 
 ```
 pip install -r requirements.txt
+
+# 1. Train a byte-level BPE tokenizer on the bundled corpus
 python3 loom.py train-tokenizer --vocab-size 400 --out tokenizer.json
+
+# 2. Train the model (≈2 minutes on CPU at these settings)
 python3 loom.py train --tokenizer tokenizer.json --out checkpoint.npz --steps 600
+
+# 3. Generate text
 python3 loom.py generate --checkpoint checkpoint.npz --tokenizer tokenizer.json \
-    --prompt "Old Maren" --max-new-tokens 150
+    --prompt "Old Maren" --max-new-tokens 150 --temperature 0.8 --top-k 40
+
+# 4. Chat REPL
+python3 loom.py chat --checkpoint checkpoint.npz --tokenizer tokenizer.json
+
+# 5. Visualize real attention weights for a prompt
 python3 loom.py attn-viz --checkpoint checkpoint.npz --tokenizer tokenizer.json \
-    --prompt "Old Maren said" --out attention.html
+    --prompt "Old Maren said" --out attention.html   # open in a browser
+
+# Gradient-check the whole autodiff engine
+python3 loom.py gradcheck
+
+# Full verification (32 unit tests + 17 end-to-end CLI checks)
+bash demo.sh
 ```
+
+## Feature list
+
+**Required (all 4 shipped, fully working end-to-end):**
+
+1. **Byte-level BPE tokenizer, trained from scratch** (`loom/tokenizer.py`)
+   — merge-pair counting, iterative merging to a target vocab size, exact
+   `encode`/`decode` round-trip (verified on ASCII, unicode, emoji, and the
+   empty string), JSON persistence.
+2. **Tensor autodiff engine + GPT transformer** (`loom/tensor.py`,
+   `loom/model.py`) — a `Tensor` computation-graph class with correct
+   forward/backward for every op a real Transformer needs (broadcasting
+   add/mul/pow/div, batched matmul, reshape/permute, softmax, layer norm,
+   GELU, embedding gather, cross-entropy); 17/17 ops gradient-checked
+   against numerical finite differences, including a full transformer
+   block. Multi-head causal self-attention verified to have **zero
+   information leakage** from future tokens (explicit before/after-diff
+   test, not just "it looks right").
+3. **End-to-end training loop** (`loom/train.py`, `loom/optim.py`) — Adam
+   with bias-corrected moments, linear-warmup + cosine-decay LR schedule,
+   global gradient-norm clipping, batched next-token cross-entropy
+   training with measurable loss decrease, checkpoint save/reload
+   (`.npz`, byte-identical parameters and forward output after reload).
+4. **Autoregressive generation** (`loom/generate.py`) — greedy, temperature,
+   top-k, and top-p (nucleus) sampling, exposed via `generate` and an
+   interactive `chat` REPL.
+
+**Stretch (1 shipped in full, per the plan's "ship at least 1"):**
+
+5. **Interactive attention-weights visualizer** (`loom/attn_viz.py`,
+   `attn-viz` command) — runs a real forward pass on a user prompt and
+   renders the actual captured per-layer/per-head attention matrices as a
+   self-contained, theme-aware (light/dark) HTML heatmap: layer/head
+   picker buttons, hover/focus tooltip showing the exact weight and the
+   query->key token pair, and causally-masked (future-token) cells
+   visually distinguished from valid-but-near-zero attention. Verified
+   with a headless-Chromium smoke test (loads clean, zero JS console
+   errors, tooltip and layer/head switching confirmed, both color schemes
+   screenshotted).
+
+## Adversarial review highlights
+
+Six real issues were found and fixed in `REVIEW.md` — worth calling out
+here: `--seed` silently did **not** control weight initialization (only
+batch sampling), so two different seeds produced byte-identical starting
+weights; an off-by-one in corpus-length validation crashed with a raw
+NumPy `ValueError: high <= 0` instead of a clean message on a
+corpus exactly one token too short; `--steps 0` crashed with an unhandled
+`IndexError`; missing/corrupt input files (corpus, tokenizer, checkpoint)
+surfaced raw Python tracebacks; two autodiff ops (`cat`, `__getitem__`)
+were implemented and gradient-checked but never actually used by the
+model; and `Tensor.shape` was a stale-able plain attribute rather than a
+property. All six are fixed and regression-tested.
+
+## Architecture
+
+```
+corpus.txt --BPE training--> tokenizer.json
+     |
+     v
+token ids --embed + positional--> N x [ LayerNorm -> causal MHSA -> +residual
+                                          LayerNorm -> MLP(GELU)  -> +residual ]
+                                   --> LayerNorm -> Linear --> logits
+     |
+     v
+cross-entropy loss --backward (hand-derived autodiff)--> Adam + LR schedule
+     |
+     v
+sampling (greedy / temperature / top-k / top-p) --> generated text
+     |
+     v
+captured attention weights --> interactive HTML heatmap
+```
+
+## Where a human could take this next
+
+- **Rotary or ALiBi positional encoding** instead of learned absolute
+  positions, so the model generalizes past its trained context length
+  instead of resetting position on every sliding-window generation step.
+- **KV-caching** for O(1)-per-token generation instead of recomputing the
+  full forward pass at every sampling step (fine at this scale, painful at
+  any larger one).
+- **A bigger, non-memorized corpus** (megabytes, not kilobytes) to see the
+  model actually generalize instead of mostly memorize — the pipeline
+  (tokenizer/model/training/sampling) is architecture-complete for this
+  today with no code changes, just more data and more steps.
+- **Mixed precision / vectorized batching across heads** without the
+  Python-level loop-free NumPy already used, for real wall-clock speedups.
+- **A tiny RLHF or DPO loop** on top of the existing autodiff engine and
+  optimizer, since both are already general enough to backprop through an
+  arbitrary scalar loss.
+
+## Verification
+
+- `python3 loom.py gradcheck` — 17/17 ops incl. a full transformer block.
+- `python3 -m unittest tests.test_loom -v` — 32 unit tests.
+- `bash demo.sh` — 17 end-to-end checks against the real CLI (training,
+  generation, chat, attention viz, and edge cases: missing files,
+  `--steps 0`, whitespace-only prompts), all green.
