@@ -31,8 +31,19 @@ with a raw NumPy error instead of a clean message, an unhandled crash on
 ops, and a latent `Tensor.shape` staleness trap. All 17 gradient checks
 still pass after the fixes.
 
-Stretch features (attention visualizer), polish, and verification are
-still to come — this README will be filled out fully in Phase 6.
+**Status: Phase 4 (stretch + polish) complete.** Shipped stretch feature:
+`python3 loom.py attn-viz` runs a real forward pass on a prompt and renders
+an interactive, theme-aware, self-contained HTML heatmap of the actual
+per-layer/per-head attention weights (layer/head picker, hover tooltip with
+exact weight + token pair, causally-masked cells visually distinguished
+from near-zero-but-valid attention) — verified with a headless-Chromium
+smoke test (renders, zero JS console errors, tooltip and layer/head
+switching all confirmed working, both light and dark). Polish pass added:
+clean errors on empty/whitespace prompts, a truncation notice when a
+prompt exceeds the model's context window, and Ctrl-C handling in the chat
+REPL.
+
+Verification (Phase 5) and final shipping (Phase 6) still to come.
 
 ## Quick start
 
@@ -42,4 +53,6 @@ python3 loom.py train-tokenizer --vocab-size 400 --out tokenizer.json
 python3 loom.py train --tokenizer tokenizer.json --out checkpoint.npz --steps 600
 python3 loom.py generate --checkpoint checkpoint.npz --tokenizer tokenizer.json \
     --prompt "Old Maren" --max-new-tokens 150
+python3 loom.py attn-viz --checkpoint checkpoint.npz --tokenizer tokenizer.json \
+    --prompt "Old Maren said" --out attention.html
 ```

@@ -130,7 +130,7 @@ def _load_for_inference(checkpoint_path, tokenizer_path):
 
 def cmd_generate(args):
     model, tok = _load_for_inference(args.checkpoint, args.tokenizer)
-    if not args.prompt:
+    if not args.prompt.strip():
         print("ERROR: --prompt must be non-empty", file=sys.stderr)
         sys.exit(1)
     prompt_ids = tok.encode(args.prompt)
@@ -171,9 +171,13 @@ def cmd_chat(args):
 def cmd_attn_viz(args):
     from loom.attn_viz import render_attention_html
     model, tok = _load_for_inference(args.checkpoint, args.tokenizer)
-    if not args.prompt:
+    if not args.prompt.strip():
         print("ERROR: --prompt must be non-empty", file=sys.stderr)
         sys.exit(1)
+    n_tokens = len(tok.encode(args.prompt))
+    if n_tokens > model.block_size:
+        print(f"Note: prompt encodes to {n_tokens} tokens; only the last "
+              f"{model.block_size} (block_size) are shown.")
     html = render_attention_html(model, tok, args.prompt)
     with open(args.out, "w") as f:
         f.write(html)
