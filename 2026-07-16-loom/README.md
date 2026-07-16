@@ -43,7 +43,15 @@ clean errors on empty/whitespace prompts, a truncation notice when a
 prompt exceeds the model's context window, and Ctrl-C handling in the chat
 REPL.
 
-Verification (Phase 5) and final shipping (Phase 6) still to come.
+**Status: Phase 5 (verification) complete.** `tests/test_loom.py` (32 unit
+tests covering tensor ops, tokenizer round-trips incl. unicode/emoji/empty
+string, model shape/causality/seed-determinism, training loss-decrease,
+checkpoint round-trips, and generation determinism/vocab-safety) and
+`demo.sh` (17 end-to-end checks driving the real CLI, including edge cases:
+missing files, `--steps 0`, whitespace-only prompts) both run green —
+`bash demo.sh` in full.
+
+Final shipping polish (Phase 6) still to come.
 
 ## Quick start
 
