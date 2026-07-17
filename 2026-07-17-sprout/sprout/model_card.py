@@ -21,9 +21,18 @@ def main():
     ap.add_argument("--out", default=os.path.join(os.path.dirname(HERE), "MODEL_CARD.md"))
     args = ap.parse_args()
 
-    model, tok, data = load_checkpoint(args.checkpoint)
+    try:
+        model, tok, data = load_checkpoint(args.checkpoint)
+    except FileNotFoundError:
+        raise SystemExit(f"No checkpoint found at {args.checkpoint}. Run train.py first.")
+
     history = data["history"]
     config = data["config"]
+    if not history["train_loss"]:
+        raise SystemExit(
+            "checkpoint has an empty training history (was it trained with --steps 0?); "
+            "nothing to report"
+        )
 
     with open(CORPUS_PATH) as f:
         corpus_text = f.read()

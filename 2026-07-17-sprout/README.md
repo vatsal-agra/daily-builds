@@ -1,6 +1,6 @@
 # Sprout
 
-*Status: Phase 2 complete — core build done. Adversarial review next.*
+*Status: Phase 3 complete — adversarial review done, 5 issues found and fixed (see `REVIEW.md`). Training run in progress; stretch features next.*
 
 A tiny GPT-style language model, trained from scratch — tokenizer, transformer
 forward/backward pass, optimizer, and sampler all hand-written in NumPy, no

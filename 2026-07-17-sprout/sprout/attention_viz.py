@@ -157,7 +157,11 @@ def main():
     ap.add_argument("--out", default=os.path.join(HERE, "attention_viz.html"))
     args = ap.parse_args()
 
-    model, tok, data = load_checkpoint(args.checkpoint)
+    try:
+        model, tok, data = load_checkpoint(args.checkpoint)
+    except FileNotFoundError:
+        raise SystemExit(f"No checkpoint found at {args.checkpoint}. Run train.py first.")
+
     path = build_html(model, tok, args.prompt, args.out)
     print(f"wrote {path}")
 

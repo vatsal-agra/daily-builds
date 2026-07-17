@@ -29,10 +29,9 @@ def filter_logits(logits, top_k=None, top_p=None):
         cum = np.cumsum(sorted_probs)
         cutoff = int(np.searchsorted(cum, top_p) + 1)
         cutoff = max(cutoff, 1)
-        keep_idx = set(sorted_idx[:cutoff].tolist())
-        for i in range(vocab_size):
-            if i not in keep_idx:
-                logits[i] = -np.inf
+        keep_mask = np.zeros(vocab_size, dtype=bool)
+        keep_mask[sorted_idx[:cutoff]] = True
+        logits = np.where(keep_mask, logits, -np.inf)
 
     return logits
 

@@ -106,7 +106,6 @@ class Handler(BaseHTTPRequestHandler):
     model = None
     tok = None
     ckpt_data = None
-    rng = None
 
     def log_message(self, fmt, *args):
         pass  # keep stdout clean; nothing sensitive to hide, just quieter demo output
@@ -153,9 +152,12 @@ class Handler(BaseHTTPRequestHandler):
             top_k = payload.get("top_k", 40)
             top_k = int(top_k) if top_k else None
 
+            # a fresh Generator per request avoids sharing mutable RNG state
+            # across the threads ThreadingHTTPServer spawns per connection
+            request_rng = np.random.default_rng()
             text = sample(
                 self.model, self.tok, prompt=prompt, max_new_tokens=max_new_tokens,
-                temperature=temperature, top_k=top_k, rng=self.rng,
+                temperature=temperature, top_k=top_k, rng=request_rng,
             )
             self._send_json({"text": text})
         except Exception as e:  # a malformed request must not crash the server
@@ -168,9 +170,12 @@ def main():
     ap.add_argument("--port", type=int, default=8420)
     args = ap.parse_args()
 
-    model, tok, data = load_checkpoint(args.checkpoint)
+    try:
+        model, tok, data = load_checkpoint(args.checkpoint)
+    except FileNotFoundError:
+        raise SystemExit(f"No checkpoint found at {args.checkpoint}. Run train.py first.")
+
     Handler.model, Handler.tok, Handler.ckpt_data = model, tok, data
-    Handler.rng = np.random.default_rng()
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Sprout playground running at http://127.0.0.1:{args.port}  (Ctrl-C to stop)")

@@ -88,6 +88,9 @@ def main():
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 
+    if args.steps < 1:
+        raise SystemExit(f"--steps must be >= 1, got {args.steps}")
+
     if not os.path.exists(CORPUS_PATH):
         raise SystemExit(f"corpus not found at {CORPUS_PATH}; run data/make_corpus.py first")
 
