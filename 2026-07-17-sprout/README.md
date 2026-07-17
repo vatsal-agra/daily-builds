@@ -1,6 +1,6 @@
 # Sprout
 
-*Status: Phase 1 complete — plan written. Build in progress.*
+*Status: Phase 2 complete — core build done. Adversarial review next.*
 
 A tiny GPT-style language model, trained from scratch — tokenizer, transformer
 forward/backward pass, optimizer, and sampler all hand-written in NumPy, no
@@ -8,5 +8,35 @@ autograd or deep learning framework involved.
 
 See [`PLAN.md`](./PLAN.md) for the full architecture and feature list.
 
-This README will be filled in with usage instructions, results, and findings
-as each phase completes.
+## What's built so far (all 4 required features, working end-to-end)
+
+- `sprout/tokenizer.py` — byte-level BPE tokenizer (train/encode/decode/save/load).
+- `sprout/nn.py` — the transformer itself: `Linear`, `LayerNorm`, `Embedding`,
+  causal multi-head self-attention, GELU MLP, residual `Block`s, and the full
+  `GPT` model, each with a hand-written `backward()`.
+- `sprout/gradcheck.py` — verifies every one of those backward passes against
+  numerical (finite-difference) gradients. **All checks currently pass.**
+  Run it yourself: `python3 sprout/gradcheck.py`
+- `sprout/optim.py` — Adam optimizer from scratch.
+- `sprout/train.py` — the training loop: batching, loss tracking,
+  checkpointing, periodic sampling.
+- `sprout/generate.py` — temperature / top-k / top-p sampling + a CLI chat mode.
+- `sprout/data/make_corpus.py` — generates the original 170KB training corpus.
+- `sprout/tests/test_all.py` — 22 unit tests, all passing.
+
+A full training run is in progress at this checkpoint of the build; results,
+the attention visualizer, the web playground, and the model card will be
+documented here once training finishes and Phase 3 (adversarial review) and
+Phase 4 (stretch + polish) are complete.
+
+## Quickstart (once a checkpoint exists)
+
+```bash
+cd sprout
+pip install -r requirements.txt
+python3 data/make_corpus.py          # generate the training corpus
+python3 gradcheck.py                 # verify the math (should all say OK)
+python3 train.py --steps 1600        # train (~30-45 min on CPU)
+python3 generate.py --prompt "the fox"
+python3 server.py                    # web playground at localhost:8420
+```
