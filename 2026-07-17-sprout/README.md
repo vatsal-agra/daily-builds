@@ -1,5 +1,7 @@
 # Sprout
 
+*Status: shipped — all 6 phases complete.*
+
 A tiny GPT-style language model, trained entirely from scratch — byte-level
 BPE tokenizer, transformer forward *and* backward pass, Adam optimizer, and
 sampler, all hand-written in NumPy. No PyTorch, no TensorFlow, no JAX, no
