@@ -45,6 +45,8 @@ def _cmd_search(args):
     print(f"{outcome['total_matches']} matches, top {len(outcome['results'])} shown, {outcome['took_ms']}ms")
     for i, r in enumerate(outcome["results"], start=1):
         print(f"{i:2}. [{r.score:6.3f}] {r.title}  ({r.path})")
+        if r.snippet:
+            print(f"      {r.snippet}")
     return 0
 
 

@@ -8,6 +8,8 @@ from . import query as query_mod
 from . import ranking
 from .fuzzy import build_bktree
 from .index import InvertedIndex
+from .snippet import make_snippet
+from .suggest import build_trie
 
 # Ample for any real query (the longest phrase/boolean query in this
 # project's own test suite is well under 100 chars); bounds worst-case
@@ -17,11 +19,12 @@ MAX_QUERY_LENGTH = 300
 
 
 class SearchResult:
-    def __init__(self, doc_id, title, path, score):
+    def __init__(self, doc_id, title, path, score, snippet=""):
         self.doc_id = doc_id
         self.title = title
         self.path = path
         self.score = score
+        self.snippet = snippet
 
     def to_dict(self):
         return {
@@ -29,6 +32,7 @@ class SearchResult:
             "title": self.title,
             "path": self.path,
             "score": round(self.score, 4),
+            "snippet": self.snippet,
         }
 
 
@@ -36,6 +40,7 @@ class Engine:
     def __init__(self, index):
         self.index = index
         self.bktree = build_bktree(index) if index.N else None
+        self.trie = build_trie(index) if index.N else None
 
     @classmethod
     def load(cls, path):
@@ -59,6 +64,7 @@ class Engine:
                 self.index, query_text,
                 fuzzy_corrector=self.bktree,
                 fuzzy_max_distance=fuzzy_max_distance,
+                trie=self.trie,
             )
         except (query_mod.QuerySyntaxError, RecursionError) as e:
             message = str(e) if isinstance(e, query_mod.QuerySyntaxError) else "query too deeply nested"
@@ -81,7 +87,8 @@ class Engine:
         results = []
         for doc_id, score in ranked:
             meta = self.index.doc_meta[doc_id]
-            results.append(SearchResult(doc_id, meta["title"], meta["path"], score))
+            snippet = make_snippet(meta["text"], result.terms)
+            results.append(SearchResult(doc_id, meta["title"], meta["path"], score, snippet))
 
         took_ms = round((time.perf_counter() - start) * 1000, 3)
         return {
@@ -92,3 +99,10 @@ class Engine:
             "took_ms": took_ms,
             "error": None,
         }
+
+    def suggest(self, prefix, limit=8):
+        prefix = (prefix or "").strip()[:MAX_QUERY_LENGTH]
+        if not prefix or self.trie is None:
+            return []
+        matches = self.trie.suggest(prefix, limit=limit)
+        return [self.index.term_surface.get(term, term) for term, _freq in matches]

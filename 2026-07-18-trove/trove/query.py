@@ -214,9 +214,9 @@ def _resolve_term(index, raw_word, corrections, fuzzy_corrector, fuzzy_max_dista
     return best_term
 
 
-def _eval(node, index, corrections, fuzzy_corrector, fuzzy_max_distance):
+def _eval(node, index, corrections, fuzzy_corrector, fuzzy_max_distance, trie=None):
     if isinstance(node, And):
-        results = [_eval(c, index, corrections, fuzzy_corrector, fuzzy_max_distance) for c in node.children]
+        results = [_eval(c, index, corrections, fuzzy_corrector, fuzzy_max_distance, trie) for c in node.children]
         doc_ids = results[0].doc_ids
         for r in results[1:]:
             doc_ids = doc_ids & r.doc_ids
@@ -226,7 +226,7 @@ def _eval(node, index, corrections, fuzzy_corrector, fuzzy_max_distance):
         return QueryResult(doc_ids, terms, [])
 
     if isinstance(node, Or):
-        results = [_eval(c, index, corrections, fuzzy_corrector, fuzzy_max_distance) for c in node.children]
+        results = [_eval(c, index, corrections, fuzzy_corrector, fuzzy_max_distance, trie) for c in node.children]
         doc_ids = set()
         terms = set()
         for r in results:
@@ -235,7 +235,7 @@ def _eval(node, index, corrections, fuzzy_corrector, fuzzy_max_distance):
         return QueryResult(doc_ids, terms, [])
 
     if isinstance(node, Not):
-        inner = _eval(node.child, index, corrections, fuzzy_corrector, fuzzy_max_distance)
+        inner = _eval(node.child, index, corrections, fuzzy_corrector, fuzzy_max_distance, trie)
         doc_ids = index.all_doc_ids() - inner.doc_ids
         return QueryResult(doc_ids, set(), [])
 
@@ -249,7 +249,11 @@ def _eval(node, index, corrections, fuzzy_corrector, fuzzy_max_distance):
         prefix = node.raw.lower()
         if not prefix:
             return QueryResult(set(), set(), [])
-        matches = [t for t in index.vocabulary() if t.startswith(prefix)]
+        # A trie turns this into a prefix-tree descent instead of a full
+        # vocabulary scan (see REVIEW.md finding on prefix-query cost).
+        matches = trie.prefix_matches(prefix) if trie is not None else [
+            t for t in index.vocabulary() if t.startswith(prefix)
+        ]
         doc_ids = set()
         for t in matches:
             doc_ids |= set(index.postings_for(t).keys())
@@ -296,7 +300,7 @@ def _eval_phrase(node, index, corrections, fuzzy_corrector, fuzzy_max_distance):
     return QueryResult(matching_docs, set(terms), [])
 
 
-def evaluate(index, query_text, fuzzy_corrector=None, fuzzy_max_distance="auto"):
+def evaluate(index, query_text, fuzzy_corrector=None, fuzzy_max_distance="auto", trie=None):
     """Parse and evaluate `query_text` against `index`. Returns a
     QueryResult with the matching doc_ids, the positive terms to rank by,
     and any (typed, corrected) fuzzy substitutions that were made."""
@@ -304,5 +308,5 @@ def evaluate(index, query_text, fuzzy_corrector=None, fuzzy_max_distance="auto")
     if ast is None:
         return QueryResult(set(), set(), [])
     corrections = []
-    result = _eval(ast, index, corrections, fuzzy_corrector, fuzzy_max_distance)
+    result = _eval(ast, index, corrections, fuzzy_corrector, fuzzy_max_distance, trie)
     return QueryResult(result.doc_ids, result.terms, corrections)

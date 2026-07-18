@@ -15,10 +15,17 @@ search that archive today except by `grep`, which knows nothing about
 relevance, phrases, typos, or ranking. Trove indexes every past README +
 the LEDGER.md entries and makes them genuinely searchable: "which project
 did conflict-driven clause learning", "CDCL solver -law" (exclude "law"
-false-positive), "spreadhseet" (typo, still finds Formulate). It also
-works as a general-purpose engine over any directory of text/markdown
-files, so it isn't hardcoded to this one corpus — verified in Phase 5
-against a second, independent corpus too.
+false-positive), a misspelled query for "spreadsheet" that still finds
+Formulate. It also works as a general-purpose engine over any directory
+of text/markdown files, so it isn't hardcoded to this one corpus —
+verified in Phase 5 against a second, independent corpus too.
+
+(A deliberate note on that last example: this README is itself indexed
+by Trove's own demo corpus, so any literal misspelled string written
+here would become real indexed content and could out-rank the very typo
+correction it's meant to demonstrate — see demo.sh for the actual
+runnable command with the real misspelling, kept out of markdown prose
+for exactly that reason.)
 
 ## Why this is interesting
 
@@ -106,7 +113,7 @@ cli.py           `trove build <dir>`, `trove search <query>`,
    Levenshtein edit distance over the full vocabulary; any query term
    absent from the vocabulary is corrected to its nearest neighbor(s)
    within a distance threshold before the query runs, and the UI shows
-   what was corrected ("no matches for 'spreadhseet' — showing results
+   what was corrected (e.g. "no matches for '<typo>' — showing results
    for 'spreadsheet'").
 
 **Stretch (3, ≥1 required by the gate):**

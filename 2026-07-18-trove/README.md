@@ -1,6 +1,6 @@
 # Trove
 
-*Status: Phase 3 complete (adversarial review). Stretch features + polish next.*
+*Status: Phase 4 complete (stretch features + polish). Verification next.*
 
 A from-scratch full-text search engine — tokenizer, a faithful Porter
 stemmer (differentially verified against NLTK's `ORIGINAL_ALGORITHM`
@@ -28,9 +28,46 @@ a fix, and a regression test.
 python3 -m trove.cli build .. --repo-history --out /tmp/trove.index.json
 python3 -m trove.cli search "CDCL solver" --index /tmp/trove.index.json
 python3 -m trove.cli search '"clause learning"' --index /tmp/trove.index.json
-python3 -m trove.cli search "spreadhseet" --index /tmp/trove.index.json   # typo, auto-corrected
 python3 -m trove.cli search "raft AND consensus" --index /tmp/trove.index.json
+python3 -m trove.cli serve --index /tmp/trove.index.json    # interactive web UI at http://127.0.0.1:8765
 ```
+
+(A fuzzy-correction example belongs in `demo.sh`, not here: this README
+is itself part of the demo corpus, so a misspelled word written in it
+would become real indexed content instead of staying a hypothetical
+typo — try it live in the web UI instead.)
+
+## Stretch features (Phase 4)
+
+All three planned stretch features shipped, plus the web UI they're
+wired into:
+
+- **Autocomplete** — a from-scratch trie over the vocabulary
+  (`trove/suggest.py`), ranked by document frequency, exposed at
+  `/api/suggest` and wired into the search box's dropdown. It also now
+  accelerates boolean `term*` prefix queries (a trie descent instead of
+  the linear vocabulary scan flagged as an accepted limitation in
+  `REVIEW.md`).
+- **Relevance snippets** — `trove/snippet.py` finds the densest cluster
+  of query-term hits in a matched document and renders that window with
+  matches marked, instead of just the first N characters.
+- **Ranking-quality evaluator** — `trove eval` computes Precision@5 and
+  NDCG@5 against 14 hand-labeled queries over this repo's own history
+  (`trove/default_judgments.json`). Measured result: **mean P@5 = 0.86,
+  mean NDCG@5 = 0.96** — including honestly-surfaced imperfections (e.g.
+  two unrelated same-named "Strata" projects rank near each other since
+  they share the literal word "Strata"). Enforced as a regression test
+  in `tests/test_evaluation.py`.
+- **Web UI** — `trove serve` starts a stdlib `http.server` (no runtime
+  dependency, same architecture as the CLI) at `http://127.0.0.1:8765`
+  with live search, autocomplete, highlighted snippets, and inline
+  query-error / fuzzy-correction messages. The browser holds zero search
+  logic; every keystroke is a network round trip to the same `Engine`
+  the CLI uses. All server-supplied text is rendered via `textContent`/
+  DOM construction, never `innerHTML` string concatenation — verified
+  both structurally (raw_tokens() strips `<`/`>` before anything reaches
+  an index) and with a live document containing a literal `<script>`
+  tag in `tests/test_server.py`.
 
 ## Tests
 
@@ -38,14 +75,16 @@ python3 -m trove.cli search "raft AND consensus" --index /tmp/trove.index.json
 python3 -m unittest discover -s tests -v
 ```
 
-83 unit tests covering the stemmer (differentially checked against
+126 unit tests covering the stemmer (differentially checked against
 NLTK's Porter oracle), tokenizer, index (including the Phase 3
 duplicate-`doc_id` fix), BM25 ranking (hand-verified against an
 independent formula), the query parser/evaluator (including all eight
-Phase 3 regression cases), the CLI end-to-end, the `Engine` facade, and
-the Levenshtein/BK-tree fuzzy matcher (checked against brute force).
+Phase 3 regression cases and trie-accelerated prefix queries), the
+autocomplete trie, snippet extraction, the ranking-quality evaluator
+(with a live regression threshold on real measured quality), the HTTP
+server (including an XSS-safety check), the CLI end-to-end, the
+`Engine` facade, and the Levenshtein/BK-tree fuzzy matcher.
 
-Remaining work: stretch features (autocomplete, snippets, a
-ranking-quality evaluator), a web UI, further polish, and a full
-verification pass — tracked phase by phase in this README as the build
+Remaining work: a full verification pass (Phase 5) and final ship
+polish (Phase 6) — tracked phase by phase in this README as the build
 continues.

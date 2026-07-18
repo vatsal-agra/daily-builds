@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from trove.index import InvertedIndex
 from trove.fuzzy import build_bktree
+from trove.suggest import build_trie
 from trove import query as query_mod
 
 
@@ -78,6 +79,13 @@ class TestQueryParserAndEvaluator(unittest.TestCase):
         r = self.run_query("qu*")
         # matches "quick" (d1,d2) and "quantum" (d4)
         self.assertEqual(r.doc_ids, {"d1", "d2", "d4"})
+
+    def test_prefix_query_with_trie_matches_linear_scan(self):
+        trie = build_trie(self.idx)
+        r_trie = self.run_query("qu*", trie=trie)
+        r_scan = self.run_query("qu*")
+        self.assertEqual(r_trie.doc_ids, r_scan.doc_ids)
+        self.assertEqual(r_trie.terms, r_scan.terms)
 
     def test_negated_prefix(self):
         r = self.run_query("fox -qu*")
