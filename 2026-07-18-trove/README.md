@@ -1,6 +1,6 @@
 # Trove
 
-*Status: Phase 4 complete (stretch features + polish). Verification next.*
+*Status: Phase 5 complete (verification). Final ship polish next.*
 
 A from-scratch full-text search engine — tokenizer, a faithful Porter
 stemmer (differentially verified against NLTK's `ORIGINAL_ALGORITHM`
@@ -85,6 +85,23 @@ autocomplete trie, snippet extraction, the ranking-quality evaluator
 server (including an XSS-safety check), the CLI end-to-end, the
 `Engine` facade, and the Levenshtein/BK-tree fuzzy matcher.
 
-Remaining work: a full verification pass (Phase 5) and final ship
-polish (Phase 6) — tracked phase by phase in this README as the build
-continues.
+## Verification (Phase 5)
+
+```
+./demo.sh
+```
+
+Runs the full unit test suite, then an 11-section, fail-loud (`set -e`)
+end-to-end script that builds the real repo-history index and exercises
+every shipped feature against it: BM25 ranking, AND/OR boolean queries,
+phrase adjacency, prefix queries, fuzzy typo correction, negation
+(including a direct regression check that `-(cdcl AND solver)` returns
+the *complement* of `(cdcl AND solver)`, not a silent copy of it — the
+sharpest Phase 3 bug), the ranking-quality evaluator, all three web-UI
+API endpoints against a live server, and the engine running over a
+second, independent, non-software corpus. Exits 0 only if every section
+passes; each assertion checks real output against real expected
+projects in this repo's own history, not placeholder conditions.
+
+Remaining work: final ship polish (Phase 6) — tracked phase by phase in
+this README as the build continues.
