@@ -161,6 +161,10 @@ _STEP4_SUFFIXES = [
     "al", "ance", "ence", "er", "ic", "able", "ible", "ant", "ement",
     "ment", "ent", "ou", "ism", "ate", "iti", "ous", "ive", "ize",
 ]
+# Longest-suffix-first so nested families (e.g. "ement" ⊃ "ment" ⊃ "ent")
+# match the longest applicable suffix instead of a shorter false match.
+# Precomputed once at import time rather than re-sorted on every call.
+_STEP4_SUFFIXES_BY_LEN = sorted(_STEP4_SUFFIXES, key=len, reverse=True)
 
 
 def _step4(word):
@@ -170,9 +174,7 @@ def _step4(word):
         if _measure(stem) > 1:
             return stem
         return word
-    for suffix in sorted(_STEP4_SUFFIXES, key=len, reverse=True):
-        if suffix == "ion":
-            continue
+    for suffix in _STEP4_SUFFIXES_BY_LEN:
         if word.endswith(suffix):
             stem = word[: -len(suffix)]
             if _measure(stem) > 1:

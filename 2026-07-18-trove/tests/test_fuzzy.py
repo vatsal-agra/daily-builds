@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from trove.fuzzy import levenshtein, BKTree
+from trove.fuzzy import levenshtein, BKTree, auto_fuzzy_distance
 
 
 class TestLevenshtein(unittest.TestCase):
@@ -85,6 +85,27 @@ class TestBKTree(unittest.TestCase):
         tree.build(["cat", "cat", "cat", "dog"])
         results = tree.query("cat", 0)
         self.assertEqual(results, [("cat", 0)])
+
+
+class TestAutoFuzzyDistance(unittest.TestCase):
+    def test_short_terms_get_zero(self):
+        for term in ("a", "at", "cat", "dog"):
+            self.assertEqual(auto_fuzzy_distance(term), 0, msg=term)
+
+    def test_medium_terms_get_one(self):
+        for term in ("fours", "spare"):
+            self.assertEqual(auto_fuzzy_distance(term), 1, msg=term)
+
+    def test_long_terms_get_two(self):
+        for term in ("spreadsheet", "consensus", "quantum"):
+            self.assertEqual(auto_fuzzy_distance(term), 2, msg=term)
+
+    def test_monotonically_nondecreasing_with_length(self):
+        prev = 0
+        for length in range(1, 15):
+            d = auto_fuzzy_distance("x" * length)
+            self.assertGreaterEqual(d, prev)
+            prev = d
 
 
 if __name__ == "__main__":

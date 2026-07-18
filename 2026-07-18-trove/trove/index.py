@@ -113,6 +113,20 @@ def split_markdown_sections(text):
     return sections
 
 
+def unique_doc_id(index, candidate):
+    """Return `candidate`, or a `"candidate (2)"`-style disambiguated
+    version if it's already taken. Two documents with an identical
+    computed id (e.g. two markdown sections that happen to share a
+    header title) must never silently overwrite or crash on each
+    other."""
+    if candidate not in index.doc_meta:
+        return candidate
+    n = 2
+    while f"{candidate} ({n})" in index.doc_meta:
+        n += 1
+    return f"{candidate} ({n})"
+
+
 DEFAULT_EXTENSIONS = (".md", ".txt")
 DEFAULT_EXCLUDE_DIRS = frozenset({".git", "node_modules", "__pycache__", ".venv"})
 
@@ -153,6 +167,7 @@ def build_index(root, extensions=DEFAULT_EXTENSIONS, split_headers=True):
             if not body.strip():
                 continue
             doc_id = f"{rel}#{title}" if multi and title else (f"{rel}#{i}" if multi else rel)
+            doc_id = unique_doc_id(index, doc_id)
             display_title = title or rel
             index.add_document(doc_id, body, path=rel, title=display_title)
 

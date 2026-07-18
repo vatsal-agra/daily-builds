@@ -10,7 +10,7 @@ each per-project entry inside the shared LEDGER.md."""
 import os
 import re
 
-from .index import InvertedIndex, split_markdown_sections
+from .index import InvertedIndex, split_markdown_sections, unique_doc_id
 
 DATED_FOLDER_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-")
 
@@ -38,7 +38,8 @@ def build_repo_history_index(repo_root):
         for title, body in split_markdown_sections(text):
             if not title or not body.strip():
                 continue
-            index.add_document(f"LEDGER.md#{title}", body, path="LEDGER.md", title=title)
+            doc_id = unique_doc_id(index, f"LEDGER.md#{title}")
+            index.add_document(doc_id, body, path="LEDGER.md", title=title)
 
     index.finalize()
     return index

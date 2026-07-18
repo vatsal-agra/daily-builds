@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from trove.index import InvertedIndex, build_index, split_markdown_sections
+from trove.index import InvertedIndex, build_index, split_markdown_sections, unique_doc_id
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
@@ -45,6 +45,35 @@ class TestInvertedIndex(unittest.TestCase):
         self.assertEqual(loaded.postings, idx.postings)
         self.assertEqual(loaded.doc_meta["a"]["title"], "Doc A")
         self.assertEqual(loaded.term_surface, idx.term_surface)
+
+
+class TestUniqueDocId(unittest.TestCase):
+    def test_returns_candidate_unchanged_when_free(self):
+        idx = InvertedIndex()
+        self.assertEqual(unique_doc_id(idx, "a"), "a")
+
+    def test_disambiguates_collision(self):
+        idx = InvertedIndex()
+        idx.add_document("a", "text one")
+        self.assertEqual(unique_doc_id(idx, "a"), "a (2)")
+
+    def test_disambiguates_repeated_collisions(self):
+        idx = InvertedIndex()
+        idx.add_document("a", "text one")
+        idx.add_document("a (2)", "text two")
+        self.assertEqual(unique_doc_id(idx, "a"), "a (3)")
+
+    def test_build_index_does_not_crash_on_duplicate_section_titles(self):
+        # Two '## Notes' sections in the same file used to crash
+        # build_index with an unhandled ValueError from add_document.
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "doc.md")
+            with open(path, "w") as f:
+                f.write("## Notes\nfirst notes section\n## Notes\nsecond notes section\n")
+            idx = build_index(d)
+        self.assertEqual(idx.N, 2)
+        self.assertIn("doc.md#Notes", idx.doc_meta)
+        self.assertIn("doc.md#Notes (2)", idx.doc_meta)
 
 
 class TestMarkdownSectionSplitting(unittest.TestCase):

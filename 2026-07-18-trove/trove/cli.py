@@ -13,7 +13,11 @@ def _cmd_build(args):
         from .corpora import build_repo_history_index
         index = build_repo_history_index(args.directory)
     else:
-        extensions = tuple(e if e.startswith(".") else f".{e}" for e in args.ext.split(","))
+        extensions = tuple(
+            (e if e.startswith(".") else f".{e}").lower()
+            for e in args.ext.split(",")
+            if e.strip()
+        )
         index = build_index(args.directory, extensions=extensions, split_headers=not args.no_split)
     if index.N == 0:
         print(f"error: no {extensions} files found under {args.directory!r}", file=sys.stderr)

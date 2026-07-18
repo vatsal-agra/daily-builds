@@ -86,6 +86,19 @@ class BKTree:
         return results
 
 
+def auto_fuzzy_distance(term):
+    """Elasticsearch-style length-scaled fuzzy threshold: short terms get
+    no fuzzy correction at all (at distance 2, a 3-letter typo can
+    "correct" to almost any other short vocabulary word — worse than not
+    correcting it), longer terms get progressively more slack."""
+    n = len(term)
+    if n <= 3:
+        return 0
+    if n <= 5:
+        return 1
+    return 2
+
+
 def build_bktree(index):
     """Build a BK-tree over an InvertedIndex's full vocabulary, used to
     fuzzy-correct query terms that don't appear in the index at all."""

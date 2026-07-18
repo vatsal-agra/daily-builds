@@ -1,6 +1,6 @@
 # Trove
 
-*Status: Phase 2 complete (core build). Adversarial review next.*
+*Status: Phase 3 complete (adversarial review). Stretch features + polish next.*
 
 A from-scratch full-text search engine — tokenizer, a faithful Porter
 stemmer (differentially verified against NLTK's `ORIGINAL_ALGORITHM`
@@ -15,7 +15,12 @@ first time. It also works over any other directory of text/markdown
 files (verified against an independent recipe-book fixture corpus in
 the test suite).
 
-See [PLAN.md](./PLAN.md) for architecture and the full feature list.
+See [PLAN.md](./PLAN.md) for architecture and the full feature list, and
+[REVIEW.md](./REVIEW.md) for the Phase 3 adversarial review — 8 real
+bugs found by deliberately attacking the query parser and CLI with
+malformed input (a query parser silently returning the *opposite* of
+what `-(...)` asked for was the sharpest one), each with a reproduction,
+a fix, and a regression test.
 
 ## Quick start
 
@@ -33,12 +38,14 @@ python3 -m trove.cli search "raft AND consensus" --index /tmp/trove.index.json
 python3 -m unittest discover -s tests -v
 ```
 
-56 unit tests covering the stemmer (differentially checked against
-NLTK's Porter oracle), tokenizer, index, BM25 ranking (hand-verified
-against an independent formula), the query parser/evaluator, and the
-Levenshtein/BK-tree fuzzy matcher (checked against brute force).
+83 unit tests covering the stemmer (differentially checked against
+NLTK's Porter oracle), tokenizer, index (including the Phase 3
+duplicate-`doc_id` fix), BM25 ranking (hand-verified against an
+independent formula), the query parser/evaluator (including all eight
+Phase 3 regression cases), the CLI end-to-end, the `Engine` facade, and
+the Levenshtein/BK-tree fuzzy matcher (checked against brute force).
 
-Remaining work: adversarial review, stretch features (autocomplete,
-snippets, ranking-quality evaluator), web UI, polish, and full
-verification — tracked phase by phase in this README as the build
+Remaining work: stretch features (autocomplete, snippets, a
+ranking-quality evaluator), a web UI, further polish, and a full
+verification pass — tracked phase by phase in this README as the build
 continues.

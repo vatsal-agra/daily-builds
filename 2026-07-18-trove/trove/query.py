@@ -16,12 +16,14 @@ Examples: `cdcl AND solver`, `cdcl solver` (implicit AND), `raft OR paxos`,
 
 import re
 
+from .fuzzy import auto_fuzzy_distance
 from .tokenizer import normalize_term, STOPWORDS
 
 _TOKEN_RE = re.compile(r'''
     (?P<LPAREN>\()
   | (?P<RPAREN>\))
   | (?P<PHRASE>"[^"]*")
+  | (?P<FUSEDMINUS>-(?=[("]))
   | (?P<WORD>-?[A-Za-z0-9']+\*?)
   | (?P<JUNK>\S)
 ''', re.VERBOSE)
@@ -131,6 +133,9 @@ class _Parser:
             self.advance()
             return Not(self.parse_not())
         kind, value = self.peek()
+        if kind == "FUSEDMINUS":
+            self.advance()
+            return Not(self.parse_atom())
         if kind == "WORD" and value.startswith("-") and len(value) > 1:
             self.advance()
             return Not(self._word_or_prefix(value[1:]))
@@ -170,6 +175,8 @@ class _Parser:
 
 
 def parse_query(text):
+    if text.count('"') % 2 == 1:
+        raise QuerySyntaxError("unterminated phrase — missing a closing '\"'")
     tokens = _lex(text)
     return _Parser(tokens).parse()
 
@@ -195,7 +202,10 @@ def _resolve_term(index, raw_word, corrections, fuzzy_corrector, fuzzy_max_dista
         return term
     if fuzzy_corrector is None:
         return None
-    matches = fuzzy_corrector.query(term, fuzzy_max_distance)
+    max_dist = auto_fuzzy_distance(term) if fuzzy_max_distance == "auto" else fuzzy_max_distance
+    if max_dist <= 0:
+        return None
+    matches = fuzzy_corrector.query(term, max_dist)
     if not matches:
         return None
     best_term, _dist = matches[0]
@@ -286,7 +296,7 @@ def _eval_phrase(node, index, corrections, fuzzy_corrector, fuzzy_max_distance):
     return QueryResult(matching_docs, set(terms), [])
 
 
-def evaluate(index, query_text, fuzzy_corrector=None, fuzzy_max_distance=2):
+def evaluate(index, query_text, fuzzy_corrector=None, fuzzy_max_distance="auto"):
     """Parse and evaluate `query_text` against `index`. Returns a
     QueryResult with the matching doc_ids, the positive terms to rank by,
     and any (typed, corrected) fuzzy substitutions that were made."""

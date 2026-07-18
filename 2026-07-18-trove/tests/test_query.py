@@ -113,6 +113,33 @@ class TestQueryParserAndEvaluator(unittest.TestCase):
         with self.assertRaises(query_mod.QuerySyntaxError):
             self.run_query("AND fox")
 
+    def test_unterminated_phrase_raises_instead_of_silently_reinterpreting(self):
+        with self.assertRaises(query_mod.QuerySyntaxError):
+            self.run_query('"fox brown')
+
+    def test_fused_minus_negates_parenthesized_group(self):
+        # Regression: '-(' used to lex as junk (dropped), silently
+        # returning the *positive* group instead of its negation.
+        positive = self.run_query("fox AND lazy")
+        self.assertEqual(positive.doc_ids, {"d1"})
+        negated = self.run_query("-(fox AND lazy)")
+        self.assertEqual(negated.doc_ids, self.idx.all_doc_ids() - positive.doc_ids)
+        self.assertNotIn("d1", negated.doc_ids)
+
+    def test_fused_minus_negates_phrase(self):
+        positive = self.run_query('"brown fox"')
+        self.assertEqual(positive.doc_ids, {"d1", "d2"})
+        negated = self.run_query('-"brown fox"')
+        self.assertEqual(negated.doc_ids, self.idx.all_doc_ids() - positive.doc_ids)
+
+    def test_short_term_gets_no_fuzzy_correction_by_default(self):
+        # "cat" (3 chars) must not fuzzy-correct to some unrelated short
+        # vocabulary word at the old fixed distance=2 default.
+        bktree = build_bktree(self.idx)
+        r = self.run_query("cot", fuzzy_corrector=bktree)  # auto distance for len<=3 is 0
+        self.assertEqual(r.doc_ids, set())
+        self.assertEqual(r.corrections, [])
+
     def test_double_negative_not_not(self):
         # NOT NOT fox == fox
         r1 = self.run_query("NOT NOT fox")
