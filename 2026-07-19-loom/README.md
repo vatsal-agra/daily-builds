@@ -1,7 +1,8 @@
 # Loom
 
-*Status: Phase 2 (core build) complete — training pipeline verified, model
-trains and generates. Adversarial review and stretch features next.*
+*Status: Phase 3 (adversarial review) complete — see [REVIEW.md](./REVIEW.md)
+for 9 real bugs found and fixed. Stretch features (BPE tokenizer, attention
+visualizer) and final polish next.*
 
 A transformer language model — the architecture behind modern LLMs — built
 entirely from scratch: a **reverse-mode tensor autodiff engine** (no

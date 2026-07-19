@@ -76,7 +76,25 @@ in progress in the background (so review time wasn't wasted waiting).
    `train.py` now tracks the best validation-loss checkpoint during
    training and restores those weights before saving, alongside adding
    dropout (0.1) to the model itself to push best-val-loss later into
-   training.
+   training. **Confirmed against the real completed run:** with dropout,
+   validation loss still peaked early (best 1.7915 at step 600 of 4000;
+   train loss kept falling to 0.40 by step 4000 while val loss drifted up
+   to ~2.8) — dropout alone can't fix a corpus this small, so the
+   best-checkpoint tracking is doing real, necessary work, not guarding
+   against a hypothetical. The shipped `checkpoints/loom.npz` is the
+   step-600 snapshot.
+
+9. **Every CLI subcommand printed a raw Python traceback on any expected
+   error** (missing checkpoint file, an out-of-vocabulary prompt character,
+   a corpus too short for the requested `--block-size`, a bad
+   `--d-model`/`--n-heads` combination) — functionally correct (the errors
+   above are already real, informative exceptions) but a poor CLI
+   experience, and exactly the "raw tracebacks on malformed input" pattern
+   flagged as a real bug in more than one earlier ledger project. **Fix:**
+   `cli.main()` now catches `ValueError`/`FileNotFoundError` at the top
+   level and prints a clean `Error: ...` message with exit code 1 instead
+   of a stack trace (`tests/test_cli.py` locks this in for all four cases
+   above via subprocess).
 
 ## Dead code removed
 
