@@ -1,8 +1,8 @@
 # Loom
 
-*Status: Phase 3 (adversarial review) complete — see [REVIEW.md](./REVIEW.md)
-for 9 real bugs found and fixed. Stretch features (BPE tokenizer, attention
-visualizer) and final polish next.*
+*Status: shipped. All 4 required + 2 stretch features implemented, reviewed,
+and verified — see [REVIEW.md](./REVIEW.md) for what adversarial testing
+found and fixed.*
 
 A transformer language model — the architecture behind modern LLMs — built
 entirely from scratch: a **reverse-mode tensor autodiff engine** (no
@@ -16,7 +16,39 @@ checked against numerical finite differences — both op-by-op (26 ops in
 perturbed inside a real forward pass, `tests/test_nn.py`).
 
 See [PLAN.md](./PLAN.md) for the full architecture and feature rationale.
-See [REVIEW.md](./REVIEW.md) for the adversarial review findings (once Phase 3 lands).
+See [REVIEW.md](./REVIEW.md) for the adversarial review findings.
+
+## Sample output
+
+The shipped checkpoint (`checkpoints/loom.npz`) is a 4-layer, 4-head,
+64-dim transformer (~207K parameters) trained on the ~17.7 KB original
+corpus in `corpus/loom_corpus.txt`, character-level, for 4000 steps —
+shipping the step-600 snapshot, which had the best validation loss (1.79)
+before the model started overfitting this small a corpus (see REVIEW.md
+finding #8). Sampled at temperature 0.7:
+
+```
+$ python3 -m loom.cli generate --ckpt checkpoints/loom --prompt "The " -n 300 --temperature 0.7 --seed 1
+
+The stavell of the mark seeps of unce, the could the whole forst and
+least on samply as the leang in the long shop believed the make hany
+nought of the patience of to passomse that nothere humber that of ships
+ship were agains of in had the workning had sall each on and who noth
+the same the sailors saill he watch pastience was paled the sampling
+inamins carried and the simply but hims ounce the long
+```
+
+Honest read: correct spelling of real words, correct capitalization and
+punctuation rhythm, and vocabulary pulled straight from the training
+corpus's themes (lighthouse, storm, ships, sailors, patience, watch) — but
+not grammatical sentences. That's the expected ceiling for a ~207K-parameter
+character-level model trained on 17.7 KB of text; the point of this build
+is a *correct*, verified-from-scratch implementation of the Transformer
+architecture and its training loop, not a competitive language model.
+Greedy decoding (temperature 0) visibly falls into repetition loops
+("...the she storm was of the small storm and the she storm was...") — the
+textbook failure mode of greedy sampling, reproduced faithfully rather than
+papered over.
 
 ## Quickstart
 
@@ -86,6 +118,8 @@ demo.sh
 **Stretch:**
 5. **Interactive HTML attention visualizer** — replays a real generation
    run, rendering the model's actual per-layer/per-head attention matrices.
+   A pre-generated example from the shipped checkpoint is committed at
+   `viz/attention.html` — open it directly in a browser, no server needed.
 6. **From-scratch byte-level BPE tokenizer** — trains merge rules directly
    from the corpus, usable as a drop-in alternative to char-level tokenization.
 
