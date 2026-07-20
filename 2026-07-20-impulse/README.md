@@ -1,7 +1,9 @@
 # Impulse
 
-> Status: **Phase 2 — Core build complete.** All 5 required features work
-> end-to-end. Adversarial review next.
+> Status: **Phase 3 — Adversarial review complete.** Found and fixed a
+> critical bug (NaN input could permanently freeze the physics thread),
+> a broken save/load (joints weren't exported), and a few smaller issues.
+> See [REVIEW.md](REVIEW.md). Stretch features + polish next.
 
 A from-scratch 2D rigid-body physics engine (pure Python, zero dependencies)
 with a real-time interactive browser sandbox.

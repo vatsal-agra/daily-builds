@@ -249,6 +249,9 @@ canvas {
   cursor: crosshair;
 }
 
+canvas.tool-grab { cursor: grab; }
+canvas.tool-grab.dragging { cursor: grabbing; }
+
 .toast {
   position: absolute;
   bottom: 24px;

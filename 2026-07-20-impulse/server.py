@@ -12,11 +12,12 @@ of truth, driven headlessly here and by the test suite identically.
 """
 
 import json
+import math
 import os
 import sys
 import threading
 import time
-import random
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -24,7 +25,6 @@ import engine as E
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(HERE, "static")
-SCENES_DIR = os.path.join(HERE, "scenes")
 
 CANVAS_W = 900
 CANVAS_H = 600
@@ -100,14 +100,22 @@ def physics_loop():
                 accumulator = 0.0
             else:
                 steps_taken = 0
-                while accumulator >= STEP_DT and steps_taken < 8:
-                    STATE.world.step(STEP_DT)
-                    accumulator -= STEP_DT
-                    steps_taken += 1
-                    if STATE.single_step:
-                        STATE.single_step = False
-                        accumulator = 0.0
-                        break
+                try:
+                    while accumulator >= STEP_DT and steps_taken < 8:
+                        STATE.world.step(STEP_DT)
+                        accumulator -= STEP_DT
+                        steps_taken += 1
+                        if STATE.single_step:
+                            STATE.single_step = False
+                            accumulator = 0.0
+                            break
+                except Exception:
+                    # This thread is unsupervised — if it dies here the whole
+                    # sandbox silently freezes forever for every client. Log,
+                    # drop whatever caused it, and keep going. See REVIEW.md #2.
+                    traceback.print_exc()
+                    _purge_non_finite_bodies()
+                    accumulator = 0.0
                 # despawn anything that has flown absurdly far off-scene
                 _cull_stray_bodies()
 
@@ -136,29 +144,96 @@ def _release_mouse_locked():
     STATE.mouse_grabbed_body = None
 
 
+def _purge_non_finite_bodies():
+    """Removes any body with a NaN/Infinity position or angle. `y > threshold`
+    style comparisons (as in _cull_stray_bodies) never match NaN — Python
+    NaN comparisons are always False — so this needs its own finite check."""
+    world = STATE.world
+    bad = [b for b in world.bodies
+           if not (math.isfinite(b.position.x) and math.isfinite(b.position.y)
+                   and math.isfinite(b.angle))]
+    for b in bad:
+        world.remove_body(b)
+        if STATE.mouse_grabbed_body is b:
+            _release_mouse_locked()
+
+
 # --------------------------------------------------------------------------
 # Scene helpers
 # --------------------------------------------------------------------------
 
 def body_from_dict(d):
+    # Scene files can be hand-edited, so every numeric field is validated the
+    # same way /api/spawn validates them (NaN/Infinity/out-of-range all get
+    # clamped to something sane rather than crashing or producing nonsense
+    # physics) — see REVIEW.md findings #1 and #7.
     if d["shape"] == "circle":
-        shape = E.Circle(d["radius"])
+        radius = _clamp_float(d["radius"], MIN_RADIUS, MAX_RADIUS)
+        shape = E.Circle(radius)
     else:
-        shape = E.Polygon([E.Vec2(x, y) for x, y in d["vertices"]])
-    body = E.Body(shape, (d["x"], d["y"]), angle=d.get("angle", 0.0),
-                  restitution=d.get("restitution", 0.3), friction=d.get("friction", 0.4),
-                  static=d.get("static", False), density=d.get("density", 1.0),
+        verts = d["vertices"]
+        if not isinstance(verts, list) or len(verts) < 3:
+            raise ValueError("polygon needs at least 3 [x, y] vertices")
+        shape = E.Polygon([
+            E.Vec2(_clamp_float(vx, -MAX_SIZE * 2, MAX_SIZE * 2),
+                   _clamp_float(vy, -MAX_SIZE * 2, MAX_SIZE * 2))
+            for vx, vy in verts
+        ])
+    x = _clamp_float(d["x"], -CANVAS_W * 4, CANVAS_W * 8)
+    y = _clamp_float(d["y"], -CANVAS_H * 4, CANVAS_H * 8)
+    angle = _clamp_float(d.get("angle", 0.0), -1000.0, 1000.0)
+    restitution = _clamp_float(d.get("restitution", 0.3), 0.0, 1.0)
+    friction = _clamp_float(d.get("friction", 0.4), 0.0, 2.0)
+    density = _clamp_float(d.get("density", 1.0), 0.05, 20.0)
+    body = E.Body(shape, (x, y), angle=angle,
+                  restitution=restitution, friction=friction,
+                  static=bool(d.get("static", False)), density=density,
                   name=d.get("name"))
     return body
+
+
+WALL_NAMES = ("floor", "left_wall", "right_wall")
 
 
 def export_scene():
     with STATE.lock:
         world = STATE.world
+        user_bodies = [b for b in world.bodies if b.name not in WALL_NAMES]
+        index_of = {id(b): i for i, b in enumerate(user_bodies)}
+
+        joints = []
+        for j in world.joints:
+            if j is STATE.mouse_joint:
+                continue  # transient drag joint, not part of the saved scene
+            ia = index_of.get(id(j.body_a))
+            ib = index_of.get(id(j.body_b)) if j.body_b is not None else None
+            if ia is None or (j.body_b is not None and ib is None):
+                continue  # references a wall or something not exported; skip
+            entry = {
+                "type": type(j).__name__,
+                "a": ia, "anchor_a": [j.anchor_a_local.x, j.anchor_a_local.y],
+                "b": ib,
+            }
+            if isinstance(j, E.DistanceJoint):
+                entry["anchor_b"] = [j.anchor_b_local.x, j.anchor_b_local.y]
+                entry["length"] = j.length
+            elif isinstance(j, E.SpringJoint):
+                entry["anchor_b"] = [j.anchor_b_local.x, j.anchor_b_local.y]
+                entry["rest_length"] = j.rest_length
+                entry["stiffness"] = j.stiffness
+                entry["damping"] = j.damping
+            elif isinstance(j, E.PinJoint):
+                wb = j.anchor_b_local if ib is not None else j.anchor_b_world_fixed
+                entry["anchor_b"] = [wb.x, wb.y]
+            else:
+                continue
+            joints.append(entry)
+
         return {
             "gravity": [world.gravity.x, world.gravity.y],
             "bodies": [b.to_dict() | {"density": (b.mass / _area_of(b.shape)) if not b.static and _area_of(b.shape) > 0 else 1.0}
-                       for b in world.bodies if b.name not in ("floor", "left_wall", "right_wall")],
+                       for b in user_bodies],
+            "joints": joints,
         }
 
 
@@ -175,10 +250,46 @@ def import_scene(data):
         STATE.paused = False
         STATE.single_step = False
         if "gravity" in data:
-            STATE.world.gravity = E.Vec2(*data["gravity"])
-        for bd in data.get("bodies", []):
-            STATE.world.add_body(body_from_dict(bd))
+            gx = _clamp_float(data["gravity"][0], -2000.0, 2000.0)
+            gy = _clamp_float(data["gravity"][1], -2000.0, 2000.0)
+            STATE.world.gravity = E.Vec2(gx, gy)
+        made = [body_from_dict(bd) for bd in data.get("bodies", [])]
+        for b in made:
+            STATE.world.add_body(b)
+
+        for jd in data.get("joints", []):
+            ia = jd.get("a")
+            ib = jd.get("b")
+            if not isinstance(ia, int) or not (0 <= ia < len(made)):
+                continue  # malformed/out-of-range reference; skip rather than crash
+            body_a = made[ia]
+            body_b = made[ib] if isinstance(ib, int) and 0 <= ib < len(made) else None
+            anchor_a = _clamped_pair(jd.get("anchor_a", [0, 0]))
+            anchor_b = _clamped_pair(jd.get("anchor_b", [0, 0]))
+            jtype = jd.get("type")
+            try:
+                if jtype == "DistanceJoint":
+                    length = _clamp_float(jd.get("length"), 0.0, CANVAS_W * 8)
+                    STATE.world.add_joint(E.DistanceJoint(body_a, anchor_a, body_b, anchor_b, length=length))
+                elif jtype == "SpringJoint":
+                    rest = _clamp_float(jd.get("rest_length"), 0.0, CANVAS_W * 8)
+                    stiff = _clamp_float(jd.get("stiffness", 40.0), 0.1, 1e7)
+                    damp = _clamp_float(jd.get("damping", 2.0), 0.0, 1e6)
+                    STATE.world.add_joint(E.SpringJoint(body_a, anchor_a, body_b, anchor_b,
+                                                        rest_length=rest, stiffness=stiff, damping=damp))
+                elif jtype == "PinJoint":
+                    STATE.world.add_joint(E.PinJoint(body_a, anchor_a, body_b, anchor_b))
+            except (TypeError, ValueError):
+                continue  # one bad joint shouldn't sink the whole import
+
         STATE.bump_version()
+
+
+def _clamped_pair(pair):
+    if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+        return (0.0, 0.0)
+    return (_clamp_float(pair[0], -CANVAS_W * 8, CANVAS_W * 8),
+            _clamp_float(pair[1], -CANVAS_H * 8, CANVAS_H * 8))
 
 
 PRESET_SCENES = {}
@@ -473,14 +584,13 @@ class Handler(BaseHTTPRequestHandler):
     # ---- command handlers ----
     def _handle_spawn(self, body):
         shape_kind = body.get("shape")
-        try:
-            x = float(body["x"])
-            y = float(body["y"])
-        except (KeyError, TypeError, ValueError):
+        if "x" not in body or "y" not in body:
             self._send_error_json("x and y are required numbers")
             return
-        x = max(-200.0, min(CANVAS_W + 200.0, x))
-        y = max(-200.0, min(CANVAS_H + 200.0, y))
+        # _clamp_float rejects NaN/Infinity (falls back to lo), unlike a bare
+        # float() + min/max chain — see REVIEW.md finding #1.
+        x = _clamp_float(body["x"], -200.0, CANVAS_W + 200.0)
+        y = _clamp_float(body["y"], -200.0, CANVAS_H + 200.0)
 
         with STATE.lock:
             defaults = STATE.spawn_defaults
@@ -514,18 +624,21 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json({"ok": True})
 
     def _handle_grab(self, body):
-        try:
-            x, y = float(body["x"]), float(body["y"])
-        except (KeyError, TypeError, ValueError):
+        if "x" not in body or "y" not in body:
             self._send_error_json("x and y are required")
             return
+        x = _clamp_float(body["x"], -5000.0, 5000.0)
+        y = _clamp_float(body["y"], -5000.0, 5000.0)
         with STATE.lock:
             _release_mouse_locked()
             world = STATE.world
             target = E.Vec2(x, y)
             best = None
             best_dist = GRAB_RADIUS
-            for b in world.bodies:
+            # iterate newest-first so an overlapping stack grabs whatever's
+            # drawn on top (last spawned), matching what the user sees —
+            # see REVIEW.md finding #5.
+            for b in reversed(world.bodies):
                 if b.static:
                     continue
                 d = (b.position - target).length()
@@ -548,11 +661,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"grabbed": True})
 
     def _handle_drag(self, body):
-        try:
-            x, y = float(body["x"]), float(body["y"])
-        except (KeyError, TypeError, ValueError):
+        if "x" not in body or "y" not in body:
             self._send_error_json("x and y are required")
             return
+        x = _clamp_float(body["x"], -5000.0, 5000.0)
+        y = _clamp_float(body["y"], -5000.0, 5000.0)
         with STATE.lock:
             if STATE.mouse_joint is not None:
                 STATE.mouse_joint.anchor_b_local = E.Vec2(x, y)
@@ -580,7 +693,7 @@ def _clamp_float(v, lo, hi):
         v = float(v)
     except (TypeError, ValueError):
         v = lo
-    if v != v:  # NaN guard
+    if not math.isfinite(v):  # NaN and +-Infinity both come in as JSON extensions
         v = lo
     return max(lo, min(hi, v))
 

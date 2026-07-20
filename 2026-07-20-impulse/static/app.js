@@ -226,6 +226,7 @@ document.querySelectorAll(".tool-btn").forEach((btn) => {
     document.querySelectorAll(".tool-btn").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     currentTool = btn.dataset.tool;
+    canvas.classList.toggle("tool-grab", currentTool === "grab");
   });
 });
 
@@ -243,6 +244,7 @@ canvas.addEventListener("pointerdown", (ev) => {
     dragMode = "grab";
     api("/api/grab", { x: p.x, y: p.y }).then((res) => {
       grabbed = !!res.grabbed;
+      canvas.classList.toggle("dragging", grabbed);
       if (!grabbed) showToast("Nothing there to grab");
     }).catch((e) => showToast(e.message));
   } else {
@@ -266,6 +268,7 @@ function endDrag(ev) {
   if (dragMode === "grab") {
     if (grabbed) api("/api/release", {}).catch(() => {});
     grabbed = false;
+    canvas.classList.remove("dragging");
   } else if (dragMode === "spawn" && spawnPreview) {
     const sp = spawnPreview;
     const restitution = parseFloat(document.getElementById("restitution").value);

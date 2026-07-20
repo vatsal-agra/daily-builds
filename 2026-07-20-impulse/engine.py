@@ -24,6 +24,10 @@ SLOP = 0.01                     # allowed penetration before correction kicks in
 BAUMGARTE = 0.2                 # positional correction factor
 VELOCITY_ITERATIONS = 10
 MAX_LINEAR_CORRECTION = 4.0     # px per step, avoids explosive pop-out
+MAX_BIAS_VELOCITY = 250.0       # px/s cap on the Baumgarte velocity bias,
+                                 # so deeply-overlapping spawns settle instead
+                                 # of launching (positional pass alone isn't
+                                 # enough since this term acts on velocity)
 
 
 # --------------------------------------------------------------------------
@@ -835,7 +839,7 @@ class World:
             if inv_mass_sum < 1e-12:
                 continue
 
-            bias = max(pen - SLOP, 0.0) * (BAUMGARTE / dt)
+            bias = min(max(pen - SLOP, 0.0) * (BAUMGARTE / dt), MAX_BIAS_VELOCITY)
             j = -(1.0 + m.restitution) * vel_along_normal + bias
             j /= inv_mass_sum
             j = max(j, 0.0)
