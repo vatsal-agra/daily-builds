@@ -170,7 +170,18 @@ function draw() {
   }
 
   if (debugOn) {
-    // broad-phase-ish grid + contacts + velocity vectors
+    // broad-phase spatial-hash grid (the actual cell size the engine uses)
+    const cell = latestState.broadphase_cell_size || 64;
+    ctx.strokeStyle = "rgba(246,193,119,0.18)";
+    ctx.lineWidth = 1;
+    for (let x = 0; x < CANVAS_W; x += cell) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CANVAS_H); ctx.stroke();
+    }
+    for (let y = 0; y < CANVAS_H; y += cell) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CANVAS_W, y); ctx.stroke();
+    }
+
+    // contact points + normals
     for (const c of latestState.contacts || []) {
       for (const p of c.points) {
         ctx.beginPath();
@@ -187,6 +198,20 @@ function draw() {
         ctx.lineWidth = 1.5;
         ctx.stroke();
       }
+    }
+
+    // velocity vectors
+    ctx.strokeStyle = "#89ddff";
+    ctx.lineWidth = 1.5;
+    for (const b of bodies) {
+      if (b.static) continue;
+      const speed = Math.hypot(b.vx, b.vy);
+      if (speed < 1) continue;
+      const scale = 0.12;
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x + b.vx * scale, b.y + b.vy * scale);
+      ctx.stroke();
     }
   }
 

@@ -546,10 +546,16 @@ class Handler(BaseHTTPRequestHandler):
                 except KeyError:
                     self._send_error_json(f"unknown scene '{name}'", 404)
             elif path == "/api/scene/import":
+                if not isinstance(body, dict):
+                    self._send_error_json("invalid scene: expected a JSON object with a 'bodies' list")
+                    return
+                if "bodies" in body and not isinstance(body["bodies"], list):
+                    self._send_error_json("invalid scene: 'bodies' must be a list")
+                    return
                 try:
                     import_scene(body)
                     self._send_json({"ok": True})
-                except (KeyError, TypeError, ValueError) as e:
+                except (KeyError, TypeError, ValueError, AttributeError, IndexError) as e:
                     self._send_error_json(f"invalid scene: {e}")
             else:
                 self.send_error(404, "Not Found")

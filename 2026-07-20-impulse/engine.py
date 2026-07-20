@@ -284,6 +284,7 @@ class Body:
             "shape": self.shape.kind,
             "x": self.position.x, "y": self.position.y,
             "angle": self.angle,
+            "vx": self.velocity.x, "vy": self.velocity.y,
             "static": self.static,
             "restitution": self.restitution,
             "friction": self.friction,
@@ -926,6 +927,7 @@ class World:
         return {
             "time": self.time,
             "gravity": [self.gravity.x, self.gravity.y],
+            "broadphase_cell_size": self.broadphase.cell_size,
             "bodies": [b.to_dict() for b in self.bodies],
             "joints": [self._joint_dict(j) for j in self.joints],
             "contacts": [

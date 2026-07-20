@@ -1,9 +1,9 @@
 # Impulse
 
-> Status: **Phase 3 — Adversarial review complete.** Found and fixed a
-> critical bug (NaN input could permanently freeze the physics thread),
-> a broken save/load (joints weren't exported), and a few smaller issues.
-> See [REVIEW.md](REVIEW.md). Stretch features + polish next.
+> Status: **Phase 4 — Stretch features + polish complete.** Scene presets
+> with save/load and the debug overlay (contacts, normals, velocity
+> vectors, and the live broad-phase grid) are both fully implemented.
+> Verification next.
 
 A from-scratch 2D rigid-body physics engine (pure Python, zero dependencies)
 with a real-time interactive browser sandbox.
@@ -23,10 +23,14 @@ with a real-time interactive browser sandbox.
   and dragging bodies, tuning gravity/restitution/friction, pause/step/
   reset, and loading/exporting scenes.
 - `static/` — a hand-styled dark-themed canvas sandbox: drag to spawn
-  circles/boxes sized by drag distance, a grab tool to fling bodies
-  around with a live mouse-spring, sliders for material/world params, a
-  debug overlay (contact points + normals), and four preset scenes
-  (pyramid, rope bridge, circle stack, Newton's cradle).
+  circles/boxes sized by drag distance, a grab tool (with a grab/grabbing
+  cursor) to fling bodies around with a live mouse-spring, sliders for
+  material/world params, a full debug overlay (contact points, contact
+  normals, per-body velocity vectors, and the live broad-phase spatial-
+  hash grid), and four preset scenes (pyramid, rope bridge, circle
+  stack, Newton's cradle) — plus full scene save/export and load/import,
+  including joints, so a saved bridge loads back as a bridge, not a pile
+  of planks.
 
 See [PLAN.md](PLAN.md) for the full architecture and feature list.
 
