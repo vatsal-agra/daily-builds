@@ -1,9 +1,8 @@
 # Impulse
 
-> Status: **Phase 4 — Stretch features + polish complete.** Scene presets
-> with save/load and the debug overlay (contacts, normals, velocity
-> vectors, and the live broad-phase grid) are both fully implemented.
-> Verification next.
+> Status: **Phase 5 — Verification complete.** 30 unit tests + a 10-check
+> headless physics demo + a live HTTP server smoke test, all green. Run
+> `./demo.sh` to reproduce. Shipping next.
 
 A from-scratch 2D rigid-body physics engine (pure Python, zero dependencies)
 with a real-time interactive browser sandbox.
@@ -42,3 +41,17 @@ python3 server.py 8765
 ```
 
 No dependencies to install — pure Python 3 stdlib.
+
+## Verifying it
+
+```
+./demo.sh
+```
+
+Runs the 30-test unit suite (`tests/test_engine.py`), a headless physics
+demo (`demo.py` — a box stack settling, a pin-joint pendulum staying
+energy-bounded, a rope bridge sagging and holding a dropped boulder,
+every collision-pair type), and a live server smoke test (spawns a body
+over real HTTP, confirms it falls under gravity, loads every preset
+scene, and re-checks the NaN-import regression from the adversarial
+review).
