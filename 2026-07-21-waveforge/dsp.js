@@ -29,9 +29,13 @@ function oscSample(waveform, phase) {
     case 'square':
       return phase < 0.5 ? 1 : -1;
     case 'triangle': {
-      // 0->1 rises -1..1, 1->2 (i.e. wrapped 0.5->1) falls 1..-1
-      const t = phase < 0.5 ? phase * 2 : 2 - phase * 2;
-      return t * 2 - 1;
+      // zero at phase 0 (matching sine/saw's zero-crossing start), rises to
+      // +1 at 0.25, back through zero at 0.5, down to -1 at 0.75, and back
+      // to zero at the wrap — so swapping a track between waveforms never
+      // introduces a phase discontinuity at note-on.
+      if (phase < 0.25) return 4 * phase;
+      if (phase < 0.75) return 2 - 4 * phase;
+      return 4 * phase - 4;
     }
     case 'noise':
       return Math.random() * 2 - 1;

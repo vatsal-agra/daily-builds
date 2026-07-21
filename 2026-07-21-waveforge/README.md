@@ -1,6 +1,6 @@
 # Waveforge
 
-A from-scratch software synthesizer + step sequencer. **Status: Phase 4 (stretch + polish) complete — build in progress.**
+A from-scratch software synthesizer + step sequencer. **Status: Phase 5 (verification) complete — build in progress.**
 
 See [PLAN.md](./PLAN.md) for the full concept, architecture, and feature list.
 
@@ -57,5 +57,29 @@ about what patch is actually active, and confirmed graceful behavior for
 every "nothing to do" case — 0 tracks, all tracks muted, an out-of-range
 BPM typed directly into the input — each shows a clear status message and
 never throws.
+
+## Verification (Phase 5)
+
+Run the full suite with `./demo.sh`, or `node test/run.js` for just the
+unit tests. Writing the test suite itself turned up two more real bugs,
+now fixed:
+- The **triangle oscillator was phase-shifted** from the sine/saw/square
+  convention — it started at -1 and peaked at phase 0.5, instead of
+  starting at 0 (like sine) and peaking at 0.25. Fixed so switching a
+  track's waveform never introduces a phase discontinuity at note-on.
+- A test asserted an *exact* 0 right at the envelope's release-end
+  boundary, where float subtraction leaves a ~1e-16 residual (inaudible;
+  16-bit PCM quantizes it away) — loosened the assertion rather than
+  chase floating-point noise in production code.
+
+`test/run.js` (33 tests) exercises: every oscillator's actual waveform
+shape, ADSR envelope math at each stage, filter attenuation (verified a
+real frequency-dependent rolloff, not just "doesn't crash"), WAV header
+byte-for-byte correctness, multi-track polyphonic mixing (asserting
+combined energy exceeds any single voice), velocity scaling, the delay/
+reverb tail, every Phase 3 regression (bad BPM, malformed patch), and the
+CLI's exit codes/stderr on bad input. `test/ui_smoke.mjs` drives the real
+browser UI end-to-end (add/remove track, step click-cycle, play/stop,
+demo load, WAV export) and asserts zero console errors.
 
 More to come as each phase completes.
