@@ -1,6 +1,6 @@
 # Waveforge
 
-A from-scratch software synthesizer + step sequencer. **Status: Phase 3 (adversarial review) complete — build in progress.**
+A from-scratch software synthesizer + step sequencer. **Status: Phase 4 (stretch + polish) complete — build in progress.**
 
 See [PLAN.md](./PLAN.md) for the full concept, architecture, and feature list.
 
@@ -37,5 +37,25 @@ velocities not matching the UI's click-cycle levels, and per-step `hold`
 (sustain length) silently dropping when a pattern is loaded into the
 browser. See [REVIEW.md](./REVIEW.md) for full details, including what was
 checked and found *not* to be a bug.
+
+## Stretch + polish (Phase 4)
+
+Both planned stretch features were verified as genuinely working, not just
+present:
+- **Effects chain (delay + Schroeder reverb):** confirmed a measurable,
+  audible difference between the same song rendered with effects on vs.
+  off (large sample-level diff, and a real decay tail extending energy
+  past where the dry signal goes silent).
+- **Patch save/load:** round-tripped a custom patch through Save → Load
+  and got back the exact same JSON; confirmed invalid files (non-JSON,
+  and valid JSON missing required fields) fail with a clear status
+  message instead of crashing.
+
+Additional polish: a hand-inlined SVG favicon (no more 404 in the
+console), a "Custom (loaded)" indicator so the preset dropdown never lies
+about what patch is actually active, and confirmed graceful behavior for
+every "nothing to do" case — 0 tracks, all tracks muted, an out-of-range
+BPM typed directly into the input — each shows a clear status message and
+never throws.
 
 More to come as each phase completes.
