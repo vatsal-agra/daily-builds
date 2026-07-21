@@ -36,7 +36,13 @@ function main() {
     process.exit(1);
   }
 
-  const samples = sequencer.render(pattern);
+  let samples;
+  try {
+    samples = sequencer.render(pattern);
+  } catch (err) {
+    console.error(`Invalid pattern: ${err.message}`);
+    process.exit(1);
+  }
   const wavBuffer = dsp.encodeWav(samples, dsp.SAMPLE_RATE, 1);
   fs.writeFileSync(path.resolve(outPath), Buffer.from(wavBuffer));
 

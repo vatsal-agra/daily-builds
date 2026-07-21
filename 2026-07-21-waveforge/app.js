@@ -39,6 +39,21 @@ function defaultTracks() {
   return ['kick', 'snare', 'hat', 'bass'].map(newTrack);
 }
 
+// A step in state.tracks[].steps is either a plain number (velocity, the
+// common case for steps programmed directly in the UI) or, for steps that
+// carry a sustain length imported from an external pattern (e.g. the demo
+// song's pad track), an object { velocity, hold }. These helpers let every
+// call site treat both shapes uniformly.
+function stepVelocity(step) {
+  return typeof step === 'object' && step !== null ? step.velocity : (step || 0);
+}
+function stepHold(step) {
+  return typeof step === 'object' && step !== null ? step.hold : undefined;
+}
+function nearestVelocityLevel(v) {
+  return VELOCITY_LEVELS.reduce((best, lvl) => (Math.abs(lvl - v) < Math.abs(best - v) ? lvl : best));
+}
+
 function buildPattern() {
   return {
     bpm: state.bpm,
@@ -51,7 +66,12 @@ function buildPattern() {
         name: tr.name,
         patch: tr.patch,
         note: tr.note,
-        steps: tr.steps.map((v) => (v > 0 ? { on: true, velocity: v } : null)),
+        steps: tr.steps.map((step) => {
+          const velocity = stepVelocity(step);
+          if (velocity <= 0) return null;
+          const hold = stepHold(step);
+          return hold != null ? { on: true, velocity, hold } : { on: true, velocity };
+        }),
       })),
   };
 }
@@ -98,6 +118,16 @@ function buildTrackRow(track) {
 
   const presetSelect = document.createElement('select');
   presetSelect.className = 'preset-select';
+  if (!track.presetKey) {
+    // patch came from a loaded file or a custom import, not a built-in
+    // preset — show that plainly instead of letting the select silently
+    // point at whichever preset happens to be first in the list.
+    const customOpt = document.createElement('option');
+    customOpt.value = '';
+    customOpt.textContent = 'Custom (loaded)';
+    customOpt.selected = true;
+    presetSelect.appendChild(customOpt);
+  }
   Object.keys(Waveforge.PRESETS).forEach((key) => {
     const opt = document.createElement('option');
     opt.value = key;
@@ -169,13 +199,18 @@ function buildTrackRow(track) {
   // -- step grid --
   const grid = document.createElement('div');
   grid.className = 'step-grid';
-  track.steps.forEach((vel, i) => {
+  track.steps.forEach((step, i) => {
     const cell = document.createElement('button');
-    cell.className = 'step-cell ' + velocityClass(vel);
+    cell.className = 'step-cell ' + velocityClass(stepVelocity(step));
     if (i % 4 === 0) cell.classList.add('beat-start');
     cell.addEventListener('click', () => {
-      const idx = VELOCITY_LEVELS.indexOf(track.steps[i]);
-      const nextIdx = (idx === -1 ? 0 : idx + 1) % VELOCITY_LEVELS.length;
+      // clicking always normalizes to a plain velocity level, dropping any
+      // imported hold — editing a step makes the user own its timing.
+      // Read the live value (not the closure's `step`) so repeated clicks
+      // advance through the cycle instead of resetting each time.
+      const currentLevel = nearestVelocityLevel(stepVelocity(track.steps[i]));
+      const idx = VELOCITY_LEVELS.indexOf(currentLevel);
+      const nextIdx = (idx + 1) % VELOCITY_LEVELS.length;
       track.steps[i] = VELOCITY_LEVELS[nextIdx];
       cell.className = 'step-cell ' + velocityClass(track.steps[i]) + (i % 4 === 0 ? ' beat-start' : '');
     });
@@ -291,7 +326,13 @@ function play() {
     return;
   }
   const ctx = ensureAudioCtx();
-  const samples = Waveforge.render(pattern, ctx.sampleRate);
+  let samples;
+  try {
+    samples = Waveforge.render(pattern, ctx.sampleRate);
+  } catch (err) {
+    setStatus(`Can't play: ${err.message}`);
+    return;
+  }
   if (samples.length === 0) {
     setStatus('Nothing to play — pattern is empty.');
     return;
@@ -329,7 +370,13 @@ function exportWav() {
     setStatus('Add at least one unmuted track before exporting.');
     return;
   }
-  const samples = Waveforge.render(pattern, Waveforge.SAMPLE_RATE);
+  let samples;
+  try {
+    samples = Waveforge.render(pattern, Waveforge.SAMPLE_RATE);
+  } catch (err) {
+    setStatus(`Can't export: ${err.message}`);
+    return;
+  }
   if (samples.length === 0) {
     setStatus('Nothing to export — pattern is empty.');
     return;
@@ -363,7 +410,11 @@ function loadDemoSong() {
           presetKey: null,
           patch: tr.patch,
           note: tr.note,
-          steps: tr.steps.map((s) => (s && s.on ? (s.velocity != null ? s.velocity : 1) : 0)),
+          steps: tr.steps.map((s) => {
+            if (!s || !s.on) return 0;
+            const velocity = nearestVelocityLevel(s.velocity != null ? s.velocity : 1);
+            return s.hold != null ? { velocity, hold: s.hold } : velocity;
+          }),
           muted: false,
         };
       });

@@ -32,6 +32,26 @@ function stepDurationSeconds(pattern) {
   return 1 / (beatsPerSecond * pattern.stepsPerBeat);
 }
 
+function validatePattern(pattern) {
+  if (!(pattern.bpm > 0)) {
+    throw new Error(`pattern.bpm must be a positive number, got ${JSON.stringify(pattern.bpm)}`);
+  }
+  if (!(pattern.stepsPerBeat > 0)) {
+    throw new Error(`pattern.stepsPerBeat must be a positive number, got ${JSON.stringify(pattern.stepsPerBeat)}`);
+  }
+  for (const track of pattern.tracks) {
+    const patch = track.patch;
+    if (!patch || !dsp.WAVEFORMS.includes(patch.waveform)) {
+      throw new Error(`Track "${track.name}": patch.waveform must be one of ${dsp.WAVEFORMS.join(', ')}`);
+    }
+    const env = patch.envelope;
+    const envFieldsOk = env && ['attack', 'decay', 'sustain', 'release'].every((k) => Number.isFinite(env[k]));
+    if (!envFieldsOk) {
+      throw new Error(`Track "${track.name}": patch.envelope is missing or incomplete (needs finite attack/decay/sustain/release)`);
+    }
+  }
+}
+
 function songDurationSeconds(pattern) {
   const maxSteps = Math.max(1, ...pattern.tracks.map((tr) => tr.steps.length));
   const stepDur = stepDurationSeconds(pattern);
@@ -47,6 +67,7 @@ function render(pattern, sampleRate = dsp.SAMPLE_RATE) {
   if (!pattern || !Array.isArray(pattern.tracks) || pattern.tracks.length === 0) {
     return new Float32Array(0);
   }
+  validatePattern(pattern);
   const stepDur = stepDurationSeconds(pattern);
   const totalSamples = Math.ceil(songDurationSeconds(pattern) * sampleRate);
   const buffer = new Float32Array(totalSamples);
@@ -96,7 +117,7 @@ function softLimit(buffer) {
   }
 }
 
-const api = { stepDurationSeconds, songDurationSeconds, render };
+const api = { stepDurationSeconds, songDurationSeconds, validatePattern, render };
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = api;

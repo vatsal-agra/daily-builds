@@ -1,6 +1,6 @@
 # Waveforge
 
-A from-scratch software synthesizer + step sequencer. **Status: Phase 2 (core build) complete — build in progress.**
+A from-scratch software synthesizer + step sequencer. **Status: Phase 3 (adversarial review) complete — build in progress.**
 
 See [PLAN.md](./PLAN.md) for the full concept, architecture, and feature list.
 
@@ -27,5 +27,15 @@ produces a real WAV file (correct RIFF header, no NaNs, no clipping); the
 browser UI was smoke-tested with Playwright (add/remove track, step
 toggling, play/stop, demo load, WAV export/download) with zero console
 errors.
+
+## Adversarial review (Phase 3)
+
+Hunted for bugs with hand-crafted malformed inputs and a Playwright
+click-through of the UI. Found and fixed 4 real issues — a crash on
+`bpm <= 0`, a crash on a patch missing `envelope`, demo-loaded step
+velocities not matching the UI's click-cycle levels, and per-step `hold`
+(sustain length) silently dropping when a pattern is loaded into the
+browser. See [REVIEW.md](./REVIEW.md) for full details, including what was
+checked and found *not* to be a bug.
 
 More to come as each phase completes.
