@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Waveforge — step sequencer &amp; synth</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">▮▮▶</span>
+      <div>
+        <h1>Waveforge</h1>
+        <p class="tagline">a from-scratch software synth &amp; step sequencer</p>
+      </div>
+    </div>
+    <div class="transport">
+      <label class="field">
+        <span>BPM</span>
+        <input id="bpmInput" type="number" min="40" max="300" value="100">
+      </label>
+      <label class="field">
+        <span>Swing</span>
+        <input id="swingInput" type="range" min="0" max="0.5" step="0.01" value="0.08">
+      </label>
+      <button id="playBtn" class="btn primary">▶ Play</button>
+      <button id="stopBtn" class="btn" disabled>■ Stop</button>
+      <button id="exportBtn" class="btn">⇩ Export WAV</button>
+      <button id="loadDemoBtn" class="btn ghost">Load demo song</button>
+    </div>
+  </header>
+
+  <section class="fx-bar">
+    <div class="fx-module">
+      <label class="switch">
+        <input type="checkbox" id="delayEnabled">
+        <span>Delay</span>
+      </label>
+      <label class="field small"><span>Time</span><input id="delayTime" type="range" min="0.05" max="0.6" step="0.01" value="0.19"></label>
+      <label class="field small"><span>Feedback</span><input id="delayFeedback" type="range" min="0" max="0.9" step="0.01" value="0.35"></label>
+      <label class="field small"><span>Mix</span><input id="delayMix" type="range" min="0" max="1" step="0.01" value="0.22"></label>
+    </div>
+    <div class="fx-module">
+      <label class="switch">
+        <input type="checkbox" id="reverbEnabled">
+        <span>Reverb</span>
+      </label>
+      <label class="field small"><span>Mix</span><input id="reverbMix" type="range" min="0" max="1" step="0.01" value="0.18"></label>
+    </div>
+  </section>
+
+  <section id="tracksContainer" class="tracks"></section>
+
+  <footer class="footer">
+    <button id="addTrackBtn" class="btn ghost">+ Add track</button>
+    <span id="statusLine" class="status"></span>
+  </footer>
+</div>
+
+<script src="dsp.js"></script>
+<script src="presets.js"></script>
+<script src="sequencer.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
