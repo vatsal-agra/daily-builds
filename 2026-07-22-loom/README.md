@@ -2,10 +2,24 @@
 
 *A tiny transformer language model, built from scratch — no PyTorch, no TensorFlow.*
 
-**Status: Phase 4 (stretch + polish) complete.** All 4 required features
-work end-to-end, both stretch features are shipped, and a hostile review
-pass found and fixed two real bugs — see [REVIEW.md](./REVIEW.md). See
-[PLAN.md](./PLAN.md) for the architecture and feature list.
+**Status: shipped.** All 4 required features work end-to-end, both stretch
+features are shipped, a hostile review pass found and fixed two real bugs
+(see [REVIEW.md](./REVIEW.md)), and `./demo.sh` verifies all of it —
+autograd, tokenizer, model/generation, a from-scratch training run, KV-cache
+correctness and speedup, and the full playground server API — in one
+command. See [PLAN.md](./PLAN.md) for the architecture and feature list.
+
+## Verify it yourself
+
+```
+pip install -r requirements.txt
+./demo.sh
+```
+
+Runs the full test suite (autograd gradient checks, tokenizer round-trips,
+model/KV-cache correctness), trains a fresh tiny model from nothing,
+benchmarks the KV-cache, and boots the playground server to exercise every
+API route — 8 steps, all green, in well under a minute.
 
 ## Quick start
 
