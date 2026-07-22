@@ -55,6 +55,9 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path in ("/", "/index.html"):
             self._send_file(os.path.join(STATIC_DIR, "playground.html"), "text/html; charset=utf-8")
+        elif parsed.path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
         elif parsed.path == "/api/info":
             model, tokenizer = STATE["model"], STATE["tokenizer"]
             self._send_json({
@@ -144,7 +147,12 @@ def main():
     args = ap.parse_args()
 
     print(f"Loading checkpoint {args.checkpoint} ...")
-    model, tokenizer, config, extra = load_checkpoint(args.checkpoint)
+    try:
+        model, tokenizer, config, extra = load_checkpoint(args.checkpoint)
+    except FileNotFoundError:
+        print(f"error: no checkpoint found at '{args.checkpoint}.npz'/'.json' -- "
+              f"run `python3 train.py --out {args.checkpoint}` first")
+        raise SystemExit(1)
     STATE["model"] = model
     STATE["tokenizer"] = tokenizer
     STATE["checkpoint_path"] = args.checkpoint

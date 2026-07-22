@@ -7,6 +7,7 @@ Example:
 """
 
 import argparse
+import sys
 
 import numpy as np
 
@@ -26,7 +27,12 @@ def main():
     ap.add_argument("--no-cache", action="store_true", help="disable KV-cache (slower, for comparison)")
     args = ap.parse_args()
 
-    model, tokenizer, config, extra = load_checkpoint(args.checkpoint)
+    try:
+        model, tokenizer, config, extra = load_checkpoint(args.checkpoint)
+    except FileNotFoundError:
+        print(f"error: no checkpoint found at '{args.checkpoint}.npz'/'.json' -- "
+              f"run `python3 train.py --out {args.checkpoint}` first", file=sys.stderr)
+        sys.exit(1)
     rng = np.random.default_rng(args.seed)
 
     text, ids = generate(

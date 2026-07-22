@@ -2,13 +2,9 @@
 
 *A tiny transformer language model, built from scratch — no PyTorch, no TensorFlow.*
 
-**Status: Phase 3 (adversarial review) complete.** All 4 required features
-work end-to-end: a from-scratch BPE tokenizer, a NumPy tensor autograd
-engine (every backward rule gradient-checked against finite differences), a
-transformer trained on a real corpus with visibly decreasing loss, and
-autoregressive generation with temperature/top-k/top-p sampling. A hostile
-review pass found and fixed two real bugs in the KV-cache/generation path
-— see [REVIEW.md](./REVIEW.md) for the full writeup. See
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features
+work end-to-end, both stretch features are shipped, and a hostile review
+pass found and fixed two real bugs — see [REVIEW.md](./REVIEW.md). See
 [PLAN.md](./PLAN.md) for the architecture and feature list.
 
 ## Quick start
@@ -40,7 +36,27 @@ python3 server.py                 # interactive playground at http://127.0.0.1:8
   an optional KV-cache (verified bit-identical to full recompute under
   greedy decoding — see `tests/test_model.py`).
 - `server.py` + `static/playground.html` — a server-backed interactive
-  playground (stretch feature, in progress).
+  playground (stretch feature): prompt the real trained model over HTTP,
+  see the generated continuation, a live per-layer/per-head attention
+  heatmap for it, the training loss curve, and a before/after-training
+  sample comparison. Browser-tested end-to-end with Playwright (screenshots
+  in dev notes) — no client-side model logic, every request is a real
+  round trip to the Python engine, same pattern as this repo's Gambit
+  (chess) and Formulate (spreadsheet) builds.
+- `benchmark.py` — KV-cache vs. full-recompute generation benchmark
+  (stretch feature): **~2.7x speedup** from incremental decoding on this
+  model/context size (see below).
+
+## KV-cache benchmark
+
+```
+$ python3 benchmark.py --tokens 45 --repeats 3
+method                  mean sec     sec/token
+KV-cache                  0.0678       0.00151
+full recompute            0.1826       0.00406
+
+speedup: 2.69x
+```
 
 ## Corpus
 
@@ -52,5 +68,4 @@ policy). Being self-authored sidesteps any licensing ambiguity.
 
 ## Next
 
-Phase 3 (adversarial review), Phase 4 (KV-cache benchmark + playground
-polish), Phase 5 (verification), Phase 6 (ship).
+Phase 5 (verification: full test suite + demo script), Phase 6 (ship).
