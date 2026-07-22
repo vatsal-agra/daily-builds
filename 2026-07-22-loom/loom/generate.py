@@ -34,25 +34,34 @@ def sample_from_logits(logits_row, rng, temperature=1.0, top_k=None, top_p=None)
 
 def generate(model, tokenizer, prompt, max_new_tokens, temperature=1.0, top_k=None, top_p=None,
              rng=None, use_cache=True):
-    """Generate a continuation of ``prompt``. Returns (full_text, generated_ids)."""
+    """Generate a continuation of ``prompt``. Returns (full_text, generated_ids).
+
+    The model has a fixed context window (``model.max_seq_len``): position
+    embeddings only exist for indices ``[0, max_seq_len)``. Rather than
+    silently sliding the window mid-generation -- which would re-base
+    position indices differently between the cached and non-cached code
+    paths and make them diverge (a real bug caught during adversarial
+    review; see REVIEW.md) -- the prompt is truncated to the most recent
+    ``max_seq_len`` tokens *once*, up front, and generation then runs until
+    either ``max_new_tokens`` is reached or the context window fills up.
+    """
     rng = rng if rng is not None else np.random.default_rng()
-    prompt_ids = tokenizer.encode(prompt) if prompt else [ord("\n")]
-    prompt_ids = [i for i in prompt_ids if i < tokenizer.vocab_size]
+    prompt_ids = tokenizer.encode(prompt) if prompt else []
     if not prompt_ids:
         prompt_ids = [ord("\n")]
+    if len(prompt_ids) > model.max_seq_len:
+        prompt_ids = prompt_ids[-model.max_seq_len:]
 
     generated = list(prompt_ids)
+    budget = model.max_seq_len - len(generated)  # room left in the context window
 
     if use_cache:
         cache = model.new_cache()
-        pos = 0
-        x = np.array([generated[-model.max_seq_len:]])
-        logits, _ = model.forward(x, cache=cache, pos_offset=pos)
-        pos = x.shape[1]
+        x = np.array([generated])
+        logits, _ = model.forward(x, cache=cache, pos_offset=0)
+        pos = len(generated)
         next_logits = logits.data[0, -1]
-        for _ in range(max_new_tokens):
-            if pos >= model.max_seq_len:
-                break
+        for _ in range(min(max_new_tokens, budget)):
             next_id = sample_from_logits(next_logits, rng, temperature, top_k, top_p)
             generated.append(next_id)
             x = np.array([[next_id]])
@@ -60,15 +69,12 @@ def generate(model, tokenizer, prompt, max_new_tokens, temperature=1.0, top_k=No
             pos += 1
             next_logits = logits.data[0, -1]
     else:
-        for _ in range(max_new_tokens):
-            context = generated[-model.max_seq_len:]
-            x = np.array([context])
+        for _ in range(min(max_new_tokens, budget)):
+            x = np.array([generated])
             logits, _ = model.forward(x, cache=None, pos_offset=0)
             next_logits = logits.data[0, -1]
             next_id = sample_from_logits(next_logits, rng, temperature, top_k, top_p)
             generated.append(next_id)
-            if len(generated) >= model.max_seq_len:
-                break
 
     return tokenizer.decode(generated), generated
 

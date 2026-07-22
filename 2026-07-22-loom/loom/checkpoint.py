@@ -7,6 +7,7 @@ everything else.
 """
 
 import json
+import os
 
 import numpy as np
 
@@ -15,6 +16,9 @@ from .tokenizer import BPETokenizer
 
 
 def save_checkpoint(path, model, tokenizer, config, extra=None):
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
     params = model.parameters()
     arrays = {f"p{i}": p.data for i, p in enumerate(params)}
     np.savez(path + ".npz", **arrays)

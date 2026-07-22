@@ -138,6 +138,28 @@ def test_sampling_temperature_zero_like_is_near_greedy():
     return True
 
 
+def test_generate_with_prompt_longer_than_context_window():
+    # Regression test: a prompt at/over max_seq_len used to make the cached
+    # path generate zero new tokens and the non-cached path generate
+    # exactly one token before stopping early -- silently diverging
+    # instead of erroring or handling it consistently. Both paths must now
+    # truncate the prompt to the window and behave identically.
+    tok = BPETokenizer()
+    tok.train("the quick brown fox jumps over the lazy dog and then runs home again quickly. " * 20,
+              vocab_size=256)
+    model = _tiny_model(vocab=tok.vocab_size, seqlen=20)
+    long_prompt = "the quick brown fox jumps over the lazy dog and then runs home"
+    assert len(tok.encode(long_prompt)) > 20
+
+    _, ids_cached = generate(model, tok, long_prompt, 15, temperature=1.0, top_k=1,
+                              rng=np.random.default_rng(0), use_cache=True)
+    _, ids_full = generate(model, tok, long_prompt, 15, temperature=1.0, top_k=1,
+                            rng=np.random.default_rng(0), use_cache=False)
+    assert ids_cached == ids_full
+    assert len(ids_cached) == 20, "generation should fill the context window, not stop after 0 or 1 tokens"
+    return True
+
+
 def test_generate_on_empty_prompt_does_not_crash():
     tok = BPETokenizer()
     tok.train("hello world, this is a small corpus. " * 10, vocab_size=256)
@@ -153,6 +175,7 @@ ALL_TESTS = [
     test_causal_mask_blocks_future_tokens,
     test_attention_rows_are_causal_and_sum_to_one,
     test_kv_cache_matches_full_recompute_under_greedy_decoding,
+    test_generate_with_prompt_longer_than_context_window,
     test_weight_tying_shares_the_same_array,
     test_checkpoint_roundtrip_reproduces_identical_logits,
     test_sampling_respects_top_k,

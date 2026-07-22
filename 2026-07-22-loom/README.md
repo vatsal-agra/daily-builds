@@ -2,12 +2,14 @@
 
 *A tiny transformer language model, built from scratch — no PyTorch, no TensorFlow.*
 
-**Status: Phase 2 (core build) complete.** All 4 required features work
-end-to-end: a from-scratch BPE tokenizer, a NumPy tensor autograd engine
-(every backward rule gradient-checked against finite differences), a
+**Status: Phase 3 (adversarial review) complete.** All 4 required features
+work end-to-end: a from-scratch BPE tokenizer, a NumPy tensor autograd
+engine (every backward rule gradient-checked against finite differences), a
 transformer trained on a real corpus with visibly decreasing loss, and
-autoregressive generation with temperature/top-k/top-p sampling. See
-[PLAN.md](./PLAN.md) for the full architecture and feature list.
+autoregressive generation with temperature/top-k/top-p sampling. A hostile
+review pass found and fixed two real bugs in the KV-cache/generation path
+— see [REVIEW.md](./REVIEW.md) for the full writeup. See
+[PLAN.md](./PLAN.md) for the architecture and feature list.
 
 ## Quick start
 
