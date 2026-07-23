@@ -11,6 +11,10 @@ import struct
 
 class Image:
     def __init__(self, width, height, pixels=None):
+        if width <= 0 or height <= 0:
+            raise ValueError(
+                f"image dimensions must be positive, got {width}x{height}"
+            )
         self.width = width
         self.height = height
         if pixels is None:

@@ -1,11 +1,18 @@
 """Command-line interface: `vignette encode|decode|analyze|compare`."""
 
 import argparse
+import os
 import sys
 import time
 
-from . import encoder, decoder, metrics, png, visualize
+from . import encoder, decoder, metrics, png, visualize, gallery
 from .image import Image, TEST_IMAGES
+
+
+def _ensure_parent_dir(path):
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
 
 
 def cmd_encode(args):
@@ -13,6 +20,7 @@ def cmd_encode(args):
     data, stats = encoder.encode(
         image, quality=args.quality, optimal_huffman=args.optimal_huffman
     )
+    _ensure_parent_dir(args.output)
     with open(args.output, "wb") as f:
         f.write(data)
     cstats = metrics.compression_stats(image, data)
@@ -32,6 +40,7 @@ def cmd_decode(args):
     t0 = time.time()
     image = decoder.decode(data)
     dt = time.time() - t0
+    _ensure_parent_dir(args.output)
     if args.output.lower().endswith(".ppm"):
         image.save_ppm(args.output)
     else:
@@ -58,8 +67,15 @@ def cmd_analyze(args):
 
 
 def cmd_report(args):
+    _ensure_parent_dir(args.output)
     path = visualize.build_report(args.output, size=args.size)
     print(f"wrote interactive HTML report -> {path}")
+
+
+def cmd_gallery(args):
+    _ensure_parent_dir(args.output)
+    path = gallery.build_gallery(args.output, size=args.size)
+    print(f"wrote quality-ladder gallery -> {path}")
 
 
 def cmd_compare(args):
@@ -104,6 +120,11 @@ def build_parser():
     r.add_argument("--size", type=int, default=192)
     r.set_defaults(func=cmd_report)
 
+    g = sub.add_parser("gallery", help="build the quality-ladder artifact gallery")
+    g.add_argument("output", nargs="?", default="out/gallery.html")
+    g.add_argument("--size", type=int, default=160)
+    g.set_defaults(func=cmd_gallery)
+
     c = sub.add_parser("compare", help="PSNR/SSIM between two PPM images")
     c.add_argument("a")
     c.add_argument("b")
@@ -120,8 +141,8 @@ def main(argv=None):
     except FileNotFoundError as e:
         print(f"error: file not found: {e.filename}", file=sys.stderr)
         sys.exit(1)
-    except (ValueError, decoder.JpegSyntaxError, EOFError) as e:
-        print(f"error: {e}", file=sys.stderr)
+    except (ValueError, IndexError, decoder.JpegSyntaxError, EOFError) as e:
+        print(f"error: malformed input ({e})", file=sys.stderr)
         sys.exit(1)
 
 
