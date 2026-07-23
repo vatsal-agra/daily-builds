@@ -6,8 +6,11 @@ underlies real-world image and video compression, implemented by hand from
 first principles down to real, spec-valid `.jpg` file bytes any image
 viewer can open.
 
-**Status: Phase 2 (core build) complete.** See [PLAN.md](./PLAN.md) for the
-full architecture and feature list.
+**Status: Phase 3 (adversarial review) complete.** See
+[PLAN.md](./PLAN.md) for the full architecture and feature list, and
+[REVIEW.md](./REVIEW.md) for the hostile-testing pass (a critical
+quantization-table indexing bug, an HTML report layout bug, and a CLI
+error-handling gap were found and fixed).
 
 ## What works right now
 
