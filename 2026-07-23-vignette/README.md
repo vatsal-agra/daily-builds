@@ -6,7 +6,7 @@ underlies real-world image and video compression, implemented by hand from
 first principles down to real, spec-valid `.jpg` file bytes any image
 viewer can open.
 
-**Status: Phase 4 (stretch + polish) complete.** See
+**Status: Phase 5 (verification) complete — 50/50 tests passing.** See
 [PLAN.md](./PLAN.md) for the full architecture and feature list, and
 [REVIEW.md](./REVIEW.md) for the hostile-testing pass (a critical
 quantization-table indexing bug, an HTML report layout bug, and a CLI
@@ -67,7 +67,25 @@ python3 -m vignette.cli report out/report.html
 deterministically, no external image files needed) or a path to a binary
 PPM (P6) file.
 
+## Tests
+
+```
+python3 -m unittest discover -s tests -v   # 50 tests
+./demo.sh                                  # tests + full CLI walkthrough
+```
+
+The suite covers the DCT (against a brute-force O(N^4) reference and a
+round-trip identity check), canonical Huffman coding (prefix-free codes,
+bit-stuffing, the optimal-table builder including its pathological-input
+fallback), the PNG encoder (chunk/CRC structure, decompressed-length math,
+a from-scratch unfilter that recovers the original pixels), PSNR/SSIM,
+image I/O, and the codec end-to-end: every test image at five qualities,
+non-multiple-of-16 dimensions, quality clamping, monotonic PSNR vs.
+quality, lossless-relative-to-standard-tables optimal Huffman, malformed/
+truncated input handling, and a regression test that pins down the
+quantization-table indexing bug found in Phase 3 so it can't come back
+unnoticed.
+
 ## Remaining work
 
-A full automated test suite and a runnable demo script (Phase 5) land
-next; this README will be updated after.
+None outstanding — see Phase 6 for the final feature summary below.
