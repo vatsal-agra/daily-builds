@@ -70,7 +70,16 @@ for i in $(seq 1 30); do
 done
 
 echo "-- GET /api/status --"
-curl -sf "http://127.0.0.1:$PORT/api/status" | python3 -m json.tool | head -12
+# Trim + print in Python rather than piping json.tool through `head`: under
+# `set -o pipefail`, head closing its read end early sends json.tool a
+# SIGPIPE, which fails the pipeline and (with `set -e`) kills the whole
+# script -- a real bug this exact script tripped over during Phase 4.
+curl -sf "http://127.0.0.1:$PORT/api/status" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+d['history'] = d['history'][-3:] + (['...'] if len(d['history']) > 3 else [])
+print(json.dumps(d, indent=2))
+"
 pass "status endpoint"
 
 echo "-- POST /api/generate --"

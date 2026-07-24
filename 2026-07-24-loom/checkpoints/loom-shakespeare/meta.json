@@ -1,5 +1,5 @@
 {
-  "step": 2100,
+  "step": 3000,
   "max_steps": 3000,
   "config": {
     "corpus": "/home/user/daily-builds/2026-07-24-loom/data/shakespeare.txt",
@@ -103,8 +103,44 @@
       "train_loss": 3.626078608518661,
       "val_loss": 3.7030328579533354,
       "elapsed_s": 773.8430504798889
+    },
+    {
+      "step": 2250,
+      "train_loss": 3.5601373718666074,
+      "val_loss": 3.725614535347914,
+      "elapsed_s": 824.6721723079681
+    },
+    {
+      "step": 2400,
+      "train_loss": 3.5676565420719095,
+      "val_loss": 3.6795878000868654,
+      "elapsed_s": 868.6213431358337
+    },
+    {
+      "step": 2550,
+      "train_loss": 3.5098082190081974,
+      "val_loss": 3.6705089974636826,
+      "elapsed_s": 916.357479095459
+    },
+    {
+      "step": 2700,
+      "train_loss": 3.5164126734162897,
+      "val_loss": 3.6451441983232384,
+      "elapsed_s": 961.3889465332031
+    },
+    {
+      "step": 2850,
+      "train_loss": 3.492417075833371,
+      "val_loss": 3.6281021334775083,
+      "elapsed_s": 1008.7595906257629
+    },
+    {
+      "step": 3000,
+      "train_loss": 3.4702641155286584,
+      "val_loss": 3.647801125455885,
+      "elapsed_s": 1054.4116809368134
     }
   ],
   "num_params": 186944,
-  "sample": "\nThe Herpold; quabiancy murness and I'll\nts to fovedes, begs beitien excou hand\nNo to al, the gicker to fir's pards.\n\nALYTHARD IV:\nAnk'd in thy death to his el\nAnd bray to death, and made's fosedy,\nAn your gake my tentre"
+  "sample": "\nThance.\n\nRY OMYORDY ONTIO:\nSo, goodself offord says! I'll sound,\nBe is a vishining again\nBut he well flase abjonder and the comes for I some.\n\nKING EBUCESTOBY VERMIO:\nIngete a Hall I'll laster,\nMy so pentsefe-"
 }
