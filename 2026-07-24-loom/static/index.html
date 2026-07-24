@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loom — a tiny GPT built from scratch</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%B5%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Loom<span class="loom-dot">.</span></h1>
+  </header>
+  <p class="tagline">A GPT-style transformer trained from scratch — hand-derived autodiff, a
+    from-scratch BPE tokenizer, and an Adam-trained model, generating text live below via real
+    HTTP calls to the loaded checkpoint.</p>
+
+  <div class="stat-row" id="stats">
+    <div class="stat">loading model stats…</div>
+  </div>
+
+  <div class="panel">
+    <h2>Training loss <span class="badge">live</span></h2>
+    <canvas id="chart" width="1000" height="260"></canvas>
+    <div class="legend">
+      <span><span class="sw" style="background:#7c9cff"></span>train loss</span>
+      <span><span class="sw" style="background:#f6a95f"></span>val loss</span>
+      <span><span class="sw" style="background:#555b6e"></span>random-init baseline (ln vocab_size)</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Generate</h2>
+    <textarea id="prompt" rows="3" placeholder="Type a prompt, e.g. &quot;ROMEO:&quot; or leave blank…"></textarea>
+    <div class="controls">
+      <div class="control">
+        <label>Temperature <span class="val" id="temp-val">0.80</span></label>
+        <input type="range" id="temp" min="0" max="2" step="0.05" value="0.8">
+      </div>
+      <div class="control">
+        <label>Top-k <span class="val" id="topk-val">40</span></label>
+        <input type="range" id="topk" min="0" max="200" step="1" value="40">
+      </div>
+      <div class="control">
+        <label>Top-p <span class="val" id="topp-val">0.00 (off)</span></label>
+        <input type="range" id="topp" min="0" max="1" step="0.05" value="0">
+      </div>
+      <div class="control">
+        <label>Length <span class="val" id="len-val">200</span></label>
+        <input type="range" id="len" min="20" max="500" step="10" value="200">
+      </div>
+    </div>
+    <div class="row">
+      <button id="gen-btn">Generate</button>
+      <button class="secondary" id="gen-clear">Clear</button>
+    </div>
+    <div class="output" id="gen-output"><span class="placeholder">Generated text will appear here…</span></div>
+    <div class="meta-line" id="gen-meta"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Attention visualizer</h2>
+    <p class="tagline" style="margin-top:-6px">Runs a real forward pass and renders the actual
+      per-head attention-weight matrix for the chosen layer/head — row = query token, column =
+      key token, brightness = attention weight.</p>
+    <input type="text" id="attn-prompt" placeholder="Prompt to inspect, e.g. &quot;To be or not to be&quot;" value="To be, or not to be:">
+    <div class="row" style="margin-top:12px">
+      <button id="attn-btn">Run attention</button>
+    </div>
+    <div class="attn-wrap" style="margin-top:14px">
+      <div class="attn-controls">
+        <div>
+          <label class="tagline" style="display:block;margin-bottom:4px">Layer</label>
+          <div class="select-list" id="layer-select"></div>
+        </div>
+        <div>
+          <label class="tagline" style="display:block;margin-bottom:4px">Head</label>
+          <div class="select-list" id="head-select"></div>
+        </div>
+      </div>
+      <div>
+        <canvas id="heatmap" width="400" height="400"></canvas>
+        <div class="tokens-strip" id="tokens-strip"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>Loom — every op's gradient is hand-derived and gradient-checked in tests/test_engine.py</footer>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
