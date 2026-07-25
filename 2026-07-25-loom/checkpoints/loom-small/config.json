@@ -5,5 +5,5 @@
   "n_head": 4,
   "n_layer": 3,
   "n_hidden": 384,
-  "step": 1000
+  "step": 2500
 }

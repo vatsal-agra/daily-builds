@@ -104,12 +104,28 @@ what `params()` already does more usefully. Deleted rather than kept
 
 ## Not fixed — accepted and documented as a known limitation
 
+- **Prompts that aren't fable-opening phrasing produce weak continuations.**
+  E.g. prompting with just `"The clever fox"` (mid-sentence-shaped, not how
+  any training fable begins) yields `" often supper's on nothing at all.\""`
+  — a real moral fragment from the corpus, latched onto because "fox" +
+  moral-adjacent phrasing co-occurs there, not a natural continuation of
+  the prompt. This is the expected cost of the deliberately low-entropy,
+  templated training corpus (see PLAN.md): the model is a strong
+  in-distribution generator (empty prompt or a real fable-style opener
+  works well) and a weak few-shot continuer of arbitrary text, because it
+  essentially never saw arbitrary text. Demonstrated, not hidden — `demo.sh`
+  prints this exact sample rather than only the clean ones.
+
 - **The model sometimes drifts its own protagonist mid-generation**
-  (e.g. starts a fable about a "beetle" and later calls it a "sparrow"),
-  independent of the corpus bug in #1. A 3-layer/96-dim model trained for
-  2500 steps has no explicit mechanism forcing long-range noun consistency
-  beyond what self-attention picks up incidentally, and the training
-  corpus's heavy word-level overlap between animals ("the {animal}...")
-  makes near-miss substitutions cheap in cross-entropy terms. This is
-  called out here rather than cherry-picking only the clean generations for
-  the README.
+  (e.g. starts a fable about a "squirrel" and later calls it a "swan"),
+  independent of the corpus bug in #1 — confirmed still present on the
+  model retrained on the *corrected* corpus. Sampling 5 fables from an
+  empty prompt at different seeds after the fix: 4/5 kept the same animal
+  from title to final sentence, 1/5 drifted ("The Clever Squirrel" ...
+  "The swan stopped short, unsure what to do next"). A 3-layer/96-dim
+  model trained for 2500 steps has no explicit mechanism forcing
+  long-range noun consistency beyond what self-attention picks up
+  incidentally, and the corpus's heavy word-level overlap between animal
+  slots ("the {animal}...") makes near-miss substitutions cheap in
+  cross-entropy terms. Called out here with the real failure rate rather
+  than cherry-picking only clean generations for the README.
