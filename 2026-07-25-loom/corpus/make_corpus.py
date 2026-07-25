@@ -136,17 +136,19 @@ def make_fable(rng):
         rng.choice(ENDINGS).format(animal=animal, want=want),
         rng.choice(MORAL_LEAD_INS).format(place=place) + " \"" + moral + "\"",
     ]
-    return " ".join(parts)
+    return animal, trait, " ".join(parts)
 
 
 def make_corpus(n_fables, seed):
     rng = random.Random(seed)
     fables = []
     for i in range(n_fables):
-        title_animal = rng.choice(ANIMALS)
-        title_trait = rng.choice(TRAITS)
-        title = f"The {title_trait.capitalize()} {title_animal.capitalize()}"
-        body = make_fable(rng)
+        animal, trait, body = make_fable(rng)
+        # the title names the SAME protagonist the body is about — a
+        # previous version sampled the title's animal independently of the
+        # body's, so titles routinely named the wrong animal (e.g. "The
+        # Patient Sparrow" about a beetle). See REVIEW.md.
+        title = f"The {trait.capitalize()} {animal.capitalize()}"
         fables.append(f"{title}\n\n{body}\n")
     return "\n\n".join(fables) + "\n"
 

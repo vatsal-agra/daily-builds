@@ -45,6 +45,16 @@ def clip_grad_global_norm(grads, max_norm):
     for g in grads.values():
         total_sq += float(np.sum(g * g))
     total_norm = math.sqrt(total_sq)
+    if not math.isfinite(total_norm):
+        # NaN/Inf compares False to everything, including `> max_norm` below —
+        # without this check a diverged training run would silently skip
+        # clipping and feed NaN straight into AdamW instead of failing loudly.
+        bad = [name for name, g in grads.items() if not np.all(np.isfinite(g))]
+        raise FloatingPointError(
+            f"non-finite gradient (norm={total_norm}) in: {bad[:5]}"
+            f"{'...' if len(bad) > 5 else ''} — training has diverged, likely from"
+            f" too high a learning rate."
+        )
     if total_norm > max_norm and total_norm > 0:
         scale = max_norm / (total_norm + 1e-6)
         for g in grads.values():

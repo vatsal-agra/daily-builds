@@ -13,7 +13,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from loom.model import GPT, GPTConfig
-from loom.optimizer import AdamW, clip_grad_global_norm
+from loom.optimizer import AdamW, clip_grad_global_norm, warmup_cosine_lr
 
 
 def test_shapes():
@@ -69,8 +69,34 @@ def test_overfit_tiny_batch():
     print(f"  overfit sanity check: loss {losses[0]:.3f} -> {losses[-1]:.4f} over 400 steps")
 
 
+def test_nan_grad_raises_instead_of_corrupting():
+    # NaN/Inf compare False to everything in Python, so `norm > max_norm`
+    # would silently skip clipping and let a diverged run's NaN gradients
+    # flow straight into AdamW. clip_grad_global_norm must catch this itself.
+    grads = {"a": np.array([np.nan, 1.0]), "b": np.array([2.0])}
+    try:
+        clip_grad_global_norm(grads, 1.0)
+        raised = False
+    except FloatingPointError:
+        raised = True
+    assert raised, "non-finite gradients must raise, not silently pass through unclipped"
+    print("  NaN-gradient guard: raises FloatingPointError instead of corrupting training")
+
+
+def test_lr_schedule_edges():
+    # warmup_steps=0 must not divide by zero, and step beyond total_steps
+    # must clamp at the configured floor rather than extrapolating the cosine.
+    lr0 = warmup_cosine_lr(0, 0, 100, 1e-3)
+    assert np.isfinite(lr0) and lr0 > 0
+    lr_far = warmup_cosine_lr(1000, 10, 100, 1e-3, min_lr_ratio=0.1)
+    assert abs(lr_far - 1e-4) < 1e-12, f"expected floor lr 1e-4, got {lr_far}"
+    print("  LR schedule edge cases (warmup=0, step past total_steps): OK")
+
+
 if __name__ == "__main__":
     test_shapes()
     test_causal_mask_no_leakage()
     test_overfit_tiny_batch()
+    test_nan_grad_raises_instead_of_corrupting()
+    test_lr_schedule_edges()
     print("ALL MODEL TESTS PASSED")

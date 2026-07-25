@@ -50,7 +50,13 @@ def save_checkpoint(path, model, tokenizer, config, step):
 
 
 def load_checkpoint(path):
-    with open(os.path.join(path, "config.json")) as f:
+    config_path = os.path.join(path, "config.json")
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(
+            f"no checkpoint at '{path}' (missing {config_path}). "
+            f"Run `python3 -m loom.cli train --ckpt-dir {path}` first."
+        )
+    with open(config_path) as f:
         cfg_data = json.load(f)
     config = GPTConfig(
         vocab_size=cfg_data["vocab_size"], n_ctx=cfg_data["n_ctx"],

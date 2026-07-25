@@ -5,13 +5,16 @@ scratch — tokenizer, self-attention, hand-derived backpropagation, and the
 training loop — in Python + NumPy. No `torch`, `jax`, `transformers`, or
 autograd library anywhere in this project.
 
-**Status: Phase 2 (core build) in progress.** All four required features are
-implemented and unit-tested — from-scratch BPE tokenizer, transformer layers
-with hand-derived backward passes (verified against numerical gradients),
-AdamW + LR schedule, and sampling (temperature/top-k/top-p) — and a full
-training run on the real corpus is underway to confirm end-to-end quality
-before Phase 3. See [`PLAN.md`](PLAN.md) for the full architecture and
-feature list.
+**Status: Phase 3 (adversarial review) in progress.** All four required
+features are implemented, tested, and trained end-to-end on the real
+corpus — loss fell from ~5.97 to ~0.18-0.20 with train/val tracking closely
+(no runaway overfitting), and the trained model produces genuinely
+grammatical, on-theme fable continuations. A hostile self-review found and
+fixed 6 real issues (see [`REVIEW.md`](REVIEW.md)), including a corpus
+data-generation bug and a silent-corruption path for diverged gradients;
+the model is being retrained from scratch on the corrected corpus before
+shipping. See [`PLAN.md`](PLAN.md) for the full architecture and feature
+list.
 
 ## What's implemented so far
 

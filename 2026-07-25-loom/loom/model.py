@@ -47,13 +47,6 @@ class GPT:
             p[f"ln_f.{k}"] = v
         return p
 
-    def named_modules(self):
-        mods = [("embed", self.embed)]
-        for i, b in enumerate(self.blocks):
-            mods.append((f"blocks.{i}", b))
-        mods.append(("ln_f", self.ln_f))
-        return mods
-
     # ------------------------------------------------------------ forward
     def forward(self, idx):
         x = self.embed.forward(idx)

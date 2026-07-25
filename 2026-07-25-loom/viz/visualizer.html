@@ -326,14 +326,20 @@ document.getElementById('fileInput').addEventListener('change', (e) => {
 });
 
 // Convenience: if served over http(s), try to auto-load ./trace.json.
-// Silently falls back to the file picker on file:// (fetch is blocked
-// there in most browsers) or if the file doesn't exist yet.
-fetch('trace.json').then(r => {
-  if (!r.ok) throw new Error('no trace.json next to this page yet');
-  return r.json();
-}).then(loadTrace).catch(() => {
-  setStatus('no trace loaded — use the file picker above (run `python3 -m loom.cli viz` first)');
-});
+// On file:// (how this is meant to be opened — "no server needed") the
+// browser blocks that fetch via CORS before we'd ever get to check
+// response.ok, logging a scary console error in the process — so skip the
+// attempt entirely there and go straight to the file-picker prompt.
+if (window.location.protocol === 'file:') {
+  setStatus('use the file picker above (run `python3 -m loom.cli viz` first)');
+} else {
+  fetch('trace.json').then(r => {
+    if (!r.ok) throw new Error('no trace.json next to this page yet');
+    return r.json();
+  }).then(loadTrace).catch(() => {
+    setStatus('no trace loaded — use the file picker above (run `python3 -m loom.cli viz` first)');
+  });
+}
 </script>
 </body>
 </html>
