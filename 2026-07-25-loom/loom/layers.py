@@ -131,7 +131,10 @@ class Embedding:
 
 class CausalSelfAttention:
     def __init__(self, n_embd, n_head, n_ctx, rng, std=0.02):
-        assert n_embd % n_head == 0
+        assert n_embd % n_head == 0, (
+            f"n_embd ({n_embd}) must be divisible by n_head ({n_head}) so every "
+            f"head gets an equal-sized slice of the embedding"
+        )
         self.n_embd = n_embd
         self.n_head = n_head
         self.head_dim = n_embd // n_head
