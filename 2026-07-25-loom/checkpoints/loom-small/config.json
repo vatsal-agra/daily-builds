@@ -1,0 +1,9 @@
+{
+  "vocab_size": 384,
+  "n_ctx": 64,
+  "n_embd": 96,
+  "n_head": 4,
+  "n_layer": 3,
+  "n_hidden": 384,
+  "step": 1000
+}
