@@ -1,0 +1,3 @@
+The Voyager Probes Leave the Solar System
+
+Launched in 1977, Voyager 1 and Voyager 2 used a rare alignment of the outer planets to fly past Jupiter, Saturn, Uranus, and Neptune, a trajectory called a gravity assist grand tour that would not recur for 175 years. Voyager 1 is now the most distant human-made object, having crossed the heliopause into interstellar space in 2012. Both probes still transmit data back to Earth using a radioisotope thermoelectric generator, though its power output declines every year and mission engineers have had to turn off instruments one by one to conserve electricity. Each carries a golden record with sounds and images of Earth, intended as a message in case either probe is ever found by another civilization.

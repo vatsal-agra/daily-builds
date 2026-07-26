@@ -1,0 +1,3 @@
+Lisp and the Idea of Code as Data
+
+Lisp, developed by John McCarthy in 1958, represents both programs and data as nested lists, which means a Lisp program can construct and then execute other Lisp code at runtime, a technique called homoiconicity. Macros exploit this directly, transforming code before it is evaluated rather than just wrapping a function call, which lets programmers extend the language's own syntax. Lisp introduced ideas that took decades to reach mainstream languages, including garbage collection, recursion as a primary control structure, and first-class functions that can be passed around like any other value. Modern dialects like Clojure and Scheme carry these ideas forward, often emphasizing immutable data structures.

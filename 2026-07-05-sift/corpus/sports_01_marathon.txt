@@ -1,0 +1,3 @@
+Pacing Strategy in Marathon Running
+
+The marathon distance of 42.195 kilometers was standardized only in 1921, after the 1908 London Olympics extended the route so the race could finish in front of the royal box. Elite marathoners run a negative split, covering the second half slightly faster than the first, because starting too fast depletes glycogen stores and leads to the severe late-race slowdown runners call hitting the wall. Carbohydrate loading in the days before a race and consuming gels during it are both attempts to delay that depletion. Modern carbon-plated racing shoes, which store and return energy with each stride, have been credited with meaningfully lowering world-class times since their introduction.

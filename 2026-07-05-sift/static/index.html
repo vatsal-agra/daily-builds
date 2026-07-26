@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sift</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --text: #1b1e24;
+    --muted: #6b7280;
+    --border: #e4e6ea;
+    --accent: #3454d1;
+    --accent-soft: #eef1fd;
+    --mark-bg: #fff1a8;
+    --mark-text: #3a2e00;
+    --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --panel: #1c1f26;
+      --text: #e7e9ee;
+      --muted: #9aa1ad;
+      --border: #2b2f38;
+      --accent: #7c94ff;
+      --accent-soft: #232a45;
+      --mark-bg: #55480a;
+      --mark-text: #ffe38a;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 56px 20px 80px;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  h1 {
+    font-size: 2.1rem;
+    letter-spacing: -0.02em;
+    margin: 0 0 4px;
+  }
+  h1 span {
+    color: var(--accent);
+  }
+  .tagline {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin: 0;
+  }
+  .search-box {
+    display: flex;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 6px;
+    box-shadow: var(--shadow);
+  }
+  .search-box input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    outline: none;
+    font-size: 1rem;
+    padding: 12px 14px;
+    color: var(--text);
+    font-family: inherit;
+  }
+  .search-box input::placeholder { color: var(--muted); }
+  .search-box button {
+    border: none;
+    background: var(--accent);
+    color: white;
+    font-weight: 600;
+    padding: 0 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.95rem;
+  }
+  .search-box button:active { transform: translateY(1px); }
+  .syntax-hint {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin: 10px 4px 0;
+    line-height: 1.5;
+  }
+  .syntax-hint code {
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.76rem;
+  }
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin: 26px 2px 10px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    min-height: 1.2em;
+  }
+  .results { display: flex; flex-direction: column; gap: 14px; }
+  .result-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow);
+    animation: fade-in 0.18s ease-out;
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(3px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .result-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+  .result-path {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    margin-bottom: 8px;
+  }
+  .result-score {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-left: 8px;
+  }
+  .result-snippet {
+    color: var(--text);
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+  .result-snippet mark {
+    background: var(--mark-bg);
+    color: var(--mark-text);
+    border-radius: 3px;
+    padding: 0 2px;
+  }
+  .empty-state, .error-state {
+    text-align: center;
+    color: var(--muted);
+    padding: 40px 10px;
+    font-size: 0.95rem;
+  }
+  .error-state { color: #c0392b; }
+  .suggestions { margin-top: 8px; }
+  .suggestions button {
+    border: 1px solid var(--border);
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 0.82rem;
+    margin: 3px 4px;
+    cursor: pointer;
+  }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-top: 60px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>S<span>ift</span></h1>
+    <p class="tagline">a full-text search engine, built from scratch</p>
+  </header>
+
+  <div class="search-box">
+    <input id="q" type="text" placeholder="Try: mars rover, &quot;black hole&quot;, quan*, pytho~2, space AND NOT mars" autofocus>
+    <button id="go">Search</button>
+  </div>
+  <div class="syntax-hint">
+    <code>AND</code> <code>OR</code> <code>NOT</code> · <code>"exact phrase"</code> · <code>prefix*</code> wildcard · <code>term~2</code> fuzzy
+  </div>
+
+  <div class="meta-row" id="meta"></div>
+  <div id="output"></div>
+
+  <footer id="stats">Sift</footer>
+</div>
+
+<script>
+const qEl = document.getElementById('q');
+const goEl = document.getElementById('go');
+const outEl = document.getElementById('output');
+const metaEl = document.getElementById('meta');
+const statsEl = document.getElementById('stats');
+
+function escapeAttr(s) {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+async function loadStats() {
+  try {
+    const res = await fetch('/api/stats');
+    const data = await res.json();
+    statsEl.textContent = `${data.doc_count} documents indexed · ${data.vocab_size} unique terms`;
+  } catch (e) {
+    statsEl.textContent = 'Sift';
+  }
+}
+
+function renderResults(data) {
+  metaEl.textContent = '';
+  outEl.innerHTML = '';
+
+  if (data.error) {
+    metaEl.textContent = '';
+    outEl.innerHTML = `<div class="error-state">Query error: ${escapeAttr(data.error)}</div>`;
+    return;
+  }
+
+  if (!data.query) {
+    outEl.innerHTML = '';
+    return;
+  }
+
+  metaEl.textContent = `${data.results.length} result${data.results.length === 1 ? '' : 's'} in ${data.elapsed_ms} ms`;
+
+  if (data.results.length === 0) {
+    let html = `<div class="empty-state">No results for “${escapeAttr(data.query)}”.`;
+    if (data.suggestions && data.suggestions.length) {
+      html += `<div class="suggestions">Did you mean: ` +
+        data.suggestions.map(s => `<button data-term="${escapeAttr(s)}">${s}</button>`).join('') +
+        `</div>`;
+    }
+    html += `</div>`;
+    outEl.innerHTML = html;
+    outEl.querySelectorAll('.suggestions button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        qEl.value = btn.dataset.term;
+        runSearch();
+      });
+    });
+    return;
+  }
+
+  const container = document.createElement('div');
+  container.className = 'results';
+  for (const r of data.results) {
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    card.innerHTML = `
+      <div class="result-title">${escapeAttr(r.title)}<span class="result-score">${r.score.toFixed(3)}</span></div>
+      <div class="result-path">${escapeAttr(r.path)}</div>
+      <div class="result-snippet">${r.snippet_html || ''}</div>
+    `;
+    container.appendChild(card);
+  }
+  outEl.appendChild(container);
+}
+
+let debounceTimer = null;
+async function runSearch() {
+  const query = qEl.value.trim();
+  if (!query) {
+    metaEl.textContent = '';
+    outEl.innerHTML = '';
+    return;
+  }
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=10`);
+    const data = await res.json();
+    renderResults(data);
+  } catch (e) {
+    outEl.innerHTML = `<div class="error-state">Could not reach the Sift server.</div>`;
+  }
+}
+
+qEl.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(runSearch, 220);
+});
+qEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { clearTimeout(debounceTimer); runSearch(); }
+});
+goEl.addEventListener('click', runSearch);
+
+loadStats();
+</script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+The Physics of a Tennis Serve
+
+A professional serve can exceed 200 kilometers per hour, generated through a kinetic chain that starts with the legs and hips and transfers energy up through the torso, shoulder, and finally the wrist snap at contact. Topspin, imparted by brushing up the back of the ball, causes it to dip down into the court due to the Magnus effect, letting players hit harder while still keeping the ball in. Surface matters enormously: grass produces a low, fast bounce that rewards serve-and-volley play, while clay slows the ball and gives opponents more time to reach even a well-placed serve. Racket strings are strung at different tensions to trade off power against control, with looser strings launching the ball faster.
