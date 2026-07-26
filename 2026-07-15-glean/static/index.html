@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glean</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --text: #1a1d23;
+    --muted: #6b7280;
+    --border: #e3e5e9;
+    --accent: #3452d9;
+    --accent-soft: #e8ecff;
+    --mark-bg: #ffe27a;
+    --mark-text: #4a3900;
+    --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161b;
+      --surface: #1c1f26;
+      --text: #e7e9ee;
+      --muted: #9aa1ae;
+      --border: #2c303a;
+      --accent: #7f96ff;
+      --accent-soft: #262c47;
+      --mark-bg: #6a5300;
+      --mark-text: #ffe9a8;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 8vh 20px 60px;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  h1 {
+    font-size: 2.1rem;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+  }
+  h1 .dot { color: var(--accent); }
+  .tagline {
+    color: var(--muted);
+    font-size: 0.92rem;
+    margin: 0;
+  }
+  .search-box {
+    position: relative;
+  }
+  input#q {
+    width: 100%;
+    font-size: 1.05rem;
+    padding: 14px 46px 14px 18px;
+    border-radius: 12px;
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+    box-shadow: var(--shadow);
+    transition: border-color 120ms ease;
+  }
+  input#q:focus { border-color: var(--accent); }
+  .search-icon {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .autocomplete {
+    position: absolute;
+    left: 0; right: 0;
+    top: calc(100% + 6px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    z-index: 5;
+    display: none;
+  }
+  .autocomplete.open { display: block; }
+  .autocomplete div {
+    padding: 9px 16px;
+    cursor: pointer;
+    font-size: 0.94rem;
+  }
+  .autocomplete div:hover,
+  .autocomplete div.active {
+    background: var(--accent-soft);
+  }
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin: 14px 2px 6px;
+    min-height: 18px;
+  }
+  .suggest {
+    margin: 10px 2px 18px;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+  .suggest button {
+    border: none;
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    margin: 0 4px;
+  }
+  .results { display: flex; flex-direction: column; gap: 12px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow);
+    animation: rise 180ms ease both;
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .card-top {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .card-title { font-weight: 600; font-size: 1.02rem; }
+  .badge {
+    font-size: 0.72rem;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 999px;
+    padding: 2px 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .score {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .snippet { color: var(--muted); font-size: 0.93rem; }
+  .snippet mark {
+    background: var(--mark-bg);
+    color: var(--mark-text);
+    border-radius: 3px;
+    padding: 0 2px;
+  }
+  .empty, .hint {
+    text-align: center;
+    color: var(--muted);
+    margin-top: 40px;
+    font-size: 0.95rem;
+  }
+  .error {
+    text-align: center;
+    color: #c0392b;
+    margin-top: 20px;
+    font-size: 0.92rem;
+  }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-top: 48px;
+  }
+  kbd {
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 0 5px;
+    font-size: 0.75rem;
+    background: var(--surface);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Glean<span class="dot">.</span></h1>
+    <p class="tagline">a full-text search engine built from scratch — inverted index, BM25, boolean &amp; phrase queries</p>
+  </header>
+
+  <div class="search-box">
+    <input id="q" type="text" autocomplete="off" spellcheck="false"
+           placeholder='Try: roman empire, &quot;printing press&quot;, chess AND notation, onion NEAR/3 cry'>
+    <span class="search-icon">⌕</span>
+    <div id="autocomplete" class="autocomplete"></div>
+  </div>
+
+  <div class="meta-row">
+    <span id="stats"></span>
+    <span id="timing"></span>
+  </div>
+  <div id="suggest" class="suggest" style="display:none"></div>
+
+  <div id="results" class="results"></div>
+  <div id="hint" class="hint">Start typing to search 50 hand-written articles across technology, science, history, cooking, and sports.</div>
+</div>
+
+<footer>
+  Glean — Porter stemmer · positional inverted index · BM25 · fuzzy suggestions · autocomplete
+</footer>
+
+<script>
+(function () {
+  const qInput = document.getElementById('q');
+  const resultsEl = document.getElementById('results');
+  const hintEl = document.getElementById('hint');
+  const statsEl = document.getElementById('stats');
+  const timingEl = document.getElementById('timing');
+  const suggestEl = document.getElementById('suggest');
+  const acEl = document.getElementById('autocomplete');
+
+  let acItems = [];
+  let acIndex = -1;
+  let debounceTimer = null;
+  let acDebounceTimer = null;
+
+  function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  fetch('/api/stats').then(r => r.json()).then(s => {
+    statsEl.textContent = `${s.documents} documents · ${s.vocabulary} terms`;
+  }).catch(() => {});
+
+  function closeAutocomplete() {
+    acEl.classList.remove('open');
+    acEl.innerHTML = '';
+    acItems = [];
+    acIndex = -1;
+  }
+
+  function renderAutocomplete(words) {
+    acItems = words;
+    acIndex = -1;
+    if (!words.length) { closeAutocomplete(); return; }
+    acEl.innerHTML = words.map(w => `<div>${escapeHtml(w)}</div>`).join('');
+    acEl.classList.add('open');
+    [...acEl.children].forEach((el, i) => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        qInput.value = words[i];
+        closeAutocomplete();
+        runSearch();
+      });
+    });
+  }
+
+  function fetchAutocomplete() {
+    const lastWord = qInput.value.trim().split(/\s+/).pop() || '';
+    if (lastWord.length < 2) { closeAutocomplete(); return; }
+    fetch('/api/autocomplete?q=' + encodeURIComponent(lastWord))
+      .then(r => r.json())
+      .then(data => renderAutocomplete(data.completions || []))
+      .catch(() => closeAutocomplete());
+  }
+
+  function renderResults(data) {
+    suggestEl.style.display = 'none';
+    suggestEl.innerHTML = '';
+
+    if (data.error) {
+      hintEl.style.display = 'none';
+      resultsEl.innerHTML = `<div class="error">Query error: ${escapeHtml(data.error)}</div>`;
+      return;
+    }
+
+    if (!data.results.length) {
+      resultsEl.innerHTML = '';
+      hintEl.style.display = 'block';
+      if (data.query.trim()) {
+        hintEl.textContent = 'No results.';
+        const sugg = data.suggestions || {};
+        const terms = Object.keys(sugg);
+        if (terms.length) {
+          suggestEl.style.display = 'block';
+          const parts = terms.map(t => {
+            const cands = sugg[t].slice(0, 3).map(w =>
+              `<button data-word="${escapeHtml(w)}">${escapeHtml(w)}</button>`
+            ).join('');
+            return `did you mean ${cands}?`;
+          });
+          suggestEl.innerHTML = parts.join(' ');
+          suggestEl.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', () => {
+              qInput.value = btn.dataset.word;
+              runSearch();
+            });
+          });
+        }
+      } else {
+        hintEl.textContent = 'Start typing to search 50 hand-written articles across technology, science, history, cooking, and sports.';
+      }
+      return;
+    }
+
+    hintEl.style.display = 'none';
+    resultsEl.innerHTML = data.results.map(r => `
+      <div class="card">
+        <div class="card-top">
+          <span class="card-title">${escapeHtml(r.title)}</span>
+          <span class="badge">${escapeHtml(r.path)}</span>
+          <span class="score">${r.score.toFixed(3)}</span>
+        </div>
+        <div class="snippet">${r.snippet_html}</div>
+      </div>
+    `).join('');
+  }
+
+  function runSearch() {
+    // Note: deliberately does NOT close the autocomplete dropdown — this
+    // runs on every debounced keystroke, and closing it here would race
+    // the autocomplete fetch (which usually resolves first on localhost)
+    // and immediately hide the dropdown right after it opens.
+    const q = qInput.value;
+    const t0 = performance.now();
+    fetch('/api/search?q=' + encodeURIComponent(q) + '&k=10')
+      .then(r => r.json())
+      .then(data => {
+        timingEl.textContent = q.trim() ? `${Math.round(performance.now() - t0)} ms` : '';
+        renderResults(data);
+      })
+      .catch(() => {
+        timingEl.textContent = '';
+        resultsEl.innerHTML = '<div class="error">Could not reach the search server.</div>';
+      });
+  }
+
+  qInput.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    clearTimeout(acDebounceTimer);
+    debounceTimer = setTimeout(runSearch, 160);
+    acDebounceTimer = setTimeout(fetchAutocomplete, 120);
+  });
+
+  qInput.addEventListener('keydown', (e) => {
+    if (acEl.classList.contains('open')) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        acIndex = Math.min(acIndex + 1, acItems.length - 1);
+        [...acEl.children].forEach((el, i) => el.classList.toggle('active', i === acIndex));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        acIndex = Math.max(acIndex - 1, -1);
+        [...acEl.children].forEach((el, i) => el.classList.toggle('active', i === acIndex));
+        return;
+      }
+      if (e.key === 'Tab' && acIndex >= 0) {
+        e.preventDefault();
+        qInput.value = acItems[acIndex];
+        closeAutocomplete();
+        return;
+      }
+      if (e.key === 'Escape') { closeAutocomplete(); return; }
+    }
+    if (e.key === 'Enter') {
+      if (acIndex >= 0) {
+        qInput.value = acItems[acIndex];
+      }
+      clearTimeout(debounceTimer);
+      closeAutocomplete();
+      runSearch();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!acEl.contains(e.target) && e.target !== qInput) closeAutocomplete();
+  });
+
+  qInput.focus();
+})();
+</script>
+</body>
+</html>
