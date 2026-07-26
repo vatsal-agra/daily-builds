@@ -1,0 +1,60 @@
+{
+  "CDCL solver": [
+    "2026-06-16-backjump", "2026-06-16-conflux", "2026-06-16-crux",
+    "2026-06-16-resolvent", "2026-06-17-resolvent", "2026-06-16-resolvent-bpmxt2",
+    "LEDGER.md#2026-06-16 — Backjump", "LEDGER.md#2026-06-16 — Conflux",
+    "LEDGER.md#2026-06-16 — Crux", "LEDGER.md#2026-06-16 — Resolvent",
+    "LEDGER.md#2026-06-17 — Resolvent",
+    "LEDGER.md#2026-06-16 — Resolvent (branch bpmxt2 — folder `2026-06-16-resolvent-bpmxt2/`)"
+  ],
+  "chess engine": [
+    "2026-06-18-gambit", "2026-06-18-gambit-8qd3ko",
+    "LEDGER.md#2026-06-18 — Gambit",
+    "LEDGER.md#2026-06-18 — Gambit (branch 8qd3ko — folder `2026-06-18-gambit-8qd3ko/`)"
+  ],
+  "quantum circuit simulator": [
+    "2026-06-25-qsim", "LEDGER.md#2026-06-25 — QSim"
+  ],
+  "Monte Carlo rendering": [
+    "2026-06-19-lumen", "2026-06-20-lumina", "2026-06-21-pathtracer", "2026-06-23-lumina",
+    "LEDGER.md#2026-06-19 — Lumen", "LEDGER.md#2026-06-20 — Lumina",
+    "LEDGER.md#2026-06-21 — Pathtracer", "LEDGER.md#2026-06-23 — Lumina"
+  ],
+  "spreadsheet formula engine": [
+    "2026-07-06-formulate", "LEDGER.md#2026-07-06 — Formulate"
+  ],
+  "version control system": [
+    "2026-07-02-graft", "2026-07-03-strata", "2026-07-04-palimpsest",
+    "LEDGER.md#2026-07-02 — Graft",
+    "LEDGER.md#2026-07-03 — Strata (folder `2026-07-03-strata/`)",
+    "LEDGER.md#2026-07-04 — Palimpsest"
+  ],
+  "data compression codec": [
+    "2026-06-17-cinch", "2026-06-17-shannon",
+    "LEDGER.md#2026-06-17 — Cinch", "LEDGER.md#2026-06-17 — Shannon"
+  ],
+  "vector search HNSW": [
+    "2026-06-27-vecnn", "LEDGER.md#2026-06-27 — VecNN"
+  ],
+  "cryptography AES RSA": [
+    "2026-06-30-cryptex", "2026-07-01-ironkey",
+    "LEDGER.md#2026-06-30 — Cryptex", "LEDGER.md#2026-07-01 — Ironkey"
+  ],
+  "physics simulation": [
+    "2026-06-15-tumble", "2026-06-26-flux",
+    "LEDGER.md#2026-06-15 — Tumble", "LEDGER.md#2026-06-26 — Flux"
+  ],
+  "raft consensus": [
+    "2026-06-15-quorum", "LEDGER.md#2026-06-15 — Quorum"
+  ],
+  "regex engine NFA": [
+    "2026-06-12-regexlab", "LEDGER.md#2026-06-12 — RegexLab"
+  ],
+  "SQL database engine": [
+    "2026-06-15-picosql", "LEDGER.md#2026-06-15 — PicoSQL"
+  ],
+  "key value store LSM": [
+    "2026-06-28-kvstore",
+    "LEDGER.md#2026-06-28 — Strata (folder `2026-06-28-kvstore/`)"
+  ]
+}
