@@ -1,0 +1,21 @@
+fn collatz_steps(n) -> i32 {
+    let steps = 0;
+    while (n != 1) {
+        if (n % 2 == 0) {
+            n = n / 2;
+        } else {
+            n = 3 * n + 1;
+        }
+        steps = steps + 1;
+    }
+    return steps;
+}
+
+fn main() -> i32 {
+    let i = 1;
+    while (i <= 20) {
+        print(collatz_steps(i));
+        i = i + 1;
+    }
+    return 0;
+}
