@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Glean</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #2a2f3a;
+    --text: #e8eaed;
+    --muted: #8b91a0;
+    --accent: #6ea8fe;
+    --mark-bg: #6ea8fe33;
+    --mark-text: #cfe0ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 48px 20px 80px; }
+  h1 {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h1 .dot { color: var(--accent); }
+  .tagline { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+  .search-box {
+    display: flex;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px;
+  }
+  .search-box input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 16px;
+    padding: 10px 12px;
+  }
+  .search-box button {
+    background: var(--accent);
+    color: #0b1220;
+    border: none;
+    border-radius: 8px;
+    padding: 0 18px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .search-box button:hover { filter: brightness(1.08); }
+  .meta { color: var(--muted); font-size: 13px; margin: 14px 2px; min-height: 18px; }
+  .result {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 2px;
+  }
+  .result:last-child { border-bottom: none; }
+  .result .path {
+    color: var(--muted);
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .result h3 {
+    margin: 4px 0 6px;
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .result .score {
+    color: var(--accent);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    margin-left: 8px;
+    font-weight: 400;
+  }
+  .result p {
+    margin: 0;
+    color: #c6c9d2;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  mark {
+    background: var(--mark-bg);
+    color: var(--mark-text);
+    padding: 0 2px;
+    border-radius: 3px;
+  }
+  .empty, .suggestion {
+    color: var(--muted);
+    font-size: 14px;
+    padding: 20px 2px;
+  }
+  .suggestion button {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    border-radius: 6px;
+    padding: 2px 8px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 24px; line-height: 1.6; }
+  .hint code {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f7f8fa; --panel: #ffffff; --border: #e2e5ea;
+      --text: #1c1f26; --muted: #6b7280; --accent: #2563eb;
+      --mark-bg: #dbeafe; --mark-text: #1e3a8a;
+    }
+    .result p { color: #333; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="dot">&#9679;</span> Glean</h1>
+  <p class="tagline" id="tagline">A from-scratch full-text search engine.</p>
+
+  <div class="search-box">
+    <input id="q" type="text" placeholder="raft consensus, &quot;ray tracing&quot;, chess AND transposition…" autofocus>
+    <button id="go">Search</button>
+  </div>
+  <div class="meta" id="meta"></div>
+  <div id="results"></div>
+
+  <div class="hint">
+    Syntax: bare words are ranked OR (<code>bloom filter</code>), <code>AND</code>/<code>NOT</code>
+    filter results, <code>"quoted text"</code> requires an exact phrase. Misspelled terms are
+    fuzzy-corrected automatically.
+  </div>
+</div>
+<script>
+const q = document.getElementById('q');
+const go = document.getElementById('go');
+const meta = document.getElementById('meta');
+const results = document.getElementById('results');
+const tagline = document.getElementById('tagline');
+
+fetch('/api/stats').then(r => r.json()).then(s => {
+  tagline.textContent = `Searching ${s.documents} document(s), ${s.vocabulary} unique terms — ${s.root}`;
+}).catch(() => {});
+
+function render(data, query) {
+  results.innerHTML = '';
+  if (data.error) {
+    meta.textContent = '';
+    results.innerHTML = `<div class="empty">Query error: ${escapeHtml(data.error)}</div>`;
+    return;
+  }
+  if (data.results.length === 0) {
+    meta.textContent = '';
+    let html = `<div class="empty">No results for "${escapeHtml(query)}".</div>`;
+    if (data.suggestions.length) {
+      html += `<div class="suggestion">Did you mean ` +
+        data.suggestions.map(s => `<button onclick="runQuery('${escapeAttr(s)}')">${escapeHtml(s)}</button>`).join(' ') +
+        `?</div>`;
+    }
+    results.innerHTML = html;
+    return;
+  }
+  meta.textContent = `${data.results.length} result(s)` +
+    (data.suggestions.length ? ` — typo-corrected via: ${data.suggestions.join(', ')}` : '');
+  results.innerHTML = data.results.map(r => `
+    <div class="result">
+      <div class="path">${escapeHtml(r.path)}</div>
+      <h3>${escapeHtml(r.title)}<span class="score">score ${r.score.toFixed(3)}</span></h3>
+      <p>${r.snippet}</p>
+    </div>
+  `).join('');
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) { return s.replace(/'/g, "\\'"); }
+
+function runQuery(text) {
+  q.value = text;
+  search();
+}
+
+function search() {
+  const query = q.value.trim();
+  if (!query) { results.innerHTML = ''; meta.textContent = ''; return; }
+  meta.textContent = 'Searching…';
+  fetch('/api/search?q=' + encodeURIComponent(query) + '&limit=20')
+    .then(r => r.json())
+    .then(data => render(data, query))
+    .catch(err => { meta.textContent = ''; results.innerHTML = `<div class="empty">Request failed: ${escapeHtml(String(err))}</div>`; });
+}
+
+go.addEventListener('click', search);
+q.addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+</script>
+</body>
+</html>
