@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Loom — Attention Visualizer</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --text: #e8eaed; --muted: #9099a8;
+    --accent: #7dd3fc; --grid: #2a2f3a; --border: #2a2f3a;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f6f7f9; --panel: #ffffff; --text: #1b1e24; --muted: #5b6270; --grid: #e3e6eb; --border: #d9dce2; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 4px 0; }
+  .sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 18px; }
+  .layout { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; overflow: auto;
+  }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+  button {
+    background: var(--accent); color: #062; border: none; border-radius: 8px;
+    padding: 7px 14px; font-weight: 600; cursor: pointer; font-size: 0.85rem;
+  }
+  button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  input[type=range] { flex: 1; min-width: 120px; }
+  select {
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 8px; font-size: 0.85rem;
+  }
+  .text-view {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.05rem;
+    line-height: 1.9; white-space: pre-wrap; word-break: break-all; margin-bottom: 6px;
+  }
+  .text-view span.tok { padding: 1px 0; border-radius: 3px; }
+  .text-view span.cur { background: var(--accent); color: #062; font-weight: 700; }
+  .text-view span.ctx { text-decoration: underline; text-decoration-color: var(--muted); }
+  .heads { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+  .head-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+  .head-title { font-size: 0.72rem; color: var(--muted); margin-bottom: 6px; text-align: center; }
+  canvas { image-rendering: pixelated; width: 100%; height: auto; display: block; border-radius: 4px; }
+  .legend { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--muted); margin-top: 10px; }
+  .legend .swatch { width: 80px; height: 10px; border-radius: 4px;
+    background: linear-gradient(90deg, #0b1220, var(--accent)); }
+  .stat { font-size: 0.8rem; color: var(--muted); margin: 2px 0; }
+  .frame-label { font-weight: 600; }
+  .top-row { display:flex; justify-content: space-between; align-items:baseline; flex-wrap: wrap; gap: 8px;}
+</style>
+</head>
+<body>
+  <h1>Loom — Attention Visualizer</h1>
+  <div class="sub">A real generation run from a from-scratch transformer, replayed token by token. Each cell shows how much a query position attends to a key position (rows = query, columns = key; causal mask keeps the upper triangle at zero).</div>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="top-row">
+        <div class="controls">
+          <button id="playBtn">▶ Play</button>
+          <button id="prevBtn" class="secondary">◀ Step</button>
+          <button id="nextBtn" class="secondary">Step ▶</button>
+        </div>
+        <div class="controls">
+          <label class="stat">Layer
+            <select id="layerSel"></select>
+          </label>
+        </div>
+      </div>
+      <input type="range" id="frameSlider" min="0" max="0" value="0" step="1">
+      <div class="stat"><span class="frame-label" id="frameLabel"></span></div>
+
+      <div class="text-view" id="textView"></div>
+
+      <div class="heads" id="heads"></div>
+      <div class="legend"><span class="swatch"></span> low → high attention weight</div>
+    </div>
+
+    <div class="panel">
+      <h3 style="margin-top:0;">About this run</h3>
+      <p class="stat">Every heatmap here is the model's <em>actual</em> softmax(QK^T/√d) output captured live during autoregressive sampling — nothing is faked or re-simulated for display.</p>
+      <p class="stat" id="metaText"></p>
+      <h3>Reading the grid</h3>
+      <p class="stat">Row <b>i</b>, column <b>j</b>: how much token <b>i</b> (query) attends to token <b>j</b> (key) when predicting what comes after position <b>i</b>. Because generation is causal, token <b>i</b> can only see <b>j ≤ i</b> — the upper-right triangle of every grid is always exactly zero.</p>
+      <p class="stat">Step through frames to watch attention patterns shift as new tokens are generated — some heads specialize in "attend to the immediately previous token," others spread across whole words or punctuation.</p>
+    </div>
+  </div>
+
+<script>
+const DATA = __LOOM_DATA__;
+const frames = DATA.frames;
+const fullText = DATA.text;
+
+let frameIdx = 0;
+let layerIdx = 0;
+let playing = false;
+let playTimer = null;
+
+const frameSlider = document.getElementById('frameSlider');
+const layerSel = document.getElementById('layerSel');
+const frameLabel = document.getElementById('frameLabel');
+const textView = document.getElementById('textView');
+const headsDiv = document.getElementById('heads');
+const metaText = document.getElementById('metaText');
+const playBtn = document.getElementById('playBtn');
+
+if (frames.length === 0) {
+  document.body.innerHTML = '<h1>Loom — Attention Visualizer</h1><p>No frames captured.</p>';
+} else {
+  const numLayers = frames[0].layers.length;
+  const numHeads = frames[0].layers[0].length;
+  frameSlider.max = frames.length - 1;
+  for (let l = 0; l < numLayers; l++) {
+    const opt = document.createElement('option');
+    opt.value = l; opt.textContent = `Layer ${l + 1} / ${numLayers}`;
+    layerSel.appendChild(opt);
+  }
+  metaText.textContent = `${frames.length} generation steps captured, ${numLayers} layers × ${numHeads} heads each.`;
+
+  function drawHead(canvas, matrix) {
+    const T = matrix.length;
+    canvas.width = T; canvas.height = T;
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(T, T);
+    for (let i = 0; i < T; i++) {
+      for (let j = 0; j < T; j++) {
+        const v = matrix[i][j];
+        const idx = (i * T + j) * 4;
+        const r = 11 + v * (125 - 11);
+        const g = 18 + v * (211 - 18);
+        const b = 32 + v * (252 - 32);
+        img.data[idx] = r; img.data[idx+1] = g; img.data[idx+2] = b; img.data[idx+3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  function render() {
+    const frame = frames[frameIdx];
+    frameLabel.textContent = `Frame ${frameIdx + 1} / ${frames.length} — context length ${frame.tokens.length}`;
+    layerSel.value = layerIdx;
+
+    // text view: show full text, highlight the current context window + last token
+    const upto = frame.tokens.length;
+    const shown = fullText.slice(0, upto);
+    const before = shown.slice(0, -1).replace(/</g, '&lt;');
+    const last = shown.slice(-1).replace(/</g, '&lt;');
+    textView.innerHTML = `<span class="tok ctx">${before}</span><span class="tok cur">${last || ' '}</span>`;
+
+    headsDiv.innerHTML = '';
+    const layerData = frame.layers[layerIdx];
+    layerData.forEach((headMatrix, h) => {
+      const card = document.createElement('div');
+      card.className = 'head-card';
+      const title = document.createElement('div');
+      title.className = 'head-title';
+      title.textContent = `Head ${h + 1}`;
+      const canvas = document.createElement('canvas');
+      drawHead(canvas, headMatrix);
+      card.appendChild(title);
+      card.appendChild(canvas);
+      headsDiv.appendChild(card);
+    });
+  }
+
+  frameSlider.addEventListener('input', () => {
+    frameIdx = parseInt(frameSlider.value, 10);
+    render();
+  });
+  layerSel.addEventListener('change', () => {
+    layerIdx = parseInt(layerSel.value, 10);
+    render();
+  });
+  document.getElementById('prevBtn').addEventListener('click', () => {
+    frameIdx = Math.max(0, frameIdx - 1);
+    frameSlider.value = frameIdx;
+    render();
+  });
+  document.getElementById('nextBtn').addEventListener('click', () => {
+    frameIdx = Math.min(frames.length - 1, frameIdx + 1);
+    frameSlider.value = frameIdx;
+    render();
+  });
+  playBtn.addEventListener('click', () => {
+    playing = !playing;
+    playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+    if (playing) {
+      playTimer = setInterval(() => {
+        frameIdx = (frameIdx + 1) % frames.length;
+        frameSlider.value = frameIdx;
+        render();
+      }, 350);
+    } else {
+      clearInterval(playTimer);
+    }
+  });
+
+  render();
+}
+</script>
+</body>
+</html>
