@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+checkpoints/*.npz
+checkpoints/*.json
+# ...except the checked-in example checkpoint from the bundled corpus:
+!checkpoints/model.npz
+!checkpoints/loss_history.json
