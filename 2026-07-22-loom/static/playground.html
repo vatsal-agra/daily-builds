@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loom — a tiny transformer, from scratch</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #161a23;
+    --panel-2: #1d222d;
+    --border: #2a303d;
+    --text: #e6e9ef;
+    --text-dim: #8b93a7;
+    --accent: #7dd3fc;
+    --accent-2: #c4b5fd;
+    --warm: #fbbf7a;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 800px at 10% -10%, #1a2030 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    padding: 28px 32px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0 0 4px;
+    font-size: 26px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header p { margin: 0; color: var(--text-dim); font-size: 14px; }
+  #badges { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+  main {
+    display: grid;
+    grid-template-columns: minmax(340px, 1fr) minmax(420px, 1.3fr);
+    gap: 20px;
+    padding: 24px 32px 48px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .panel h2 {
+    margin: 0 0 14px;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+  textarea, input[type=text] {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    resize: vertical;
+  }
+  textarea:focus, input:focus { outline: 1px solid var(--accent); }
+  .row { display: flex; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+  .field { flex: 1; min-width: 120px; }
+  .field label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: var(--text-dim); margin-bottom: 6px;
+  }
+  .field label span.val { color: var(--accent); font-family: var(--mono); }
+  input[type=range] {
+    width: 100%; accent-color: var(--accent);
+  }
+  button {
+    margin-top: 18px;
+    width: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    color: #0f1117;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+  }
+  button:disabled { opacity: 0.55; cursor: progress; }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  #output {
+    margin-top: 16px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    min-height: 160px;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  #output .prompt-part { color: var(--text-dim); }
+  #output .gen-part { color: var(--text); }
+  #meta-line { margin-top: 8px; font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
+  #error-line { margin-top: 8px; font-size: 12px; color: #f38ba8; font-family: var(--mono); display: none; }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tab {
+    padding: 5px 12px; border-radius: 6px; font-size: 12px; font-family: var(--mono);
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim); cursor: pointer;
+  }
+  .tab.active { color: var(--accent); border-color: var(--accent); }
+  #attn-wrap { overflow: auto; max-height: 480px; }
+  #attn-canvas-holder { position: relative; }
+  canvas { display: block; }
+  #attn-hint { color: var(--text-dim); font-size: 12px; margin-top: 10px; }
+  #tokens-strip { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 8px; line-height: 1.8; word-break: break-all; }
+
+  #loss-panel { grid-column: 1 / -1; }
+  #samples-panel { grid-column: 1 / -1; }
+  .sample-block {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; margin-top: 10px; font-family: var(--mono); font-size: 12.5px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .sample-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); margin-bottom: 6px; }
+  .before .sample-label { color: var(--warm); }
+  .after .sample-label { color: var(--accent); }
+  footer { text-align: center; color: var(--text-dim); font-size: 12px; padding: 20px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Loom</h1>
+  <p>A tiny transformer language model, trained from scratch — hand-built tensor autograd, BPE tokenizer, and Adam optimizer, no ML framework. Every request below hits the real Python model over the network.</p>
+  <div id="badges"></div>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Prompt the model</h2>
+    <textarea id="prompt" rows="3" placeholder="Type a prompt, e.g. &quot;The weaver&quot;">The weaver</textarea>
+    <div class="row">
+      <div class="field">
+        <label>Temperature <span class="val" id="temp-val">0.80</span></label>
+        <input type="range" id="temperature" min="0.1" max="2.0" step="0.05" value="0.8">
+      </div>
+      <div class="field">
+        <label>Top-k <span class="val" id="topk-val">40</span></label>
+        <input type="range" id="top_k" min="0" max="100" step="1" value="40">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Top-p (nucleus) <span class="val" id="topp-val">off</span></label>
+        <input type="range" id="top_p" min="0" max="100" step="1" value="0">
+      </div>
+      <div class="field">
+        <label>New tokens <span class="val" id="ntok-val">150</span></label>
+        <input type="range" id="max_new_tokens" min="10" max="400" step="10" value="150">
+      </div>
+    </div>
+    <button id="go">Generate</button>
+    <div id="output"><span class="prompt-part">Generated text will appear here.</span></div>
+    <div id="meta-line"></div>
+    <div id="error-line"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Attention — what each head looked at while generating this</h2>
+    <div class="tabs" id="layer-tabs"></div>
+    <div class="tabs" id="head-tabs"></div>
+    <div id="attn-wrap">
+      <div id="attn-canvas-holder">
+        <canvas id="attn-canvas" width="480" height="480"></canvas>
+      </div>
+    </div>
+    <div id="attn-hint">Generate some text to see the attention pattern that produced it. Rows = query token (the one deciding what to attend to), columns = key token (the one being attended to). Brighter = higher attention weight. The grid is lower-triangular because attention is causal — a token can never attend to a token that comes after it.</div>
+    <div id="tokens-strip"></div>
+  </section>
+
+  <section class="panel" id="loss-panel">
+    <h2>Training loss</h2>
+    <canvas id="loss-canvas" width="1200" height="220" style="width:100%; height:220px;"></canvas>
+  </section>
+
+  <section class="panel" id="samples-panel">
+    <h2>Before vs. after training (same architecture, same prompt)</h2>
+    <div id="samples"></div>
+  </section>
+</main>
+
+<footer>Loom — see <a href="https://github.com" onclick="return false" style="cursor:default;text-decoration:none;">PLAN.md / README.md</a> in the project folder for the full architecture writeup.</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function fmtPct(x) { return (x*100).toFixed(0) + '%'; }
+
+async function loadInfo() {
+  const r = await fetch('/api/info');
+  const info = await r.json();
+  const badges = $('badges');
+  badges.innerHTML = '';
+  const items = [
+    `${info.num_params.toLocaleString()} params`,
+    `vocab ${info.vocab_size}`,
+    `${info.n_layers} layers × ${info.n_heads} heads`,
+    `context ${info.max_seq_len} tokens`,
+  ];
+  for (const t of items) {
+    const b = document.createElement('div');
+    b.className = 'badge';
+    b.textContent = t;
+    badges.appendChild(b);
+  }
+
+  if (info.extra) {
+    const samples = $('samples');
+    samples.innerHTML = '';
+    if (info.extra.untrained_sample !== undefined) {
+      const b = document.createElement('div');
+      b.className = 'sample-block before';
+      b.innerHTML = `<div class="sample-label">Before training (random weights)</div>${escapeHtml(info.extra.untrained_sample)}`;
+      samples.appendChild(b);
+    }
+    if (info.extra.trained_sample !== undefined) {
+      const b = document.createElement('div');
+      b.className = 'sample-block after';
+      b.innerHTML = `<div class="sample-label">After training (${info.extra.steps} steps, ${info.extra.train_seconds}s, final val loss ${info.extra.final_val_loss?.toFixed(3)})</div>${escapeHtml(info.extra.trained_sample)}`;
+      samples.appendChild(b);
+    }
+  }
+
+  if (info.train_log) drawLossCurve(info.train_log);
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+
+function drawLossCurve(log) {
+  const canvas = $('loss-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const pad = 40;
+  const steps = log.map(e => e.step);
+  const trainLoss = log.map(e => e.train_loss);
+  const valPoints = log.filter(e => e.val_loss !== undefined);
+  const allLoss = trainLoss.concat(valPoints.map(e => e.val_loss));
+  const minL = Math.min(...allLoss), maxL = Math.max(...allLoss);
+  const maxStep = Math.max(...steps);
+
+  const xOf = (s) => pad + (s / maxStep) * (W - 2*pad);
+  const yOf = (l) => H - pad - ((l - minL) / (maxL - minL + 1e-9)) * (H - 2*pad);
+
+  // axes
+  ctx.strokeStyle = '#2a303d';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, pad); ctx.lineTo(pad, H-pad); ctx.lineTo(W-pad, H-pad);
+  ctx.stroke();
+
+  ctx.fillStyle = '#8b93a7';
+  ctx.font = '11px monospace';
+  ctx.fillText(maxL.toFixed(2), 4, pad+4);
+  ctx.fillText(minL.toFixed(2), 4, H-pad+4);
+  ctx.fillText('step ' + maxStep, W-pad-50, H-pad+20);
+
+  // train loss line
+  ctx.strokeStyle = '#7dd3fc';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  steps.forEach((s, i) => {
+    const x = xOf(s), y = yOf(trainLoss[i]);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // val loss dots + line
+  if (valPoints.length) {
+    ctx.strokeStyle = '#fbbf7a';
+    ctx.fillStyle = '#fbbf7a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    valPoints.forEach((e, i) => {
+      const x = xOf(e.step), y = yOf(e.val_loss);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    valPoints.forEach((e) => {
+      const x = xOf(e.step), y = yOf(e.val_loss);
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill();
+    });
+  }
+
+  ctx.fillStyle = '#7dd3fc'; ctx.fillText('train', W-pad-90, pad+14);
+  ctx.fillStyle = '#fbbf7a'; ctx.fillText('val', W-pad-40, pad+14);
+}
+
+// --- generation ---
+const sliders = ['temperature', 'top_k', 'top_p', 'max_new_tokens'];
+function syncSliders() {
+  $('temp-val').textContent = parseFloat($('temperature').value).toFixed(2);
+  $('topk-val').textContent = $('top_k').value === '0' ? 'off' : $('top_k').value;
+  $('topp-val').textContent = $('top_p').value === '0' ? 'off' : ($('top_p').value/100).toFixed(2);
+  $('ntok-val').textContent = $('max_new_tokens').value;
+}
+sliders.forEach(id => $(id).addEventListener('input', syncSliders));
+syncSliders();
+
+let lastAttn = null;
+let curLayer = 0, curHead = 0;
+
+$('go').addEventListener('click', async () => {
+  const btn = $('go');
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+  $('error-line').style.display = 'none';
+  const prompt = $('prompt').value;
+  const body = {
+    prompt,
+    temperature: parseFloat($('temperature').value),
+    top_k: $('top_k').value === '0' ? null : parseInt($('top_k').value),
+    top_p: $('top_p').value === '0' ? null : parseInt($('top_p').value) / 100,
+    max_new_tokens: parseInt($('max_new_tokens').value),
+  };
+  try {
+    const r = await fetch('/api/generate', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    $('output').innerHTML = `<span class="prompt-part">${escapeHtml(prompt)}</span><span class="gen-part">${escapeHtml(data.text.slice(prompt.length))}</span>`;
+    $('meta-line').textContent = `${data.num_tokens} tokens total · generated in ${data.elapsed_sec}s (KV-cached)`;
+    await loadAttention(data.text);
+  } catch (e) {
+    $('error-line').textContent = 'Error: ' + e.message;
+    $('error-line').style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate';
+  }
+});
+
+async function loadAttention(text) {
+  const r = await fetch('/api/attention', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text})});
+  const data = await r.json();
+  if (data.error) return;
+  lastAttn = data;
+  curLayer = 0; curHead = 0;
+  buildTabs();
+  drawAttention();
+  $('tokens-strip').textContent = data.tokens.map(t => JSON.stringify(t)).join(' ');
+}
+
+function buildTabs() {
+  const nLayers = lastAttn.layers.length;
+  const nHeads = lastAttn.layers[0].length;
+  const lt = $('layer-tabs'); lt.innerHTML = '';
+  for (let i = 0; i < nLayers; i++) {
+    const d = document.createElement('div');
+    d.className = 'tab' + (i === curLayer ? ' active' : '');
+    d.textContent = 'layer ' + i;
+    d.onclick = () => { curLayer = i; buildTabs(); drawAttention(); };
+    lt.appendChild(d);
+  }
+  const ht = $('head-tabs'); ht.innerHTML = '';
+  for (let h = 0; h < nHeads; h++) {
+    const d = document.createElement('div');
+    d.className = 'tab' + (h === curHead ? ' active' : '');
+    d.textContent = 'head ' + h;
+    d.onclick = () => { curHead = h; buildTabs(); drawAttention(); };
+    ht.appendChild(d);
+  }
+}
+
+function drawAttention() {
+  if (!lastAttn) return;
+  const matrix = lastAttn.layers[curLayer][curHead]; // T x T
+  const T = matrix.length;
+  const canvas = $('attn-canvas');
+  const cell = Math.max(4, Math.min(28, Math.floor(480 / T)));
+  const size = cell * T;
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  for (let i = 0; i < T; i++) {
+    for (let j = 0; j < T; j++) {
+      const w = matrix[i][j];
+      const v = Math.round(255 * Math.min(1, w * 2.2));
+      ctx.fillStyle = `rgb(${Math.round(20+v*0.1)}, ${Math.round(30+v*0.55)}, ${Math.round(50+v*0.8)})`;
+      ctx.fillRect(j*cell, i*cell, cell-1, cell-1);
+    }
+  }
+}
+
+loadInfo();
+</script>
+</body>
+</html>

@@ -1,0 +1,171 @@
+{
+  "config": {
+    "vocab_size": 440,
+    "dim": 64,
+    "n_layers": 3,
+    "n_heads": 4,
+    "max_seq_len": 48,
+    "seed": 0
+  },
+  "args": {
+    "corpus": "corpus/corpus.txt",
+    "out": "checkpoints/loom",
+    "vocab_size": 440,
+    "dim": 64,
+    "n_layers": 3,
+    "n_heads": 4,
+    "block_size": 48,
+    "batch_size": 24,
+    "steps": 2000,
+    "lr": 0.003,
+    "warmup": 100,
+    "weight_decay": 0.01,
+    "seed": 0,
+    "log_every": 100,
+    "eval_every": 200,
+    "sample_every": 400,
+    "log_file": "checkpoints/train_log.json"
+  },
+  "log": [
+    {
+      "step": 0,
+      "train_loss": 6.088801397495041,
+      "lr": 3e-05,
+      "elapsed_sec": 0.3,
+      "val_loss": 6.08466004118286
+    },
+    {
+      "step": 100,
+      "train_loss": 4.977627674798678,
+      "lr": 0.003,
+      "elapsed_sec": 20.3
+    },
+    {
+      "step": 200,
+      "train_loss": 3.88476333363399,
+      "lr": 0.0029815877595936752,
+      "elapsed_sec": 41.4,
+      "val_loss": 4.417179590932696
+    },
+    {
+      "step": 300,
+      "train_loss": 3.6480679713639512,
+      "lr": 0.002926853276295857,
+      "elapsed_sec": 61.1
+    },
+    {
+      "step": 400,
+      "train_loss": 3.473611824158622,
+      "lr": 0.00283728956412876,
+      "elapsed_sec": 79.1,
+      "val_loss": 4.2091163273883465
+    },
+    {
+      "step": 500,
+      "train_loss": 3.4038240569081433,
+      "lr": 0.0027153396876851313,
+      "elapsed_sec": 98.3
+    },
+    {
+      "step": 600,
+      "train_loss": 3.319298186040789,
+      "lr": 0.0025643301216947507,
+      "elapsed_sec": 116.6,
+      "val_loss": 4.0890435774146265
+    },
+    {
+      "step": 700,
+      "train_loss": 3.2964395245882905,
+      "lr": 0.0023883800134652765,
+      "elapsed_sec": 135.9
+    },
+    {
+      "step": 800,
+      "train_loss": 3.2033516797422426,
+      "lr": 0.002192288823281509,
+      "elapsed_sec": 155.2,
+      "val_loss": 4.127600447386143
+    },
+    {
+      "step": 900,
+      "train_loss": 3.1730063640308708,
+      "lr": 0.001981405407640079,
+      "elapsed_sec": 174.3
+    },
+    {
+      "step": 1000,
+      "train_loss": 3.1169958345965925,
+      "lr": 0.0017614821163876488,
+      "elapsed_sec": 193.5,
+      "val_loss": 4.152814271851424
+    },
+    {
+      "step": 1100,
+      "train_loss": 3.1963228169288787,
+      "lr": 0.0015385178836123514,
+      "elapsed_sec": 213.5
+    },
+    {
+      "step": 1200,
+      "train_loss": 3.184588386222858,
+      "lr": 0.0013185945923599213,
+      "elapsed_sec": 231.8,
+      "val_loss": 4.145685327981667
+    },
+    {
+      "step": 1300,
+      "train_loss": 3.1816723801270994,
+      "lr": 0.0011077111767184916,
+      "elapsed_sec": 250.4
+    },
+    {
+      "step": 1400,
+      "train_loss": 3.131493571531194,
+      "lr": 0.0009116199865347242,
+      "elapsed_sec": 268.6,
+      "val_loss": 4.102022596847185
+    },
+    {
+      "step": 1500,
+      "train_loss": 3.1560459751878347,
+      "lr": 0.0007356698783052499,
+      "elapsed_sec": 287.6
+    },
+    {
+      "step": 1600,
+      "train_loss": 3.165496845775751,
+      "lr": 0.0005846603123148688,
+      "elapsed_sec": 305.6,
+      "val_loss": 4.127084905745831
+    },
+    {
+      "step": 1700,
+      "train_loss": 3.162043453205391,
+      "lr": 0.00046271043587123995,
+      "elapsed_sec": 338.0
+    },
+    {
+      "step": 1800,
+      "train_loss": 3.0782729518081484,
+      "lr": 0.00037314672370414325,
+      "elapsed_sec": 363.6,
+      "val_loss": 4.123565032407961
+    },
+    {
+      "step": 1900,
+      "train_loss": 3.0533411988409696,
+      "lr": 0.0003184122404063249,
+      "elapsed_sec": 383.6
+    },
+    {
+      "step": 1999,
+      "train_loss": 3.148239063326886,
+      "lr": 0.00030000184542422524,
+      "elapsed_sec": 401.5,
+      "val_loss": 4.137277958597457
+    }
+  ],
+  "final_val_loss": 4.142984392196229,
+  "untrained_sample": "\n\ufffdpl=own\ufffd\ufffdough\ufffd\ufffd\fok\ufffd,\"\ufffd\ufffd;\ufffdWqok{\ufffdobinild el\ufffdxEve \ufffd2 wto onan \u0011\ufffd\ufffd\u001b semd qter\ufffd\ufffd",
+  "trained_sample": "\npent counts ist, \", quese on \ufffdsmforet with my forefrom the f his was bers coming. He the p"
+}
