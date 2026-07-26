@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.npz
+tokenizer.json
+attention.html
+loss_history.csv
