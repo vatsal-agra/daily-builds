@@ -1,0 +1,351 @@
+{
+  "bpm": 100,
+  "stepsPerBeat": 4,
+  "swing": 0.08,
+  "effects": {
+    "delay": {
+      "enabled": true,
+      "time": 0.1875,
+      "feedback": 0.35,
+      "mix": 0.22
+    },
+    "reverb": {
+      "enabled": true,
+      "mix": 0.18
+    }
+  },
+  "tracks": [
+    {
+      "name": "Kick",
+      "patch": {
+        "name": "Kick",
+        "waveform": "sine",
+        "envelope": {
+          "attack": 0.001,
+          "decay": 0.12,
+          "sustain": 0,
+          "release": 0.05
+        },
+        "filter": {
+          "enabled": true,
+          "cutoff": 900,
+          "resonance": 1.2
+        },
+        "gain": 1,
+        "pitchDrop": 24,
+        "pitchDecay": 0.08
+      },
+      "note": 36,
+      "steps": [
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        null,
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        null,
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "name": "Snare",
+      "patch": {
+        "name": "Snare",
+        "waveform": "noise",
+        "envelope": {
+          "attack": 0.001,
+          "decay": 0.09,
+          "sustain": 0,
+          "release": 0.06
+        },
+        "filter": {
+          "enabled": true,
+          "cutoff": 2200,
+          "resonance": 0.7
+        },
+        "gain": 0.8
+      },
+      "note": 38,
+      "steps": [
+        null,
+        null,
+        null,
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "name": "Hat",
+      "patch": {
+        "name": "Hi-hat",
+        "waveform": "noise",
+        "envelope": {
+          "attack": 0.001,
+          "decay": 0.04,
+          "sustain": 0,
+          "release": 0.02
+        },
+        "filter": {
+          "enabled": true,
+          "cutoff": 8000,
+          "resonance": 0.4
+        },
+        "gain": 0.5
+      },
+      "note": 42,
+      "steps": [
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        null,
+        {
+          "on": true,
+          "velocity": 1
+        },
+        {
+          "on": true,
+          "velocity": 1
+        }
+      ]
+    },
+    {
+      "name": "Bass",
+      "patch": {
+        "name": "Bass",
+        "waveform": "saw",
+        "envelope": {
+          "attack": 0.01,
+          "decay": 0.1,
+          "sustain": 0.8,
+          "release": 0.08
+        },
+        "filter": {
+          "enabled": true,
+          "cutoff": 700,
+          "resonance": 1.5
+        },
+        "gain": 0.9
+      },
+      "note": 36,
+      "steps": [
+        {
+          "on": true,
+          "velocity": 0.9,
+          "note": 36
+        },
+        null,
+        null,
+        {
+          "on": true,
+          "velocity": 0.7,
+          "note": 36
+        },
+        null,
+        null,
+        {
+          "on": true,
+          "velocity": 0.9,
+          "note": 43
+        },
+        null,
+        {
+          "on": true,
+          "velocity": 0.9,
+          "note": 41
+        },
+        null,
+        null,
+        {
+          "on": true,
+          "velocity": 0.7,
+          "note": 41
+        },
+        null,
+        null,
+        {
+          "on": true,
+          "velocity": 0.8,
+          "note": 39
+        },
+        null
+      ]
+    },
+    {
+      "name": "Lead",
+      "patch": {
+        "name": "Lead",
+        "waveform": "square",
+        "envelope": {
+          "attack": 0.02,
+          "decay": 0.15,
+          "sustain": 0.6,
+          "release": 0.15
+        },
+        "filter": {
+          "enabled": true,
+          "cutoff": 3000,
+          "resonance": 2
+        },
+        "gain": 0.7
+      },
+      "note": 60,
+      "steps": [
+        null,
+        null,
+        {
+          "on": true,
+          "velocity": 0.8,
+          "note": 72
+        },
+        null,
+        {
+          "on": true,
+          "velocity": 0.9,
+          "note": 75
+        },
+        null,
+        null,
+        {
+          "on": true,
+          "velocity": 0.7,
+          "note": 79
+        },
+        null,
+        null,
+        {
+          "on": true,
+          "velocity": 0.8,
+          "note": 77
+        },
+        null,
+        {
+          "on": true,
+          "velocity": 0.9,
+          "note": 74
+        },
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "name": "Pad",
+      "patch": {
+        "name": "Pad",
+        "waveform": "triangle",
+        "envelope": {
+          "attack": 0.4,
+          "decay": 0.3,
+          "sustain": 0.7,
+          "release": 0.6
+        },
+        "filter": {
+          "enabled": true,
+          "cutoff": 1800,
+          "resonance": 0.6
+        },
+        "gain": 0.6
+      },
+      "note": 48,
+      "steps": [
+        {
+          "on": true,
+          "velocity": 0.6,
+          "note": 48,
+          "hold": 8
+        },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        {
+          "on": true,
+          "velocity": 0.6,
+          "note": 51,
+          "hold": 8
+        },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ]
+}
