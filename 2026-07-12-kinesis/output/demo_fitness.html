@@ -1,0 +1,75 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Kinesis fitness chart: output/demo_population.json</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0f1218; color: #e8ecf1;
+}
+h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px 0; }
+.subtitle { color: #8b93a3; font-size: 13px; margin-bottom: 20px; }
+.panel { background: #171c26; border: 1px solid #262e3d; border-radius: 12px; padding: 16px; }
+canvas { display: block; background: #0a0d13; border-radius: 8px; width: 100%; }
+.controls { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+button {
+  background: #2b3547; color: #e8ecf1; border: 1px solid #3a4559; border-radius: 8px;
+  padding: 8px 16px; font-size: 13px; cursor: pointer;
+}
+button:hover { background: #364154; }
+input[type=range] { flex: 1; min-width: 160px; }
+.stat { font-variant-numeric: tabular-nums; font-size: 13px; color: #b7c0d1; }
+.stat b { color: #e8ecf1; }
+.grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 14px; margin-top: 16px;
+}
+.card { background: #171c26; border: 1px solid #262e3d; border-radius: 10px; padding: 10px; }
+.card canvas { height: 130px; }
+.card .rank { font-size: 12px; color: #8b93a3; }
+.card .fit { font-size: 15px; font-weight: 600; margin: 2px 0; }
+.card .meta { font-size: 11px; color: #6b7385; }
+</style></head>
+<body>
+<h1>Fitness over generations &mdash; output/demo_population.json</h1>
+<div class="subtitle">10 generations recorded</div>
+<div class="panel"><canvas id="chart" width="900" height="420"></canvas></div>
+<script>
+const d = {"gens": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "best": [2.0024595764899717, 2.4887929508834845, 2.4887929508834845, 3.6834649677246682, 8.035705154402676, 8.035705154402676, 8.035705154402676, 8.035705154402676, 8.035705154402676, 8.035705154402676], "mean": [-0.30025182513583065, 0.30629234036373926, 0.6354053017368233, 0.48317261053261323, 2.0271549875058916, 1.5752905639086743, 1.6692100753896284, 1.2691237143427851, 1.9608487802232173, 1.7406408260191504], "worst": [-2.9700127060946016, -2.4213866212329025, -2.7837134705481326, -2.293312015924937, -1.2950784132961697, -2.6332534744010085, -1.4362072710219442, -1.8494730921344171, -1.7821913651690626, -2.2223657063814506]};
+const canvas = document.getElementById('chart');
+const ctx = canvas.getContext('2d');
+const pad = 50;
+const w = canvas.width - pad * 2, h = canvas.height - pad * 2;
+const allY = d.best.concat(d.mean).concat(d.worst);
+const yMin = Math.min(...allY), yMax = Math.max(...allY);
+const yRange = (yMax - yMin) || 1;
+const n = d.gens.length;
+
+function xAt(i) { return pad + (n <= 1 ? 0 : (i / (n - 1)) * w); }
+function yAt(v) { return pad + h - ((v - yMin) / yRange) * h; }
+
+ctx.strokeStyle = '#262e3d';
+ctx.beginPath(); ctx.moveTo(pad, pad); ctx.lineTo(pad, pad + h); ctx.lineTo(pad + w, pad + h); ctx.stroke();
+ctx.fillStyle = '#8b93a3'; ctx.font = '11px monospace';
+ctx.fillText(yMax.toFixed(2), 4, pad + 4);
+ctx.fillText(yMin.toFixed(2), 4, pad + h + 4);
+ctx.fillText('gen 0', pad - 4, pad + h + 18);
+ctx.fillText('gen ' + (n - 1), pad + w - 30, pad + h + 18);
+
+function plot(series, color) {
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+  series.forEach((v, i) => {
+    const x = xAt(i), y = yAt(v);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+plot(d.worst, '#e67e7e');
+plot(d.mean, '#e6c05a');
+plot(d.best, '#5aa9e6');
+
+ctx.fillStyle = '#5aa9e6'; ctx.fillText('best', pad + w - 34, pad + 12);
+ctx.fillStyle = '#e6c05a'; ctx.fillText('mean', pad + w - 34, pad + 26);
+ctx.fillStyle = '#e67e7e'; ctx.fillText('worst', pad + w - 34, pad + 40);
+</script>
+</body></html>
