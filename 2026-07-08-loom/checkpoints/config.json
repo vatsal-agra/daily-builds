@@ -1,0 +1,7 @@
+{
+  "vocab_size": 384,
+  "n_embd": 96,
+  "n_head": 4,
+  "n_layer": 3,
+  "block_size": 96
+}
