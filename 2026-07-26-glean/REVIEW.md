@@ -89,6 +89,29 @@ actually true rather than merely plausible-looking.
   terms present in every document, so no document can get a negative relevance
   score.
 
+## Addendum — a bug the adversarial review pass missed, caught by the test suite
+
+Writing the Phase 5 test suite surfaced a real correctness bug that the hand-crafted
+Phase 3 corpora happened not to expose:
+
+5. **MODERATE: `A AND B` didn't actually require both `A` and `B`.** The parser only
+   marked the term textually *after* `AND` as a MUST clause; the term before it (with
+   no operator of its own) stayed a default SHOULD clause, which only adds to the
+   score and never filters. So `chess AND bloom` — over a corpus where `bloom`
+   appears in two unrelated documents and `chess` in a third, disjoint one — silently
+   returned both `bloom` documents even though *neither* contained "chess". This
+   passed Phase 3's `chess AND transposition` check purely by luck: in that corpus
+   "transposition" alone was already selective enough to isolate the right document,
+   so the missing filter on "chess" never showed up. A second, deliberately
+   less-forgiving test (`chess AND bloom`, where the AND-left term is the *only*
+   thing that should exclude two otherwise-matching documents) exposed it
+   immediately. Fixed in `parse_query()`: when a clause's connector is `AND`, its
+   immediate predecessor is now also forced into the MUST group, so both operands
+   of an explicit AND are required. Lesson re-confirmed: a review corpus where a
+   single term already disambiguates the right answer can hide a broken boolean
+   operator right next to it — the fix was to test the operator in isolation, not
+   just the end-to-end query.
+
 ## Not fixed (accepted, documented limitation)
 
 - The Porter algorithm's known rough edges (`consensus`→`consensu`, `ray`→`rai`,

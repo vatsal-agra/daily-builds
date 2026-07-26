@@ -73,6 +73,17 @@ def parse_query(query_string):
         pending_connector = None
         pending_negate = False
 
+    # An explicit "A AND B" must require *both* sides, not just B: without this
+    # pass, B alone became the MUST clause while A -- the term to AND's left,
+    # which has no operator of its own -- stayed a default OR/should clause and
+    # never actually got filtered on. Look back from each AND clause and force
+    # its non-negated predecessor to be required too.
+    for i in range(1, len(clauses)):
+        if clauses[i].connector == "AND" and not clauses[i].negate:
+            prev = clauses[i - 1]
+            if not prev.negate:
+                prev.connector = "AND"
+
     return clauses
 
 

@@ -1,8 +1,10 @@
 # Glean
 
-*Status: Phase 4 — stretch features + polish complete. Both stretch features (fuzzy
-typo-tolerant matching, self-indexing demo over this repo's history) are shipped;
-see [REVIEW.md](./REVIEW.md) for the bugs found in review and fixed since.*
+*Status: Phase 5 — verification complete. 81/81 unit tests green
+(`tests/test_*.py`), plus `demo.sh` runs the suite, a full CLI walkthrough, an HTTP
+API smoke test, and the self-indexing demo end-to-end. See
+[REVIEW.md](./REVIEW.md) for every bug found (including one the test suite caught
+that the earlier adversarial review missed) and how it was fixed.*
 
 A from-scratch full-text search engine — real tokenization, Porter stemming, a
 persistent inverted index, boolean/phrase queries, BM25 ranking, and typo-tolerant
@@ -55,7 +57,14 @@ with ranked results, highlighted snippets (Markdown syntax noise like `#`/`**`/
 backticks is stripped for readability), a live document/term count, and clickable
 "did you mean" fuzzy suggestions when a query has zero results.
 
+## Testing
+
+```bash
+python3 -m unittest discover -s tests   # 81 tests: analyzer, index, query, fuzzy, crawler, snippet, CLI
+./demo.sh                                # tests + CLI walkthrough + HTTP API smoke test + self-index demo
+```
+
 ## Status
 
-This README is updated after every build phase. Remaining work: a full test suite +
-demo script (Phase 5), and final packaging (Phase 6).
+This README is updated after every build phase. Remaining work: final packaging
+(Phase 6).
