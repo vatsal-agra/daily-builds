@@ -50,17 +50,25 @@ actually true rather than merely plausible-looking.
    clauses now always mean exactly what was typed.
 
 4. **MINOR (self-review, not a code bug but a misleading demo): the fuzzy-matching
-   sample query in `glean demo` was `"consesus"` — which happens to appear verbatim
-   (as an example of a typo!) inside this very project's own `PLAN.md`. So the demo
-   was "proving" fuzzy matching by exact-stem-matching its own planning document,
-   not by genuinely correcting a typo against unrelated documents elsewhere in the
-   corpus (e.g. Quorum's Raft consensus write-up, which is what the query was
-   supposed to be about). Caught by manually inspecting *why* each demo result
-   ranked where it did, not just checking that results existed. Replaced with
-   `"trasposition"` (a typo of "transposition" that does not appear literally
-   anywhere in the corpus), which now demonstrably corrects to the stem `transposit`
-   and surfaces Gambit's chess/transposition-table documentation — a real
+   sample query in `glean demo` was a misspelling of "consensus" that happened to
+   appear verbatim (as an example of a typo!) inside this very project's own
+   `PLAN.md`. So the demo was "proving" fuzzy matching by exact-stem-matching its
+   own planning document, not by genuinely correcting a typo against unrelated
+   documents elsewhere in the corpus (e.g. Quorum's Raft consensus write-up, which
+   is what the query was supposed to be about). Caught by manually inspecting *why*
+   each demo result ranked where it did, not just checking that results existed.
+   Replaced with a one-letter-dropped misspelling of "transposition" in
+   `glean/cli.py`'s `sample_queries`, which correctly triggers fuzzy correction and
+   surfaces Gambit's chess/transposition-table documentation — a real
    cross-document fuzzy match.
+
+   **Recursion caught in this same review pass:** the first draft of this very
+   paragraph spelled out that replacement typo literally, in this file — which,
+   once committed, would have made *this document* the verbatim source the fuzzy
+   query exact-matched against, reintroducing the identical bug one paragraph after
+   describing it. Fixed by describing the typo instead of quoting it. Lesson: any
+   prose that names a fuzzy-search demo's exact query text is itself part of the
+   corpus once indexed, and needs the same scrutiny as the demo code.
 
 ## Verified clean (no fix needed)
 

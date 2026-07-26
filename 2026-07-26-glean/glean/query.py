@@ -154,6 +154,7 @@ def search(index, query_string, limit=10, fuzzy=True):
     suggestions: sorted list of fuzzy "did you mean" term strings, or []
     matched_terms: sorted list of stemmed terms used for scoring/highlighting
     """
+    limit = max(1, limit)
     clauses = parse_query(query_string)
     suggestions = []
     if not clauses:

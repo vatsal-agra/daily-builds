@@ -1,6 +1,7 @@
 """stdlib-only HTTP server: JSON search API + the static single-page UI."""
 import json
 import os
+import sys
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -94,7 +95,12 @@ def make_handler(index):
 
 def serve(index, port=8899, bind="127.0.0.1"):
     handler = make_handler(index)
-    httpd = ThreadingHTTPServer((bind, port), handler)
+    try:
+        httpd = ThreadingHTTPServer((bind, port), handler)
+    except OSError as exc:
+        print(f"error: could not bind {bind}:{port} -- {exc}", file=sys.stderr)
+        print("try a different --port", file=sys.stderr)
+        sys.exit(1)
     print(f"Glean serving {index.doc_count} document(s) from {index.root}")
     print(f"  -> http://{bind}:{port}/")
     try:

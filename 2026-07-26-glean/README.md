@@ -1,9 +1,8 @@
 # Glean
 
-*Status: Phase 3 — adversarial review complete. See [REVIEW.md](./REVIEW.md) for bugs
-found and fixed (a stemmer crash on `-ed`/`-ing` words, pure-`NOT` queries returning
-nothing, fuzzy-matching silently rewriting quoted phrases, and a misleading demo
-query).*
+*Status: Phase 4 — stretch features + polish complete. Both stretch features (fuzzy
+typo-tolerant matching, self-indexing demo over this repo's history) are shipped;
+see [REVIEW.md](./REVIEW.md) for the bugs found in review and fixed since.*
 
 A from-scratch full-text search engine — real tokenization, Porter stemming, a
 persistent inverted index, boolean/phrase queries, BM25 ranking, and typo-tolerant
@@ -49,8 +48,14 @@ python3 -m glean.cli demo
 - Misspelled terms are automatically corrected via Levenshtein/BK-tree fuzzy lookup
   when there's no exact match, with the correction shown in results.
 
+## Web UI
+
+`glean serve` hosts a single-page, no-framework search UI (dark/light mode aware)
+with ranked results, highlighted snippets (Markdown syntax noise like `#`/`**`/
+backticks is stripped for readability), a live document/term count, and clickable
+"did you mean" fuzzy suggestions when a query has zero results.
+
 ## Status
 
-This README is updated after every build phase. Remaining work: stretch features +
-polish (Phase 4), a full test suite + demo script (Phase 5), and final packaging
-(Phase 6).
+This README is updated after every build phase. Remaining work: a full test suite +
+demo script (Phase 5), and final packaging (Phase 6).

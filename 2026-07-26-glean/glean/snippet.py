@@ -1,5 +1,21 @@
 """Builds a highlighted excerpt of a document around its first query match."""
+import re
+
 from .analyzer import TOKEN_RE, porter_stem
+
+_HEADING_MARKER_RE = re.compile(r"(^|\s)#{1,6}(?=\s)")
+
+
+def _strip_markdown_noise(text):
+    """Cosmetic cleanup of the most common Markdown syntax in snippets.
+
+    Deliberately conservative: doesn't touch underscores (would corrupt
+    `__init__`-style code identifiers common in this corpus) or pipes/dashes
+    (table syntax), just the headings/bold/backticks that read as pure noise.
+    """
+    text = _HEADING_MARKER_RE.sub(r"\1", text)
+    text = text.replace("**", "").replace("`", "")
+    return text
 
 
 def make_snippet(text, matched_terms, window=220):
@@ -11,7 +27,7 @@ def make_snippet(text, matched_terms, window=220):
         if porter_stem(m.group(0).lower()) in matched_terms
     ]
     if not matches:
-        collapsed = " ".join(text.split())
+        collapsed = " ".join(_strip_markdown_noise(text).split())
         return collapsed[:window] + ("…" if len(collapsed) > window else "")
 
     center = matches[0].start()
@@ -32,7 +48,7 @@ def make_snippet(text, matched_terms, window=220):
         cursor = m.end()
     pieces.append(text[cursor:end])
 
-    body = " ".join("".join(pieces).split())
+    body = " ".join(_strip_markdown_noise("".join(pieces)).split())
     prefix = "…" if start > 0 else ""
     suffix = "…" if end < len(text) else ""
     return f"{prefix}{body}{suffix}"
