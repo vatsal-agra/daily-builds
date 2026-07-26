@@ -1,6 +1,9 @@
 # Glean
 
-*Status: Phase 2 — core build complete. All 4 required features working end-to-end.*
+*Status: Phase 3 — adversarial review complete. See [REVIEW.md](./REVIEW.md) for bugs
+found and fixed (a stemmer crash on `-ed`/`-ing` words, pure-`NOT` queries returning
+nothing, fuzzy-matching silently rewriting quoted phrases, and a misleading demo
+query).*
 
 A from-scratch full-text search engine — real tokenization, Porter stemming, a
 persistent inverted index, boolean/phrase queries, BM25 ranking, and typo-tolerant
@@ -48,6 +51,6 @@ python3 -m glean.cli demo
 
 ## Status
 
-This README is updated after every build phase. Remaining work: adversarial review
-(Phase 3), stretch features + polish (Phase 4), a full test suite + demo script
-(Phase 5), and final packaging (Phase 6).
+This README is updated after every build phase. Remaining work: stretch features +
+polish (Phase 4), a full test suite + demo script (Phase 5), and final packaging
+(Phase 6).

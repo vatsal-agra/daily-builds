@@ -126,7 +126,7 @@ def cmd_demo(args):
         '"ray tracing"',
         "chess engine AND transposition",
         "NOT chess bytecode virtual machine",
-        "consesus",  # deliberate typo -> exercises fuzzy matching
+        "trasposition",  # deliberate typo (missing 'n') -> exercises fuzzy matching
     ]
     for q in sample_queries:
         results, suggestions, matched_terms = run_search(index, q, limit=3)

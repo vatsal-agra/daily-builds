@@ -162,6 +162,13 @@ def search(index, query_string, limit=10, fuzzy=True):
     if fuzzy:
         expanded = []
         for clause in clauses:
+            # Quoted phrases mean "this exact text" -- silently swapping in a
+            # fuzzy-corrected word would violate that contract (and could
+            # mask real typo'd phrase matches with an unrelated correction),
+            # so only bare term clauses get typo tolerance.
+            if clause.kind != "term":
+                expanded.append(clause)
+                continue
             new_terms = []
             for term, rel in clause.terms:
                 if index.document_frequency(term) == 0:
@@ -194,10 +201,17 @@ def search(index, query_string, limit=10, fuzzy=True):
         candidates = set(must_scores[0])
         for m in must_scores[1:]:
             candidates &= set(m)
-    else:
+    elif should_scores:
         candidates = set()
         for s in should_scores:
             candidates |= set(s)
+    elif must_not:
+        # A query made entirely of NOT clauses (e.g. "NOT chess") has no
+        # positive clause to seed a candidate set from -- fall back to the
+        # whole corpus so "everything except X" works as expected.
+        candidates = set(index.docs.keys())
+    else:
+        candidates = set()
 
     candidates -= must_not_docs
 
