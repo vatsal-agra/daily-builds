@@ -1,11 +1,30 @@
 # Unify
 
 A Hindley-Milner type inference engine, built from scratch in pure Python
-(stdlib only — no dependencies).
+(stdlib only — no dependencies). It's the algorithm behind ML, Haskell,
+OCaml, and (in a descendant form) Rust's and TypeScript's inference: given
+source code with **no type annotations at all**, it derives the single
+most general type of every expression, catches type errors before a line
+of it runs, and lets a function like `id` be used at `int` and at `bool`
+in the same program without you ever writing a type down.
 
-**Status: Phase 5 (Verification) complete.** 119 unit tests and a 34-check
-end-to-end demo (`demo.py`) all pass. See [PLAN.md](PLAN.md) for the concept
-and architecture, [REVIEW.md](REVIEW.md) for the adversarial review.
+Full writeup of the concept and why it's interesting: [PLAN.md](PLAN.md).
+Adversarial review (7 real bugs found and fixed, including one that would
+have hung the REPL): [REVIEW.md](REVIEW.md).
+
+## Why this, today
+
+This repo's history is full of runtimes (chess engines, SAT solvers,
+renderers, nine separate from-scratch transformer language models) and
+data structures, but nothing that does *static analysis* — a pass over a
+program that runs **before** the program does. Hindley-Milner type
+inference is a compact, sharply-specified algorithm (a few hundred lines)
+with unusually clean pass/fail ground truth: classic test cases like
+`fun x -> x x` (must be rejected — infinite type) or `let id = fun x -> x
+in (id 1, id true)` (must be accepted — `id` used polymorphically) give
+unambiguous correctness criteria, the same way this repo's other builds
+have leaned on perft counts, finite-difference gradient checks, or NIST
+test vectors instead of "looks plausible."
 
 ## Quick start
 
@@ -17,35 +36,40 @@ python3 -m unify.cli repl                           # interactive REPL
 python3 -m unify.cli web                            # visualizer at http://127.0.0.1:8765/
 ```
 
-## What works right now
+## Feature list
 
-- **Lexer + parser** (`unify/lexer.py`, `unify/parser.py`) for a small
-  ML-like language: `let`/`let rec ... in`, `fun`, `if/then/else`,
+Four required, both stretch goals implemented (see PLAN.md for the
+original commitments):
+
+- **[required] Lexer + parser** (`unify/lexer.py`, `unify/parser.py`) for a
+  small ML-like language: `let`/`let rec ... in`, `fun`, `if/then/else`,
   arithmetic/comparison/boolean operators, tuples, lists (`[]`/`::`),
   `Some`/`None`, and `match` pattern matching.
-- **Algorithm W type inference** (`unify/infer.py`, `unify/types.py`):
-  unification with an occurs check (rejects infinite types), let-generalization
-  for real polymorphism, and full derivation-tree tracing.
-- **Tree-walking evaluator** (`unify/evaluator.py`) that runs well-typed
-  programs to real values, including genuine recursion, with short-circuit
-  `&&`/`||`, clean errors for division by zero, non-exhaustive matches, and
-  comparing function values.
-- **Precise diagnostics** (`unify/diagnostics.py`): every rejected program
-  names the two conflicting types (with consistent "expected"/"found"
-  wording and shared variable naming across both) and points a caret at
-  the exact source span responsible. Missing files and stack-depth limits
-  are reported the same way, not as raw Python tracebacks.
-- **REPL** (`unify/repl.py`, `python3 -m unify.cli repl`): persistent
-  `let`-bindings across lines, full let-polymorphism across statements,
-  `:type <expr>` to check a type without evaluating, `:env` to list every
-  binding, and a small standard-library prelude (`map`/`filter`/`foldl`/
-  `length`/`append`/`reverse`/`assoc`) written in Unify itself and
-  type-checked/loaded at startup.
-- **Web visualizer** (`unify/web/`, `python3 -m unify.cli web`): a real
-  `http.server` backend with zero client-side inference logic — type an
-  expression in the browser, see its principal type, evaluated value, and
-  the full Algorithm W derivation tree, all computed server-side in
-  Python and rendered from JSON.
+- **[required] Algorithm W type inference** (`unify/infer.py`,
+  `unify/types.py`): unification with an occurs check (rejects infinite
+  types), let-generalization for real polymorphism, and full
+  derivation-tree tracing.
+- **[required] Tree-walking evaluator** (`unify/evaluator.py`) that runs
+  well-typed programs to real values, including genuine recursion, with
+  short-circuit `&&`/`||`, clean errors for division by zero,
+  non-exhaustive matches, and comparing function values.
+- **[required] Precise diagnostics** (`unify/diagnostics.py`): every
+  rejected program names the two conflicting types (with consistent
+  "expected"/"found" wording and shared variable naming across both) and
+  points a caret at the exact source span responsible. Missing files and
+  stack-depth limits are reported the same way, not as raw Python
+  tracebacks.
+- **[stretch] REPL** (`unify/repl.py`, `python3 -m unify.cli repl`):
+  persistent `let`-bindings across lines, full let-polymorphism across
+  statements, `:type <expr>` to check a type without evaluating, `:env` to
+  list every binding, and a small standard-library prelude
+  (`map`/`filter`/`foldl`/`length`/`append`/`reverse`/`assoc`) written in
+  Unify itself and type-checked/loaded at startup.
+- **[stretch] Web visualizer** (`unify/web/`, `python3 -m unify.cli web`):
+  a real `http.server` backend with zero client-side inference logic —
+  type an expression in the browser, see its principal type, evaluated
+  value, and the full Algorithm W derivation tree, all computed
+  server-side in Python and rendered from JSON.
 
 Run the test suite: `python3 -m unittest discover -s tests` (119 tests)
 
