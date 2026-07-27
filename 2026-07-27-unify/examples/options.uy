@@ -1,0 +1,11 @@
+# Option pattern matching, plus a recursive lookup over an association
+# list of (key, value) tuples -- exercises tuples, options, and lists
+# together. Expected type: int, expected value: 42
+let rec assoc key l =
+  match l with
+  | [] -> None
+  | (k, v) :: rest -> if k = key then Some v else assoc key rest
+in
+match assoc 2 [(1, 10), (2, 42), (3, 99)] with
+| Some v -> v
+| None -> 0

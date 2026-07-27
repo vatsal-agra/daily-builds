@@ -1,0 +1,6 @@
+# The textbook Hindley-Milner example: `id` is inferred as a fully
+# polymorphic  forall a. a -> a  and used at two different types in the
+# very same expression, something no unification-free type system allows.
+# Expected type: (int, bool), expected value: (1, true)
+let id = fun x -> x in
+(id 1, id true)

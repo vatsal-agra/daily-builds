@@ -1,0 +1,9 @@
+# A from-scratch, in-language `map`, exercising recursion, list patterns,
+# and higher-order polymorphic functions all at once.
+# Expected type: int list, expected value: [2; 4; 6; 8]
+let rec map f l =
+  match l with
+  | [] -> []
+  | h :: t -> f h :: map f t
+in
+map (fun x -> x * 2) [1, 2, 3, 4]

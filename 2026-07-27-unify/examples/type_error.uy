@@ -1,0 +1,4 @@
+# Deliberately ill-typed: `true` is not an int, so `n + 1` inside this
+# branch cannot type-check. Run with `unify check` to see the diagnostic.
+let f = fun n -> if n then n + 1 else 0 in
+f true
