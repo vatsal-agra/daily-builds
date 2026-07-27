@@ -3,9 +3,8 @@
 A Hindley-Milner type inference engine, built from scratch in pure Python
 (stdlib only — no dependencies).
 
-**Status: Phase 4 (Stretch + polish) complete.** Both stretch features are
-implemented: a REPL with a language-defined prelude, and a server-backed
-HTML derivation-tree visualizer. See [PLAN.md](PLAN.md) for the concept
+**Status: Phase 5 (Verification) complete.** 119 unit tests and a 34-check
+end-to-end demo (`demo.py`) all pass. See [PLAN.md](PLAN.md) for the concept
 and architecture, [REVIEW.md](REVIEW.md) for the adversarial review.
 
 ## Quick start
@@ -49,6 +48,11 @@ python3 -m unify.cli web                            # visualizer at http://127.0
   Python and rendered from JSON.
 
 Run the test suite: `python3 -m unittest discover -s tests` (119 tests)
+
+Run the end-to-end verification demo: `python3 demo.py` (34 checks covering
+every required and stretch feature against real assertions, not just
+"didn't crash" — includes spinning up the actual web server and hitting it
+over real HTTP).
 
 ## The language
 
