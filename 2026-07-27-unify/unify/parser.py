@@ -101,8 +101,15 @@ class Parser:
             return self.parse_match()
         return self.parse_or()
 
-    def parse_let(self):
-        start = self.advance().pos  # 'let'
+    def parse_let_binding(self):
+        """Parse `["rec"] IDENT IDENT* "=" expr`, i.e. everything after the
+        `let` keyword up to (not including) `in`. Shared by `parse_let`
+        (which requires `in body` to follow) and the REPL's top-level
+        `let` statements (which don't -- see `parse_toplevel`).
+
+        Returns (start_pos, is_rec, name, value_expr).
+        """
+        start = self.toks[self.i - 1].pos  # position of the already-consumed 'let'
         is_rec = False
         if self.at_keyword("rec"):
             self.advance()
@@ -121,11 +128,16 @@ class Parser:
                 "(write 'let rec f x = ...' or 'let rec f = fun x -> ...')",
                 name_tok.line, name_tok.col,
             )
+        return start, is_rec, name_tok.text, value
+
+    def parse_let(self):
+        self.advance()  # 'let'
+        start, is_rec, name, value = self.parse_let_binding()
         self.expect_keyword("in")
         body = self.parse_expr()
         span = (start, body.span[1])
         cls = N.LetRec if is_rec else N.Let
-        return cls(span=span, name=name_tok.text, value=value, body=body)
+        return cls(span=span, name=name, value=value, body=body)
 
     def parse_if(self):
         start = self.advance().pos
@@ -378,3 +390,33 @@ def _reparent(node, span):
 def parse(source):
     tokens = tokenize(source)
     return Parser(tokens, source).parse_program()
+
+
+def parse_toplevel(source):
+    """Parse one REPL input line: either a top-level binding with no `in`
+    (`let [rec] name [params] = expr`, which persists `name` for later
+    lines) or a bare expression -- and `let ... in ...` written WITH an
+    `in` is still just an ordinary expression, evaluated once and not
+    persisted, exactly as it would be anywhere else in the language.
+
+    Returns ("let", is_rec, name, value_expr) or ("expr", expr).
+    """
+    tokens = tokenize(source)
+    p = Parser(tokens, source)
+    if p.at_keyword("let"):
+        p.advance()
+        start, is_rec, name, value = p.parse_let_binding()
+        if p.at_keyword("in"):
+            p.advance()
+            body = p.parse_expr()
+            cls = N.LetRec if is_rec else N.Let
+            expr = cls(span=(start, body.span[1]), name=name, value=value, body=body)
+            result = ("expr", expr)
+        else:
+            result = ("let", is_rec, name, value)
+    else:
+        result = ("expr", p.parse_expr())
+    t = p.peek()
+    if t.kind != "EOF":
+        raise ParseError(f"unexpected trailing input {t.text or t.kind!r}", t.line, t.col)
+    return result

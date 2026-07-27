@@ -160,9 +160,28 @@ class Infer:
         ty = self.apply(rv)
         return ty, Judgment("App", expr, ty, [fj, aj])
 
+    def infer_binding(self, env, name, value_expr, is_rec):
+        """Infer a `let [rec] name = value_expr` binding on its own.
+
+        Returns (scheme, value_judgment). Shared by the Let/LetRec AST
+        handlers below and by the REPL's top-level statement handling
+        (`infer_toplevel`), which needs the exact same letrec
+        self-reference trick without an enclosing `in body`.
+        """
+        if is_rec:
+            pv = self.fresh()
+            env_rec = dict(env)
+            env_rec[name] = Scheme(frozenset(), pv)
+            vt, vj = self.infer_expr(env_rec, value_expr)
+            self.unify(vt, pv, value_expr.span, f"recursive binding of '{name}'")
+            scheme = self.generalize(env, self.apply(pv))
+        else:
+            vt, vj = self.infer_expr(env, value_expr)
+            scheme = self.generalize(env, vt)
+        return scheme, vj
+
     def _infer_Let(self, env, expr):
-        vt, vj = self.infer_expr(env, expr.value)
-        scheme = self.generalize(env, vt)
+        scheme, vj = self.infer_binding(env, expr.name, expr.value, is_rec=False)
         env2 = dict(env)
         env2[expr.name] = scheme
         bt, bj = self.infer_expr(env2, expr.body)
@@ -170,12 +189,7 @@ class Infer:
         return ty, Judgment("Let", expr, ty, [vj, bj], note=f"{expr.name} : {pretty(scheme.ty)}")
 
     def _infer_LetRec(self, env, expr):
-        pv = self.fresh()
-        env_rec = dict(env)
-        env_rec[expr.name] = Scheme(frozenset(), pv)
-        vt, vj = self.infer_expr(env_rec, expr.value)
-        self.unify(vt, pv, expr.value.span, f"recursive binding of '{expr.name}'")
-        scheme = self.generalize(env, self.apply(pv))
+        scheme, vj = self.infer_binding(env, expr.name, expr.value, is_rec=True)
         env2 = dict(env)
         env2[expr.name] = scheme
         bt, bj = self.infer_expr(env2, expr.body)
@@ -311,3 +325,19 @@ def infer_program(expr, base_env=None, start_counter=0):
     final_ty = inferer.apply(ty)
     _resolve_judgment(judgment, inferer.subst)
     return final_ty, judgment, inferer.counter
+
+
+def infer_toplevel(name, value_expr, is_rec, base_env=None, start_counter=0):
+    """Infer a bare top-level `let [rec] name = value_expr` (no `in body`).
+
+    Used by the REPL: each input line binds a name into a persisted
+    environment rather than an immediately-following body. Returns
+    (scheme, judgment, next_counter); raises InferError exactly like
+    `infer_program`. Reuses `Infer.infer_binding`, the same letrec
+    self-reference logic the `Let`/`LetRec` AST nodes use.
+    """
+    inferer = Infer(start_counter=start_counter)
+    env = dict(base_env) if base_env else {}
+    scheme, judgment = inferer.infer_binding(env, name, value_expr, is_rec)
+    _resolve_judgment(judgment, inferer.subst)
+    return scheme, judgment, inferer.counter

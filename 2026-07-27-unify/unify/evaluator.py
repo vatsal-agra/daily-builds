@@ -138,18 +138,34 @@ def _eval_App(env, expr):
     return eval_expr(env2, fn.body)
 
 
+def eval_binding(env, name, value_expr, is_rec):
+    """Evaluate a `let [rec] name = value_expr` binding on its own.
+
+    Returns the bound value. Shared by the Let/LetRec AST handlers below
+    and by the REPL's top-level statement handling (`eval_toplevel`),
+    which needs the same self-reference trick without an enclosing
+    `in body`.
+    """
+    if is_rec:
+        env_rec = dict(env)
+        value = eval_expr(env_rec, value_expr)
+        env_rec[name] = value  # safe: value is a Closure capturing this same dict by reference
+        return value
+    return eval_expr(env, value_expr)
+
+
 def _eval_Let(env, expr):
-    value = eval_expr(env, expr.value)
+    value = eval_binding(env, expr.name, expr.value, is_rec=False)
     env2 = dict(env)
     env2[expr.name] = value
     return eval_expr(env2, expr.body)
 
 
 def _eval_LetRec(env, expr):
-    env_rec = dict(env)
-    value = eval_expr(env_rec, expr.value)
-    env_rec[expr.name] = value  # safe: value is a Closure capturing this same dict by reference
-    return eval_expr(env_rec, expr.body)
+    value = eval_binding(env, expr.name, expr.value, is_rec=True)
+    env2 = dict(env)
+    env2[expr.name] = value
+    return eval_expr(env2, expr.body)
 
 
 def _eval_BinOp(env, expr):

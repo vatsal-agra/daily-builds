@@ -3,10 +3,10 @@
 A Hindley-Milner type inference engine, built from scratch in pure Python
 (stdlib only — no dependencies).
 
-**Status: Phase 3 (Adversarial review) complete.** Seven real bugs found
-and fixed, including one that would have made the planned REPL hang —
-see [REVIEW.md](REVIEW.md). See [PLAN.md](PLAN.md) for the concept and
-architecture.
+**Status: Phase 4 (Stretch + polish) complete.** Both stretch features are
+implemented: a REPL with a language-defined prelude, and a server-backed
+HTML derivation-tree visualizer. See [PLAN.md](PLAN.md) for the concept
+and architecture, [REVIEW.md](REVIEW.md) for the adversarial review.
 
 ## Quick start
 
@@ -14,6 +14,8 @@ architecture.
 python3 -m unify.cli run examples/factorial.uy
 python3 -m unify.cli check examples/polymorphism.uy --trace
 python3 -m unify.cli check examples/type_error.uy   # see a real diagnostic
+python3 -m unify.cli repl                           # interactive REPL
+python3 -m unify.cli web                            # visualizer at http://127.0.0.1:8765/
 ```
 
 ## What works right now
@@ -34,8 +36,36 @@ python3 -m unify.cli check examples/type_error.uy   # see a real diagnostic
   wording and shared variable naming across both) and points a caret at
   the exact source span responsible. Missing files and stack-depth limits
   are reported the same way, not as raw Python tracebacks.
+- **REPL** (`unify/repl.py`, `python3 -m unify.cli repl`): persistent
+  `let`-bindings across lines, full let-polymorphism across statements,
+  `:type <expr>` to check a type without evaluating, `:env` to list every
+  binding, and a small standard-library prelude (`map`/`filter`/`foldl`/
+  `length`/`append`/`reverse`/`assoc`) written in Unify itself and
+  type-checked/loaded at startup.
+- **Web visualizer** (`unify/web/`, `python3 -m unify.cli web`): a real
+  `http.server` backend with zero client-side inference logic — type an
+  expression in the browser, see its principal type, evaluated value, and
+  the full Algorithm W derivation tree, all computed server-side in
+  Python and rendered from JSON.
 
-Run the test suite: `python3 -m unittest discover -s tests` (100 tests)
+Run the test suite: `python3 -m unittest discover -s tests` (119 tests)
+
+## The language
+
+```
+let [rec] name [params] = expr in body     -- binding (curried params)
+fun x y -> expr                            -- lambda (curried)
+if cond then a else b
+match expr with | pattern -> expr | ...    -- patterns: _, x, 1, true,
+                                            --   (a, b), [], h :: t, Some p, None
+(a, b, ...)                                -- tuples
+[a, b, c]                                  -- list literal (sugar for a :: b :: c :: [])
+Some expr | None                           -- option
++ - * / = <> < > <= >= && ||                -- operators (arithmetic is int-only)
+```
+
+No unit type, no type annotations (they're inferred), no mutual recursion
+(`and`), no type classes — see PLAN.md's "Non-goals" for why.
 
 ## Sharp edges (documented, not bugs)
 
@@ -51,5 +81,14 @@ defect. See `REVIEW.md` for the full writeup.
   `| pattern -> ...` arms meant for the *enclosing* match. Parenthesize the
   inner construct: `| p -> (match ...)`.
 
-Next up: stretch features (Phase 4) — a server-backed HTML derivation-tree
-visualizer and a REPL with a language-defined prelude.
+## Where a human could take this next
+
+- Type classes / an `Ord` constraint, so comparison operators stop being a
+  runtime check and become a real typeclass-resolved feature.
+- User-defined algebraic data types (`type tree = Leaf | Node of tree * int * tree`)
+  instead of the fixed `Some`/`None`/tuple/list vocabulary.
+- Match exhaustiveness and redundancy checking (today, a non-exhaustive
+  match type-checks and only fails at runtime).
+- Mutual recursion (`let rec f = ... and g = ...`).
+- A bytecode VM instead of the tree-walking evaluator, for real recursion
+  depth without leaning on Python's own call stack.

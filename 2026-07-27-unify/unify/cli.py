@@ -5,6 +5,7 @@ Commands:
     run   <file>          parse + infer + evaluate; print the result
     trace <file>          like check, but also print the full derivation tree
     repl                   interactive read-eval-print loop
+    web [port]             start the derivation-tree visualizer (default port 8765)
 """
 
 import sys
@@ -143,6 +144,12 @@ def cmd_repl():
     return 0
 
 
+def cmd_web(port=8765):
+    from .web.server import main as web_main
+    web_main(port=port)
+    return 0
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
@@ -169,6 +176,9 @@ def main(argv=None):
         return cmd_check(rest[0], trace=True)
     if cmd == "repl":
         return cmd_repl()
+    if cmd == "web":
+        port = int(rest[0]) if rest else 8765
+        return cmd_web(port=port)
 
     print(__doc__)
     return 1
