@@ -9,11 +9,10 @@ the web visualizer.
 
 from dataclasses import dataclass, field
 
-from . import nodes as N
 from .types import (
-    TVar, TCon, TFun, TTuple, TList, TOption, Scheme,
+    TVar, TFun, TTuple, TList, TOption, Scheme,
     TINT, TBOOL, TSTRING,
-    apply, apply_scheme, compose, free_vars, free_vars_scheme, unify_raw,
+    apply, compose, free_vars, free_vars_scheme, unify_raw,
     UnifyError, pretty,
 )
 
@@ -42,9 +41,16 @@ BOOL_OPS = {"&&", "||"}
 
 
 class Infer:
-    def __init__(self):
+    def __init__(self, start_counter=0):
         self.subst = {}
-        self.counter = 0
+        # Must be unique for the *whole session*, not just this one call: a
+        # REPL calls infer_program repeatedly against a persisted env whose
+        # Schemes still reference old quantified variable ids. Restarting
+        # from 0 every call would let a freshly-minted id collide with one
+        # of those still-live quantified ids, corrupting generalize()'s
+        # free-variable bookkeeping. One-shot callers (`unify check/run`)
+        # just use the default and never notice.
+        self.counter = start_counter
 
     def fresh(self):
         self.counter += 1
@@ -289,14 +295,19 @@ def _resolve_judgment(j, subst):
     return j
 
 
-def infer_program(expr, base_env=None):
-    """Infer the principal type of `expr`. Returns (Type, Judgment root).
+def infer_program(expr, base_env=None, start_counter=0):
+    """Infer the principal type of `expr`. Returns (Type, Judgment root, next_counter).
 
     Raises InferError on any type error, with a source span to blame.
+
+    `start_counter`/`next_counter` let a stateful caller (the REPL) thread
+    the fresh-variable counter across repeated calls against a persisted
+    env — see the comment on `Infer.__init__` for why that matters. One-shot
+    callers can ignore `next_counter` entirely.
     """
-    inferer = Infer()
+    inferer = Infer(start_counter=start_counter)
     env = dict(base_env) if base_env else {}
     ty, judgment = inferer.infer_expr(env, expr)
     final_ty = inferer.apply(ty)
     _resolve_judgment(judgment, inferer.subst)
-    return final_ty, judgment
+    return final_ty, judgment, inferer.counter

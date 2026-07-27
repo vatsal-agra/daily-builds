@@ -91,5 +91,41 @@ class TestSpans(unittest.TestCase):
         self.assertEqual(e.span, (0, 7))
 
 
+class TestDocumentedAmbiguities(unittest.TestCase):
+    """These aren't bugs -- they're the same 'maximal munch' ambiguities
+    real ML-family languages (OCaml, F#, Haskell's `case`) have, and are
+    documented in README.md's "Sharp edges" section with the standard
+    workaround (parenthesize). Regression-tested so a future refactor
+    doesn't silently change which behavior we've chosen."""
+
+    def test_bare_minus_after_application_is_binary_not_unary(self):
+        # `f -1` parses as `f - 1` (subtraction), NOT `f (-1)` (application
+        # to negative one) -- exactly as in OCaml/F#/SML.
+        e = parse("f -1")
+        self.assertIsInstance(e, N.BinOp)
+        self.assertEqual(e.op, "-")
+
+    def test_negative_literal_needs_parens_as_an_argument(self):
+        e = parse("f (-1)")
+        self.assertIsInstance(e, N.App)
+        self.assertIsInstance(e.arg, N.UnaryNeg)
+
+    def test_nested_match_without_parens_swallows_following_cases(self):
+        # The inner `match` extends as far right as it can, so it eats the
+        # `| false -> 99` arm that was meant for the OUTER match, leaving
+        # the outer match with only one case. Parenthesizing the inner
+        # match (see test below) is the documented fix.
+        src = "match true with | true -> match 1 with | 1 -> 10 | 2 -> 20 | false -> 99"
+        e = parse(src)
+        self.assertEqual(len(e.cases), 1)
+        self.assertIsInstance(e.cases[0][1], N.Match)
+        self.assertEqual(len(e.cases[0][1].cases), 3)
+
+    def test_parenthesizing_inner_match_fixes_it(self):
+        src = "match true with | true -> (match 1 with | 1 -> 10 | 2 -> 20) | false -> 99"
+        e = parse(src)
+        self.assertEqual(len(e.cases), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

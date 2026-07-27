@@ -84,14 +84,6 @@ def apply(subst, ty):
     return ty  # TCon
 
 
-def apply_scheme(subst, scheme):
-    # Quantified vars are bound within the scheme and must not be substituted,
-    # even if (due to id reuse across separate inference runs) they collide
-    # with a key in `subst`.
-    filtered = {k: v for k, v in subst.items() if k not in scheme.vars}
-    return Scheme(scheme.vars, apply(filtered, scheme.ty))
-
-
 def compose(s1, s2):
     """Return a substitution equivalent to applying s2 then s1."""
     result = {k: apply(s1, v) for k, v in s2.items()}
@@ -146,20 +138,19 @@ def unify_raw(found, expected):
         return {}
     if isinstance(a, TVar):
         if occurs(a.id, b):
-            raise UnifyError(
-                f"infinite type: {pretty(a)} occurs in {pretty(b)}", a, b, infinite=True
-            )
+            sa, sb = pretty_pair(a, b)
+            raise UnifyError(f"infinite type: {sa} occurs in {sb}", a, b, infinite=True)
         return {a.id: b}
     if isinstance(b, TVar):
         if occurs(b.id, a):
-            raise UnifyError(
-                f"infinite type: {pretty(b)} occurs in {pretty(a)}", a, b, infinite=True
-            )
+            sb, sa = pretty_pair(b, a)
+            raise UnifyError(f"infinite type: {sb} occurs in {sa}", a, b, infinite=True)
         return {b.id: a}
     if isinstance(a, TCon) and isinstance(b, TCon):
         if a.name == b.name:
             return {}
-        raise UnifyError(f"expected {pretty(b)}, found {pretty(a)}", a, b)
+        sa, sb = pretty_pair(a, b)
+        raise UnifyError(f"expected {sb}, found {sa}", a, b)
     if isinstance(a, TFun) and isinstance(b, TFun):
         s1 = unify_raw(a.arg, b.arg)
         s2 = unify_raw(apply(s1, a.ret), apply(s1, b.ret))
@@ -180,7 +171,8 @@ def unify_raw(found, expected):
         return unify_raw(a.elem, b.elem)
     if isinstance(a, TOption) and isinstance(b, TOption):
         return unify_raw(a.elem, b.elem)
-    raise UnifyError(f"expected {pretty(b)}, found {pretty(a)}", a, b)
+    sa, sb = pretty_pair(a, b)
+    raise UnifyError(f"expected {sb}, found {sa}", a, b)
 
 
 # ---- pretty-printing ----------------------------------------------------
@@ -220,3 +212,18 @@ def pretty(ty, var_names=None):
         raise TypeError(f"unknown type node: {t!r}")
 
     return go(ty, False)
+
+
+def pretty_pair(a, b):
+    """Pretty-print two types sharing ONE variable-naming context.
+
+    Using two independent `pretty()` calls would let each restart its
+    letter numbering from 'a — so a variable shared between `a` and `b`
+    could be printed as, say, 'a in one and 'b in the other (or worse, two
+    *different* variables could coincidentally both print as 'a), making
+    "expected X, found Y" messages actively misleading. Call sites that
+    report a pair of related types (as every unification error does) must
+    use this instead of two separate `pretty()` calls.
+    """
+    var_names = {}
+    return pretty(a, var_names), pretty(b, var_names)

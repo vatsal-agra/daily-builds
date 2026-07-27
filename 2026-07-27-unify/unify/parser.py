@@ -30,7 +30,7 @@ Grammar (low to high precedence):
 """
 
 from . import nodes as N
-from .lexer import tokenize, LexError
+from .lexer import tokenize
 
 
 class ParseError(Exception):

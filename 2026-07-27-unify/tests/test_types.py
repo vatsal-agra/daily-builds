@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from unify.types import (
     TVar, TFun, TTuple, TList, TOption, TINT, TBOOL,
-    unify_raw, UnifyError, apply, compose, pretty, occurs,
+    unify_raw, UnifyError, apply, compose, pretty, pretty_pair, occurs,
 )
 
 
@@ -84,6 +84,26 @@ class TestPretty(unittest.TestCase):
     def test_var_naming_is_stable_within_one_call(self):
         v1, v2 = TVar(5), TVar(9)
         self.assertEqual(pretty(TFun(v1, v2)), "'a -> 'b")
+
+    def test_pretty_pair_shares_variable_names_across_both_sides(self):
+        # A variable shared by both types in an error message must print
+        # with the SAME letter on both sides, or the message misleadingly
+        # suggests two unrelated types.
+        v = TVar(42)
+        sa, sb = pretty_pair(TFun(v, TINT), TFun(v, TBOOL))
+        self.assertEqual(sa, "'a -> int")
+        self.assertEqual(sb, "'a -> bool")
+
+    def test_unify_error_message_uses_shared_variable_names(self):
+        # A mismatch between two altogether-incompatible shapes (function
+        # vs. tuple) is reported at the top level, so both full types --
+        # including their shared variable -- appear in one message.
+        v = TVar(1)
+        with self.assertRaises(UnifyError) as ctx:
+            unify_raw(TFun(v, TINT), TTuple((v, TBOOL)))
+        msg = ctx.exception.message
+        self.assertIn("'a -> int", msg)
+        self.assertIn("('a, bool)", msg)
 
 
 if __name__ == "__main__":

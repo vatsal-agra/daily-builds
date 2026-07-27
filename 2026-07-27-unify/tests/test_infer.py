@@ -6,11 +6,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from unify.parser import parse
 from unify.infer import infer_program, InferError
-from unify.types import pretty
+from unify.types import pretty, Scheme, free_vars
 
 
 def infer(src):
-    ty, _judgment = infer_program(parse(src))
+    ty, _judgment, _counter = infer_program(parse(src))
     return pretty(ty)
 
 
@@ -104,6 +104,43 @@ class TestErrorMessages(unittest.TestCase):
         except InferError as e:
             src = "1 + true"
             self.assertEqual(src[e.span[0]:e.span[1]], "true")
+
+
+class TestPersistedEnvAcrossCalls(unittest.TestCase):
+    """A REPL calls infer_program repeatedly against a persisted env of
+    Schemes from earlier statements, each call getting a fresh Infer with
+    its own counter. If that counter always restarts at 0, a freshly-minted
+    variable can numerically collide with a scheme's own bound-variable
+    label, so instantiate() builds a *self-referential* substitution
+    ({1: TVar(1)}) and apply() recurses forever. Threading a running
+    counter via start_counter/next_counter is what prevents this."""
+
+    def test_without_threaded_counter_instantiation_can_self_reference(self):
+        ty1, _j1, _c1 = infer_program(parse("fun x -> x"))
+        scheme_f = Scheme(frozenset(free_vars(ty1)), ty1)
+        ty2, _j2, _c2 = infer_program(parse("fun x -> x + 1"))
+        scheme_g = Scheme(frozenset(free_vars(ty2)), ty2)
+
+        with self.assertRaises(RecursionError):
+            infer_program(
+                parse("(f true, g 5)"),
+                base_env={"f": scheme_f, "g": scheme_g},
+                start_counter=0,
+            )
+
+    def test_threaded_counter_avoids_the_collision(self):
+        counter = 0
+        ty1, _j1, counter = infer_program(parse("fun x -> x"), start_counter=counter)
+        scheme_f = Scheme(frozenset(free_vars(ty1)), ty1)
+        ty2, _j2, counter = infer_program(parse("fun x -> x + 1"), start_counter=counter)
+        scheme_g = Scheme(frozenset(free_vars(ty2)), ty2)
+
+        ty3, _j3, counter = infer_program(
+            parse("(f true, g 5)"),
+            base_env={"f": scheme_f, "g": scheme_g},
+            start_counter=counter,
+        )
+        self.assertEqual(pretty(ty3), "(bool, int)")
 
 
 class TestListsTuplesOptionsTogether(unittest.TestCase):
