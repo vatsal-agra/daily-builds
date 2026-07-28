@@ -6,14 +6,16 @@ server-backed browser front end), and five original CHIP-8 programs written
 in Cosmac's own assembly dialect. See [PLAN.md](PLAN.md) for the full design
 rationale.
 
-**Status: Phase 4 (stretch + polish) complete.** All four required features
-work end-to-end: CPU core, assembler, disassembler + debugger, and a live
-browser UI running real programs. See [REVIEW.md](REVIEW.md) for the
-adversarial pass — 7 real bugs found and fixed. Three stretch features are
-shipped: **save states**, **configurable quirks** (with a UI toggle), and
-**real audio** — a from-scratch square-wave WAV encoder (`cosmac/wav.py`)
-renders a program's actual sound-timer activity to a playable `.wav`, and
-the browser plays a live Web Audio beep off the same signal. 127 tests pass.
+**Status: shipped.** All four required features work end-to-end: CPU core,
+assembler, disassembler + debugger, and a live browser UI running real
+programs. See [REVIEW.md](REVIEW.md) for the adversarial pass — 7 real bugs
+found and fixed. Three stretch features are shipped: **save states**,
+**configurable quirks** (with a UI toggle), and **real audio** — a
+from-scratch square-wave WAV encoder (`cosmac/wav.py`) renders a program's
+actual sound-timer activity to a playable `.wav`, and the browser plays a
+live Web Audio beep off the same signal. 123 unit/integration/UI tests plus
+[`demo.py`](demo.py) (a standalone, dependency-free walkthrough exercising
+every feature end-to-end) all pass.
 
 ## Live UI
 
@@ -41,10 +43,17 @@ python3 -m cosmac.debugger programs/pong.asm
 
 ```
 python3 -m unittest discover -s tests
+python3 demo.py     # standalone end-to-end walkthrough, no test framework needed
 ```
 
-(`test_ui.py` needs `pip install playwright`; the other three suites are
-stdlib-only.)
+(`test_ui.py` needs `pip install playwright`; every other suite, and
+`demo.py`, is stdlib-only.)
+
+## Render a program's audio to a real WAV file
+
+```
+python3 -m cosmac.wav programs/beep.asm out.wav
+```
 
 ## What's implemented so far
 
