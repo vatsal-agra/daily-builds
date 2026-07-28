@@ -140,12 +140,22 @@ class Emulator:
             "disasm": disasm,
             "last_error": self.last_error,
             "speed_hz": self.speed_hz,
+            "mem_window": self._memory_window(),
             "quirks": {
                 "shift_uses_vy": cpu.quirks.shift_uses_vy,
                 "load_store_increments_i": cpu.quirks.load_store_increments_i,
                 "jump_offset_uses_vx": cpu.quirks.jump_offset_uses_vx,
             },
         }
+
+    def _memory_window(self, size: int = 128) -> dict:
+        """A hex dump of `size` bytes centered on I -- the address a
+        program is actively pointing at, which is usually more useful to
+        watch live than a fixed region, since DXYN/FX55/FX65 all read or
+        write through I."""
+        cpu = self.cpu
+        start = max(0, min(len(cpu.memory) - size, cpu.i - size // 2))
+        return {"start": start, "bytes": bytes(cpu.memory[start:start + size]).hex()}
 
     def _broadcast(self, frame: dict) -> None:
         payload = json.dumps(frame)

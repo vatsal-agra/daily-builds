@@ -6,15 +6,23 @@ server-backed browser front end), and five original CHIP-8 programs written
 in Cosmac's own assembly dialect. See [PLAN.md](PLAN.md) for the full design
 rationale.
 
-**Status: Phase 3 (adversarial review) complete.** All four required
-features work end-to-end: CPU core, assembler, disassembler + debugger, and
-a live browser UI running real programs. See [REVIEW.md](REVIEW.md) for the
-adversarial pass — 7 real bugs found and fixed (a `reset()` that didn't
-restore the original program, a hex/decimal parsing bug in the CLI
-debugger, a threading race in the SSE broadcaster, a UI re-render bug that
-broke breakpoint clicking, missing debugger test coverage, and two
-assembler validation gaps). 103 tests pass (unit, assembler round-trip,
-integration, debugger, Playwright UI smoke tests).
+**Status: Phase 4 (stretch + polish) complete.** All four required features
+work end-to-end: CPU core, assembler, disassembler + debugger, and a live
+browser UI running real programs. See [REVIEW.md](REVIEW.md) for the
+adversarial pass — 7 real bugs found and fixed. Three stretch features are
+shipped: **save states**, **configurable quirks** (with a UI toggle), and
+**real audio** — a from-scratch square-wave WAV encoder (`cosmac/wav.py`)
+renders a program's actual sound-timer activity to a playable `.wav`, and
+the browser plays a live Web Audio beep off the same signal. 127 tests pass.
+
+## Live UI
+
+![Cosmac running Pong](docs/screenshot.png)
+
+Registers, live disassembly (click a line to toggle a breakpoint), a
+memory viewer centered on `I`, and quirk toggles, all driven by the same
+`Chip8`/`Debugger` objects the CLI and test suite use — nothing in the
+browser computes CHIP-8 state itself.
 
 ## Quick start
 

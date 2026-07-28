@@ -135,6 +135,15 @@
   #disasm .line:hover { background: #202a3d; }
   #disasm .line.pc { background: var(--accent-dim); color: #eafff4; }
   #disasm .line.bp::before { content: "● "; color: var(--danger); }
+  #memdump {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.7;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--dim);
+  }
+  #memdump .byte-i { color: var(--accent); font-weight: bold; }
   #keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; max-width: 240px; }
   #keypad button { aspect-ratio: 1; font-family: var(--mono); font-size: 15px; }
   #keypad button.down { background: var(--accent-dim); border-color: var(--accent); }
@@ -188,6 +197,11 @@
       <div class="regs" id="regs"></div>
       <div class="flags" id="flags"></div>
       <div id="disasm"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Memory <span class="small">(128 bytes centered on I)</span></h2>
+      <div id="memdump"></div>
     </div>
 
     <div class="panel">
@@ -270,6 +284,29 @@ function renderDisasm(f) {
   });
 }
 
+let lastMemSignature = null;
+
+function renderMemDump(f) {
+  const w = f.mem_window;
+  const signature = w.start + '|' + w.bytes + '|' + f.i;
+  if (signature === lastMemSignature) return;
+  lastMemSignature = signature;
+
+  const bytes = [];
+  for (let i = 0; i < w.bytes.length; i += 2) bytes.push(w.bytes.substr(i, 2).toUpperCase());
+
+  const rows = [];
+  for (let row = 0; row < bytes.length; row += 16) {
+    const addr = w.start + row;
+    const cells = bytes.slice(row, row + 16).map((b, j) => {
+      const isI = (addr + j) === f.i;
+      return isI ? `<span class="byte-i">${b}</span>` : b;
+    }).join(' ');
+    rows.push(`0x${addr.toString(16).padStart(3, '0').toUpperCase()}: ${cells}`);
+  }
+  document.getElementById('memdump').innerHTML = rows.join('\n');
+}
+
 let audioCtx = null, oscillator = null;
 function setSound(playing) {
   if (playing && !oscillator) {
@@ -293,6 +330,7 @@ function applyFrame(f) {
   drawDisplay(f.display);
   renderRegs(f);
   renderDisasm(f);
+  renderMemDump(f);
   setSound(f.sound_playing);
   if (document.activeElement !== speedInput) {
     speedInput.value = f.speed_hz;
