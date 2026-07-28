@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cosmac — a CHIP-8 virtual machine</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c2333;
+    --border: #2a3242;
+    --fg: #e6edf3;
+    --dim: #8b98a8;
+    --accent: #5ee6a8;
+    --accent-dim: #2f6b52;
+    --pixel-on: #5ee6a8;
+    --danger: #ff6b6b;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 600px at 15% -10%, #10251d 0%, var(--bg) 55%);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    padding: 18px 24px 10px;
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    font-size: 20px;
+    margin: 0;
+    letter-spacing: 0.02em;
+  }
+  header h1 span { color: var(--accent); }
+  header .tag { color: var(--dim); font-size: 13px; }
+  main {
+    display: grid;
+    grid-template-columns: minmax(420px, 640px) minmax(360px, 460px);
+    gap: 20px;
+    padding: 20px 24px 40px;
+    align-items: start;
+  }
+  @media (max-width: 980px) {
+    main { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .panel + .panel { margin-top: 16px; }
+  .panel h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    margin: 0 0 12px;
+  }
+  #screen-wrap {
+    display: flex;
+    justify-content: center;
+    background: #000;
+    border-radius: 8px;
+    padding: 10px;
+    border: 1px solid var(--border);
+  }
+  canvas#screen {
+    width: 100%;
+    max-width: 576px;
+    image-rendering: pixelated;
+    background: #04120a;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  button {
+    background: #232c3d;
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 7px 13px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  button:hover { background: #2c3850; border-color: #3c4a63; }
+  button.primary { background: var(--accent-dim); border-color: var(--accent); color: #eafff4; }
+  button.primary:hover { background: #37835f; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  select, input[type=text], input[type=number], textarea {
+    background: #0f1420;
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 9px;
+    font-size: 13px;
+    font-family: var(--mono);
+  }
+  label.inline { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dim); }
+  #status-line { font-size: 12px; color: var(--dim); margin-top: 10px; min-height: 16px; }
+  #status-line.err { color: var(--danger); }
+  .regs {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px 10px;
+  }
+  .regs div span.name { color: var(--dim); }
+  .flags {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    margin-top: 8px;
+    color: var(--dim);
+    line-height: 1.6;
+  }
+  .flags b { color: var(--fg); }
+  #disasm {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    max-height: 220px;
+    overflow-y: auto;
+    line-height: 1.7;
+    border-top: 1px solid var(--border);
+    margin-top: 10px;
+    padding-top: 8px;
+  }
+  #disasm .line { padding: 1px 4px; border-radius: 4px; cursor: pointer; white-space: pre; }
+  #disasm .line:hover { background: #202a3d; }
+  #disasm .line.pc { background: var(--accent-dim); color: #eafff4; }
+  #disasm .line.bp::before { content: "● "; color: var(--danger); }
+  #keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; max-width: 240px; }
+  #keypad button { aspect-ratio: 1; font-family: var(--mono); font-size: 15px; }
+  #keypad button.down { background: var(--accent-dim); border-color: var(--accent); }
+  textarea#source { width: 100%; min-height: 140px; resize: vertical; }
+  .small { font-size: 11.5px; color: var(--dim); }
+  a.link { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Cosmac<span>_</span></h1>
+  <div class="tag">a from-scratch CHIP-8 virtual machine — CPU, assembler, disassembler &amp; debugger running entirely server-side</div>
+</header>
+<main>
+  <div>
+    <div class="panel">
+      <h2>Display</h2>
+      <div id="screen-wrap"><canvas id="screen" width="64" height="32"></canvas></div>
+      <div class="row">
+        <button id="btn-run" class="primary">▶ Run</button>
+        <button id="btn-pause">⏸ Pause</button>
+        <button id="btn-step">⏭ Step</button>
+        <button id="btn-reset">↺ Reset</button>
+        <label class="inline">speed <input id="speed" type="number" min="10" max="20000" step="10" value="700" style="width:70px"> Hz</label>
+      </div>
+      <div class="row">
+        <select id="program-select"></select>
+        <button id="btn-load">Load program</button>
+        <button id="btn-save-state">💾 Save state</button>
+        <button id="btn-load-state">📂 Load state</button>
+        <input type="file" id="state-file" accept="application/json" style="display:none">
+      </div>
+      <div id="status-line"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Keypad <span class="small">(mouse, or keyboard: 1234/qwer/asdf/zxcv)</span></h2>
+      <div id="keypad"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Assemble &amp; run custom source</h2>
+      <textarea id="source" spellcheck="false" placeholder="; write CHIP-8 assembly here, then Assemble &amp; Run"></textarea>
+      <div class="row"><button id="btn-assemble" class="primary">Assemble &amp; Run</button></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>CPU state</h2>
+      <div class="regs" id="regs"></div>
+      <div class="flags" id="flags"></div>
+      <div id="disasm"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Quirks</h2>
+      <label class="inline"><input type="checkbox" id="q-shift"> shift uses Vy (original COSMAC VIP)</label><br>
+      <label class="inline"><input type="checkbox" id="q-loadstore"> FX55/FX65 increment I (original COSMAC VIP)</label><br>
+      <label class="inline"><input type="checkbox" id="q-jump"> BNNN jump uses Vx (Chip-48/SCHIP "BXNN")</label>
+      <div class="small" style="margin-top:8px">Changing a quirk takes effect on the next Reset/Load — real interpreters disagreed on these, and Cosmac lets you pick either behavior.</div>
+    </div>
+  </div>
+</main>
+<script>
+const screenCanvas = document.getElementById('screen');
+const ctx = screenCanvas.getContext('2d');
+const statusLine = document.getElementById('status-line');
+let breakpoints = new Set();
+
+function setStatus(text, isErr) {
+  statusLine.textContent = text || '';
+  statusLine.classList.toggle('err', !!isErr);
+}
+
+function drawDisplay(hexPacked) {
+  const img = ctx.createImageData(64, 32);
+  for (let i = 0; i < 2048; i++) {
+    const byte = parseInt(hexPacked.substr((i >> 3) * 2, 2), 16);
+    const bit = (byte >> (7 - (i % 8))) & 1;
+    const o = i * 4;
+    if (bit) {
+      img.data[o] = 0x5e; img.data[o+1] = 0xe6; img.data[o+2] = 0xa8; img.data[o+3] = 255;
+    } else {
+      img.data[o] = 4; img.data[o+1] = 18; img.data[o+2] = 10; img.data[o+3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function renderRegs(f) {
+  const regs = document.getElementById('regs');
+  regs.innerHTML = f.v.map((val, i) =>
+    `<div><span class="name">V${i.toString(16).toUpperCase()}</span>=0x${val.toString(16).padStart(2,'0').toUpperCase()}</div>`
+  ).join('');
+  const flags = document.getElementById('flags');
+  flags.innerHTML =
+    `I=<b>0x${f.i.toString(16).padStart(3,'0').toUpperCase()}</b>  PC=<b>0x${f.pc.toString(16).padStart(3,'0').toUpperCase()}</b>  SP=<b>${f.sp}</b><br>` +
+    `DT=<b>${f.dt}</b>  ST=<b>${f.st}</b>  cycles=<b>${f.cycles}</b>  speed=<b>${f.speed_hz}Hz</b><br>` +
+    `state: <b>${f.halted ? 'HALTED' : (f.running ? 'running' : 'paused')}</b>` +
+    (f.waiting_for_key !== null ? ` — waiting for key into V${f.waiting_for_key.toString(16).toUpperCase()}` : '') +
+    `<br>program: <b>${f.loaded_program}</b>` +
+    (f.stack.length ? `<br>stack: ${f.stack.map(a => '0x'+a.toString(16).padStart(3,'0').toUpperCase()).join(' ')}` : '');
+}
+
+let lastDisasmSignature = null;
+
+function renderDisasm(f) {
+  breakpoints = new Set(f.breakpoints);
+  // The SSE stream pushes a frame ~60 times/sec even while paused, but the
+  // disassembly listing itself only actually changes on step/run/load/
+  // breakpoint-toggle. Replacing the DOM every frame regardless breaks any
+  // in-flight click (the element a user is clicking gets detached mid-click)
+  // and is wasted work, so skip the rebuild unless something really changed.
+  const signature = f.pc + '|' + f.disasm.map(d => d.address).join(',') + '|' + f.breakpoints.join(',');
+  if (signature === lastDisasmSignature) return;
+  lastDisasmSignature = signature;
+
+  const el = document.getElementById('disasm');
+  el.innerHTML = f.disasm.map(d => {
+    const cls = ['line'];
+    if (d.address === f.pc) cls.push('pc');
+    if (breakpoints.has(d.address)) cls.push('bp');
+    const addr = '0x' + d.address.toString(16).padStart(3, '0').toUpperCase();
+    return `<div class="${cls.join(' ')}" data-addr="${d.address}">${addr}: ${d.text}</div>`;
+  }).join('');
+  el.querySelectorAll('.line').forEach(line => {
+    line.addEventListener('click', () => {
+      const addr = parseInt(line.dataset.addr, 10);
+      const set = !breakpoints.has(addr);
+      fetch('/breakpoint', { method: 'POST', body: JSON.stringify({ address: addr, set }) });
+    });
+  });
+}
+
+let audioCtx = null, oscillator = null;
+function setSound(playing) {
+  if (playing && !oscillator) {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    oscillator = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0.05;
+    oscillator.type = 'square';
+    oscillator.frequency.value = 440;
+    oscillator.connect(gain).connect(audioCtx.destination);
+    oscillator.start();
+  } else if (!playing && oscillator) {
+    oscillator.stop();
+    oscillator = null;
+  }
+}
+
+function applyFrame(f) {
+  drawDisplay(f.display);
+  renderRegs(f);
+  renderDisasm(f);
+  setSound(f.sound_playing);
+  if (f.last_error) setStatus('error: ' + f.last_error, true);
+  document.getElementById('q-shift').checked = f.quirks.shift_uses_vy;
+  document.getElementById('q-loadstore').checked = f.quirks.load_store_increments_i;
+  document.getElementById('q-jump').checked = f.quirks.jump_offset_uses_vx;
+}
+
+const es = new EventSource('/stream');
+es.onmessage = (ev) => applyFrame(JSON.parse(ev.data));
+es.onerror = () => setStatus('connection to server lost — retrying…', true);
+
+document.getElementById('btn-run').onclick = () => fetch('/control', { method: 'POST', body: JSON.stringify({ action: 'run' }) });
+document.getElementById('btn-pause').onclick = () => fetch('/control', { method: 'POST', body: JSON.stringify({ action: 'pause' }) });
+document.getElementById('btn-step').onclick = () => fetch('/control', { method: 'POST', body: JSON.stringify({ action: 'step' }) });
+document.getElementById('btn-reset').onclick = () => fetch('/control', { method: 'POST', body: JSON.stringify({ action: 'reset' }) });
+
+document.getElementById('speed').addEventListener('change', (e) => {
+  fetch('/speed', { method: 'POST', body: JSON.stringify({ hz: parseInt(e.target.value, 10) || 700 }) });
+});
+
+fetch('/programs').then(r => r.json()).then(data => {
+  const sel = document.getElementById('program-select');
+  sel.innerHTML = data.programs.map(p => `<option value="${p}">${p}</option>`).join('');
+});
+
+document.getElementById('btn-load').onclick = () => {
+  const name = document.getElementById('program-select').value;
+  fetch('/load', { method: 'POST', body: JSON.stringify({ name }) })
+    .then(r => r.json())
+    .then(res => setStatus(res.error ? ('error: ' + res.error) : `loaded ${name}`, !!res.error));
+  fetch(`/program_source?name=${encodeURIComponent(name)}`).then(r => r.json()).then(d => {
+    if (d.source) document.getElementById('source').value = d.source;
+  });
+};
+
+document.getElementById('btn-assemble').onclick = () => {
+  const source = document.getElementById('source').value;
+  fetch('/assemble', { method: 'POST', body: JSON.stringify({ source }) })
+    .then(r => r.json())
+    .then(res => setStatus(res.error ? ('assembler error: ' + res.error) : 'assembled and loaded.', !!res.error));
+};
+
+document.getElementById('btn-save-state').onclick = () => {
+  fetch('/save_state', { method: 'POST' }).then(r => r.json()).then(res => {
+    const blob = new Blob([JSON.stringify(res.state)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'cosmac-state.json';
+    a.click();
+    setStatus('state saved.');
+  });
+};
+document.getElementById('btn-load-state').onclick = () => document.getElementById('state-file').click();
+document.getElementById('state-file').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  file.text().then(text => {
+    const state = JSON.parse(text);
+    fetch('/load_state', { method: 'POST', body: JSON.stringify({ state }) })
+      .then(r => r.json())
+      .then(res => setStatus(res.error ? ('error: ' + res.error) : 'state restored.', !!res.error));
+  });
+});
+
+['q-shift', 'q-loadstore', 'q-jump'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => {
+    fetch('/quirks', { method: 'POST', body: JSON.stringify({
+      shift_uses_vy: document.getElementById('q-shift').checked,
+      load_store_increments_i: document.getElementById('q-loadstore').checked,
+      jump_offset_uses_vx: document.getElementById('q-jump').checked,
+    })});
+  });
+});
+
+// -- keypad: on-screen buttons + physical keyboard mapping --------------
+const KEY_LAYOUT = [0x1,0x2,0x3,0xC, 0x4,0x5,0x6,0xD, 0x7,0x8,0x9,0xE, 0xA,0x0,0xB,0xF];
+const KEYBOARD_MAP = {
+  '1':0x1,'2':0x2,'3':0x3,'4':0xC,
+  'q':0x4,'w':0x5,'e':0x6,'r':0xD,
+  'a':0x7,'s':0x8,'d':0x9,'f':0xE,
+  'z':0xA,'x':0x0,'c':0xB,'v':0xF,
+};
+const keypad = document.getElementById('keypad');
+const keyButtons = {};
+KEY_LAYOUT.forEach(k => {
+  const btn = document.createElement('button');
+  btn.textContent = k.toString(16).toUpperCase();
+  keyButtons[k] = btn;
+  const down = () => { btn.classList.add('down'); fetch('/key', { method:'POST', body: JSON.stringify({ key: k, down: true })}); };
+  const up = () => { btn.classList.remove('down'); fetch('/key', { method:'POST', body: JSON.stringify({ key: k, down: false })}); };
+  btn.addEventListener('mousedown', down);
+  btn.addEventListener('mouseup', up);
+  btn.addEventListener('mouseleave', up);
+  btn.addEventListener('touchstart', (e) => { e.preventDefault(); down(); });
+  btn.addEventListener('touchend', (e) => { e.preventDefault(); up(); });
+  keypad.appendChild(btn);
+});
+const heldKeys = new Set();
+window.addEventListener('keydown', (e) => {
+  const k = KEYBOARD_MAP[e.key.toLowerCase()];
+  if (k === undefined || heldKeys.has(k)) return;
+  heldKeys.add(k);
+  keyButtons[k].classList.add('down');
+  fetch('/key', { method:'POST', body: JSON.stringify({ key: k, down: true })});
+});
+window.addEventListener('keyup', (e) => {
+  const k = KEYBOARD_MAP[e.key.toLowerCase()];
+  if (k === undefined) return;
+  heldKeys.delete(k);
+  keyButtons[k].classList.remove('down');
+  fetch('/key', { method:'POST', body: JSON.stringify({ key: k, down: false })});
+});
+</script>
+</body>
+</html>
