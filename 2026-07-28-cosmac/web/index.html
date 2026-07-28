@@ -287,11 +287,16 @@ function setSound(playing) {
   }
 }
 
+const speedInput = document.getElementById('speed');
+
 function applyFrame(f) {
   drawDisplay(f.display);
   renderRegs(f);
   renderDisasm(f);
   setSound(f.sound_playing);
+  if (document.activeElement !== speedInput) {
+    speedInput.value = f.speed_hz;
+  }
   if (f.last_error) setStatus('error: ' + f.last_error, true);
   document.getElementById('q-shift').checked = f.quirks.shift_uses_vy;
   document.getElementById('q-loadstore').checked = f.quirks.load_store_increments_i;

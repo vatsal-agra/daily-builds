@@ -122,10 +122,12 @@ Cosmac debugger commands:
 
 
 def _parse_addr(token: str) -> int:
-    token = token.strip()
-    if token.lower().startswith("0x"):
-        return int(token, 16)
-    return int(token, 16) if any(c in "abcdefABCDEF" for c in token) else int(token, 10)
+    # Addresses are always hex here, matching every address this debugger
+    # ever prints (disassembly, registers, breakpoints all read "0x2A4").
+    # The "0x" prefix is optional -- `int(x, 16)` already accepts it -- but
+    # a bare digit-only token like "200" must still mean hex 0x200, not
+    # decimal 200, or it silently disagrees with the disassembly on screen.
+    return int(token.strip(), 16)
 
 
 def run_repl(dbg: Debugger, commands: "list[str] | None" = None) -> None:
@@ -163,8 +165,9 @@ def run_repl(dbg: Debugger, commands: "list[str] | None" = None) -> None:
                 print(f"stopped: {reason}")
                 print(dbg.disassembly_around_pc(before=1, after=1))
             elif cmd == "break":
-                dbg.set_breakpoint(_parse_addr(args[0]))
-                print(f"breakpoint set at 0x{_parse_addr(args[0]):03X}")
+                addr = _parse_addr(args[0])
+                dbg.set_breakpoint(addr)
+                print(f"breakpoint set at 0x{addr:03X}")
             elif cmd == "clear":
                 dbg.clear_breakpoint(_parse_addr(args[0]))
             elif cmd == "breakpoints":

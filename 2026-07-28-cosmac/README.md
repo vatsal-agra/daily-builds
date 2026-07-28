@@ -6,10 +6,15 @@ server-backed browser front end), and five original CHIP-8 programs written
 in Cosmac's own assembly dialect. See [PLAN.md](PLAN.md) for the full design
 rationale.
 
-**Status: Phase 2 (core build) complete.** All four required features work
-end-to-end: CPU core, assembler, disassembler + debugger, and a live browser
-UI running real programs. 83 tests pass (unit, assembler round-trip,
-integration, Playwright UI smoke tests).
+**Status: Phase 3 (adversarial review) complete.** All four required
+features work end-to-end: CPU core, assembler, disassembler + debugger, and
+a live browser UI running real programs. See [REVIEW.md](REVIEW.md) for the
+adversarial pass — 7 real bugs found and fixed (a `reset()` that didn't
+restore the original program, a hex/decimal parsing bug in the CLI
+debugger, a threading race in the SSE broadcaster, a UI re-render bug that
+broke breakpoint clicking, missing debugger test coverage, and two
+assembler validation gaps). 103 tests pass (unit, assembler round-trip,
+integration, debugger, Playwright UI smoke tests).
 
 ## Quick start
 

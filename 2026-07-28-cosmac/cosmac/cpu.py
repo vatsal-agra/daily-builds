@@ -99,6 +99,15 @@ class Chip8:
         self.halted = False
         self.last_error: "str | None" = None
         self._draw_happened = False
+        # The exact bytes/origin last passed to `load()`, kept so `reset()`
+        # can restore the machine to that original program rather than to
+        # whatever now happens to sit in memory -- a running program can
+        # write anywhere via FX55/DXYN/self-modifying code, so "current
+        # memory contents" and "the program that was loaded" are not the
+        # same thing once execution has started.
+        if not hasattr(self, "_loaded_program"):
+            self._loaded_program: "bytes | None" = None
+            self._loaded_origin = PROGRAM_START
 
     # -- program loading ------------------------------------------------
 
@@ -110,11 +119,17 @@ class Chip8:
             )
         self.memory[origin:origin + len(program)] = program
         self.pc = origin
+        self._loaded_program = bytes(program)
+        self._loaded_origin = origin
 
     def reset(self) -> None:
-        program = bytes(self.memory[PROGRAM_START:])
+        program, origin = self._loaded_program, self._loaded_origin
         self.__post_init__()
-        self.memory[PROGRAM_START:PROGRAM_START + len(program)] = program
+        if program is not None:
+            self.memory[origin:origin + len(program)] = program
+            self.pc = origin
+            self._loaded_program = program
+            self._loaded_origin = origin
 
     # -- input ------------------------------------------------------------
 

@@ -399,6 +399,34 @@ class TestSnapshotRestore(unittest.TestCase):
         self.assertEqual(cpu.pc, PROGRAM_START)
         self.assertEqual(cpu.memory[PROGRAM_START], 0x60)
 
+    def test_reset_discards_runtime_writes_beyond_the_original_program(self):
+        # Regression test: reset() used to copy whatever bytes currently
+        # sat in memory[PROGRAM_START:] rather than the bytes originally
+        # passed to load(), so any runtime write past the program's own
+        # length (store-registers-to-memory, a sprite DMA target, etc.)
+        # would survive a reset and get replayed as if it were code.
+        program = bytes([0x60, 0x05])  # LD V0, 0x05  (2 bytes)
+        cpu = Chip8()
+        cpu.load(program)
+        # simulate the running program writing far past its own bytes,
+        # the way FX55 or self-modifying code would
+        scratch_addr = PROGRAM_START + 100
+        cpu.memory[scratch_addr] = 0xAA
+        cpu.memory[scratch_addr + 1] = 0xBB
+
+        cpu.reset()
+
+        self.assertEqual(bytes(cpu.memory[PROGRAM_START:PROGRAM_START + len(program)]), program)
+        self.assertEqual(cpu.memory[scratch_addr], 0)
+        self.assertEqual(cpu.memory[scratch_addr + 1], 0)
+
+    def test_reset_before_any_load_is_a_harmless_noop(self):
+        cpu = Chip8()
+        cpu.v[0] = 5
+        cpu.reset()  # never loaded a program -- must not raise
+        self.assertEqual(cpu.v[0], 0)
+        self.assertEqual(cpu.pc, PROGRAM_START)
+
 
 if __name__ == "__main__":
     unittest.main()

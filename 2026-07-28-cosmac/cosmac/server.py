@@ -50,6 +50,7 @@ class Emulator:
         self.speed_hz = DEFAULT_SPEED_HZ
         self.loaded_program = "(none)"
         self.subscribers: list[queue.Queue] = []
+        self.subscribers_lock = threading.Lock()
         self.last_error: "str | None" = None
         self._stop = False
         self.thread = threading.Thread(target=self._run_loop, daemon=True)
@@ -148,14 +149,19 @@ class Emulator:
 
     def _broadcast(self, frame: dict) -> None:
         payload = json.dumps(frame)
+        with self.subscribers_lock:
+            subscribers = list(self.subscribers)
         dead = []
-        for q in self.subscribers:
+        for q in subscribers:
             try:
                 q.put_nowait(payload)
             except queue.Full:
                 dead.append(q)
-        for q in dead:
-            self.subscribers.remove(q)
+        if dead:
+            with self.subscribers_lock:
+                for q in dead:
+                    if q in self.subscribers:
+                        self.subscribers.remove(q)
 
     # -- actions ------------------------------------------------------
 
@@ -287,7 +293,8 @@ def make_handler(emu: Emulator):
             self.send_header("Connection", "keep-alive")
             self.end_headers()
             q: "queue.Queue[str]" = queue.Queue(maxsize=4)
-            emu.subscribers.append(q)
+            with emu.subscribers_lock:
+                emu.subscribers.append(q)
             try:
                 while True:
                     payload = q.get()
@@ -297,8 +304,9 @@ def make_handler(emu: Emulator):
             except (BrokenPipeError, ConnectionResetError):
                 pass
             finally:
-                if q in emu.subscribers:
-                    emu.subscribers.remove(q)
+                with emu.subscribers_lock:
+                    if q in emu.subscribers:
+                        emu.subscribers.remove(q)
 
         def do_POST(self):
             parsed = urlparse(self.path)

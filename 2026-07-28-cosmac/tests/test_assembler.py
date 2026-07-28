@@ -109,6 +109,20 @@ class TestAssemblerErrors(unittest.TestCase):
         with self.assertRaises(AssemblerError):
             assemble("JP nowhere")
 
+    def test_label_colliding_with_register_name_rejected(self):
+        with self.assertRaises(AssemblerError):
+            assemble("V0: CLS\nJP V0")
+
+    def test_label_colliding_with_keyword_rejected(self):
+        with self.assertRaises(AssemblerError):
+            assemble("DT: CLS")
+
+    def test_cls_and_ret_reject_stray_operands(self):
+        with self.assertRaises(AssemblerError):
+            assemble("CLS V0")
+        with self.assertRaises(AssemblerError):
+            assemble("RET 1, 2")
+
     def test_error_reports_line_number(self):
         try:
             assemble("CLS\nNOPE")

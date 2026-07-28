@@ -23,6 +23,10 @@ from dataclasses import dataclass
 
 PROGRAM_START = 0x200
 
+# Keywords with fixed operand meanings (I, DT, ST, F, B, K, [I]) that a
+# label must never shadow, on top of register names V0-VF.
+_RESERVED_WORDS = {"I", "DT", "ST", "F", "B", "K", "[I]"}
+
 
 class AssemblerError(Exception):
     def __init__(self, message: str, line_no: "int | None" = None):
@@ -83,6 +87,12 @@ def parse_lines(source: str) -> list[Line]:
             head, _, rest = text.partition(":")
             head = head.strip()
             if head and all(c.isalnum() or c == "_" for c in head) and not head[0].isdigit():
+                if _is_register(head) or head.upper() in _RESERVED_WORDS:
+                    raise AssemblerError(
+                        f"'{head}' can't be used as a label -- it's also a "
+                        f"register/keyword name and every operand parse would be ambiguous",
+                        i,
+                    )
                 label = head
                 text = rest.strip()
         if not text:
@@ -254,8 +264,10 @@ def _encode_instruction(line: Line, symbols: dict) -> int:
         return value
 
     if m == "CLS":
+        _require(len(ops) == 0, "CLS takes no operands", ln)
         return 0x00E0
     if m == "RET":
+        _require(len(ops) == 0, "RET takes no operands", ln)
         return 0x00EE
     if m == "SYS":
         return 0x0000 | addr12(0)
