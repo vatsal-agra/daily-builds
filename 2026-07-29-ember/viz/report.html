@@ -105,18 +105,18 @@
       <h2>Real, measured benchmark</h2>
       <p class="hero-sub">fib(27) = 196418 &mdash; 1 interpreter calls,
          256 JIT calls, timed with <code>time.perf_counter()</code>. Not a projected number.</p>
-      <div class="hero">1354.9&times; faster</div>
+      <div class="hero">1342.2&times; faster</div>
       <div class="hero-sub">native machine code vs. the tree-walking interpreter, same function, same input</div>
       <div class="bars">
         <div class="bar-row">
           <span class="name">JIT</span>
           <div class="bar-track"><div class="bar-fill jit" style="width:0.1%"></div></div>
-          <span class="val">2820.13 &micro;s</span>
+          <span class="val">2702.46 &micro;s</span>
         </div>
         <div class="bar-row">
           <span class="name">Interpreter</span>
           <div class="bar-track"><div class="bar-fill interp" style="width:100.0%"></div></div>
-          <span class="val">3820868.18 &micro;s</span>
+          <span class="val">3627166.37 &micro;s</span>
         </div>
       </div>
       <div class="legend">
@@ -397,11 +397,11 @@ fn gcd(a, b) {
    194:  48 89 ec                 mov    rsp,rbp
    197:  5d                       pop    rbp
    198:  c3                       ret
-   199:  49 bb 30 37 06 90 9a 7f 00 00 movabs r11,0x7f9a90063730
+   199:  49 bb 30 37 a6 1a 3e 7f 00 00 movabs r11,0x7f3e1aa63730
    209:  49 c7 03 01 00 00 00     mov    QWORD PTR [r11],0x1
    216:  31 c0                    xor    eax,eax
    218:  e9 e3 ff ff ff           jmp    0xc2
-   223:  49 bb 30 37 06 90 9a 7f 00 00 movabs r11,0x7f9a90063730
+   223:  49 bb 30 37 a6 1a 3e 7f 00 00 movabs r11,0x7f3e1aa63730
    233:  49 c7 03 02 00 00 00     mov    QWORD PTR [r11],0x2
    240:  31 c0                    xor    eax,eax
    242:  e9 cb ff ff ff           jmp    0xc2</pre>
@@ -660,11 +660,11 @@ fn count_primes_below(n) {
    332:  48 89 ec                 mov    rsp,rbp
    335:  5d                       pop    rbp
    336:  c3                       ret
-   337:  49 bb 30 37 06 90 9a 7f 00 00 movabs r11,0x7f9a90063730
+   337:  49 bb 30 37 a6 1a 3e 7f 00 00 movabs r11,0x7f3e1aa63730
    347:  49 c7 03 01 00 00 00     mov    QWORD PTR [r11],0x1
    354:  31 c0                    xor    eax,eax
    356:  e9 e3 ff ff ff           jmp    0x14c
-   361:  49 bb 30 37 06 90 9a 7f 00 00 movabs r11,0x7f9a90063730
+   361:  49 bb 30 37 a6 1a 3e 7f 00 00 movabs r11,0x7f3e1aa63730
    371:  49 c7 03 02 00 00 00     mov    QWORD PTR [r11],0x2
    378:  31 c0                    xor    eax,eax
    380:  e9 cb ff ff ff           jmp    0x14c
@@ -1089,11 +1089,11 @@ fn logical_not(a) {
    203:  48 89 ec                 mov    rsp,rbp
    206:  5d                       pop    rbp
    207:  c3                       ret
-   208:  49 bb a0 36 06 90 9a 7f 00 00 movabs r11,0x7f9a900636a0
+   208:  49 bb a0 36 a6 1a 3e 7f 00 00 movabs r11,0x7f3e1aa636a0
    218:  49 c7 03 01 00 00 00     mov    QWORD PTR [r11],0x1
    225:  31 c0                    xor    eax,eax
    227:  e9 e3 ff ff ff           jmp    0xcb
-   232:  49 bb a0 36 06 90 9a 7f 00 00 movabs r11,0x7f9a900636a0
+   232:  49 bb a0 36 a6 1a 3e 7f 00 00 movabs r11,0x7f3e1aa636a0
    242:  49 c7 03 02 00 00 00     mov    QWORD PTR [r11],0x2
    249:  31 c0                    xor    eax,eax
    251:  e9 cb ff ff ff           jmp    0xcb
@@ -1144,11 +1144,11 @@ fn logical_not(a) {
    459:  48 89 ec                 mov    rsp,rbp
    462:  5d                       pop    rbp
    463:  c3                       ret
-   464:  49 bb a0 36 06 90 9a 7f 00 00 movabs r11,0x7f9a900636a0
+   464:  49 bb a0 36 a6 1a 3e 7f 00 00 movabs r11,0x7f3e1aa636a0
    474:  49 c7 03 01 00 00 00     mov    QWORD PTR [r11],0x1
    481:  31 c0                    xor    eax,eax
    483:  e9 e3 ff ff ff           jmp    0x1cb
-   488:  49 bb a0 36 06 90 9a 7f 00 00 movabs r11,0x7f9a900636a0
+   488:  49 bb a0 36 a6 1a 3e 7f 00 00 movabs r11,0x7f3e1aa636a0
    498:  49 c7 03 02 00 00 00     mov    QWORD PTR [r11],0x2
    505:  31 c0                    xor    eax,eax
    507:  e9 cb ff ff ff           jmp    0x1cb
