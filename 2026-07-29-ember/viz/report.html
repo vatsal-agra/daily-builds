@@ -1,0 +1,1104 @@
+<!doctype html><html><head><meta charset='utf-8'><title>Ember report</title>
+<style>
+  :root { color-scheme: light; }
+  .viz-root {
+    --surface-1:      #fcfcfb;
+    --page-plane:     #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6; /* JIT */
+    --series-2:       #eb6834; /* interpreter */
+    --code-bg:        #f4f3ef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page-plane:     #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --series-2:       #d95926;
+      --code-bg:        #212120;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page-plane:     #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+    --series-2:       #d95926;
+    --code-bg:        #212120;
+  }
+  .viz-root {
+    background: var(--page-plane);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 2rem clamp(1rem, 4vw, 3rem) 4rem;
+    max-width: 980px;
+    margin: 0 auto;
+  }
+  .viz-root h1 { font-size: 1.6rem; margin: 0 0 0.25rem; }
+  .viz-root .subtitle { color: var(--text-secondary); margin: 0 0 2rem; }
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .card h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
+  .card h3 { font-size: 0.95rem; margin: 1rem 0 0.4rem; color: var(--text-secondary); }
+  pre {
+    background: var(--code-bg);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    margin: 0;
+  }
+  details > summary { cursor: pointer; color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.5rem; }
+  .stat-row { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
+  .stat-tile {
+    flex: 1 1 160px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+  }
+  .stat-tile .label { font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .stat-tile .value { font-size: 1.5rem; font-weight: 600; margin-top: 0.15rem; }
+  .stat-tile.jit .value { color: var(--series-1); }
+  .stat-tile.interp .value { color: var(--series-2); }
+  .hero { font-size: 2.4rem; font-weight: 700; margin: 0.25rem 0; }
+  .hero-sub { color: var(--text-secondary); font-size: 0.95rem; }
+  .bars { margin-top: 0.75rem; }
+  .bar-row { display: grid; grid-template-columns: 90px 1fr 90px; align-items: center; gap: 0.6rem; margin: 0.35rem 0; }
+  .bar-row .name { font-size: 0.8rem; color: var(--text-secondary); text-align: right; }
+  .bar-row .val { font-size: 0.8rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .bar-track { background: var(--gridline); border-radius: 4px; height: 14px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; }
+  .bar-fill.jit { background: var(--series-1); }
+  .bar-fill.interp { background: var(--series-2); }
+  .legend { display: flex; gap: 1.25rem; font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.5rem; }
+  .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 0.4rem; vertical-align: middle; }
+  .oracle-badge { display: inline-block; font-size: 0.72rem; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); margin-left: 0.4rem; }
+</style>
+</head><body>
+    <div class="viz-root">
+      <h1>Ember</h1>
+      <p class="subtitle">A from-scratch JIT compiler: source &rarr; AST &rarr; real x86-64 machine code,
+      executed on the CPU via <code>mmap(PROT_EXEC)</code> + <code>ctypes</code>.</p>
+      
+    <div class="card">
+      <h2>Real, measured benchmark</h2>
+      <p class="hero-sub">fib(27) = 196418 &mdash; 1 interpreter calls,
+         256 JIT calls, timed with <code>time.perf_counter()</code>. Not a projected number.</p>
+      <div class="hero">1457.0&times; faster</div>
+      <div class="hero-sub">native machine code vs. the tree-walking interpreter, same function, same input</div>
+      <div class="bars">
+        <div class="bar-row">
+          <span class="name">JIT</span>
+          <div class="bar-track"><div class="bar-fill jit" style="width:0.1%"></div></div>
+          <span class="val">2657.36 &micro;s</span>
+        </div>
+        <div class="bar-row">
+          <span class="name">Interpreter</span>
+          <div class="bar-track"><div class="bar-fill interp" style="width:100.0%"></div></div>
+          <span class="val">3871713.03 &micro;s</span>
+        </div>
+      </div>
+      <div class="legend">
+        <span><span class="swatch" style="background:var(--series-1)"></span>JIT (native x86-64)</span>
+        <span><span class="swatch" style="background:var(--series-2)"></span>Interpreter (tree-walk)</span>
+      </div>
+    </div>
+    
+      
+    <div class="card">
+      <h2>/home/user/daily-builds/2026-07-29-ember/examples/fib.em</h2>
+      <pre>// Naive recursive Fibonacci -- exponential call count, the classic
+// &quot;make the interpreter sweat, then compare it to native code&quot; benchmark.
+fn fib(n) {
+    if (n &lt; 2) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+</pre>
+      
+        <h3>fn fib</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn fib(n)
+  If (n &lt; 2)
+    then:
+      Return n
+  Return (fib((n - 1)) + fib((n - 2)))</pre>
+        </details>
+        
+      
+        <details>
+          <summary>x86-64 disassembly (via real <code>objdump</code>) <span class="oracle-badge">independent oracle</span></summary>
+          <pre>     0:  55                       push   rbp
+     1:  48 89 e5                 mov    rbp,rsp
+     4:  48 81 ec 10 00 00 00     sub    rsp,0x10
+    11:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+    18:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    25:  50                       push   rax
+    26:  48 b8 02 00 00 00 00 00 00 00 movabs rax,0x2
+    36:  48 89 c1                 mov    rcx,rax
+    39:  58                       pop    rax
+    40:  48 39 c8                 cmp    rax,rcx
+    43:  0f 9c c0                 setl   al
+    46:  48 0f b6 c0              movzx  rax,al
+    50:  48 85 c0                 test   rax,rax
+    53:  0f 84 11 00 00 00        je     0x4c
+    59:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    66:  e9 62 00 00 00           jmp    0xa9
+    71:  e9 00 00 00 00           jmp    0x4c
+    76:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    83:  50                       push   rax
+    84:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+    94:  48 89 c1                 mov    rcx,rax
+    97:  58                       pop    rax
+    98:  48 29 c8                 sub    rax,rcx
+   101:  50                       push   rax
+   102:  5f                       pop    rdi
+   103:  e8 94 ff ff ff           call   0x0
+   108:  50                       push   rax
+   109:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   116:  50                       push   rax
+   117:  48 b8 02 00 00 00 00 00 00 00 movabs rax,0x2
+   127:  48 89 c1                 mov    rcx,rax
+   130:  58                       pop    rax
+   131:  48 29 c8                 sub    rax,rcx
+   134:  50                       push   rax
+   135:  5f                       pop    rdi
+   136:  48 81 ec 08 00 00 00     sub    rsp,0x8
+   143:  e8 6c ff ff ff           call   0x0
+   148:  48 81 c4 08 00 00 00     add    rsp,0x8
+   155:  48 89 c1                 mov    rcx,rax
+   158:  58                       pop    rax
+   159:  48 01 c8                 add    rax,rcx
+   162:  e9 02 00 00 00           jmp    0xa9
+   167:  31 c0                    xor    eax,eax
+   169:  48 89 ec                 mov    rsp,rbp
+   172:  5d                       pop    rbp
+   173:  c3                       ret</pre>
+        </details>
+        
+    </div>
+    
+    <div class="card">
+      <h2>factorial.em</h2>
+      <pre>// Iterative factorial -- exercises `let`, `while`, and reassignment.
+fn factorial(n) {
+    let acc = 1;
+    while (n &gt; 1) {
+        acc = acc * n;
+        n = n - 1;
+    }
+    return acc;
+}
+
+// Recursive factorial too, so the two can be cross-checked against
+// each other as well as against the interpreter/gcc oracles.
+fn factorial_rec(n) {
+    if (n &lt;= 1) {
+        return 1;
+    }
+    return n * factorial_rec(n - 1);
+}
+</pre>
+      
+        <h3>fn factorial</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn factorial(n)
+  Let acc = 1
+  While (n &gt; 1)
+      Assign acc = (acc * n)
+      Assign n = (n - 1)
+  Return acc</pre>
+        </details>
+        
+        <h3>fn factorial_rec</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn factorial_rec(n)
+  If (n &lt;= 1)
+    then:
+      Return 1
+  Return (n * factorial_rec((n - 1)))</pre>
+        </details>
+        
+      
+        <details>
+          <summary>x86-64 disassembly (via real <code>objdump</code>) <span class="oracle-badge">independent oracle</span></summary>
+          <pre>     0:  55                       push   rbp
+     1:  48 89 e5                 mov    rbp,rsp
+     4:  48 81 ec 10 00 00 00     sub    rsp,0x10
+    11:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+    18:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+    28:  48 89 85 f0 ff ff ff     mov    QWORD PTR [rbp-0x10],rax
+    35:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    42:  50                       push   rax
+    43:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+    53:  48 89 c1                 mov    rcx,rax
+    56:  58                       pop    rax
+    57:  48 39 c8                 cmp    rax,rcx
+    60:  0f 9f c0                 setg   al
+    63:  48 0f b6 c0              movzx  rax,al
+    67:  48 85 c0                 test   rax,rax
+    70:  0f 84 43 00 00 00        je     0x8f
+    76:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+    83:  50                       push   rax
+    84:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    91:  48 89 c1                 mov    rcx,rax
+    94:  58                       pop    rax
+    95:  48 0f af c1              imul   rax,rcx
+    99:  48 89 85 f0 ff ff ff     mov    QWORD PTR [rbp-0x10],rax
+   106:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   113:  50                       push   rax
+   114:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   124:  48 89 c1                 mov    rcx,rax
+   127:  58                       pop    rax
+   128:  48 29 c8                 sub    rax,rcx
+   131:  48 89 85 f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rax
+   138:  e9 94 ff ff ff           jmp    0x23
+   143:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+   150:  e9 02 00 00 00           jmp    0x9d
+   155:  31 c0                    xor    eax,eax
+   157:  48 89 ec                 mov    rsp,rbp
+   160:  5d                       pop    rbp
+   161:  c3                       ret
+   162:  55                       push   rbp
+   163:  48 89 e5                 mov    rbp,rsp
+   166:  48 81 ec 10 00 00 00     sub    rsp,0x10
+   173:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+   180:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   187:  50                       push   rax
+   188:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   198:  48 89 c1                 mov    rcx,rax
+   201:  58                       pop    rax
+   202:  48 39 c8                 cmp    rax,rcx
+   205:  0f 9e c0                 setle  al
+   208:  48 0f b6 c0              movzx  rax,al
+   212:  48 85 c0                 test   rax,rax
+   215:  0f 84 14 00 00 00        je     0xf1
+   221:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   231:  e9 4a 00 00 00           jmp    0x136
+   236:  e9 00 00 00 00           jmp    0xf1
+   241:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   248:  50                       push   rax
+   249:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   256:  50                       push   rax
+   257:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   267:  48 89 c1                 mov    rcx,rax
+   270:  58                       pop    rax
+   271:  48 29 c8                 sub    rax,rcx
+   274:  50                       push   rax
+   275:  5f                       pop    rdi
+   276:  48 81 ec 08 00 00 00     sub    rsp,0x8
+   283:  e8 82 ff ff ff           call   0xa2
+   288:  48 81 c4 08 00 00 00     add    rsp,0x8
+   295:  48 89 c1                 mov    rcx,rax
+   298:  58                       pop    rax
+   299:  48 0f af c1              imul   rax,rcx
+   303:  e9 02 00 00 00           jmp    0x136
+   308:  31 c0                    xor    eax,eax
+   310:  48 89 ec                 mov    rsp,rbp
+   313:  5d                       pop    rbp
+   314:  c3                       ret</pre>
+        </details>
+        
+    </div>
+    
+    <div class="card">
+      <h2>gcd.em</h2>
+      <pre>// Euclidean GCD -- exercises `%`, `while`, multi-variable swaps via a
+// temporary local.
+fn gcd(a, b) {
+    while (b != 0) {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}
+</pre>
+      
+        <h3>fn gcd</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn gcd(a, b)
+  While (b != 0)
+      Let t = b
+      Assign b = (a % b)
+      Assign a = t
+  Return a</pre>
+        </details>
+        
+      
+        <details>
+          <summary>x86-64 disassembly (via real <code>objdump</code>) <span class="oracle-badge">independent oracle</span></summary>
+          <pre>     0:  55                       push   rbp
+     1:  48 89 e5                 mov    rbp,rsp
+     4:  48 81 ec 20 00 00 00     sub    rsp,0x20
+    11:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+    18:  48 89 b5 f0 ff ff ff     mov    QWORD PTR [rbp-0x10],rsi
+    25:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+    32:  50                       push   rax
+    33:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+    43:  48 89 c1                 mov    rcx,rax
+    46:  58                       pop    rax
+    47:  48 39 c8                 cmp    rax,rcx
+    50:  0f 95 c0                 setne  al
+    53:  48 0f b6 c0              movzx  rax,al
+    57:  48 85 c0                 test   rax,rax
+    60:  0f 84 72 00 00 00        je     0xb4
+    66:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+    73:  48 89 85 e8 ff ff ff     mov    QWORD PTR [rbp-0x18],rax
+    80:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    87:  50                       push   rax
+    88:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+    95:  48 89 c1                 mov    rcx,rax
+    98:  58                       pop    rax
+    99:  48 85 c9                 test   rcx,rcx
+   102:  0f 84 5b 00 00 00        je     0xc7
+   108:  48 ba ff ff ff ff ff ff ff ff movabs rdx,0xffffffffffffffff
+   118:  48 39 d1                 cmp    rcx,rdx
+   121:  0f 85 13 00 00 00        jne    0x92
+   127:  48 ba 00 00 00 00 00 00 00 80 movabs rdx,0x8000000000000000
+   137:  48 39 d0                 cmp    rax,rdx
+   140:  0f 84 4d 00 00 00        je     0xdf
+   146:  48 99                    cqo
+   148:  48 f7 f9                 idiv   rcx
+   151:  48 89 d0                 mov    rax,rdx
+   154:  48 89 85 f0 ff ff ff     mov    QWORD PTR [rbp-0x10],rax
+   161:  48 8b 85 e8 ff ff ff     mov    rax,QWORD PTR [rbp-0x18]
+   168:  48 89 85 f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rax
+   175:  e9 65 ff ff ff           jmp    0x19
+   180:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   187:  e9 02 00 00 00           jmp    0xc2
+   192:  31 c0                    xor    eax,eax
+   194:  48 89 ec                 mov    rsp,rbp
+   197:  5d                       pop    rbp
+   198:  c3                       ret
+   199:  49 bb 40 b3 6f ef e6 7f 00 00 movabs r11,0x7fe6ef6fb340
+   209:  49 c7 03 01 00 00 00     mov    QWORD PTR [r11],0x1
+   216:  31 c0                    xor    eax,eax
+   218:  e9 e3 ff ff ff           jmp    0xc2
+   223:  49 bb 40 b3 6f ef e6 7f 00 00 movabs r11,0x7fe6ef6fb340
+   233:  49 c7 03 02 00 00 00     mov    QWORD PTR [r11],0x2
+   240:  31 c0                    xor    eax,eax
+   242:  e9 cb ff ff ff           jmp    0xc2</pre>
+        </details>
+        
+    </div>
+    
+    <div class="card">
+      <h2>parity.em</h2>
+      <pre>// Mutual recursion: is_even calls is_odd, which is defined *after* it in
+// the source. Forces the codegen&#x27;s forward-call label-fixup machinery --
+// is_even&#x27;s `call` instruction targets an address that doesn&#x27;t exist yet
+// at the point the call is emitted.
+fn is_even(n) {
+    if (n == 0) {
+        return 1;
+    }
+    return is_odd(n - 1);
+}
+
+fn is_odd(n) {
+    if (n == 0) {
+        return 0;
+    }
+    return is_even(n - 1);
+}
+</pre>
+      
+        <h3>fn is_even</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn is_even(n)
+  If (n == 0)
+    then:
+      Return 1
+  Return is_odd((n - 1))</pre>
+        </details>
+        
+        <h3>fn is_odd</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn is_odd(n)
+  If (n == 0)
+    then:
+      Return 0
+  Return is_even((n - 1))</pre>
+        </details>
+        
+      
+        <details>
+          <summary>x86-64 disassembly (via real <code>objdump</code>) <span class="oracle-badge">independent oracle</span></summary>
+          <pre>     0:  55                       push   rbp
+     1:  48 89 e5                 mov    rbp,rsp
+     4:  48 81 ec 10 00 00 00     sub    rsp,0x10
+    11:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+    18:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    25:  50                       push   rax
+    26:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+    36:  48 89 c1                 mov    rcx,rax
+    39:  58                       pop    rax
+    40:  48 39 c8                 cmp    rax,rcx
+    43:  0f 94 c0                 sete   al
+    46:  48 0f b6 c0              movzx  rax,al
+    50:  48 85 c0                 test   rax,rax
+    53:  0f 84 14 00 00 00        je     0x4f
+    59:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+    69:  e9 2c 00 00 00           jmp    0x76
+    74:  e9 00 00 00 00           jmp    0x4f
+    79:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    86:  50                       push   rax
+    87:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+    97:  48 89 c1                 mov    rcx,rax
+   100:  58                       pop    rax
+   101:  48 29 c8                 sub    rax,rcx
+   104:  50                       push   rax
+   105:  5f                       pop    rdi
+   106:  e8 0c 00 00 00           call   0x7b
+   111:  e9 02 00 00 00           jmp    0x76
+   116:  31 c0                    xor    eax,eax
+   118:  48 89 ec                 mov    rsp,rbp
+   121:  5d                       pop    rbp
+   122:  c3                       ret
+   123:  55                       push   rbp
+   124:  48 89 e5                 mov    rbp,rsp
+   127:  48 81 ec 10 00 00 00     sub    rsp,0x10
+   134:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+   141:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   148:  50                       push   rax
+   149:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+   159:  48 89 c1                 mov    rcx,rax
+   162:  58                       pop    rax
+   163:  48 39 c8                 cmp    rax,rcx
+   166:  0f 94 c0                 sete   al
+   169:  48 0f b6 c0              movzx  rax,al
+   173:  48 85 c0                 test   rax,rax
+   176:  0f 84 14 00 00 00        je     0xca
+   182:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+   192:  e9 2c 00 00 00           jmp    0xf1
+   197:  e9 00 00 00 00           jmp    0xca
+   202:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   209:  50                       push   rax
+   210:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   220:  48 89 c1                 mov    rcx,rax
+   223:  58                       pop    rax
+   224:  48 29 c8                 sub    rax,rcx
+   227:  50                       push   rax
+   228:  5f                       pop    rdi
+   229:  e8 16 ff ff ff           call   0x0
+   234:  e9 02 00 00 00           jmp    0xf1
+   239:  31 c0                    xor    eax,eax
+   241:  48 89 ec                 mov    rsp,rbp
+   244:  5d                       pop    rbp
+   245:  c3                       ret</pre>
+        </details>
+        
+    </div>
+    
+    <div class="card">
+      <h2>primes.em</h2>
+      <pre>// Trial-division primality test + a count of primes below n -- exercises
+// nested control flow (while containing an if containing a return),
+// `%`, and `&amp;&amp;`.
+fn is_prime(n) {
+    if (n &lt; 2) {
+        return 0;
+    }
+    let i = 2;
+    while (i * i &lt;= n) {
+        if (n % i == 0) {
+            return 0;
+        }
+        i = i + 1;
+    }
+    return 1;
+}
+
+fn count_primes_below(n) {
+    let count = 0;
+    let i = 2;
+    while (i &lt; n) {
+        if (is_prime(i)) {
+            count = count + 1;
+        }
+        i = i + 1;
+    }
+    return count;
+}
+</pre>
+      
+        <h3>fn is_prime</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn is_prime(n)
+  If (n &lt; 2)
+    then:
+      Return 0
+  Let i = 2
+  While ((i * i) &lt;= n)
+      If ((n % i) == 0)
+        then:
+          Return 0
+      Assign i = (i + 1)
+  Return 1</pre>
+        </details>
+        
+        <h3>fn count_primes_below</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn count_primes_below(n)
+  Let count = 0
+  Let i = 2
+  While (i &lt; n)
+      If is_prime(i)
+        then:
+          Assign count = (count + 1)
+      Assign i = (i + 1)
+  Return count</pre>
+        </details>
+        
+      
+        <details>
+          <summary>x86-64 disassembly (via real <code>objdump</code>) <span class="oracle-badge">independent oracle</span></summary>
+          <pre>     0:  55                       push   rbp
+     1:  48 89 e5                 mov    rbp,rsp
+     4:  48 81 ec 10 00 00 00     sub    rsp,0x10
+    11:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+    18:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    25:  50                       push   rax
+    26:  48 b8 02 00 00 00 00 00 00 00 movabs rax,0x2
+    36:  48 89 c1                 mov    rcx,rax
+    39:  58                       pop    rax
+    40:  48 39 c8                 cmp    rax,rcx
+    43:  0f 9c c0                 setl   al
+    46:  48 0f b6 c0              movzx  rax,al
+    50:  48 85 c0                 test   rax,rax
+    53:  0f 84 14 00 00 00        je     0x4f
+    59:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+    69:  e9 02 01 00 00           jmp    0x14c
+    74:  e9 00 00 00 00           jmp    0x4f
+    79:  48 b8 02 00 00 00 00 00 00 00 movabs rax,0x2
+    89:  48 89 85 f0 ff ff ff     mov    QWORD PTR [rbp-0x10],rax
+    96:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+   103:  50                       push   rax
+   104:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+   111:  48 89 c1                 mov    rcx,rax
+   114:  58                       pop    rax
+   115:  48 0f af c1              imul   rax,rcx
+   119:  50                       push   rax
+   120:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   127:  48 89 c1                 mov    rcx,rax
+   130:  58                       pop    rax
+   131:  48 39 c8                 cmp    rax,rcx
+   134:  0f 9e c0                 setle  al
+   137:  48 0f b6 c0              movzx  rax,al
+   141:  48 85 c0                 test   rax,rax
+   144:  0f 84 a5 00 00 00        je     0x13b
+   150:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   157:  50                       push   rax
+   158:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+   165:  48 89 c1                 mov    rcx,rax
+   168:  58                       pop    rax
+   169:  48 85 c9                 test   rcx,rcx
+   172:  0f 84 9f 00 00 00        je     0x151
+   178:  48 ba ff ff ff ff ff ff ff ff movabs rdx,0xffffffffffffffff
+   188:  48 39 d1                 cmp    rcx,rdx
+   191:  0f 85 13 00 00 00        jne    0xd8
+   197:  48 ba 00 00 00 00 00 00 00 80 movabs rdx,0x8000000000000000
+   207:  48 39 d0                 cmp    rax,rdx
+   210:  0f 84 91 00 00 00        je     0x169
+   216:  48 99                    cqo
+   218:  48 f7 f9                 idiv   rcx
+   221:  48 89 d0                 mov    rax,rdx
+   224:  50                       push   rax
+   225:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+   235:  48 89 c1                 mov    rcx,rax
+   238:  58                       pop    rax
+   239:  48 39 c8                 cmp    rax,rcx
+   242:  0f 94 c0                 sete   al
+   245:  48 0f b6 c0              movzx  rax,al
+   249:  48 85 c0                 test   rax,rax
+   252:  0f 84 14 00 00 00        je     0x116
+   258:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+   268:  e9 3b 00 00 00           jmp    0x14c
+   273:  e9 00 00 00 00           jmp    0x116
+   278:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+   285:  50                       push   rax
+   286:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   296:  48 89 c1                 mov    rcx,rax
+   299:  58                       pop    rax
+   300:  48 01 c8                 add    rax,rcx
+   303:  48 89 85 f0 ff ff ff     mov    QWORD PTR [rbp-0x10],rax
+   310:  e9 25 ff ff ff           jmp    0x60
+   315:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   325:  e9 02 00 00 00           jmp    0x14c
+   330:  31 c0                    xor    eax,eax
+   332:  48 89 ec                 mov    rsp,rbp
+   335:  5d                       pop    rbp
+   336:  c3                       ret
+   337:  49 bb 40 b3 6f ef e6 7f 00 00 movabs r11,0x7fe6ef6fb340
+   347:  49 c7 03 01 00 00 00     mov    QWORD PTR [r11],0x1
+   354:  31 c0                    xor    eax,eax
+   356:  e9 e3 ff ff ff           jmp    0x14c
+   361:  49 bb 40 b3 6f ef e6 7f 00 00 movabs r11,0x7fe6ef6fb340
+   371:  49 c7 03 02 00 00 00     mov    QWORD PTR [r11],0x2
+   378:  31 c0                    xor    eax,eax
+   380:  e9 cb ff ff ff           jmp    0x14c
+   385:  55                       push   rbp
+   386:  48 89 e5                 mov    rbp,rsp
+   389:  48 81 ec 20 00 00 00     sub    rsp,0x20
+   396:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+   403:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+   413:  48 89 85 f0 ff ff ff     mov    QWORD PTR [rbp-0x10],rax
+   420:  48 b8 02 00 00 00 00 00 00 00 movabs rax,0x2
+   430:  48 89 85 e8 ff ff ff     mov    QWORD PTR [rbp-0x18],rax
+   437:  48 8b 85 e8 ff ff ff     mov    rax,QWORD PTR [rbp-0x18]
+   444:  50                       push   rax
+   445:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   452:  48 89 c1                 mov    rcx,rax
+   455:  58                       pop    rax
+   456:  48 39 c8                 cmp    rax,rcx
+   459:  0f 9c c0                 setl   al
+   462:  48 0f b6 c0              movzx  rax,al
+   466:  48 85 c0                 test   rax,rax
+   469:  0f 84 61 00 00 00        je     0x23c
+   475:  48 8b 85 e8 ff ff ff     mov    rax,QWORD PTR [rbp-0x18]
+   482:  50                       push   rax
+   483:  5f                       pop    rdi
+   484:  e8 17 fe ff ff           call   0x0
+   489:  48 85 c0                 test   rax,rax
+   492:  0f 84 25 00 00 00        je     0x217
+   498:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+   505:  50                       push   rax
+   506:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   516:  48 89 c1                 mov    rcx,rax
+   519:  58                       pop    rax
+   520:  48 01 c8                 add    rax,rcx
+   523:  48 89 85 f0 ff ff ff     mov    QWORD PTR [rbp-0x10],rax
+   530:  e9 00 00 00 00           jmp    0x217
+   535:  48 8b 85 e8 ff ff ff     mov    rax,QWORD PTR [rbp-0x18]
+   542:  50                       push   rax
+   543:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   553:  48 89 c1                 mov    rcx,rax
+   556:  58                       pop    rax
+   557:  48 01 c8                 add    rax,rcx
+   560:  48 89 85 e8 ff ff ff     mov    QWORD PTR [rbp-0x18],rax
+   567:  e9 79 ff ff ff           jmp    0x1b5
+   572:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+   579:  e9 02 00 00 00           jmp    0x24a
+   584:  31 c0                    xor    eax,eax
+   586:  48 89 ec                 mov    rsp,rbp
+   589:  5d                       pop    rbp
+   590:  c3                       ret</pre>
+        </details>
+        
+    </div>
+    
+    <div class="card">
+      <h2>ackermann.em</h2>
+      <pre>// The Ackermann function -- not primitive recursive, grows absurdly
+// fast, and its call tree is deep and irregular rather than the neat
+// binary tree Fibonacci has. Good stress test for the call/return path
+// and stack-alignment bookkeeping across many nested `call`s.
+fn ackermann(m, n) {
+    if (m == 0) {
+        return n + 1;
+    }
+    if (n == 0) {
+        return ackermann(m - 1, 1);
+    }
+    return ackermann(m - 1, ackermann(m, n - 1));
+}
+</pre>
+      
+        <h3>fn ackermann</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn ackermann(m, n)
+  If (m == 0)
+    then:
+      Return (n + 1)
+  If (n == 0)
+    then:
+      Return ackermann((m - 1), 1)
+  Return ackermann((m - 1), ackermann(m, (n - 1)))</pre>
+        </details>
+        
+      
+        <details>
+          <summary>x86-64 disassembly (via real <code>objdump</code>) <span class="oracle-badge">independent oracle</span></summary>
+          <pre>     0:  55                       push   rbp
+     1:  48 89 e5                 mov    rbp,rsp
+     4:  48 81 ec 10 00 00 00     sub    rsp,0x10
+    11:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+    18:  48 89 b5 f0 ff ff ff     mov    QWORD PTR [rbp-0x10],rsi
+    25:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    32:  50                       push   rax
+    33:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+    43:  48 89 c1                 mov    rcx,rax
+    46:  58                       pop    rax
+    47:  48 39 c8                 cmp    rax,rcx
+    50:  0f 94 c0                 sete   al
+    53:  48 0f b6 c0              movzx  rax,al
+    57:  48 85 c0                 test   rax,rax
+    60:  0f 84 23 00 00 00        je     0x65
+    66:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+    73:  50                       push   rax
+    74:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+    84:  48 89 c1                 mov    rcx,rax
+    87:  58                       pop    rax
+    88:  48 01 c8                 add    rax,rcx
+    91:  e9 c4 00 00 00           jmp    0x124
+    96:  e9 00 00 00 00           jmp    0x65
+   101:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+   108:  50                       push   rax
+   109:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+   119:  48 89 c1                 mov    rcx,rax
+   122:  58                       pop    rax
+   123:  48 39 c8                 cmp    rax,rcx
+   126:  0f 94 c0                 sete   al
+   129:  48 0f b6 c0              movzx  rax,al
+   133:  48 85 c0                 test   rax,rax
+   136:  0f 84 36 00 00 00        je     0xc4
+   142:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   149:  50                       push   rax
+   150:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   160:  48 89 c1                 mov    rcx,rax
+   163:  58                       pop    rax
+   164:  48 29 c8                 sub    rax,rcx
+   167:  50                       push   rax
+   168:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   178:  50                       push   rax
+   179:  5e                       pop    rsi
+   180:  5f                       pop    rdi
+   181:  e8 46 ff ff ff           call   0x0
+   186:  e9 65 00 00 00           jmp    0x124
+   191:  e9 00 00 00 00           jmp    0xc4
+   196:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   203:  50                       push   rax
+   204:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   214:  48 89 c1                 mov    rcx,rax
+   217:  58                       pop    rax
+   218:  48 29 c8                 sub    rax,rcx
+   221:  50                       push   rax
+   222:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   229:  50                       push   rax
+   230:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+   237:  50                       push   rax
+   238:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   248:  48 89 c1                 mov    rcx,rax
+   251:  58                       pop    rax
+   252:  48 29 c8                 sub    rax,rcx
+   255:  50                       push   rax
+   256:  5e                       pop    rsi
+   257:  5f                       pop    rdi
+   258:  48 81 ec 08 00 00 00     sub    rsp,0x8
+   265:  e8 f2 fe ff ff           call   0x0
+   270:  48 81 c4 08 00 00 00     add    rsp,0x8
+   277:  50                       push   rax
+   278:  5e                       pop    rsi
+   279:  5f                       pop    rdi
+   280:  e8 e3 fe ff ff           call   0x0
+   285:  e9 02 00 00 00           jmp    0x124
+   290:  31 c0                    xor    eax,eax
+   292:  48 89 ec                 mov    rsp,rbp
+   295:  5d                       pop    rbp
+   296:  c3                       ret</pre>
+        </details>
+        
+    </div>
+    
+    <div class="card">
+      <h2>args6.em</h2>
+      <pre>// System V AMD64 passes the first 6 integer arguments in
+// rdi/rsi/rdx/rcx/r8/r9 -- the last two require an extra REX.R/REX.B bit
+// the low eight registers don&#x27;t need. This function is Ember&#x27;s maximum
+// arity (MAX_PARAMS = 6) specifically to force the encoder to exercise
+// r8 and r9, not just the &quot;easy&quot; low registers.
+fn weighted_sum(a, b, c, d, e, f) {
+    return a * 1 + b * 2 + c * 3 + d * 4 + e * 5 + f * 6;
+}
+</pre>
+      
+        <h3>fn weighted_sum</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn weighted_sum(a, b, c, d, e, f)
+  Return ((((((a * 1) + (b * 2)) + (c * 3)) + (d * 4)) + (e * 5)) + (f * 6))</pre>
+        </details>
+        
+      
+        <details>
+          <summary>x86-64 disassembly (via real <code>objdump</code>) <span class="oracle-badge">independent oracle</span></summary>
+          <pre>     0:  55                       push   rbp
+     1:  48 89 e5                 mov    rbp,rsp
+     4:  48 81 ec 30 00 00 00     sub    rsp,0x30
+    11:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+    18:  48 89 b5 f0 ff ff ff     mov    QWORD PTR [rbp-0x10],rsi
+    25:  48 89 95 e8 ff ff ff     mov    QWORD PTR [rbp-0x18],rdx
+    32:  48 89 8d e0 ff ff ff     mov    QWORD PTR [rbp-0x20],rcx
+    39:  4c 89 85 d8 ff ff ff     mov    QWORD PTR [rbp-0x28],r8
+    46:  4c 89 8d d0 ff ff ff     mov    QWORD PTR [rbp-0x30],r9
+    53:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    60:  50                       push   rax
+    61:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+    71:  48 89 c1                 mov    rcx,rax
+    74:  58                       pop    rax
+    75:  48 0f af c1              imul   rax,rcx
+    79:  50                       push   rax
+    80:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+    87:  50                       push   rax
+    88:  48 b8 02 00 00 00 00 00 00 00 movabs rax,0x2
+    98:  48 89 c1                 mov    rcx,rax
+   101:  58                       pop    rax
+   102:  48 0f af c1              imul   rax,rcx
+   106:  48 89 c1                 mov    rcx,rax
+   109:  58                       pop    rax
+   110:  48 01 c8                 add    rax,rcx
+   113:  50                       push   rax
+   114:  48 8b 85 e8 ff ff ff     mov    rax,QWORD PTR [rbp-0x18]
+   121:  50                       push   rax
+   122:  48 b8 03 00 00 00 00 00 00 00 movabs rax,0x3
+   132:  48 89 c1                 mov    rcx,rax
+   135:  58                       pop    rax
+   136:  48 0f af c1              imul   rax,rcx
+   140:  48 89 c1                 mov    rcx,rax
+   143:  58                       pop    rax
+   144:  48 01 c8                 add    rax,rcx
+   147:  50                       push   rax
+   148:  48 8b 85 e0 ff ff ff     mov    rax,QWORD PTR [rbp-0x20]
+   155:  50                       push   rax
+   156:  48 b8 04 00 00 00 00 00 00 00 movabs rax,0x4
+   166:  48 89 c1                 mov    rcx,rax
+   169:  58                       pop    rax
+   170:  48 0f af c1              imul   rax,rcx
+   174:  48 89 c1                 mov    rcx,rax
+   177:  58                       pop    rax
+   178:  48 01 c8                 add    rax,rcx
+   181:  50                       push   rax
+   182:  48 8b 85 d8 ff ff ff     mov    rax,QWORD PTR [rbp-0x28]
+   189:  50                       push   rax
+   190:  48 b8 05 00 00 00 00 00 00 00 movabs rax,0x5
+   200:  48 89 c1                 mov    rcx,rax
+   203:  58                       pop    rax
+   204:  48 0f af c1              imul   rax,rcx
+   208:  48 89 c1                 mov    rcx,rax
+   211:  58                       pop    rax
+   212:  48 01 c8                 add    rax,rcx
+   215:  50                       push   rax
+   216:  48 8b 85 d0 ff ff ff     mov    rax,QWORD PTR [rbp-0x30]
+   223:  50                       push   rax
+   224:  48 b8 06 00 00 00 00 00 00 00 movabs rax,0x6
+   234:  48 89 c1                 mov    rcx,rax
+   237:  58                       pop    rax
+   238:  48 0f af c1              imul   rax,rcx
+   242:  48 89 c1                 mov    rcx,rax
+   245:  58                       pop    rax
+   246:  48 01 c8                 add    rax,rcx
+   249:  e9 02 00 00 00           jmp    0x100
+   254:  31 c0                    xor    eax,eax
+   256:  48 89 ec                 mov    rsp,rbp
+   259:  5d                       pop    rbp
+   260:  c3                       ret</pre>
+        </details>
+        
+    </div>
+    
+    <div class="card">
+      <h2>logic.em</h2>
+      <pre>// Short-circuit &amp;&amp; / || proven by construction, not just by truth
+// table: guard(a, b) divides b by a inside the right-hand operand of
+// `&amp;&amp;`. If `&amp;&amp;` were eagerly evaluating both sides (a common bug when a
+// codegen author reaches for bitwise AND/OR instead of real branching),
+// guard(0, 5) would divide by zero. It doesn&#x27;t, because a == 0 makes the
+// left side false and the right side is never evaluated.
+fn guard(a, b) {
+    return a != 0 &amp;&amp; b / a &gt; 1;
+}
+
+fn either(a, b) {
+    return a == 0 || b / a &gt; 1;
+}
+
+fn logical_not(a) {
+    return !a;
+}
+</pre>
+      
+        <h3>fn guard</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn guard(a, b)
+  Return ((a != 0) &amp;&amp; ((b / a) &gt; 1))</pre>
+        </details>
+        
+        <h3>fn either</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn either(a, b)
+  Return ((a == 0) || ((b / a) &gt; 1))</pre>
+        </details>
+        
+        <h3>fn logical_not</h3>
+        <details>
+          <summary>AST</summary>
+          <pre>fn logical_not(a)
+  Return !a</pre>
+        </details>
+        
+      
+        <details>
+          <summary>x86-64 disassembly (via real <code>objdump</code>) <span class="oracle-badge">independent oracle</span></summary>
+          <pre>     0:  55                       push   rbp
+     1:  48 89 e5                 mov    rbp,rsp
+     4:  48 81 ec 10 00 00 00     sub    rsp,0x10
+    11:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+    18:  48 89 b5 f0 ff ff ff     mov    QWORD PTR [rbp-0x10],rsi
+    25:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    32:  50                       push   rax
+    33:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+    43:  48 89 c1                 mov    rcx,rax
+    46:  58                       pop    rax
+    47:  48 39 c8                 cmp    rax,rcx
+    50:  0f 95 c0                 setne  al
+    53:  48 0f b6 c0              movzx  rax,al
+    57:  48 85 c0                 test   rax,rax
+    60:  0f 84 78 00 00 00        je     0xba
+    66:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+    73:  50                       push   rax
+    74:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+    81:  48 89 c1                 mov    rcx,rax
+    84:  58                       pop    rax
+    85:  48 85 c9                 test   rcx,rcx
+    88:  0f 84 72 00 00 00        je     0xd0
+    94:  48 ba ff ff ff ff ff ff ff ff movabs rdx,0xffffffffffffffff
+   104:  48 39 d1                 cmp    rcx,rdx
+   107:  0f 85 13 00 00 00        jne    0x84
+   113:  48 ba 00 00 00 00 00 00 00 80 movabs rdx,0x8000000000000000
+   123:  48 39 d0                 cmp    rax,rdx
+   126:  0f 84 64 00 00 00        je     0xe8
+   132:  48 99                    cqo
+   134:  48 f7 f9                 idiv   rcx
+   137:  50                       push   rax
+   138:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   148:  48 89 c1                 mov    rcx,rax
+   151:  58                       pop    rax
+   152:  48 39 c8                 cmp    rax,rcx
+   155:  0f 9f c0                 setg   al
+   158:  48 0f b6 c0              movzx  rax,al
+   162:  48 85 c0                 test   rax,rax
+   165:  0f 84 0f 00 00 00        je     0xba
+   171:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   181:  e9 0a 00 00 00           jmp    0xc4
+   186:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+   196:  e9 02 00 00 00           jmp    0xcb
+   201:  31 c0                    xor    eax,eax
+   203:  48 89 ec                 mov    rsp,rbp
+   206:  5d                       pop    rbp
+   207:  c3                       ret
+   208:  49 bb 40 b3 6f ef e6 7f 00 00 movabs r11,0x7fe6ef6fb340
+   218:  49 c7 03 01 00 00 00     mov    QWORD PTR [r11],0x1
+   225:  31 c0                    xor    eax,eax
+   227:  e9 e3 ff ff ff           jmp    0xcb
+   232:  49 bb 40 b3 6f ef e6 7f 00 00 movabs r11,0x7fe6ef6fb340
+   242:  49 c7 03 02 00 00 00     mov    QWORD PTR [r11],0x2
+   249:  31 c0                    xor    eax,eax
+   251:  e9 cb ff ff ff           jmp    0xcb
+   256:  55                       push   rbp
+   257:  48 89 e5                 mov    rbp,rsp
+   260:  48 81 ec 10 00 00 00     sub    rsp,0x10
+   267:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+   274:  48 89 b5 f0 ff ff ff     mov    QWORD PTR [rbp-0x10],rsi
+   281:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   288:  50                       push   rax
+   289:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+   299:  48 89 c1                 mov    rcx,rax
+   302:  58                       pop    rax
+   303:  48 39 c8                 cmp    rax,rcx
+   306:  0f 94 c0                 sete   al
+   309:  48 0f b6 c0              movzx  rax,al
+   313:  48 85 c0                 test   rax,rax
+   316:  0f 85 78 00 00 00        jne    0x1ba
+   322:  48 8b 85 f0 ff ff ff     mov    rax,QWORD PTR [rbp-0x10]
+   329:  50                       push   rax
+   330:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   337:  48 89 c1                 mov    rcx,rax
+   340:  58                       pop    rax
+   341:  48 85 c9                 test   rcx,rcx
+   344:  0f 84 72 00 00 00        je     0x1d0
+   350:  48 ba ff ff ff ff ff ff ff ff movabs rdx,0xffffffffffffffff
+   360:  48 39 d1                 cmp    rcx,rdx
+   363:  0f 85 13 00 00 00        jne    0x184
+   369:  48 ba 00 00 00 00 00 00 00 80 movabs rdx,0x8000000000000000
+   379:  48 39 d0                 cmp    rax,rdx
+   382:  0f 84 64 00 00 00        je     0x1e8
+   388:  48 99                    cqo
+   390:  48 f7 f9                 idiv   rcx
+   393:  50                       push   rax
+   394:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   404:  48 89 c1                 mov    rcx,rax
+   407:  58                       pop    rax
+   408:  48 39 c8                 cmp    rax,rcx
+   411:  0f 9f c0                 setg   al
+   414:  48 0f b6 c0              movzx  rax,al
+   418:  48 85 c0                 test   rax,rax
+   421:  0f 85 0f 00 00 00        jne    0x1ba
+   427:  48 b8 00 00 00 00 00 00 00 00 movabs rax,0x0
+   437:  e9 0a 00 00 00           jmp    0x1c4
+   442:  48 b8 01 00 00 00 00 00 00 00 movabs rax,0x1
+   452:  e9 02 00 00 00           jmp    0x1cb
+   457:  31 c0                    xor    eax,eax
+   459:  48 89 ec                 mov    rsp,rbp
+   462:  5d                       pop    rbp
+   463:  c3                       ret
+   464:  49 bb 40 b3 6f ef e6 7f 00 00 movabs r11,0x7fe6ef6fb340
+   474:  49 c7 03 01 00 00 00     mov    QWORD PTR [r11],0x1
+   481:  31 c0                    xor    eax,eax
+   483:  e9 e3 ff ff ff           jmp    0x1cb
+   488:  49 bb 40 b3 6f ef e6 7f 00 00 movabs r11,0x7fe6ef6fb340
+   498:  49 c7 03 02 00 00 00     mov    QWORD PTR [r11],0x2
+   505:  31 c0                    xor    eax,eax
+   507:  e9 cb ff ff ff           jmp    0x1cb
+   512:  55                       push   rbp
+   513:  48 89 e5                 mov    rbp,rsp
+   516:  48 81 ec 10 00 00 00     sub    rsp,0x10
+   523:  48 89 bd f8 ff ff ff     mov    QWORD PTR [rbp-0x8],rdi
+   530:  48 8b 85 f8 ff ff ff     mov    rax,QWORD PTR [rbp-0x8]
+   537:  48 85 c0                 test   rax,rax
+   540:  0f 94 c0                 sete   al
+   543:  48 0f b6 c0              movzx  rax,al
+   547:  e9 02 00 00 00           jmp    0x22a
+   552:  31 c0                    xor    eax,eax
+   554:  48 89 ec                 mov    rsp,rbp
+   557:  5d                       pop    rbp
+   558:  c3                       ret</pre>
+        </details>
+        
+    </div>
+    
+    </div>
+    </body></html>
