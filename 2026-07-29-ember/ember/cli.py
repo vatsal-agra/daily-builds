@@ -18,6 +18,7 @@ from .disasm import format_listing, objdump_available
 from .transpile_c import run_via_gcc, gcc_available
 from .ast_print import format_program, format_fn
 from .bench import benchmark
+from .optimize import fold_constants
 
 
 class CliError(Exception):
@@ -58,6 +59,8 @@ def cmd_run(args):
     program = _load_program(args.file)
     _find_fn(program, args.fn)
     argv = _parse_args(args.args)
+    if args.opt:
+        program = fold_constants(program)
     compiled = compile_program(program)
     print(compiled.call(args.fn, argv))
 
@@ -74,14 +77,15 @@ def cmd_compare(args):
     _find_fn(program, args.fn)
     argv = _parse_args(args.args)
 
+    jit_program = fold_constants(program) if args.opt else program
     interp_result = Interpreter(program).call(args.fn, argv)
-    jit_result = compile_program(program).call(args.fn, argv)
+    jit_result = compile_program(jit_program).call(args.fn, argv)
     print(f"interpreter: {interp_result}")
-    print(f"jit:         {jit_result}")
+    print(f"jit:         {jit_result}" + ("  (constant-folded)" if args.opt else ""))
 
     ok = interp_result == jit_result
     if gcc_available():
-        gcc_result = run_via_gcc(program, args.fn, argv)
+        gcc_result = run_via_gcc(jit_program, args.fn, argv)
         print(f"gcc:         {gcc_result}")
         ok = ok and interp_result == gcc_result
     else:
@@ -123,7 +127,7 @@ def cmd_bench(args):
     program = _load_program(args.file)
     _find_fn(program, args.fn)
     argv = _parse_args(args.args)
-    stats = benchmark(program, args.fn, argv)
+    stats = benchmark(program, args.fn, argv, optimize=args.opt)
     i, j = stats["interpreter"], stats["jit"]
     print(f"{args.fn}({', '.join(map(str, argv))}) = {stats['result']}")
     print(f"interpreter: {i['iters']} calls in {i['elapsed']:.4f}s "
@@ -136,7 +140,10 @@ def cmd_bench(args):
 def cmd_viz(args):
     from .report import generate_report
     program = _load_program(args.file)
-    html = generate_report(args.file, program, bench_fn=args.bench_fn, bench_args=_parse_args(args.bench_args or []))
+    bench_program = fold_constants(program) if args.opt else None
+    html = generate_report(args.file, program, bench_fn=args.bench_fn,
+                            bench_args=_parse_args(args.bench_args or []),
+                            bench_program=bench_program)
     with open(args.out, "w") as f:
         f.write(html)
     print(f"wrote {args.out}")
@@ -158,6 +165,7 @@ def build_parser():
 
     sp = sub.add_parser("run", help="JIT-compile and execute a function")
     add_fn_args(sp)
+    sp.add_argument("--opt", action="store_true", help="apply constant folding before compiling")
     sp.set_defaults(func=cmd_run)
 
     sp = sub.add_parser("interp", help="Run a function through the reference interpreter")
@@ -166,6 +174,7 @@ def build_parser():
 
     sp = sub.add_parser("compare", help="Run interpreter vs JIT vs gcc and report any mismatch")
     add_fn_args(sp)
+    sp.add_argument("--opt", action="store_true", help="apply constant folding to the JIT/gcc side before compiling")
     sp.set_defaults(func=cmd_compare)
 
     sp = sub.add_parser("ast", help="Print the AST")
@@ -180,6 +189,7 @@ def build_parser():
 
     sp = sub.add_parser("bench", help="Measure interpreter vs JIT wall-clock speed")
     add_fn_args(sp)
+    sp.add_argument("--opt", action="store_true", help="constant-fold before compiling the JIT side")
     sp.set_defaults(func=cmd_bench)
 
     sp = sub.add_parser("viz", help="Generate the interactive HTML report")
@@ -187,6 +197,7 @@ def build_parser():
     sp.add_argument("--out", default="report.html")
     sp.add_argument("--bench-fn", default=None)
     sp.add_argument("--bench-args", nargs="*", default=None)
+    sp.add_argument("--opt", action="store_true", help="constant-fold before compiling the benchmarked JIT")
     sp.set_defaults(func=cmd_viz)
 
     sp = sub.add_parser("demo", help="Run the full end-to-end feature showcase")

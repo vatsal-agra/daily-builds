@@ -17,6 +17,7 @@ from .errors import EmberRuntimeError
 from .transpile_c import run_via_gcc, gcc_available
 from .disasm import objdump_available
 from .report import generate_report
+from .optimize import fold_constants
 
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _EXAMPLES = os.path.join(_HERE, "examples")
@@ -119,6 +120,38 @@ def run():
     print(f"  interpreter: {stats['interpreter']['per_call']*1e6:.2f} us/call")
     print(f"  jit:         {stats['jit']['per_call']*1e6:.2f} us/call")
     print(f"  speedup:     {stats['speedup']:.1f}x")
+
+    print()
+    print("=== constant-folding optimizer: same answers, smaller code ===")
+    fold_src = (
+        "fn f(x) {\n"
+        "    let a = 2 + 3 * 4;\n"
+        "    let b = (1 < 2) && (3 == 3);\n"
+        "    let c = 0 && (10 / 0 > 1);\n"  # must NOT fold away the division guard
+        "    return a + b + c + x;\n"
+        "}\n"
+    )
+    fold_prog = parse(fold_src)
+    folded = fold_constants(fold_prog)
+    unopt_len = len(compile_program(fold_prog).code_bytes)
+    opt_len = len(compile_program(folded).code_bytes)
+    interp_r = Interpreter(fold_prog).call("f", [100])
+    jit_r = compile_program(folded).call("f", [100])
+    ok = interp_r == jit_r and opt_len < unopt_len
+    print(f"  [{'PASS' if ok else 'FAIL'}] f(100): interpreter={interp_r} jit(folded)={jit_r}  "
+          f"code size {unopt_len}B -> {opt_len}B")
+    if not ok:
+        failures.append(("optimizer", "f", [100], interp_r, jit_r, None))
+    # a divisor of a *known-zero* constant must still raise at runtime, not
+    # get folded away (or, worse, raised as a Python exception at compile time).
+    div_zero_src = "fn g() { return 5 / 0; }\n"
+    div_zero_prog = parse(div_zero_src)
+    try:
+        compile_program(fold_constants(div_zero_prog)).call("g", [])
+        print("  [FAIL] constant division by zero should still raise EmberRuntimeError")
+        failures.append(("optimizer-div-guard", "g", [], None, None, None))
+    except EmberRuntimeError as e:
+        print(f"  [PASS] constant-divisor-zero still raises cleanly through the optimizer -> {e}")
 
     print()
     print("=== objdump independent disassembly oracle ===")

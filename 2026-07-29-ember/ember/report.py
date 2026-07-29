@@ -183,10 +183,14 @@ def _example_section(label, source, program, disasm_ok):
     """
 
 
-def generate_report(main_path, program, bench_fn=None, bench_args=None, extra_examples=None):
+def generate_report(main_path, program, bench_fn=None, bench_args=None, extra_examples=None, bench_program=None):
     """extra_examples: optional list of (label, source, program) shown
     alongside the primary file -- used by demo.py to build one report
-    covering every example program."""
+    covering every example program. bench_program: if given, the
+    benchmark runs this program instead of `program` (e.g. a
+    constant-folded copy) while the source/AST/disassembly sections
+    still show the original, unmodified `program` -- so the page never
+    shows optimized code next to source text that doesn't match it."""
     disasm_ok = objdump_available()
     sections = []
     with open(main_path) as f:
@@ -197,7 +201,7 @@ def generate_report(main_path, program, bench_fn=None, bench_args=None, extra_ex
 
     bench_html = ""
     if bench_fn:
-        bench_html = _bench_section(program, bench_fn, bench_args or [])
+        bench_html = _bench_section(bench_program or program, bench_fn, bench_args or [])
 
     body = f"""
     <div class="viz-root">

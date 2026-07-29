@@ -107,7 +107,8 @@ evaluation via jumps, not eager evaluation of both sides).
    `&&`/`||` (proven by a side-effecting-counter-style test, not just a
    truth table).
 
-**Stretch (2 required minimum, aiming for 3):**
+**Stretch (2 required minimum, aiming for 3 — shipped 4, see REVIEW.md
+finding #5 and the Phase 4 constant-folding optimizer below):**
 
 5. **objdump oracle.** Feed the raw bytes Ember's encoder produced to the
    box's real `objdump -D -b binary -m i386:x86-64`, parse its output,

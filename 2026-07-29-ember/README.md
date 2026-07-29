@@ -5,13 +5,13 @@ to real x86-64 machine code and executed on the CPU via
 `mmap(PROT_EXEC)` + `ctypes` — no bytecode layer, no interpreter loop in
 the hot path. See [PLAN.md](PLAN.md) for the full design rationale.
 
-**Status: Phase 3 (adversarial review) complete.** All 4 required
-features work end-to-end against real generated machine code; 4 real
-bugs found by hostile review are fixed (see [REVIEW.md](REVIEW.md)), plus
-one real, measured, disclosed limitation (native stack overflow on
-extreme non-tail recursion — verified to match real `gcc -O0`'s
-behavior exactly, not an Ember-specific defect). Phase 4 (stretch +
-polish) next.
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features
+work end-to-end against real generated machine code; 4 real bugs found
+by hostile review are fixed (see [REVIEW.md](REVIEW.md)), plus one real,
+measured, disclosed limitation (native stack overflow on extreme
+non-tail recursion — verified to match real `gcc -O0`'s behavior
+exactly, not an Ember-specific defect). A 4th stretch feature (constant
+folding) is shipped on top of the original 3.
 
 ## Quickstart
 
@@ -71,8 +71,45 @@ short-circuit `&&`/`||`. See `examples/*.em`.
    source / AST / real objdump disassembly per example, plus a genuine
    measured interpreter-vs-JIT benchmark (not an invented speedup
    number), dark/light theme aware.
+8. **Constant-folding optimizer** (`ember/optimize.py`, `--opt` flag on
+   `run`/`compare`/`bench`/`viz`) — folds any subexpression built
+   entirely out of literals down to one literal before codegen, and
+   folds `&&`/`||` consistently with their runtime short-circuit
+   semantics (a known-deciding constant left side drops the right
+   subexpression entirely, matching what the short-circuit codegen
+   would do anyway) — *without* ever folding away a division/modulo
+   whose divisor is a known-zero constant, or the INT64_MIN / -1
+   overflow case, so the runtime error guards still fire exactly like
+   un-optimized code. The interpreter always runs the original,
+   unmodified AST, so it stays the ground-truth oracle optimized output
+   is checked against. Demonstrated shrinking a real example from 466
+   bytes of machine code to 133 (see `ember demo`'s optimizer section).
 
-## Next
+## Known, disclosed limitation
 
-Phase 3: adversarial review — hunt for encoding bugs, calling-convention
-edge cases, and CLI robustness gaps, then fix everything found.
+Ember has no stack-depth guard and no tail-call optimization, so a
+sufficiently deep non-tail-recursive JIT'd call eventually overflows the
+real OS thread stack and the process receives an uncatchable `SIGSEGV`
+— exactly like an equivalent `gcc -O0`-compiled C function would (verified
+directly, see REVIEW.md). Measured safe on this box's default 8 MiB stack
+up to roughly 100,000 levels of recursion for a single-local function;
+segfaults somewhere between 100K and 200K. A production JIT would add a
+guard-page stack-overflow trap or a growable stack; both are legitimate
+techniques and both are out of scope for a from-scratch one-day build.
+
+## Where a human could take this next
+
+- A real register allocator (linear-scan or graph-coloring) instead of
+  the current "every temporary round-trips through the real stack"
+  strategy — codegen would get both smaller and faster without changing
+  any of the calling-convention or encoding work.
+- Arrays/pointers and a stack-allocated buffer type, so Ember could
+  express algorithms (sorting, matrix ops) that need more than scalars.
+- A guard-page-based stack-overflow trap (mmap a guard page below each
+  thread's stack, catch the resulting SIGSEGV with a `sigaltstack`
+  handler, turn it into a catchable Ember error) — the real fix for the
+  disclosed recursion-depth limitation above.
+- Floating point (SSE scalar ops, a second register file, a second ABI
+  class in the calling convention).
+- A second target architecture (AArch64) behind the same AST, to see how
+  much of `codegen_x64.py`'s *structure* (not its bytes) carries over.

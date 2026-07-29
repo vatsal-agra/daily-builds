@@ -9,14 +9,20 @@ import time
 
 from .interpreter import Interpreter
 from .codegen_x64 import compile_program
+from .optimize import fold_constants
 
 
-def benchmark(program, fn_name, args, min_seconds=0.3):
+def benchmark(program, fn_name, args, min_seconds=0.3, optimize=False):
     """Runs both backends for at least `min_seconds` wall-clock each
     (auto-scaling the iteration count, like a microbenchmark harness
-    should) and returns a dict of iters/elapsed/per-call/speedup."""
+    should) and returns a dict of iters/elapsed/per-call/speedup.
+
+    The interpreter always runs the original, unoptimized AST -- it's the
+    ground-truth oracle constant folding is checked against, so it must
+    never itself be fed optimizer output. If `optimize`, only the JIT
+    compiles the constant-folded program."""
     interp = Interpreter(program)
-    compiled = compile_program(program)
+    compiled = compile_program(fold_constants(program) if optimize else program)
 
     # Confirm correctness before timing anything -- a benchmark that
     # races a broken JIT against the interpreter and reports a "10x
