@@ -37,6 +37,7 @@ from .ast_nodes import (
     IntLit, BoolLit, VarRef, UnaryOp, BinOp, Call,
 )
 from .errors import EmberRuntimeError
+from .semcheck import check_program
 
 _CC = {"==": CC_E, "!=": CC_NE, "<": CC_L, ">=": CC_GE, "<=": CC_LE, ">": CC_G}
 _label_counter = itertools.count()
@@ -376,6 +377,7 @@ class FunctionCodeGen:
 
 
 def compile_program(program) -> CompiledProgram:
+    check_program(program)
     error_flag = ctypes.c_int64(0)
     error_flag_addr = ctypes.addressof(error_flag)
 

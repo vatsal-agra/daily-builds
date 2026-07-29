@@ -44,6 +44,7 @@ CASES = [
     ("ackermann.em", "ackermann", [3, 3]),
     ("args6.em", "weighted_sum", [1, 2, 3, 4, 5, 6]),
     ("args6.em", "weighted_sum", [-1, -2, -3, -4, -5, -6]),
+    ("args6.em", "call_weighted_sum", [10]),
     ("logic.em", "guard", [0, 5]),
     ("logic.em", "guard", [2, 5]),
     ("logic.em", "either", [0, 5]),

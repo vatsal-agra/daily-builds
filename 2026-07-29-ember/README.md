@@ -5,9 +5,13 @@ to real x86-64 machine code and executed on the CPU via
 `mmap(PROT_EXEC)` + `ctypes` — no bytecode layer, no interpreter loop in
 the hot path. See [PLAN.md](PLAN.md) for the full design rationale.
 
-**Status: Phase 2 (core build) complete.** All 4 required features work
-end-to-end against real generated machine code. Phase 3 (adversarial
-review) next.
+**Status: Phase 3 (adversarial review) complete.** All 4 required
+features work end-to-end against real generated machine code; 4 real
+bugs found by hostile review are fixed (see [REVIEW.md](REVIEW.md)), plus
+one real, measured, disclosed limitation (native stack overflow on
+extreme non-tail recursion — verified to match real `gcc -O0`'s
+behavior exactly, not an Ember-specific defect). Phase 4 (stretch +
+polish) next.
 
 ## Quickstart
 
@@ -33,7 +37,11 @@ short-circuit `&&`/`||`. See `examples/*.em`.
 ## Implemented so far
 
 1. **Front end** — hand-written lexer + recursive-descent/
-   precedence-climbing parser, positioned syntax errors.
+   precedence-climbing parser, positioned syntax errors, plus a static
+   semantic-check pass (`ember/semcheck.py`) both the interpreter and the
+   JIT run before doing anything else, so "is this program valid" has one
+   shared, control-flow-independent answer instead of the JIT silently
+   being stricter than the interpreter (see REVIEW.md finding #1).
 2. **Reference interpreter** — tree-walking evaluator with 64-bit
    wraparound arithmetic matching real hardware, used as the
    ground-truth oracle for everything else.

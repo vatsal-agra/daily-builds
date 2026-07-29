@@ -13,6 +13,7 @@ from .ast_nodes import (
     IntLit, BoolLit, VarRef, UnaryOp, BinOp, Call,
 )
 from .errors import EmberRuntimeError
+from .semcheck import check_program
 
 INT64_MIN = -(2 ** 63)
 INT64_MAX = 2 ** 63 - 1
@@ -56,10 +57,8 @@ class _Return(Exception):
 
 class Interpreter:
     def __init__(self, program):
+        check_program(program)
         self.functions = {fn.name: fn for fn in program.functions}
-        for fn in program.functions:
-            if len(fn.params) != len(set(fn.params)):
-                raise EmberRuntimeError(f"function {fn.name!r}: duplicate parameter names")
 
     def call(self, name: str, args):
         if name not in self.functions:
