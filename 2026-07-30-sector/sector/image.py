@@ -293,6 +293,13 @@ class FatImage:
             csum = short_name_checksum((name8 + ext3).encode("ascii"))
             lfn_entries = pack_lfn_entries(name, csum)
 
+        # Reserve the directory slot(s) *before* allocating any data/subdir
+        # cluster. If the parent directory has no room (the fixed-size root,
+        # in particular, cannot grow), this raises before a single data
+        # cluster is touched — otherwise a failed root-full write would leak
+        # an allocated-but-unreferenced cluster that only `fsck` would catch.
+        raw, pos = self._alloc_slots(parent_ref, len(lfn_entries) + 1)
+
         first_cluster = 0
         size = 0
         if is_dir:
@@ -307,7 +314,6 @@ class FatImage:
             self._write_cluster_chain(first_cluster, data)
 
         short_bytes = pack_short_entry(name8, ext3, attr, first_cluster, size, ctime=now, wtime=now)
-        raw, pos = self._alloc_slots(parent_ref, len(lfn_entries) + 1)
         for i, e in enumerate(lfn_entries):
             raw[(pos + i) * 32:(pos + i + 1) * 32] = e
         raw[(pos + len(lfn_entries)) * 32:(pos + len(lfn_entries) + 1) * 32] = short_bytes
@@ -346,12 +352,18 @@ class FatImage:
         if existing is not None:
             if existing["short"]["is_dir"]:
                 raise IsADirectoryError(path)
-            self.fat.free_chain(existing["short"]["first_cluster"])
+            # Allocate (and write) the *new* chain before freeing the old
+            # one: if allocate() raises (disk full), the old chain — and
+            # the directory entry that still points at it — is untouched,
+            # so the file keeps its previous contents instead of losing
+            # them to a failed overwrite.
+            old_first_cluster = existing["short"]["first_cluster"]
             first_cluster = 0
             if data:
                 n_clusters = needed_clusters(len(data), self.bpb.cluster_size)
                 first_cluster = self.fat.allocate(n_clusters)[0]
                 self._write_cluster_chain(first_cluster, data)
+            self.fat.free_chain(old_first_cluster)
             self._flush_fat()
             raw = bytearray(self._read_dir_raw(parent_ref))
             slot = pack_short_entry(

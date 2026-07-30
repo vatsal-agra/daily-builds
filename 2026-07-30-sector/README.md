@@ -5,8 +5,15 @@ cluster-chain allocator, 8.3 + VFAT long-name directory entries, and a
 from-scratch reader, cross-verified against Linux's real `fsck.vfat`,
 `mkfs.vfat`, and `mtools`.
 
-**Status: Phase 2 (core build) complete.** All four required features are
-implemented and manually verified end-to-end against real FAT tooling:
+**Status: Phase 3 (adversarial review) complete.** See
+[`REVIEW.md`](./REVIEW.md) for the full findings — 3 real bugs found and
+fixed (two of them cluster-accounting corruption bugs: a leak on a
+root-directory-full write, and free-cluster-count corruption on every
+image reopen caused by FAT sector-padding being treated as real free
+clusters) plus 14 other scenarios checked and confirmed correct.
+
+All four required features are implemented and verified end-to-end against
+real FAT tooling:
 
 - `sector mkfs` produces images `fsck.vfat -v` accepts as clean.
 - `sector cp-in` writes files (including multi-cluster ones) that `mcopy`/`mtype`
