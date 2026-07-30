@@ -111,6 +111,22 @@ def cmd_stat(args):
         print(f"{k:14s} {v}")
 
 
+def cmd_rm(args):
+    img = _load(args.image)
+    img.unlink(args.path)
+    img.save(args.image)
+    print(f"removed {args.path}")
+
+
+def cmd_inspect(args):
+    from .inspector import build_report
+    img = _load(args.image)
+    html = build_report(img, args.image)
+    with open(args.out, "w") as f:
+        f.write(html)
+    print(f"wrote {args.out}")
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="sector", description="A from-scratch FAT16 filesystem toolkit.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -162,6 +178,16 @@ def build_parser():
     st.add_argument("path")
     st.set_defaults(func=cmd_stat)
 
+    rm = sub.add_parser("rm", help="delete a file or empty directory")
+    rm.add_argument("image")
+    rm.add_argument("path")
+    rm.set_defaults(func=cmd_rm)
+
+    ins = sub.add_parser("inspect", help="render an interactive HTML disk report")
+    ins.add_argument("image")
+    ins.add_argument("--out", default="inspect.html")
+    ins.set_defaults(func=cmd_inspect)
+
     return p
 
 
@@ -188,7 +214,7 @@ def main(argv=None):
     except CliError as e:
         print(f"sector: error: {e}", file=sys.stderr)
         return 1
-    except (FileNotFoundError, NotADirectoryError, IsADirectoryError, FileExistsError) as e:
+    except (FileNotFoundError, NotADirectoryError, IsADirectoryError, FileExistsError, OSError) as e:
         print(f"sector: error: {e}", file=sys.stderr)
         return 1
     except (DirEntryError, FatFullError, BPBError, ValueError) as e:

@@ -393,6 +393,57 @@ class FatImage:
             buf += self.data[off:off + cs]
         return bytes(buf[:size])
 
+    def unlink(self, path):
+        """Delete a file, or an empty directory, freeing its whole cluster
+        chain back to the FAT and marking its directory slot(s) deleted."""
+        parent_ref, name = self._split_path(path)
+        entry = self._find_in_dir(parent_ref, name)
+        if entry is None:
+            raise FileNotFoundError(path)
+        s = entry["short"]
+        if s["is_dir"]:
+            sub_ref = "ROOT" if s["first_cluster"] == 0 else s["first_cluster"]
+            children = [
+                e for e in self._parse_dir_entries(self._read_dir_raw(sub_ref))
+                if e["short"]["name8"].rstrip() not in (".", "..")
+            ]
+            if children:
+                raise OSError(f"directory not empty: {path}")
+        if s["first_cluster"]:
+            self.fat.free_chain(s["first_cluster"])
+            self._flush_fat()
+        raw = bytearray(self._read_dir_raw(parent_ref))
+        for slot in range(entry["start_slot"], entry["end_slot"] + 1):
+            raw[slot * 32] = DELETED_MARK
+        self._write_dir_raw(parent_ref, bytes(raw))
+
+    def cluster_owners(self):
+        """Map every currently-allocated data cluster number to the path of
+        the file/directory that owns it — used by the HTML inspector's
+        allocation map."""
+        owners = {}
+
+        def walk(dir_ref, prefix):
+            for e in self._parse_dir_entries(self._read_dir_raw(dir_ref)):
+                sn = e["short"]["name8"].rstrip()
+                if sn in (".", ".."):
+                    continue
+                s = e["short"]
+                full = prefix + "/" + e["display_name"]
+                if s["first_cluster"]:
+                    try:
+                        chain = self.fat.chain(s["first_cluster"])
+                    except ValueError:
+                        chain = []
+                    for c in chain:
+                        owners[c] = full
+                    if s["is_dir"]:
+                        child_ref = "ROOT" if s["first_cluster"] == 0 else s["first_cluster"]
+                        walk(child_ref, full)
+
+        walk("ROOT", "")
+        return owners
+
     def list_dir(self, path="/"):
         parts = self._split_components(path)
         dir_ref = self._resolve_dir_ref(path) if parts else "ROOT"
