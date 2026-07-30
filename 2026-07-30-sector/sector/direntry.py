@@ -145,9 +145,13 @@ def pack_short_entry(name8, ext3, attr, first_cluster, size, ctime=None, wtime=N
     wtime = wtime or ctime
     cdate_v, ctime_v = encode_datetime(ctime)
     wdate_v, wtime_v = encode_datetime(wtime)
+    # name8 always comes from generate_short_name()'s VALID_SHORT_CHARS set
+    # (or the fixed "." / ".." cases), which excludes 0xE5 entirely, and
+    # `.encode("ascii")` below rejects any code point >= 128 outright — so a
+    # name8 that encodes to the DELETED_MARK byte 0xE5 is unreachable here.
+    # (short_display_name still un-escapes 0x05 on the *read* side, which
+    # matters for arbitrary real-world images this toolkit didn't write.)
     raw_name = name8.encode("ascii")
-    if raw_name[0] == DELETED_MARK:
-        raw_name = bytes([KANJI_E5_ESCAPE]) + raw_name[1:]
     return _SHORT_STRUCT.pack(
         raw_name, ext3.encode("ascii"), attr, ntres, 0,
         ctime_v, cdate_v, cdate_v,
