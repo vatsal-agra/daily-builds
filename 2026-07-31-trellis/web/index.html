@@ -147,6 +147,17 @@
     border-color: var(--border);
     font-weight: 600;
   }
+  .tab { display: flex; align-items: center; gap: 6px; }
+  .tab .close {
+    opacity: 0;
+    width: 14px; height: 14px;
+    line-height: 14px;
+    text-align: center;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .tab:hover .close { opacity: 0.55; }
+  .tab .close:hover { opacity: 1 !important; background: var(--error); color: white; }
   #addsheet { padding: 4px 9px; font-size: 14px; line-height: 1; }
 
   #gridwrap { flex: 1; overflow: auto; position: relative; background: var(--bg); }
@@ -357,8 +368,21 @@
     for (const name of state.sheets) {
       const tab = document.createElement("div");
       tab.className = "tab" + (name === state.sheet ? " active" : "");
-      tab.textContent = name;
+      tab.title = "Click to switch, double-click to rename";
+
+      const label = document.createElement("span");
+      label.textContent = name;
+      tab.appendChild(label);
+
+      const close = document.createElement("span");
+      close.className = "close";
+      close.textContent = "×";
+      close.title = "Delete sheet";
+      close.onclick = (ev) => { ev.stopPropagation(); deleteSheet(name); };
+      tab.appendChild(close);
+
       tab.onclick = () => { if (name !== state.sheet) loadState(name); };
+      tab.ondblclick = (ev) => { ev.stopPropagation(); renameSheet(name); };
       tabsEl.appendChild(tab);
     }
     const add = document.createElement("button");
@@ -379,6 +403,38 @@
         body: JSON.stringify({ name }),
       });
       await loadState(name);
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  async function renameSheet(oldName) {
+    const newName = prompt("Rename sheet:", oldName);
+    if (!newName || newName === oldName) return;
+    try {
+      await api("/api/sheet/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ old: oldName, new: newName }),
+      });
+      await loadState(newName);
+      toast(`Renamed "${oldName}" to "${newName}"`);
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  async function deleteSheet(name) {
+    if (state.sheets.length === 1) { toast("Can't delete the last sheet"); return; }
+    if (!confirm(`Delete sheet "${name}"? This can't be undone.`)) return;
+    try {
+      await api("/api/sheet/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      await loadState(null);
+      toast(`Deleted "${name}"`);
     } catch (e) {
       toast(e.message);
     }
@@ -622,13 +678,17 @@
     if (!file) return;
     const text = await file.text();
     try {
-      await api("/api/import.csv", {
+      const result = await api("/api/import.csv", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sheet: state.sheet, text }),
       });
       await loadState(state.sheet);
-      toast("CSV imported");
+      if (result.skipped > 0) {
+        toast(`Imported ${result.imported} cells — ${result.skipped} fell outside the ${state.rows}×${state.cols} grid and were skipped`);
+      } else {
+        toast(`Imported ${result.imported} cells`);
+      }
     } catch (e) {
       toast(e.message);
     }

@@ -77,8 +77,8 @@ def cmd_csv_import(args):
     wb = Workbook()
     with open(args.file, "r", newline="") as f:
         text = f.read()
-    n = import_csv(wb, wb.active_sheet, text)
-    print(f"imported {n} cells into {wb.active_sheet!r}")
+    n, skipped = import_csv(wb, wb.active_sheet, text)
+    print(f"imported {n} cells into {wb.active_sheet!r}" + (f" ({skipped} skipped)" if skipped else ""))
     if args.show:
         _print_grid(wb.sheets[wb.active_sheet])
     if args.out:

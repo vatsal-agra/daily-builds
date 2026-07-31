@@ -19,8 +19,8 @@ from .chart import render_chart_svg
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 
-DEFAULT_ROWS = 40
-DEFAULT_COLS = 18
+DEFAULT_ROWS = 60
+DEFAULT_COLS = 20
 
 
 def _cell_json(cell):
@@ -180,6 +180,10 @@ def make_handler(state):
                 return self._handle_history(payload, "redo")
             if path == "/api/sheet":
                 return self._handle_add_sheet(payload)
+            if path == "/api/sheet/rename":
+                return self._handle_rename_sheet(payload)
+            if path == "/api/sheet/delete":
+                return self._handle_delete_sheet(payload)
             if path == "/api/import.csv":
                 return self._handle_import_csv(payload)
 
@@ -233,15 +237,54 @@ def make_handler(state):
                 state.wb.active_sheet = name
                 return self._send_json(state.sheet_snapshot(name))
 
+        def _handle_rename_sheet(self, payload):
+            old = (payload.get("old") or "").strip()
+            new = (payload.get("new") or "").strip()
+            if not old or not new:
+                return self._send_json({"error": "old and new sheet names required"}, 400)
+            with state.lock:
+                if old not in state.wb.sheets:
+                    return self._send_json({"error": "no such sheet"}, 404)
+                if new in state.wb.sheets and new != old:
+                    return self._send_json({"error": "sheet already exists"}, 400)
+                try:
+                    state.wb.rename_sheet(old, new)
+                except ValueError as e:
+                    return self._send_json({"error": str(e)}, 400)
+                # Cell-level undo/redo entries reference a sheet by name;
+                # after a rename those names no longer resolve, so start
+                # the history over rather than risk undo/redo silently
+                # writing to (or erroring on) the wrong/missing sheet.
+                state.history.clear()
+                return self._send_json(state.sheet_snapshot(state.wb.active_sheet))
+
+        def _handle_delete_sheet(self, payload):
+            name = (payload.get("name") or "").strip()
+            if not name:
+                return self._send_json({"error": "sheet name required"}, 400)
+            with state.lock:
+                if name not in state.wb.sheets:
+                    return self._send_json({"error": "no such sheet"}, 404)
+                if len(state.wb.sheets) == 1:
+                    return self._send_json({"error": "cannot remove the last sheet"}, 400)
+                state.wb.remove_sheet(name)
+                state.history.clear()
+                return self._send_json(state.sheet_snapshot(state.wb.active_sheet))
+
         def _handle_import_csv(self, payload):
             sheet_name = payload.get("sheet", state.wb.active_sheet)
             text = payload.get("text", "")
             with state.lock:
                 if sheet_name not in state.wb.sheets:
                     return self._send_json({"error": "no such sheet"}, 404)
-                import_csv(state.wb, sheet_name, text)
+                imported, skipped = import_csv(
+                    state.wb, sheet_name, text, max_row=state.rows, max_col=state.cols,
+                )
                 state.history.clear()
-                return self._send_json(state.sheet_snapshot(sheet_name))
+                result = state.sheet_snapshot(sheet_name)
+                result["imported"] = imported
+                result["skipped"] = skipped
+                return self._send_json(result)
 
         def _serve_static(self, rel_path, content_type=None):
             safe = os.path.normpath(rel_path).lstrip(os.sep)

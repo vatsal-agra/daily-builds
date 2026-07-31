@@ -4,14 +4,26 @@ A spreadsheet engine built entirely from scratch: a real formula parser,
 a dependency-graph-based incremental recalculation engine, and an
 interactive server-backed browser grid.
 
-**Status: Phase 3 (adversarial review) complete.** See [PLAN.md](PLAN.md)
-for the full architecture and feature list, and [REVIEW.md](REVIEW.md) for
-9 real bugs found (by actually driving the UI in headless Chromium and
+**Status: Phase 4 (stretch + polish) complete.** See [PLAN.md](PLAN.md) for
+the full architecture and feature list, and [REVIEW.md](REVIEW.md) for 9
+real bugs found (by actually driving the UI in headless Chromium and
 attacking the HTTP API directly, not just reading the code) and fixed —
 including two data-loss/corruption bugs in the inline cell editor, a broken
 sheet-rename that silently orphaned cross-sheet formulas, and two distinct
 crash vectors (`RecursionError` from deeply nested and very long formulas)
 that are now clean spreadsheet errors instead of hard crashes.
+
+**All 3 planned stretch features are shipped and fully wired into the UI:**
+undo/redo (`Ctrl+Z`/`Ctrl+Y` or the toolbar buttons), live SVG bar/line
+charts, and multi-sheet workbooks with cross-sheet references (`Data!A1`)
+— including sheet add/rename/delete, all exercised through the real tab
+bar (double-click to rename, hover-× to delete), not just the backend API.
+
+**Phase 4 polish:** fixed floating-point display noise (`0.1+0.2` now
+shows `0.3`, not `0.30000000000000004`, matching how real spreadsheets
+round their display precision without losing any calculation accuracy),
+and CSV imports that exceed the visible grid now report exactly how many
+cells were skipped instead of silently discarding them.
 
 ## Quickstart
 

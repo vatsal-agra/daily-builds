@@ -86,8 +86,15 @@ def to_display_str(v):
         return "TRUE" if v else "FALSE"
     if isinstance(v, float):
         if v == int(v) and abs(v) < 1e15:
-            return str(int(v))
-        return repr(v)
+            return str(int(v)) if v != 0 else "0"  # avoid a bare "-0"
+        # Real binary floats can't represent most decimal fractions exactly
+        # (0.1 + 0.2 == 0.30000000000000004), and `repr()` shows every one
+        # of those bits. Real spreadsheets hide that by displaying a
+        # limited number of significant digits; 15 matches Excel's default
+        # display precision and is enough to round the representation
+        # error away without losing any digit a user actually typed or
+        # would care about.
+        return "{:.15g}".format(v)
     return str(v)
 
 

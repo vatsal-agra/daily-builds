@@ -67,8 +67,9 @@ def run():
     print("\n3. Grid data model + CSV import/export")
     csv_text = "Item,Qty,Price,Total\nWidget,3,9.5,=B2*C2\nGadget,2,19,=B3*C3\n"
     wb4 = Workbook()
-    n = import_csv(wb4, "Sheet1", csv_text)
+    n, skipped = import_csv(wb4, "Sheet1", csv_text)
     _check(f"imported {n} cells from CSV", n > 0)
+    _check("no cells skipped (small CSV fits the grid)", skipped == 0)
     _check("D2 formula (=B2*C2) computed to 28.5", _fmt(wb4.get_cell("Sheet1", 2, 4)) == "28.5")
     out_csv = export_csv(wb4.sheets["Sheet1"])
     _check("exported CSV contains computed value, not formula text", "28.5" in out_csv and "B2*C2" not in out_csv)
