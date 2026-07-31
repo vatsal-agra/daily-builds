@@ -46,10 +46,34 @@ _COMPARISON_OPS = {"EQ", "NE", "LT", "LE", "GT", "GE"}
 _COMPARISON_SYM = {"EQ": "=", "NE": "<>", "LT": "<", "LE": "<=", "GT": ">", "GE": ">="}
 
 
+MAX_NEST_DEPTH = 60  # parenthesized groups / function-call args; see _recurse
+
+
 class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
         self.i = 0
+        self.depth = 0
+
+    def _recurse(self, parse_method):
+        """Wrap a re-entrant call into the expression grammar (parenthesized
+        groups, function-call arguments) with an explicit depth cap. Without
+        this, a deeply nested formula like 500 levels of `((((1))))` blows
+        Python's real call stack with an unhandled RecursionError instead of
+        a clean, reportable parse error -- each nesting level here costs
+        several stacked calls through the whole precedence chain, so an
+        uncapped depth reaches the interpreter's recursion limit quickly."""
+        self.depth += 1
+        if self.depth > MAX_NEST_DEPTH:
+            tok = self.peek()
+            raise ParseError(
+                f"formula nested too deeply (max {MAX_NEST_DEPTH} levels of "
+                f"parentheses/function calls)", tok.pos,
+            )
+        try:
+            return parse_method()
+        finally:
+            self.depth -= 1
 
     def peek(self):
         return self.tokens[self.i]
@@ -108,7 +132,7 @@ class Parser:
         tok = self.peek()
         if tok.type in ("PLUS", "MINUS"):
             self.advance()
-            operand = self.parse_unary()
+            operand = self._recurse(self.parse_unary)  # e.g. "-----1"
             return UnaryOp("-" if tok.type == "MINUS" else "+", operand)
         return self.parse_power()
 
@@ -116,7 +140,7 @@ class Parser:
         node = self.parse_postfix()
         if self.peek().type == "CARET":
             self.advance()
-            rhs = self.parse_unary()  # right-associative
+            rhs = self._recurse(self.parse_unary)  # right-associative chain, e.g. "2^2^2^..."
             node = BinOp("^", node, rhs)
         return node
 
@@ -139,7 +163,7 @@ class Parser:
             return StringLit(tok.text)
         if tok.type == "LPAREN":
             self.advance()
-            node = self.parse_comparison()
+            node = self._recurse(self.parse_comparison)
             self.expect("RPAREN")
             return node
         if tok.type == "IDENT":
@@ -157,10 +181,10 @@ class Parser:
             self.advance()
             args = []
             if self.peek().type != "RPAREN":
-                args.append(self.parse_comparison())
+                args.append(self._recurse(self.parse_comparison))
                 while self.peek().type == "COMMA":
                     self.advance()
-                    args.append(self.parse_comparison())
+                    args.append(self._recurse(self.parse_comparison))
             self.expect("RPAREN")
             return FuncCall(upper, args)
 

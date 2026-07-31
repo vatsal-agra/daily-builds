@@ -71,10 +71,22 @@ def render_chart_svg(workbook, sheet_name, range_text, kind="bar"):
     def y_for(v):
         return PAD_T + plot_h - (v - lo) / (hi - lo) * plot_h
 
+    # This SVG is always embedded via <img src="...">, which renders it in
+    # its own isolated context -- `currentColor` and CSS custom properties
+    # from the host page (e.g. --text, --border used everywhere else in
+    # web/index.html for light/dark theming) do NOT reach in here. The
+    # first version of this chart used `fill="currentColor"` and
+    # `var(--chart-bg,#fff)` expecting host-page inheritance; in dark mode
+    # that resolved to the SVG's own black-on-transparent default instead,
+    # making axis labels nearly unreadable against the panel's dark
+    # background. Fixed by giving the chart its own explicit, always-legible
+    # palette instead of trying to inherit one it structurally can't reach.
+    BG, TEXT, GRID, AXIS, BAR = "#ffffff", "#1c2130", "#d9dce3", "#6b7280", "#4f6bff"
+
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{HEIGHT}" '
         f'viewBox="0 0 {WIDTH} {HEIGHT}" font-family="system-ui,sans-serif" font-size="11">',
-        f'<rect x="0" y="0" width="{WIDTH}" height="{HEIGHT}" fill="var(--chart-bg,#fff)" opacity="0"/>',
+        f'<rect x="0" y="0" width="{WIDTH}" height="{HEIGHT}" fill="{BG}" rx="10"/>',
     ]
 
     # gridlines + y-axis ticks
@@ -83,19 +95,19 @@ def render_chart_svg(workbook, sheet_name, range_text, kind="bar"):
         val = lo + (hi - lo) * t / ticks
         y = y_for(val)
         parts.append(f'<line x1="{PAD_L}" y1="{y:.1f}" x2="{WIDTH - PAD_R}" y2="{y:.1f}" '
-                      f'stroke="#8888" stroke-width="1"/>')
-        parts.append(f'<text x="{PAD_L - 8}" y="{y + 3:.1f}" text-anchor="end" fill="currentColor">'
+                      f'stroke="{GRID}" stroke-width="1"/>')
+        parts.append(f'<text x="{PAD_L - 8}" y="{y + 3:.1f}" text-anchor="end" fill="{AXIS}">'
                       f'{val:.3g}</text>')
 
     zero_y = y_for(0)
     parts.append(f'<line x1="{PAD_L}" y1="{zero_y:.1f}" x2="{WIDTH - PAD_R}" y2="{zero_y:.1f}" '
-                  f'stroke="currentColor" stroke-width="1.2"/>')
+                  f'stroke="{TEXT}" stroke-width="1.2"/>')
 
     if kind == "line":
         pts = " ".join(f"{x_for(i):.1f},{y_for(v):.1f}" for i, v in enumerate(values))
-        parts.append(f'<polyline points="{pts}" fill="none" stroke="#4f8cff" stroke-width="2.5"/>')
+        parts.append(f'<polyline points="{pts}" fill="none" stroke="{BAR}" stroke-width="2.5"/>')
         for i, v in enumerate(values):
-            parts.append(f'<circle cx="{x_for(i):.1f}" cy="{y_for(v):.1f}" r="3.2" fill="#4f8cff"/>')
+            parts.append(f'<circle cx="{x_for(i):.1f}" cy="{y_for(v):.1f}" r="3.2" fill="{BAR}"/>')
     else:
         n = len(values)
         bar_w = max(4.0, (plot_w / n) * 0.6)
@@ -103,11 +115,11 @@ def render_chart_svg(workbook, sheet_name, range_text, kind="bar"):
             x = x_for(i) - bar_w / 2
             y0, y1 = sorted((y_for(0), y_for(v)))
             parts.append(f'<rect x="{x:.1f}" y="{y0:.1f}" width="{bar_w:.1f}" '
-                          f'height="{max(0.5, y1 - y0):.1f}" fill="#4f8cff" rx="2"/>')
+                          f'height="{max(0.5, y1 - y0):.1f}" fill="{BAR}" rx="2"/>')
 
     for i, label in enumerate(labels):
         parts.append(f'<text x="{x_for(i):.1f}" y="{HEIGHT - PAD_B + 16}" text-anchor="middle" '
-                      f'fill="currentColor">{_xml_escape(label)[:12]}</text>')
+                      f'fill="{TEXT}">{_xml_escape(label)[:12]}</text>')
 
     parts.append("</svg>")
     return "\n".join(parts)

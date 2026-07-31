@@ -109,6 +109,22 @@ def make_handler(state):
                 return None
 
         def do_GET(self):
+            # Last-resort safety net: any handler bug that raises an
+            # exception we didn't anticipate must still produce a clean
+            # JSON error, not a raw traceback (leaking a stack trace to an
+            # HTTP client) or a dropped connection.
+            try:
+                return self._do_GET()
+            except Exception as e:
+                return self._send_json({"error": f"internal error: {e}"}, 500)
+
+        def do_POST(self):
+            try:
+                return self._do_POST()
+            except Exception as e:
+                return self._send_json({"error": f"internal error: {e}"}, 500)
+
+        def _do_GET(self):
             parsed = urlparse(self.path)
             path = parsed.path
             qs = parse_qs(parsed.query)
@@ -149,7 +165,7 @@ def make_handler(state):
 
             return self._send_json({"error": "not found"}, 404)
 
-        def do_POST(self):
+        def _do_POST(self):
             parsed = urlparse(self.path)
             path = parsed.path
             payload = self._read_json()
@@ -210,7 +226,10 @@ def make_handler(state):
             with state.lock:
                 if name in state.wb.sheets:
                     return self._send_json({"error": "sheet already exists"}, 400)
-                state.wb.add_sheet(name)
+                try:
+                    state.wb.add_sheet(name)
+                except ValueError as e:
+                    return self._send_json({"error": str(e)}, 400)
                 state.wb.active_sheet = name
                 return self._send_json(state.sheet_snapshot(name))
 

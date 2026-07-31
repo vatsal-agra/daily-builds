@@ -3,11 +3,27 @@
 engine). This is the module application code (CLI, server, tests) talks to.
 """
 
-from .parser import parse, ParseError
-from .ast_nodes import CellRef, RangeRef, FuncCall, UnaryOp, BinOp
+from .parser import parse, ParseError, NameRef
+from .ast_nodes import (
+    CellRef, RangeRef, FuncCall, UnaryOp, BinOp, NumberLit, StringLit, BoolLit,
+)
 from .evaluator import evaluate, Context
 from .depgraph import DependencyGraph
 from .errors import TrellisError, REF, VALUE, CIRCULAR
+from .addr import format_addr
+
+
+def _validate_sheet_name(name):
+    if not name or not name.strip():
+        raise ValueError("sheet name cannot be blank")
+    if "!" in name:
+        # '!' is the sheet-qualifier delimiter in formula syntax
+        # (`Sheet2!A1`); a sheet named with one in it can never actually be
+        # referenced from a formula (the parser would misread everything
+        # after the first '!' as a cell address and fail to parse), so
+        # reject it up front with a clear reason instead of allowing a
+        # sheet no formula can ever point at.
+        raise ValueError("sheet names cannot contain '!'")
 
 
 def _literal_from_text(text):
@@ -119,12 +135,14 @@ class Workbook:
     # -- sheet management -------------------------------------------------
 
     def add_sheet(self, name):
+        _validate_sheet_name(name)
         if name in self.sheets:
             raise ValueError(f"sheet {name!r} already exists")
         self.sheets[name] = Sheet(name)
         return self.sheets[name]
 
     def rename_sheet(self, old, new):
+        _validate_sheet_name(new)
         if old not in self.sheets:
             raise KeyError(old)
         if new in self.sheets:
@@ -133,20 +151,23 @@ class Workbook:
         sheet.name = new
         self.sheets[new] = sheet
 
-        remap = {}
-        for key in list(self.graph.precedents.keys()) + list(self.graph.dependents.keys()):
-            if key[0] == old:
-                remap[key] = (new, key[1], key[2])
-        for old_key, new_key in remap.items():
-            self.graph.precedents[new_key] = {
-                (new, r, c) if s == old else (s, r, c) for (s, r, c) in self.graph.precedents.pop(old_key, set())
-            }
-            self.graph.dependents[new_key] = {
-                (new, r, c) if s == old else (s, r, c) for (s, r, c) in self.graph.dependents.pop(old_key, set())
-            }
+        # Every formula's AST carries the literal sheet name it referenced
+        # (CellRef.sheet / RangeRef.sheet) -- e.g. `Data!A1`. Moving the
+        # Sheet object under a new key isn't enough: any formula that reads
+        # `old` (in *any* sheet, not just `old` itself, since a formula can
+        # reference `old` from a third sheet too) must have those refs
+        # rewritten to `new`, or they'll evaluate against a sheet name that
+        # no longer exists and permanently break as #REF!.
+        for s in self.sheets.values():
+            for cell in s.cells.values():
+                if cell.is_formula and cell.ast is not None:
+                    _rename_sheet_in_ast(cell.ast, old, new)
+                    if cell.raw and cell.raw.startswith("="):
+                        cell.raw = "=" + _formula_text(cell.ast)
+
         if self.active_sheet == old:
             self.active_sheet = new
-        self._recalc_all()
+        self._rebuild_graph_from_formulas()
 
     def remove_sheet(self, name):
         if name not in self.sheets:
@@ -154,13 +175,21 @@ class Workbook:
         if len(self.sheets) == 1:
             raise ValueError("cannot remove the last sheet")
         del self.sheets[name]
-        for key in [k for k in self.graph.precedents if k[0] == name]:
-            self.graph.remove_cell(key)
-        for key in [k for k in self.graph.dependents if k[0] == name]:
-            self.graph.remove_cell(key)
         if self.active_sheet == name:
             self.active_sheet = next(iter(self.sheets))
-        self._recalc_all()
+        # Formulas elsewhere that referenced `name` now correctly resolve
+        # to #REF! (the sheet is genuinely gone) once precedents are
+        # rebuilt and everything is recomputed against current state.
+        self._rebuild_graph_from_formulas()
+
+    def _rebuild_graph_from_formulas(self):
+        self.graph = DependencyGraph()
+        for s in self.sheets.values():
+            for (r, c), cell in s.cells.items():
+                if cell.is_formula and cell.ast is not None:
+                    refs = _extract_refs(cell.ast, s.name)
+                    self.graph.set_precedents((s.name, r, c), refs)
+        self.recalc_all_cells()
 
     # -- editing ------------------------------------------------------------
 
@@ -184,7 +213,22 @@ class Workbook:
         if raw_text.startswith("="):
             try:
                 ast = parse(raw_text[1:])
+                refs = _extract_refs(ast, sheet_name)
             except ParseError:
+                cell.ast = None
+                cell.is_formula = True
+                cell.value = TrellisError(VALUE)
+                self.graph.set_precedents(key, set())
+                return self._recalculate([key])
+            except RecursionError:
+                # Parenthesis/function-call/unary nesting is capped by the
+                # parser (see parser.MAX_NEST_DEPTH), but a very long *flat*
+                # chain of same-precedence operators parses iteratively into
+                # a deep-but-valid AST that only reveals itself as a crash
+                # risk when something walks it recursively -- reference
+                # extraction here is the first such walk, on every edit, so
+                # it needs the same backstop `_recalculate` has for
+                # evaluation itself.
                 cell.ast = None
                 cell.is_formula = True
                 cell.value = TrellisError(VALUE)
@@ -192,7 +236,6 @@ class Workbook:
                 return self._recalculate([key])
             cell.ast = ast
             cell.is_formula = True
-            refs = _extract_refs(ast, sheet_name)
             self.graph.set_precedents(key, refs)
         else:
             cell.ast = None
@@ -234,6 +277,19 @@ class Workbook:
                 cell.value = evaluate(cell.ast, ctx)
             except TrellisError as e:
                 cell.value = e
+            except RecursionError:
+                # The parser caps nesting depth for parens/function-calls/
+                # unary chains (see parser.MAX_NEST_DEPTH), but a very long
+                # *flat* chain of same-precedence operators (e.g. 3000
+                # `+`-separated terms) parses iteratively and only reveals
+                # itself as a deep tree when the evaluator walks it
+                # recursively. Converting to a clean error here -- instead
+                # of letting a raw RecursionError escape and potentially
+                # crash the request/thread -- is a deliberate backstop, not
+                # a fix for the formula: a real spreadsheet would reject a
+                # formula that long at entry, and a giant SUM() is the
+                # actual right way to add 3000 numbers.
+                cell.value = TrellisError(VALUE)
         return affected
 
     def recalc_all_cells(self):
@@ -247,8 +303,6 @@ class Workbook:
             if cell.is_formula
         }
         return self._recalculate(all_formula_keys)
-
-    _recalc_all = recalc_all_cells
 
 
 def _extract_refs(node, current_sheet):
@@ -279,3 +333,62 @@ def _walk_refs(node, current_sheet, out):
         for a in node.args:
             _walk_refs(a, current_sheet, out)
     # NumberLit / StringLit / BoolLit / NameRef: no references
+
+
+def _rename_sheet_in_ast(node, old, new):
+    """Rewrite every CellRef/RangeRef whose explicit sheet qualifier is
+    `old` to `new`, in place. Refs with no sheet qualifier (same-sheet
+    refs) are untouched -- renaming a sheet doesn't change what its own
+    unqualified formulas mean."""
+    if isinstance(node, CellRef):
+        if node.sheet == old:
+            node.sheet = new
+    elif isinstance(node, RangeRef):
+        if node.sheet == old:
+            node.sheet = new
+        _rename_sheet_in_ast(node.start, old, new)
+        _rename_sheet_in_ast(node.end, old, new)
+    elif isinstance(node, UnaryOp):
+        _rename_sheet_in_ast(node.operand, old, new)
+    elif isinstance(node, BinOp):
+        _rename_sheet_in_ast(node.left, old, new)
+        _rename_sheet_in_ast(node.right, old, new)
+    elif isinstance(node, FuncCall):
+        for a in node.args:
+            _rename_sheet_in_ast(a, old, new)
+
+
+def _formula_text(node):
+    """Render an AST back to formula text (over-parenthesized but always
+    correct) -- used to keep a cell's displayed formula in sync after a
+    sheet rename rewrites one of its references."""
+    if isinstance(node, NumberLit):
+        return _num_text(node.value)
+    if isinstance(node, StringLit):
+        return '"' + node.value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    if isinstance(node, BoolLit):
+        return "TRUE" if node.value else "FALSE"
+    if isinstance(node, NameRef):
+        return node.text
+    if isinstance(node, CellRef):
+        text = format_addr(node.row, node.col)
+        return f"{node.sheet}!{text}" if node.sheet else text
+    if isinstance(node, RangeRef):
+        start = format_addr(node.start.row, node.start.col)
+        end = format_addr(node.end.row, node.end.col)
+        prefix = f"{node.sheet}!" if node.sheet else ""
+        return f"{prefix}{start}:{end}"
+    if isinstance(node, UnaryOp):
+        inner = _formula_text(node.operand)
+        return f"{inner}%" if node.op == "%" else f"{node.op}({inner})"
+    if isinstance(node, BinOp):
+        return f"({_formula_text(node.left)}{node.op}{_formula_text(node.right)})"
+    if isinstance(node, FuncCall):
+        return f"{node.name}({','.join(_formula_text(a) for a in node.args)})"
+    raise AssertionError(f"unhandled AST node in _formula_text: {node!r}")
+
+
+def _num_text(v):
+    if isinstance(v, float) and v == int(v):
+        return str(int(v))
+    return str(v)

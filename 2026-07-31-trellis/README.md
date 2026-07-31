@@ -4,8 +4,14 @@ A spreadsheet engine built entirely from scratch: a real formula parser,
 a dependency-graph-based incremental recalculation engine, and an
 interactive server-backed browser grid.
 
-**Status: Phase 2 (core build) complete.** See [PLAN.md](PLAN.md) for the
-full architecture and feature list.
+**Status: Phase 3 (adversarial review) complete.** See [PLAN.md](PLAN.md)
+for the full architecture and feature list, and [REVIEW.md](REVIEW.md) for
+9 real bugs found (by actually driving the UI in headless Chromium and
+attacking the HTTP API directly, not just reading the code) and fixed —
+including two data-loss/corruption bugs in the inline cell editor, a broken
+sheet-rename that silently orphaned cross-sheet formulas, and two distinct
+crash vectors (`RecursionError` from deeply nested and very long formulas)
+that are now clean spreadsheet errors instead of hard crashes.
 
 ## Quickstart
 

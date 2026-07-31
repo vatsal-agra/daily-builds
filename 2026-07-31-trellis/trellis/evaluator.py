@@ -100,10 +100,10 @@ def _eval_binop(node, ctx):
 
 
 def _compare(op, left, right):
-    if isinstance(left, TrellisError):
-        raise left
-    if isinstance(right, TrellisError):
-        raise right
+    # No isinstance(..., TrellisError) guard needed here: every path that
+    # could hand us an error-valued cell (CellRef -> Context.get_value)
+    # already raises it immediately rather than returning it as a value,
+    # so an error always propagates before reaching this function at all.
     lk, lv = _order_key(left)
     rk, rv = _order_key(right)
     if lk != rk:

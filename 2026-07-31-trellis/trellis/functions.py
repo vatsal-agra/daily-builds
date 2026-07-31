@@ -219,33 +219,34 @@ def fn_vlookup(args):
     if len(args) not in (3, 4):
         raise TrellisError(VALUE)
     key, table, col_index = args[0], args[1], args[2]
-    exact = (not to_bool(args[3])) if len(args) == 4 else True
+    # Real Excel defaults the 4th arg (range_lookup) to TRUE/approximate
+    # when omitted -- a well-known footgun (an unsorted or non-numeric
+    # first lookup column silently returns a wrong row instead of erroring).
+    # Trellis deliberately defaults to exact-match instead; approximate
+    # matching is opt-in via a truthy 4th argument.
+    approximate = to_bool(args[3]) if len(args) == 4 else False
     if not isinstance(table, RangeValue):
         raise TrellisError(VALUE)
     col_index = int(to_number(col_index))
     if col_index < 1:
         raise TrellisError(VALUE)
+
     for row in table.rows:
         if col_index > len(row):
             raise TrellisError(REF_ERR)
-        cell = row[0]
-        if exact:
-            if _loose_eq(cell, key):
-                return row[col_index - 1]
-        else:
-            if _is_number(cell) and _is_number(key) and cell <= key:
-                best = row[col_index - 1]
-            # approximate-match VLOOKUP requires sorted data; keep simple:
-            if _loose_eq(cell, key):
-                return row[col_index - 1]
-    if not exact:
-        # fall back: largest key <= lookup value, table assumed sorted ascending
-        candidates = [r for r in table.rows if _is_number(r[0]) and _is_number(key) and r[0] <= key]
+        if _loose_eq(row[0], key):
+            return row[col_index - 1]
+
+    if approximate:
+        # Fall back to the largest first-column value <= key (table assumed
+        # sorted ascending, the same precondition real VLOOKUP has).
+        candidates = [r for r in table.rows if is_number(r[0]) and is_number(key) and r[0] <= key]
         if candidates:
             best_row = max(candidates, key=lambda r: r[0])
             if col_index > len(best_row):
                 raise TrellisError(REF_ERR)
             return best_row[col_index - 1]
+
     from .errors import NA
     raise TrellisError(NA)
 

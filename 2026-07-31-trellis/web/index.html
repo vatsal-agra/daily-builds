@@ -297,8 +297,12 @@
     colLabels: [],
     cells: {},          // "r,c" -> {raw, display, error, is_formula}
     selected: { r: 1, c: 1 },
-    editing: false,
   };
+  // The cell currently being inline-edited (its live content lives in a
+  // per-cell <input> the top formula bar does *not* mirror in real time),
+  // and the <input> element itself. Both null when nothing is being edited.
+  let editingCell = null;
+  let editingInput = null;
 
   const $ = (id) => document.getElementById(id);
   const gridEl = $("grid");
@@ -416,7 +420,15 @@
   }
 
   function selectCell(r, c, focusFormula) {
-    if (state.editing) commitEdit(false);
+    if (editingCell && (editingCell.r !== r || editingCell.c !== c)) {
+      // Flush the *live* inline editor's value, not the top formula bar --
+      // the formula bar only mirrors a cell's content at selection time and
+      // is never updated while a per-cell inline edit is in progress, so
+      // reading it here would silently discard whatever was just typed
+      // (a real bug: clicking a different cell mid-edit used to commit the
+      // formula bar's stale value instead of the in-progress text).
+      commitCellEdit(editingCell.r, editingCell.c, editingInput.value);
+    }
     const prev = gridEl.querySelector("td.cell.selected");
     if (prev) prev.classList.remove("selected");
     r = Math.max(1, Math.min(state.rows, r));
@@ -437,11 +449,12 @@
     const { r, c } = state.selected;
     const td = findTd(r, c);
     if (!td) return;
-    state.editing = true;
+    editingCell = { r, c };
     td.classList.add("editing");
     td.innerHTML = "";
     const input = document.createElement("input");
     input.value = initialChar !== undefined ? initialChar : (formulaInput.value || "");
+    editingInput = input;
     td.appendChild(input);
     input.focus();
     if (initialChar === undefined) input.select();
@@ -458,12 +471,15 @@
       else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); cancelEdit(r, c); }
     });
     input.addEventListener("blur", () => {
-      if (state.editing) commitCellEdit(r, c, input.value);
+      if (editingCell && editingCell.r === r && editingCell.c === c) {
+        commitCellEdit(r, c, input.value);
+      }
     });
   }
 
   function cancelEdit(r, c) {
-    state.editing = false;
+    editingCell = null;
+    editingInput = null;
     renderCellDom(r, c);
     selectCell(r, c, false);
   }
@@ -477,7 +493,10 @@
   }
 
   async function commitCellEdit(r, c, value) {
-    state.editing = false;
+    if (editingCell && editingCell.r === r && editingCell.c === c) {
+      editingCell = null;
+      editingInput = null;
+    }
     try {
       const data = await api("/api/cell", {
         method: "POST",
@@ -512,7 +531,14 @@
   gridEl.addEventListener("click", (ev) => {
     const td = ev.target.closest("td.cell");
     if (!td) return;
-    selectCell(Number(td.dataset.r), Number(td.dataset.c), false);
+    const r = Number(td.dataset.r), c = Number(td.dataset.c);
+    if (editingCell && editingCell.r === r && editingCell.c === c) {
+      // Clicking inside the cell you're already editing (to reposition the
+      // caret) doesn't blur its <input>, so this is just a click, not a
+      // navigation -- don't run selectCell's "flush and move" logic.
+      return;
+    }
+    selectCell(r, c, false);
   });
 
   gridEl.addEventListener("dblclick", (ev) => {
@@ -527,7 +553,7 @@
   });
 
   document.addEventListener("keydown", (ev) => {
-    if (state.editing) return;
+    if (editingCell) return;
     if (document.activeElement === formulaInput) {
       if (ev.key === "Escape") { formulaInput.blur(); selectCell(state.selected.r, state.selected.c, false); }
       return;
