@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Trellis</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%234f6bff'/%3E%3C/svg%3E">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --panel: #ffffff;
+    --border: #d9dce3;
+    --border-strong: #b9bfcc;
+    --text: #1c2130;
+    --text-dim: #6b7280;
+    --accent: #4f6bff;
+    --accent-soft: #e9edff;
+    --header-bg: #eef0f6;
+    --error: #d1445c;
+    --error-bg: #fdeaee;
+    --formula-text: #1a5fb4;
+    --shadow: 0 1px 2px rgba(20, 24, 40, 0.06), 0 8px 24px rgba(20, 24, 40, 0.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161d;
+      --panel: #1b1e27;
+      --border: #2c3040;
+      --border-strong: #3c4256;
+      --text: #e7e9f0;
+      --text-dim: #9aa0b4;
+      --accent: #7c93ff;
+      --accent-soft: #262c4a;
+      --header-bg: #20232e;
+      --error: #ff6b81;
+      --error-bg: #3a1f27;
+      --formula-text: #7fb0ff;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14161d; --panel: #1b1e27; --border: #2c3040; --border-strong: #3c4256;
+    --text: #e7e9f0; --text-dim: #9aa0b4; --accent: #7c93ff; --accent-soft: #262c4a;
+    --header-bg: #20232e; --error: #ff6b81; --error-bg: #3a1f27; --formula-text: #7fb0ff;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f7fb; --panel: #ffffff; --border: #d9dce3; --border-strong: #b9bfcc;
+    --text: #1c2130; --text-dim: #6b7280; --accent: #4f6bff; --accent-soft: #e9edff;
+    --header-bg: #eef0f6; --error: #d1445c; --error-bg: #fdeaee; --formula-text: #1a5fb4;
+    --shadow: 0 1px 2px rgba(20, 24, 40, 0.06), 0 8px 24px rgba(20, 24, 40, 0.06);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    z-index: 5;
+  }
+  #topbar h1 {
+    font-size: 16px;
+    margin: 0 14px 0 0;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #topbar h1 .dot { width: 9px; height: 9px; border-radius: 3px; background: var(--accent); display: inline-block; }
+  button, .btn {
+    background: var(--panel);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    padding: 6px 11px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: background .12s ease, transform .05s ease;
+  }
+  button:hover { background: var(--accent-soft); border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button:disabled:hover { background: var(--panel); border-color: var(--border-strong); }
+  #spacer { flex: 1; }
+  #status { color: var(--text-dim); font-size: 12px; min-width: 90px; text-align: right; }
+
+  #formulabar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  #cellref {
+    font-weight: 700;
+    min-width: 52px;
+    color: var(--text-dim);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+  }
+  #formulainput {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+  }
+  #formulainput:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  #sheettabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    padding: 5px 12px;
+    border-radius: 6px 6px 0 0;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 12.5px;
+  }
+  .tab.active {
+    color: var(--text);
+    background: var(--accent-soft);
+    border-color: var(--border);
+    font-weight: 600;
+  }
+  #addsheet { padding: 4px 9px; font-size: 14px; line-height: 1; }
+
+  #gridwrap { flex: 1; overflow: auto; position: relative; background: var(--bg); }
+  table#grid { border-collapse: collapse; }
+  #grid th, #grid td {
+    border: 1px solid var(--border);
+    padding: 0;
+    height: 24px;
+  }
+  #grid th {
+    background: var(--header-bg);
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 11.5px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    user-select: none;
+    min-width: 84px;
+  }
+  #grid th.rownum {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    min-width: 42px;
+    text-align: center;
+  }
+  #grid th.corner { position: sticky; left: 0; top: 0; z-index: 4; }
+  #grid td.rownum {
+    position: sticky;
+    left: 0;
+    background: var(--header-bg);
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 11.5px;
+    text-align: center;
+    z-index: 1;
+  }
+  #grid td.cell {
+    min-width: 84px;
+    max-width: 220px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    padding: 0 6px;
+    cursor: cell;
+    font-size: 12.5px;
+  }
+  #grid td.cell.formula { color: var(--formula-text); }
+  #grid td.cell.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+  #grid td.cell.error { color: var(--error); background: var(--error-bg); font-weight: 600; }
+  #grid td.cell.selected { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-soft); }
+  #grid td.cell.editing { padding: 0; }
+  #grid td.cell.editing input {
+    width: 100%;
+    height: 24px;
+    border: 2px solid var(--accent);
+    outline: none;
+    padding: 0 5px;
+    font-size: 12.5px;
+    font-family: inherit;
+    background: var(--panel);
+    color: var(--text);
+    box-sizing: border-box;
+  }
+
+  #chartpanel {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 10px;
+    display: none;
+  }
+  #chartpanel.open { display: block; }
+  #chartpanel img { display: block; border-radius: 6px; }
+  #chartpanel .row { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  #chartpanel input { flex: 1; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font-family: ui-monospace, monospace; font-size: 12px; }
+
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--error);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    opacity: 0;
+    transition: opacity .18s ease, transform .18s ease;
+    pointer-events: none;
+    box-shadow: var(--shadow);
+    z-index: 20;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1><span class="dot"></span>Trellis</h1>
+  <button id="undoBtn" title="Undo (Ctrl+Z)">Undo</button>
+  <button id="redoBtn" title="Redo (Ctrl+Y)">Redo</button>
+  <button id="csvExportBtn">Export CSV</button>
+  <button id="csvImportBtn">Import CSV</button>
+  <input type="file" id="csvFileInput" accept=".csv" style="display:none">
+  <button id="chartBtn">Chart…</button>
+  <div id="spacer"></div>
+  <div id="status">ready</div>
+</div>
+
+<div id="formulabar">
+  <div id="cellref">A1</div>
+  <input id="formulainput" autocomplete="off" spellcheck="false" placeholder="Enter a value or a formula, e.g. =SUM(A1:A5)">
+</div>
+
+<div id="sheettabs"></div>
+
+<div id="gridwrap">
+  <table id="grid"></table>
+</div>
+
+<div id="chartpanel">
+  <img id="chartimg" width="360" height="203">
+  <div class="row">
+    <input id="chartrange" placeholder="A1:B5" value="A1:B5">
+    <select id="chartkind"><option value="bar">bar</option><option value="line">line</option></select>
+    <button id="chartRefresh">Draw</button>
+    <button id="chartClose">×</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  const state = {
+    sheet: null,
+    sheets: [],
+    rows: 0,
+    cols: 0,
+    colLabels: [],
+    cells: {},          // "r,c" -> {raw, display, error, is_formula}
+    selected: { r: 1, c: 1 },
+    editing: false,
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const gridEl = $("grid");
+  const gridwrap = $("gridwrap");
+  const formulaInput = $("formulainput");
+  const cellRefEl = $("cellref");
+  const statusEl = $("status");
+  const tabsEl = $("sheettabs");
+
+  function key(r, c) { return r + "," + c; }
+
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toast._h);
+    toast._h = setTimeout(() => t.classList.remove("show"), 2200);
+  }
+
+  async function api(path, opts) {
+    const res = await fetch(path, opts);
+    let body;
+    try { body = await res.json(); } catch (e) { body = null; }
+    if (!res.ok) {
+      throw new Error((body && body.error) || ("HTTP " + res.status));
+    }
+    return body;
+  }
+
+  async function loadState(sheetName) {
+    const qs = sheetName ? ("?sheet=" + encodeURIComponent(sheetName)) : "";
+    const data = await api("/api/state" + qs);
+    state.sheet = data.sheet;
+    state.sheets = data.sheets;
+    state.rows = data.rows;
+    state.cols = data.cols;
+    state.colLabels = data.col_labels;
+    state.cells = data.cells;
+    renderTabs();
+    renderGrid();
+    updateUndoRedo(data.can_undo, data.can_redo);
+    selectCell(state.selected.r, state.selected.c, false);
+  }
+
+  function updateUndoRedo(canUndo, canRedo) {
+    $("undoBtn").disabled = !canUndo;
+    $("redoBtn").disabled = !canRedo;
+  }
+
+  function renderTabs() {
+    tabsEl.innerHTML = "";
+    for (const name of state.sheets) {
+      const tab = document.createElement("div");
+      tab.className = "tab" + (name === state.sheet ? " active" : "");
+      tab.textContent = name;
+      tab.onclick = () => { if (name !== state.sheet) loadState(name); };
+      tabsEl.appendChild(tab);
+    }
+    const add = document.createElement("button");
+    add.id = "addsheet";
+    add.textContent = "+";
+    add.title = "Add sheet";
+    add.onclick = addSheet;
+    tabsEl.appendChild(add);
+  }
+
+  async function addSheet() {
+    const name = prompt("New sheet name:");
+    if (!name) return;
+    try {
+      await api("/api/sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      await loadState(name);
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  function classifyCell(c) {
+    const cls = ["cell"];
+    if (!c || c.raw === null) return cls;
+    if (c.error) cls.push("error");
+    else if (c.is_formula) cls.push("formula");
+    if (c.display && /^-?[\d.]+$/.test(c.display)) cls.push("numeric");
+    return cls;
+  }
+
+  function renderGrid() {
+    let html = "<thead><tr><th class=\"corner\"></th>";
+    for (let c = 1; c <= state.cols; c++) html += `<th>${state.colLabels[c - 1]}</th>`;
+    html += "</tr></thead><tbody>";
+    for (let r = 1; r <= state.rows; r++) {
+      html += `<tr><td class="rownum">${r}</td>`;
+      for (let c = 1; c <= state.cols; c++) {
+        const cell = state.cells[key(r, c)];
+        const cls = classifyCell(cell).join(" ");
+        const text = cell ? escapeHtml(cell.display) : "";
+        html += `<td class="${cls}" data-r="${r}" data-c="${c}">${text}</td>`;
+      }
+      html += "</tr>";
+    }
+    html += "</tbody>";
+    gridEl.innerHTML = html;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+  }
+
+  function findTd(r, c) {
+    return gridEl.querySelector(`td.cell[data-r="${r}"][data-c="${c}"]`);
+  }
+
+  function selectCell(r, c, focusFormula) {
+    if (state.editing) commitEdit(false);
+    const prev = gridEl.querySelector("td.cell.selected");
+    if (prev) prev.classList.remove("selected");
+    r = Math.max(1, Math.min(state.rows, r));
+    c = Math.max(1, Math.min(state.cols, c));
+    state.selected = { r, c };
+    const td = findTd(r, c);
+    if (td) {
+      td.classList.add("selected");
+      td.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+    cellRefEl.textContent = state.colLabels[c - 1] + r;
+    const cell = state.cells[key(r, c)];
+    formulaInput.value = cell && cell.raw !== null ? cell.raw : "";
+    if (focusFormula) { formulaInput.focus(); formulaInput.select(); }
+  }
+
+  function beginTypingEdit(initialChar) {
+    const { r, c } = state.selected;
+    const td = findTd(r, c);
+    if (!td) return;
+    state.editing = true;
+    td.classList.add("editing");
+    td.innerHTML = "";
+    const input = document.createElement("input");
+    input.value = initialChar !== undefined ? initialChar : (formulaInput.value || "");
+    td.appendChild(input);
+    input.focus();
+    if (initialChar === undefined) input.select();
+    else input.setSelectionRange(input.value.length, input.value.length);
+
+    input.addEventListener("keydown", (ev) => {
+      // stopPropagation is essential here: without it this keydown also
+      // reaches the document-level grid-navigation handler below, which
+      // would (for Enter/Tab) open a *second* editor on the newly-selected
+      // cell -- forcing this input to blur, which re-submits its value a
+      // second time via the blur handler just below.
+      if (ev.key === "Enter") { ev.preventDefault(); ev.stopPropagation(); commitCellEdit(r, c, input.value); moveSelection(1, 0); }
+      else if (ev.key === "Tab") { ev.preventDefault(); ev.stopPropagation(); commitCellEdit(r, c, input.value); moveSelection(0, ev.shiftKey ? -1 : 1); }
+      else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); cancelEdit(r, c); }
+    });
+    input.addEventListener("blur", () => {
+      if (state.editing) commitCellEdit(r, c, input.value);
+    });
+  }
+
+  function cancelEdit(r, c) {
+    state.editing = false;
+    renderCellDom(r, c);
+    selectCell(r, c, false);
+  }
+
+  function renderCellDom(r, c) {
+    const td = findTd(r, c);
+    if (!td) return;
+    const cell = state.cells[key(r, c)];
+    td.className = classifyCell(cell).join(" ") + (state.selected.r === r && state.selected.c === c ? " selected" : "");
+    td.textContent = cell ? cell.display : "";
+  }
+
+  async function commitCellEdit(r, c, value) {
+    state.editing = false;
+    try {
+      const data = await api("/api/cell", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sheet: state.sheet, row: r, col: c, raw: value }),
+      });
+      Object.assign(state.cells, data.changed);
+      for (const k of Object.keys(data.changed)) {
+        const [rr, cc] = k.split(",").map(Number);
+        renderCellDom(rr, cc);
+      }
+      updateUndoRedo(data.can_undo, data.can_redo);
+      statusEl.textContent = `recalculated ${Object.keys(data.changed).length} cell(s)`;
+    } catch (e) {
+      toast("Error: " + e.message);
+      renderCellDom(r, c);
+    }
+    selectCell(r, c, false);
+  }
+
+  function commitEdit(moveDown) {
+    const { r, c } = state.selected;
+    commitCellEdit(r, c, formulaInput.value).then(() => {
+      if (moveDown) moveSelection(1, 0);
+    });
+  }
+
+  function moveSelection(dr, dc) {
+    selectCell(state.selected.r + dr, state.selected.c + dc, false);
+  }
+
+  gridEl.addEventListener("click", (ev) => {
+    const td = ev.target.closest("td.cell");
+    if (!td) return;
+    selectCell(Number(td.dataset.r), Number(td.dataset.c), false);
+  });
+
+  gridEl.addEventListener("dblclick", (ev) => {
+    const td = ev.target.closest("td.cell");
+    if (!td) return;
+    selectCell(Number(td.dataset.r), Number(td.dataset.c), false);
+    beginTypingEdit();
+  });
+
+  formulaInput.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") { ev.preventDefault(); commitEdit(true); }
+  });
+
+  document.addEventListener("keydown", (ev) => {
+    if (state.editing) return;
+    if (document.activeElement === formulaInput) {
+      if (ev.key === "Escape") { formulaInput.blur(); selectCell(state.selected.r, state.selected.c, false); }
+      return;
+    }
+    if (ev.ctrlKey || ev.metaKey) {
+      if (ev.key.toLowerCase() === "z") { ev.preventDefault(); doUndo(); return; }
+      if (ev.key.toLowerCase() === "y") { ev.preventDefault(); doRedo(); return; }
+    }
+    const moves = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+    if (moves[ev.key]) { ev.preventDefault(); moveSelection(...moves[ev.key]); return; }
+    if (ev.key === "Enter") { ev.preventDefault(); beginTypingEdit(); return; }
+    if (ev.key === "Tab") { ev.preventDefault(); moveSelection(0, ev.shiftKey ? -1 : 1); return; }
+    if (ev.key === "Delete" || ev.key === "Backspace") {
+      ev.preventDefault();
+      commitCellEdit(state.selected.r, state.selected.c, "");
+      return;
+    }
+    if (ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+      // Without preventDefault, the browser's default "insert this
+      // character" action fires *after* this handler -- against
+      // whatever is focused by then. beginTypingEdit() synchronously
+      // creates and focuses a new <input>, so the default action would
+      // insert a second copy of this same keystroke into it (e.g. typing
+      // "=" to start a formula produced "==", which then failed to parse).
+      ev.preventDefault();
+      beginTypingEdit(ev.key);
+    }
+  });
+
+  async function doUndo() {
+    try {
+      const data = await api("/api/undo", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sheet: state.sheet }),
+      });
+      Object.assign(state.cells, data.changed);
+      for (const k of Object.keys(data.changed)) { const [r, c] = k.split(",").map(Number); renderCellDom(r, c); }
+      updateUndoRedo(data.can_undo, data.can_redo);
+      selectCell(state.selected.r, state.selected.c, false);
+      statusEl.textContent = "undo";
+    } catch (e) { toast(e.message); }
+  }
+  async function doRedo() {
+    try {
+      const data = await api("/api/redo", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sheet: state.sheet }),
+      });
+      Object.assign(state.cells, data.changed);
+      for (const k of Object.keys(data.changed)) { const [r, c] = k.split(",").map(Number); renderCellDom(r, c); }
+      updateUndoRedo(data.can_undo, data.can_redo);
+      selectCell(state.selected.r, state.selected.c, false);
+      statusEl.textContent = "redo";
+    } catch (e) { toast(e.message); }
+  }
+
+  $("undoBtn").onclick = doUndo;
+  $("redoBtn").onclick = doRedo;
+
+  $("csvExportBtn").onclick = () => {
+    window.location = "/api/export.csv?sheet=" + encodeURIComponent(state.sheet);
+  };
+  $("csvImportBtn").onclick = () => $("csvFileInput").click();
+  $("csvFileInput").addEventListener("change", async (ev) => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    try {
+      await api("/api/import.csv", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sheet: state.sheet, text }),
+      });
+      await loadState(state.sheet);
+      toast("CSV imported");
+    } catch (e) {
+      toast(e.message);
+    }
+    ev.target.value = "";
+  });
+
+  $("chartBtn").onclick = () => { $("chartpanel").classList.add("open"); drawChart(); };
+  $("chartClose").onclick = () => $("chartpanel").classList.remove("open");
+  $("chartRefresh").onclick = drawChart;
+  function drawChart() {
+    const range = $("chartrange").value.trim() || "A1:B5";
+    const kind = $("chartkind").value;
+    const url = `/api/chart?sheet=${encodeURIComponent(state.sheet)}&range=${encodeURIComponent(range)}&kind=${kind}&_=${Date.now()}`;
+    $("chartimg").onerror = () => toast("Could not render chart for that range");
+    $("chartimg").src = url;
+  }
+
+  loadState(null).catch((e) => toast("Failed to load: " + e.message));
+})();
+</script>
+</body>
+</html>
