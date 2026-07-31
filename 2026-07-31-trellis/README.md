@@ -4,7 +4,13 @@ A spreadsheet engine built entirely from scratch: a real formula parser,
 a dependency-graph-based incremental recalculation engine, and an
 interactive server-backed browser grid.
 
-**Status: Phase 4 (stretch + polish) complete.** See [PLAN.md](PLAN.md) for
+**Status: Phase 5 (verification) complete.** 140 Python unit/integration
+tests (including a real HTTP server driven over a live socket) plus a
+Playwright headless-Chromium UI test that re-verifies every REVIEW.md
+finding against a running server all pass — run `./demo.sh` for the full
+walkthrough (test suite → `trellis demo` → live curl API walkthrough →
+real-browser UI test → CLI smoke checks → clean-error-handling checks).
+See [PLAN.md](PLAN.md) for
 the full architecture and feature list, and [REVIEW.md](REVIEW.md) for 9
 real bugs found (by actually driving the UI in headless Chromium and
 attacking the HTTP API directly, not just reading the code) and fixed —
