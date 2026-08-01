@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Reflow demo</title>
+  <style>
+    body { margin: 20px; color: black; }
+    h1 { color: darkblue; margin: 0 0 12px 0; }
+    p { margin: 0 0 10px 0; }
+    .card {
+      border: 3px solid navy;
+      background-color: lightblue;
+      padding: 12px;
+      width: 360px;
+    }
+    .highlight { color: crimson; }
+    #footer { text-align: center; color: gray; }
+  </style>
+</head>
+<body>
+  <h1>Welcome to Reflow</h1>
+  <div class="card">
+    <p>This paragraph is inside a bordered, padded, background-colored box
+    that is exactly 360 pixels wide, so this sentence should wrap across
+    several lines inside it.</p>
+    <p>A <span class="highlight">highlighted</span> word sits inline here.</p>
+  </div>
+  <p id="footer">-- rendered entirely by a from-scratch engine --</p>
+</body>
+</html>
