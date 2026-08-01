@@ -52,10 +52,23 @@ def _walk_elements(node):
 
 
 def cmd_render(args):
-    html_text = open(args.html_file, encoding='utf-8').read()
+    try:
+        html_text = open(args.html_file, encoding='utf-8').read()
+    except OSError as e:
+        print(f'error: could not read {args.html_file!r}: {e.strerror}', file=sys.stderr)
+        sys.exit(1)
+
     css_text = ''
     if args.css:
-        css_text = open(args.css, encoding='utf-8').read()
+        try:
+            css_text = open(args.css, encoding='utf-8').read()
+        except OSError as e:
+            print(f'error: could not read {args.css!r}: {e.strerror}', file=sys.stderr)
+            sys.exit(1)
+
+    if args.width <= 0:
+        print(f'error: --width must be positive, got {args.width}', file=sys.stderr)
+        sys.exit(1)
 
     result = render_page(html_text, extra_css=css_text, viewport_width=args.width)
 

@@ -2,47 +2,65 @@
 
 A browser rendering engine built from scratch: HTML parser → CSS cascade →
 layout → paint → real PNG. See [PLAN.md](PLAN.md) for the full design and
-feature list.
+feature list, and [REVIEW.md](REVIEW.md) for the adversarial review (11
+real bugs found and fixed, plus what was deliberately left as a documented
+limitation).
 
-**Status: Phase 3 (adversarial review) complete.** All four required
-features work end-to-end, and a hostile pass over the code found and fixed
-10 real bugs (wrong DOM nesting, a `<tr>`/`<td>` auto-close gap, no default
-heading/list styling, non-compounding `em` font sizes, a shorthand-parsing
-bug on `rgb(...)` colors, non-functional `<br>`, a missing-margin bug, an
-HTML attribute-parsing bug, and a CLI UX bug) — see [REVIEW.md](REVIEW.md)
-for the full list, including what was *not* a bug (documented
-limitations). Stretch features are still in progress.
+**Status: Phase 4 (stretch features + polish) complete.** All four
+required features and both stretch features (flexbox, the interactive
+visualizer) work end-to-end.
 
 ## Quick start
 
 ```
+# render a file to PNG, or dump any pipeline stage
 python3 cli.py render examples/hello.html -o out.png
+python3 cli.py render examples/flex.html -o flex.png
 python3 cli.py render examples/hello.html --dump-dom
 python3 cli.py render examples/hello.html --dump-cascade
 python3 cli.py render examples/hello.html --dump-layout
+
+# interactive visualizer: paste HTML/CSS, see DOM / CSSOM+cascade /
+# layout boxes (SVG) / final PNG update live, all computed by this engine
+python3 server.py --port 8000
+# then open http://127.0.0.1:8000/
 ```
 
 `examples/hello.html` exercises the box model, borders, backgrounds,
-inline word-wrap, and text-align in one page. Render it and open `out.png`
-in any image viewer to see the actual output.
+inline word-wrap, and text-align. `examples/flex.html` exercises a
+toolbar (row, `justify-content: space-between`, `flex-grow`), a
+sidebar layout (row, fixed + growing columns), and a card stack (column
+direction). Render either and open the PNG in any image viewer.
 
-## What's implemented so far
+## What's implemented
 
 - `reflow/html_parser.py` — hand-written tokenizer + tree-construction
-  parser (void elements, `<p>`/`<li>`/etc. implicit closing, `<script>`/
-  `<style>` raw text, comments, malformed/unclosed tags).
+  parser (void elements, `<p>`/`<li>`/`<tr>`/`<td>`/etc. implicit
+  closing, `<script>`/`<style>` raw text, comments, malformed/unclosed
+  tags).
 - `reflow/css_parser.py` — CSS tokenizer/parser into a CSSOM (`Rule`s with
   selector groups, combinators, specificity).
 - `reflow/cascade.py` — selector matching + cascade (specificity → source
-  order → `!important`) + property inheritance → `ComputedStyle` per node.
+  order → `!important`) + property inheritance → `ComputedStyle` per
+  node, plus a small UA stylesheet (heading sizes, bold/italic tags,
+  link color, list margins/indent) fed through the same cascade as
+  author CSS.
 - `reflow/layout.py` — box model, block flow with sibling margin
-  collapsing, and inline flow with real greedy line-breaking.
+  collapsing, inline flow with real greedy line-breaking (`<br>`-aware),
+  and flexbox (row/column, `justify-content`, `align-items`, `gap`,
+  `flex-grow`).
 - `reflow/font.py` — an original hand-authored stroke font rasterized with
   Bresenham's line algorithm (no system/TrueType fonts).
 - `reflow/paint.py` + `reflow/png_encoder.py` — paints the layout tree and
   encodes a genuinely valid PNG (correct chunks/CRCs, zlib-deflated rows).
-- `cli.py` — render a file to PNG, or dump any pipeline stage.
+- `reflow/visualize.py` + `server.py` + `viewer.html` — the interactive
+  visualizer: a stdlib-`http.server` backend with zero client-side layout
+  logic, and a dark-themed single-page UI showing the DOM tree, the
+  CSSOM with per-element cascade explanations, an SVG diagram of the real
+  layout box tree (actual pixel coordinates), and the final PNG, all
+  computed live from whatever HTML/CSS you paste in.
+- `cli.py` — render a file to PNG, or dump any pipeline stage; clear
+  error messages (not a raw traceback) for bad paths/arguments.
 
-Still to come: adversarial review (Phase 3), flexbox + the interactive
-visualizer (Phase 4 stretch features), a test suite (Phase 5), and final
-polish (Phase 6).
+Still to come: the automated test suite (Phase 5) and final ship-ready
+polish pass (Phase 6).

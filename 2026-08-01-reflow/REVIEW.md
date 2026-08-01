@@ -99,6 +99,26 @@ things are noted as accepted, documented limitations rather than bugs.
     the code did. Removed it; whitespace-only text already contributes
     zero words through the normal tokenizing path, so nothing was lost.
 
+## Bug found while building the flexbox stretch feature (Phase 4)
+
+11. **Flex items' text rendered at its pre-repositioning position.**
+    Column-direction flex items are measured with a real layout pass at
+    `(0, 0)` first (to discover their natural content height), then moved
+    into their final position with `_translate_box()`, which shifts
+    `box.x`/`box.y` recursively. But the painter draws line-box text from
+    each *fragment's own* stored `x`/`y` (a line box can hold many
+    differently colored/sized words, so position is per-fragment, not
+    just per-box) — and `_translate_box` wasn't touching those. Result:
+    every background/border moved to the correct final position, but the
+    text inside stayed stuck at its original measurement-pass coordinates,
+    stacked near the top of the page. This is exactly the kind of bug
+    spot-checking a few background pixel colors will *not* catch (they
+    were all correct) — it only showed up once I rendered the actual image
+    at a legible scale and looked at it, which is the whole reason PLAN.md
+    calls for a real PNG instead of trusting the layout-tree numbers
+    alone. Fixed by also shifting `frag['x']`/`frag['y']` for every
+    fragment in `_translate_box`.
+
 ## Also added while reviewing (small, contained, not scope creep)
 
 - `<img alt="...">` now renders its alt text (`[alt text]`) as a visible

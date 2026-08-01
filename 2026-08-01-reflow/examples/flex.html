@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Reflow flexbox demo</title>
+  <style>
+    body { margin: 16px; }
+    .toolbar {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+      background-color: lightgray;
+      height: 60px;
+      padding: 0 12px;
+      gap: 10px;
+    }
+    .toolbar .brand { background-color: navy; color: white; width: 80px; padding: 6px; }
+    .toolbar .spacer { flex-grow: 1; background-color: skyblue; }
+    .toolbar .button { background-color: coral; width: 70px; padding: 6px; text-align: center; }
+
+    .sidebar-layout {
+      display: flex;
+      flex-direction: row;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .sidebar { width: 140px; background-color: lightgreen; padding: 8px; }
+    .content { flex-grow: 1; background-color: white; border: 2px solid gray; padding: 8px; }
+
+    .card-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 200px;
+      margin-top: 16px;
+    }
+    .card-stack .card { background-color: gold; padding: 6px; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="brand">Reflow</div>
+    <div class="spacer"></div>
+    <div class="button">Menu</div>
+  </div>
+
+  <div class="sidebar-layout">
+    <div class="sidebar">Sidebar navigation with a fixed 140px width.</div>
+    <div class="content">Main content area with flex-grow:1, so it fills whatever
+      horizontal space the sidebar doesn't take.</div>
+  </div>
+
+  <div class="card-stack">
+    <div class="card">First card in a column stack</div>
+    <div class="card">Second card, wrapping text to show column direction still flows content normally within each item</div>
+  </div>
+</body>
+</html>
