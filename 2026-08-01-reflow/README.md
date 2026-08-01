@@ -6,13 +6,16 @@ feature list, and [REVIEW.md](REVIEW.md) for the adversarial review (11
 real bugs found and fixed, plus what was deliberately left as a documented
 limitation).
 
-**Status: Phase 4 (stretch features + polish) complete.** All four
-required features and both stretch features (flexbox, the interactive
-visualizer) work end-to-end.
+**Status: Phase 5 (verification) complete.** All four required features
+and both stretch features work end-to-end, backed by a 107-test suite
+and a runnable `demo.sh` that exercises every one of the six features
+against real output on disk.
 
 ## Quick start
 
 ```
+./demo.sh                    # tests + every feature, output in demo_output/
+
 # render a file to PNG, or dump any pipeline stage
 python3 cli.py render examples/hello.html -o out.png
 python3 cli.py render examples/flex.html -o flex.png
@@ -24,6 +27,9 @@ python3 cli.py render examples/hello.html --dump-layout
 # layout boxes (SVG) / final PNG update live, all computed by this engine
 python3 server.py --port 8000
 # then open http://127.0.0.1:8000/
+
+# run just the test suite
+python3 -m unittest discover -s tests
 ```
 
 `examples/hello.html` exercises the box model, borders, backgrounds,
@@ -61,6 +67,11 @@ direction). Render either and open the PNG in any image viewer.
   computed live from whatever HTML/CSS you paste in.
 - `cli.py` — render a file to PNG, or dump any pipeline stage; clear
   error messages (not a raw traceback) for bad paths/arguments.
+- `tests/` — 107 unit/integration tests across every module (tokenizer
+  edge cases, cascade tie-breaks, box-model math, flexbox, PNG byte
+  round-tripping through an independent decoder, CLI subprocess behavior,
+  and robustness against malformed/degenerate input) plus `demo.sh`,
+  which runs the suite and then exercises all six features against real
+  files and a live server, exiting non-zero on any failure.
 
-Still to come: the automated test suite (Phase 5) and final ship-ready
-polish pass (Phase 6).
+Still to come: final ship-ready polish pass (Phase 6).
