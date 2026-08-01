@@ -112,13 +112,26 @@ def _is_inline_level(node, styles):
     return False
 
 
+# Sentinel meaning "hard line break" (from a <br>), threaded through the
+# token stream so it can force a line to end even mid-run.
+BR = object()
+
+
 def _flatten_inline(node, styles, out):
     if node.node_type == 'text':
         out.append((node.data, styles.get(node)))
         return
     if node.node_type == 'element':
+        if node.name == 'br':
+            out.append((BR, None))
+            return
         st = styles.get(node)
         if st is None or st.get('display') == 'none':
+            return
+        if node.name == 'img':
+            alt = node.attrs.get('alt', '').strip()
+            if alt:
+                out.append((f'[{alt}]', st))
             return
         for child in node.children:
             if child.node_type == 'comment':
@@ -132,6 +145,9 @@ def _tokenize_run(run_nodes, styles):
         frags = []
         _flatten_inline(item_node, styles, frags)
         for text, style in frags:
+            if text is BR:
+                tokens.append((BR, None))
+                continue
             for word in text.split():
                 tokens.append((word, style))
     return tokens
@@ -142,6 +158,11 @@ def _break_lines(tokens, available_width):
     current = []
     current_width = 0.0
     for word, style in tokens:
+        if word is BR:
+            lines.append(current)
+            current = []
+            current_width = 0.0
+            continue
         scale = _scale_for(style)
         word_w = font.measure_text(word, scale)
         gap_w = font.measure_text(' ', scale) if current else 0.0
@@ -162,6 +183,14 @@ def _build_line_boxes(lines, start_x, start_y, container_width, align):
     y = start_y
     for line in lines:
         if not line:
+            # A blank line from a hard break (<br>, or two in a row) still
+            # takes up a line's worth of vertical space.
+            lb = LayoutBox(None, None, 'line')
+            lb.x, lb.y = start_x, y
+            lb.content_width = container_width
+            lb.content_height = font.line_height(1)
+            boxes.append(lb)
+            y += lb.content_height
             continue
         height = max(font.line_height(scale) for (_w, _s, scale) in line)
         line_width = 0.0
@@ -210,9 +239,14 @@ def _layout_flow_children(node, styles, parent_box, content_x, content_y, conten
         tokens = _tokenize_run(run_nodes, styles)
         if not tokens:
             return
+        # A preceding block sibling's margin-bottom (tracked in
+        # prev_margin_bottom, not yet applied to cursor_y) must still push
+        # this inline content down -- otherwise text right after a block
+        # element with margin-bottom would butt up against it with no gap.
+        start_y = cursor_y + prev_margin_bottom
         align = (parent_box.style.get('text-align') if parent_box.style else None) or 'left'
         lines = _break_lines(tokens, content_width)
-        line_boxes = _build_line_boxes(lines, content_x, cursor_y, content_width, align)
+        line_boxes = _build_line_boxes(lines, content_x, start_y, content_width, align)
         parent_box.children.extend(line_boxes)
         if line_boxes:
             last = line_boxes[-1]
@@ -224,11 +258,9 @@ def _layout_flow_children(node, styles, parent_box, content_x, content_y, conten
         if child.node_type == 'comment':
             continue
         if _is_inline_level(child, styles):
-            if child.node_type == 'text' and child.data.strip() == '' and not run_nodes:
-                # Drop leading pure-whitespace text (formatting indentation)
-                # so it doesn't force an empty run before real content.
-                if not child.data:
-                    continue
+            # Whitespace-only text contributes zero words in _tokenize_run,
+            # so it's harmless to always collect it here -- no special
+            # leading/trailing-whitespace bookkeeping needed.
             run_nodes.append(child)
             continue
         if child.node_type != 'element':

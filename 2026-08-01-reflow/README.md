@@ -4,8 +4,14 @@ A browser rendering engine built from scratch: HTML parser → CSS cascade →
 layout → paint → real PNG. See [PLAN.md](PLAN.md) for the full design and
 feature list.
 
-**Status: Phase 2 (core build) complete.** All four required features work
-end-to-end. Adversarial review and stretch features are still in progress.
+**Status: Phase 3 (adversarial review) complete.** All four required
+features work end-to-end, and a hostile pass over the code found and fixed
+10 real bugs (wrong DOM nesting, a `<tr>`/`<td>` auto-close gap, no default
+heading/list styling, non-compounding `em` font sizes, a shorthand-parsing
+bug on `rgb(...)` colors, non-functional `<br>`, a missing-margin bug, an
+HTML attribute-parsing bug, and a CLI UX bug) — see [REVIEW.md](REVIEW.md)
+for the full list, including what was *not* a bug (documented
+limitations). Stretch features are still in progress.
 
 ## Quick start
 

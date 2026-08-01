@@ -38,6 +38,27 @@ INITIAL_VALUES = {
     'flex-grow': '0',
 }
 
+# A minimal user-agent stylesheet: real browsers ship one, and without it
+# every element looks like unstyled body text (headings the same size as
+# paragraphs, links not blue, lists with no indent). These are ordinary
+# rules fed through the same cascade as author CSS -- lowest source order,
+# so any author rule of equal specificity overrides them -- rather than a
+# separate "default" code path, which is what lets an author's own
+# `h1 { font-size: ... }` correctly win without special-casing.
+UA_STYLESHEET = """
+h1 { font-size: 2em; font-weight: bold; margin-top: 0.67em; margin-bottom: 0.67em; }
+h2 { font-size: 1.5em; font-weight: bold; margin-top: 0.75em; margin-bottom: 0.75em; }
+h3 { font-size: 1.17em; font-weight: bold; margin-top: 0.83em; margin-bottom: 0.83em; }
+h4 { font-size: 1em; font-weight: bold; margin-top: 1.12em; margin-bottom: 1.12em; }
+h5 { font-size: 0.83em; font-weight: bold; margin-top: 1.5em; margin-bottom: 1.5em; }
+h6 { font-size: 0.75em; font-weight: bold; margin-top: 1.67em; margin-bottom: 1.67em; }
+b, strong { font-weight: bold; }
+i, em { font-style: italic; }
+p { margin-top: 1em; margin-bottom: 1em; }
+ul, ol { margin-top: 1em; margin-bottom: 1em; padding-left: 40px; }
+a { color: blue; }
+"""
+
 DEFAULT_DISPLAY = {
     'html': 'block', 'body': 'block', 'div': 'block', 'p': 'block',
     'ul': 'block', 'ol': 'block', 'li': 'block',
@@ -78,9 +99,34 @@ _BORDER_STYLES = {'solid', 'dashed', 'dotted', 'double', 'none', 'groove', 'ridg
 _LENGTH_RE = re.compile(r'^-?[\d.]+(px|em|pt|%)?$')
 
 
+def _split_respecting_parens(value):
+    """Split on whitespace, but never inside `fn(...)` -- so a border
+    shorthand like `1px solid rgb(0, 0, 0)` keeps the color as one token
+    instead of shredding it into `rgb(0,` `0,` `0)`."""
+    tokens = []
+    current = ''
+    depth = 0
+    for ch in value:
+        if ch == '(':
+            depth += 1
+            current += ch
+        elif ch == ')':
+            depth = max(0, depth - 1)
+            current += ch
+        elif ch.isspace() and depth == 0:
+            if current:
+                tokens.append(current)
+                current = ''
+        else:
+            current += ch
+    if current:
+        tokens.append(current)
+    return tokens
+
+
 def _expand_border(value):
     width = style = color = None
-    for tok in value.split():
+    for tok in _split_respecting_parens(value):
         low = tok.lower()
         if low in _BORDER_STYLES:
             style = low
@@ -211,8 +257,30 @@ def _compute_for_element(node, stylesheet, parent_style):
             winners[prop] = (rank, value)
     explicit = {prop: value for prop, (_rank, value) in winners.items()}
 
-    resolved = {}
+    # font-size is resolved to an absolute px number *now*, not left as a
+    # string, specifically so a chain of relative sizes (e.g. two nested
+    # elements each at "font-size: 0.5em") compounds against each
+    # ancestor's real resolved size instead of every element's "em"
+    # resolving against the same fixed 16px constant.
+    parent_font_px = parent_style.get('font-size') if parent_style is not None else None
+    if not isinstance(parent_font_px, (int, float)):
+        parent_font_px = to_px(parent_font_px, font_size=16.0) if parent_font_px else None
+    if parent_font_px is None:
+        parent_font_px = 16.0
+
+    if 'font-size' in explicit:
+        font_size_px = to_px(explicit['font-size'], font_size=parent_font_px, percent_base=parent_font_px)
+        if font_size_px is None:
+            font_size_px = parent_font_px
+    elif parent_style is not None:
+        font_size_px = parent_font_px
+    else:
+        font_size_px = to_px(_initial_value('font-size', node), font_size=16.0) or 16.0
+
+    resolved = {'font-size': font_size_px}
     for prop in INHERITED_PROPERTIES:
+        if prop == 'font-size':
+            continue
         if prop in explicit:
             resolved[prop] = explicit[prop]
         elif parent_style is not None:
@@ -240,7 +308,8 @@ def compute_styles(document, extra_css=''):
     painter knows what color/font-size to render them in)."""
     from .css_parser import parse_stylesheet
 
-    stylesheet = parse_stylesheet(extra_css or '')
+    stylesheet = parse_stylesheet(UA_STYLESHEET)
+    stylesheet.extend(parse_stylesheet(extra_css or ''))
     for style_node in document.find_all('style'):
         stylesheet.extend(parse_stylesheet(style_node.text_content()))
 

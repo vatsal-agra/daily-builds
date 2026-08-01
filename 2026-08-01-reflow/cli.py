@@ -66,10 +66,14 @@ def cmd_render(args):
     if args.dump_layout:
         print('\n'.join(_dump_layout(result.layout_root)))
 
-    if not (args.dump_dom or args.dump_cascade or args.dump_layout) or args.output:
-        with open(args.output, 'wb') as f:
+    any_dump = args.dump_dom or args.dump_cascade or args.dump_layout
+    output_path = args.output
+    if output_path is None and not any_dump:
+        output_path = 'out.png'
+    if output_path is not None:
+        with open(output_path, 'wb') as f:
             f.write(result.png)
-        print(f'wrote {args.output} '
+        print(f'wrote {output_path} '
               f'({result.canvas.width}x{result.canvas.height})', file=sys.stderr)
 
 
@@ -81,7 +85,8 @@ def main():
     render_cmd.add_argument('html_file')
     render_cmd.add_argument('--css', help='external CSS file to apply before the document\'s own <style> tags')
     render_cmd.add_argument('--width', type=int, default=800, help='viewport width in px (default: 800)')
-    render_cmd.add_argument('-o', '--output', default='out.png', help='output PNG path (default: out.png)')
+    render_cmd.add_argument('-o', '--output', default=None,
+                             help='output PNG path (default: out.png, unless a --dump-* flag is used alone)')
     render_cmd.add_argument('--dump-dom', action='store_true', help='print the parsed DOM tree')
     render_cmd.add_argument('--dump-cascade', action='store_true', help='print computed styles per element')
     render_cmd.add_argument('--dump-layout', action='store_true', help='print the positioned layout box tree')

@@ -46,8 +46,12 @@ AUTO_CLOSE = {
     'dt': {'dt', 'dd'},
     'dd': {'dt', 'dd'},
     'tr': {'tr'},
-    'td': {'td', 'th'},
-    'th': {'td', 'th'},
+    # A new row also implicitly ends the current row's cell -- the
+    # AUTO_CLOSE loop is a `while`, so opening <tr> pops an open <td>/<th>
+    # first, then (with the cell gone) sees the open <tr> underneath it
+    # and pops that too, landing the new <tr> as a sibling, not a nephew.
+    'td': {'td', 'th', 'tr'},
+    'th': {'td', 'th', 'tr'},
     'option': {'option'},
 }
 
@@ -222,7 +226,8 @@ def _parse_start_tag(text, i):
                     j += 1
             else:
                 val_start = j
-                while j < n and not text[j].isspace() and text[j] != '>':
+                while (j < n and not text[j].isspace() and text[j] != '>'
+                       and not (text[j] == '/' and j + 1 < n and text[j + 1] == '>')):
                     j += 1
                 value = _html_entities.unescape(text[val_start:j])
         attrs[attr_name] = value
