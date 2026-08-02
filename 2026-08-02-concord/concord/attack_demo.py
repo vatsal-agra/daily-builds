@@ -20,7 +20,7 @@ and printed, not asserted in the abstract.
 import time
 
 from . import pow as powmod
-from ._netutil import spin_up_network, wait_until
+from ._netutil import spin_up_network, tx_is_known, wait_until
 from .block import Block
 from .chain import Blockchain
 from .mempool import Mempool
@@ -79,9 +79,17 @@ def run_attack_demo():
         print(f"node0.submit(tx_honest) accepted locally: {accepted_honest}")
         print(f"node1.submit(tx_evil) accepted locally:   {accepted_evil}")
 
-        start_height = net.nodes[0].chain.height()
-        ok = wait_until(lambda: net.nodes[0].chain.height() > start_height, timeout=30)
-        assert ok, "no block mined to resolve the Part A race"
+        # wait for the race to actually resolve on-chain — NOT just "one more
+        # block mined": with 3 miners racing at well under a second per
+        # block, it's entirely possible for a block to get mined before either
+        # conflicting transaction has even propagated to that miner's mempool,
+        # so the very next block can easily contain neither transaction.
+        def race_resolved():
+            u = net.nodes[0].chain.utxo
+            return merchant1.balance(u) == 400 or attacker_payout1.balance(u) == 400
+
+        ok = wait_until(race_resolved, timeout=45)
+        assert ok, "neither side of the double-spend was ever confirmed"
         ok = wait_until(
             lambda: all(n.chain.tip_hash == net.nodes[0].chain.tip_hash for n in net.nodes), timeout=15
         )
@@ -112,12 +120,16 @@ def run_attack_demo():
         utxo_snapshot2 = dict(net.nodes[0].chain.utxo)
         tx_pay = alice.build_transaction(utxo_snapshot2, merchant2.address, 300)
         net.nodes[0].submit_transaction(tx_pay)
-        ok = wait_until(lambda: all(tx_pay.txid() in n.mempool for n in net.nodes), timeout=15)
-        assert ok, "payment transaction did not propagate before mining could confirm it"
+        ok = wait_until(lambda: all(tx_is_known(n, tx_pay.txid()) for n in net.nodes), timeout=15)
+        assert ok, "payment transaction was never seen (pending or confirmed) by every node"
 
-        confirm_height = net.nodes[0].chain.height() + 1
-        ok = wait_until(lambda: net.nodes[0].chain.height() >= confirm_height, timeout=30)
-        assert ok, "payment was never mined"
+        # a miner can be partway through mining a candidate built *before*
+        # tx_pay reached its mempool (candidates aren't rebuilt mid-search
+        # just because the pool changed — only when the tip moves), so
+        # "one more block" isn't guaranteed to be the confirming one; wait
+        # for the actual payment to land, not just for height to advance.
+        ok = wait_until(lambda: merchant2.balance(net.nodes[0].chain.utxo) == 300, timeout=45)
+        assert ok, "payment to merchant2 was never confirmed"
         ok = wait_until(
             lambda: all(n.chain.tip_hash == net.nodes[0].chain.tip_hash for n in net.nodes), timeout=15
         )

@@ -50,6 +50,25 @@ def spin_up_network(genesis, count, base_port, host="127.0.0.1", topology="mesh"
     return NetworkHandle(nodes, explorers, [])
 
 
+def tx_is_known(node, txid):
+    """True if a node has seen this transaction at all — either still
+    pending in its mempool, or already confirmed on its main chain.
+
+    Mining can be fast enough (sub-100ms blocks under light load) to
+    confirm a transaction, and prune it out of the mempool, in less time
+    than a polling loop's interval — so "is it in the mempool yet" is not
+    a safe way to detect "has the network seen this transaction", it can
+    transiently and correctly be false on both sides of the pending window.
+    """
+    if txid in node.mempool:
+        return True
+    return any(
+        tx.txid() == txid
+        for h in node.chain.main_chain_hashes()
+        for tx in node.chain.blocks_by_hash[h].transactions
+    )
+
+
 def wait_until(predicate, timeout=20.0, interval=0.1):
     deadline = time.time() + timeout
     while time.time() < deadline:

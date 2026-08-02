@@ -39,19 +39,38 @@ def cmd_wallet_new(args):
 
 
 def cmd_wallet_address(args):
-    w = Wallet.load(args.wallet)
+    try:
+        w = Wallet.load(args.wallet)
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        print(f"error: could not load wallet {args.wallet!r}: {e}", file=sys.stderr)
+        sys.exit(1)
     print(w.address)
 
 
 def cmd_wallet_balance(args):
-    w = Wallet.load(args.wallet)
-    info = _api_get(args.api, f"/api/utxo/{w.address}")
+    try:
+        w = Wallet.load(args.wallet)
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        print(f"error: could not load wallet {args.wallet!r}: {e}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        info = _api_get(args.api, f"/api/utxo/{w.address}")
+    except (urllib.error.URLError, ConnectionError) as e:
+        print(f"error: could not reach node at {args.api}: {e}", file=sys.stderr)
+        sys.exit(1)
     print(f"address: {w.address}")
     print(f"balance: {info['balance']}")
     print(f"utxos:   {len(info['utxos'])}")
 
 
 def cmd_genesis_create(args):
+    from .curve import is_valid_address
+    if not is_valid_address(args.address):
+        print(f"error: {args.address!r} is not a valid Concord address", file=sys.stderr)
+        sys.exit(1)
+    if args.amount <= 0:
+        print("error: --amount must be positive", file=sys.stderr)
+        sys.exit(1)
     genesis = Block.genesis(args.address, powmod.GENESIS_TARGET, amount=args.amount)
     with open(args.out, "w") as f:
         json.dump(genesis.to_dict(), f, indent=2)
@@ -66,7 +85,13 @@ def _load_genesis(path):
 
 
 def cmd_node(args):
-    genesis = _load_genesis(args.genesis)
+    try:
+        genesis = _load_genesis(args.genesis)
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        print(f"error: could not load genesis file {args.genesis!r}: {e}", file=sys.stderr)
+        print("hint: create one with 'concord genesis-create --address <addr> --out genesis.json'",
+              file=sys.stderr)
+        sys.exit(1)
     chain = Blockchain(genesis)
     mempool = Mempool()
     node = Node(args.host, args.p2p_port, chain, mempool, name=args.name or f"node-{args.p2p_port}")
@@ -104,12 +129,20 @@ def cmd_node(args):
 
 
 def cmd_send(args):
-    wallet = Wallet.load(args.wallet)
-    info = _api_get(args.api, f"/api/utxo/{wallet.address}")
+    try:
+        wallet = Wallet.load(args.wallet)
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        print(f"error: could not load wallet {args.wallet!r}: {e}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        info = _api_get(args.api, f"/api/utxo/{wallet.address}")
+    except (urllib.error.URLError, ConnectionError) as e:
+        print(f"error: could not reach node at {args.api}: {e}", file=sys.stderr)
+        sys.exit(1)
     utxo = {(u["txid"], u["index"]): TxOutput(u["amount"], wallet.address) for u in info["utxos"]}
     try:
         tx = wallet.build_transaction(utxo, args.to, args.amount, fee=args.fee)
-    except InsufficientFunds as e:
+    except (InsufficientFunds, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
     result = _api_post(args.api, "/api/submit_tx", tx.to_dict())

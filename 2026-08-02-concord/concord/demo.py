@@ -5,7 +5,7 @@ and a Merkle inclusion proof is independently verified client-side."""
 import time
 
 from . import pow as powmod
-from ._netutil import spin_up_network, wait_until
+from ._netutil import spin_up_network, tx_is_known, wait_until
 from .block import Block
 from .merkle import verify_proof
 from .miner import Miner
@@ -52,14 +52,17 @@ def run_demo():
         tx = alice.build_transaction(net.nodes[0].chain.utxo, bob.address, 150)
         accepted = net.nodes[0].submit_transaction(tx)
         assert accepted, "node0 rejected alice's own transaction"
-        ok = wait_until(lambda: all(tx.txid() in n.mempool for n in net.nodes), timeout=10)
-        assert ok, "transaction did not propagate to every node's mempool"
-        print(f"tx {tx.txid()[:16]}... is in every node's mempool")
+        ok = wait_until(lambda: all(tx_is_known(n, tx.txid()) for n in net.nodes), timeout=10)
+        assert ok, "transaction was never seen (pending or confirmed) by every node"
+        print(f"tx {tx.txid()[:16]}... has reached every node (pending or already confirmed)")
 
         print("\n--- mining continues, tx gets confirmed ---")
-        start_height = net.nodes[0].chain.height()
-        ok = wait_until(lambda: net.nodes[0].chain.height() >= start_height + 1, timeout=30)
-        assert ok, "no new block mined to confirm the transaction"
+        # wait for the payment to actually confirm, not just for "one more
+        # block" — a candidate block already being mined when the tx landed
+        # in the pool won't include it, so the very next block isn't
+        # guaranteed to be the confirming one
+        ok = wait_until(lambda: bob.balance(net.nodes[0].chain.utxo) == 150, timeout=30)
+        assert ok, "no block ever confirmed alice's payment to bob"
         ok = wait_until(
             lambda: all(n.chain.height() == net.nodes[0].chain.height() for n in net.nodes)
             and tx.txid() not in net.nodes[1].mempool,

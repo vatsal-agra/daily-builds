@@ -93,6 +93,8 @@ def decompress_pubkey(data):
     if len(data) != 33 or data[0] not in (0x02, 0x03):
         raise ValueError("invalid compressed pubkey encoding")
     x = int.from_bytes(data[1:], "big")
+    if x >= P:
+        raise ValueError("x-coordinate is not a valid field element (>= P)")
     y_sq = (x * x * x + A * x + B) % P
     y = pow(y_sq, (P + 1) // 4, P)  # valid sqrt exponent since P % 4 == 3
     if (y * y) % P != y_sq:
@@ -196,6 +198,18 @@ def sign(private_key: int, message: bytes):
 def verify(public_key_point, message: bytes, signature):
     r, s = signature
     if not (1 <= r < N and 1 <= s < N):
+        return False
+    if s > N // 2:
+        # reject non-canonical high-s signatures. ECDSA's verification
+        # equation is symmetric under s -> N-s: anyone (not just the
+        # holder of the private key) can flip a valid low-s signature into
+        # an equally-valid high-s one for the exact same message, without
+        # ever touching the private key. Since a transaction's txid hashes
+        # its own signature bytes, that flip mints a second, different
+        # txid for what is semantically the identical, already-signed
+        # transaction — classic ECDSA signature malleability. sign() above
+        # only ever emits low-s, so this rejects nothing legitimate; it
+        # only closes the malleability path for anyone verifying elsewhere.
         return False
     z = _hash_to_int(message)
     w = _mod_inv(s, N)

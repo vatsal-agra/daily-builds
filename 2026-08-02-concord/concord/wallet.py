@@ -27,6 +27,14 @@ class Wallet:
     def build_transaction(self, utxo: dict, to_address: str, amount: int, fee: int = 0) -> Transaction:
         if amount <= 0:
             raise ValueError("amount must be positive")
+        if fee < 0:
+            raise ValueError("fee cannot be negative")
+        if not curve.is_valid_address(to_address):
+            # without this, a typo'd or malformed destination silently
+            # accepts the funds into an output nobody can ever produce a
+            # matching signature for — the coins wouldn't bounce, they'd
+            # just be gone. Fail loudly at construction time instead.
+            raise ValueError(f"invalid destination address: {to_address!r}")
         candidates = self.my_utxos(utxo)
         candidates.sort(key=lambda kv: kv[1].amount, reverse=True)
         selected = []

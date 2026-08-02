@@ -2,11 +2,13 @@
 choice by cumulative proof-of-work (not chain length — a longer chain of
 easy blocks loses to a shorter chain of harder ones)."""
 
+import time
+
 from . import curve, pow as powmod
 from .block import Block
-from .merkle import merkle_root
 
 BASE_REWARD = 50
+MAX_FUTURE_DRIFT_SECONDS = 3600
 
 
 class InvalidBlock(Exception):
@@ -136,10 +138,19 @@ class Blockchain:
         cb_txid = coinbase.txid()
         utxo[(cb_txid, 0)] = coinbase.outputs[0]
 
-        if not is_genesis:
-            expected_root = merkle_root([bytes.fromhex(t.txid()) for t in block.transactions])
-            if expected_root.hex() != block.merkle_root_hex:
-                raise InvalidBlock("merkle root mismatch")
+        # NOTE: there is deliberately no separate "claimed vs. actual merkle
+        # root" check here. Block.merkle_root_hex is always computed live
+        # from block.transactions (never trusted from an incoming wire
+        # value — Block.from_dict discards the header's merkle_root field
+        # entirely), so block.hash() already binds the PoW-checked header
+        # to whatever transaction list is actually attached: tampering
+        # with block.transactions after construction changes merkle_root_hex,
+        # which changes hash(), which (overwhelmingly likely) breaks the
+        # proof-of-work the block was mined for. An earlier version of this
+        # method compared merkle_root([...block.transactions]) against
+        # block.merkle_root_hex — both computed from the same live list, so
+        # it could never fail. That tautological check gave false confidence
+        # (see REVIEW.md) and has been removed rather than kept as theater.
 
         return utxo
 
@@ -162,6 +173,13 @@ class Blockchain:
             return False, False, [], "wrong height"
         if block.timestamp < self.blocks_by_hash[parent_hash].timestamp:
             return False, False, [], "timestamp before parent"
+        if block.timestamp > time.time() + MAX_FUTURE_DRIFT_SECONDS:
+            # without this, a miner could stamp an inflated timestamp with no
+            # upper bound; since the retarget window (expected_target) reads
+            # real ancestor timestamps to compute elapsed time, an unbounded
+            # future timestamp lets a single miner manufacture an artificially
+            # long "elapsed" window and skew the next difficulty retarget
+            return False, False, [], "timestamp too far in the future"
 
         try:
             new_utxo = self._apply_block(block, self.utxo_at[parent_hash])
