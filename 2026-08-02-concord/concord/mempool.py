@@ -69,6 +69,22 @@ class Mempool:
             for inp in tx.inputs:
                 self._spent_outpoints.pop((inp.txid, inp.index), None)
 
+    def prune_conflicts(self, utxo: dict):
+        """Drop any pooled transaction that spends an outpoint no longer in
+        the UTXO set — i.e. a losing side of a double-spend whose rival
+        just got confirmed. Without this a "ghost" transaction that can
+        never be mined again would sit in the pool indefinitely instead of
+        being visibly, permanently rejected the moment its rival wins."""
+        dropped = []
+        for txid, tx in list(self.transactions.items()):
+            if any((inp.txid, inp.index) not in utxo for inp in tx.inputs):
+                dropped.append(txid)
+        for txid in dropped:
+            tx = self.transactions.pop(txid)
+            for inp in tx.inputs:
+                self._spent_outpoints.pop((inp.txid, inp.index), None)
+        return dropped
+
     def reintroduce(self, txs, utxo: dict):
         """Best-effort re-add of transactions orphaned by a reorg. Ones that
         conflict with the new chain's state are silently dropped, not errored —

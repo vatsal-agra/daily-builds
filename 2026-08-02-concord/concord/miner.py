@@ -15,17 +15,28 @@ NONCE_CHECK_BATCH = 2000  # how many nonces to try before re-checking for a new 
 
 
 def build_candidate(chain, mempool, reward_address):
-    utxo = chain.utxo
+    # a *working* copy that gets debited as transactions are selected, so
+    # two mempool transactions that conflict (spend the same outpoint —
+    # e.g. a double-spend race where both landed in this node's pool
+    # before propagation caught up) can never both be selected into the
+    # same candidate: whichever is considered second finds its input
+    # already gone here and is skipped, instead of building a block that
+    # _apply_block will only reject later, wasting the mined proof-of-work.
+    working_utxo = dict(chain.utxo)
     included = []
     total_fees = 0
     for tx in mempool.select_for_block():
-        try:
-            total_in = sum(utxo[(i.txid, i.index)].amount for i in tx.inputs)
-        except KeyError:
-            continue  # a pooled tx whose input got consumed by a block we haven't pruned for yet
+        keys = [(i.txid, i.index) for i in tx.inputs]
+        if any(k not in working_utxo for k in keys):
+            continue
+        total_in = sum(working_utxo[k].amount for k in keys)
         fee = total_in - tx.total_output()
         if fee < 0:
             continue
+        for k in keys:
+            del working_utxo[k]
+        for idx, out in enumerate(tx.outputs):
+            working_utxo[(tx.txid(), idx)] = out
         included.append(tx)
         total_fees += fee
 

@@ -297,6 +297,7 @@ class Node:
                         self.seen_block_hashes.add(block.hash())
                         if became_tip:
                             self.mempool.remove_confirmed(self.chain.main_chain_txids())
+                            self.mempool.prune_conflicts(self.chain.utxo)
                             self.mempool.reintroduce(orphaned, self.chain.utxo)
                     else:
                         self._log(f"sync: rejected block {h[:10]}: {reason}")
@@ -356,6 +357,7 @@ class Node:
                 self.seen_block_hashes.add(h)
                 if became_tip:
                     self.mempool.remove_confirmed(self.chain.main_chain_txids())
+                    self.mempool.prune_conflicts(self.chain.utxo)
                     self.mempool.reintroduce(orphaned, self.chain.utxo)
         if ok:
             self._log(f"accepted block {h[:10]} height={block.height}"
