@@ -74,6 +74,11 @@ def make_handler(node):
             if path == "/" or path == "/index.html":
                 return self._file("index.html", "text/html; charset=utf-8")
 
+            if path == "/favicon.ico":
+                self.send_response(204)
+                self.end_headers()
+                return
+
             if not path.startswith("/api/"):
                 self.send_error(404)
                 return

@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Concord Explorer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121821; --panel2: #171f2b; --border: #263241;
+    --text: #e7edf5; --muted: #8592a3; --accent: #4fd1c5; --accent2: #f0b429;
+    --good: #4fd17d; --bad: #f0554f; --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f7fa; --panel: #ffffff; --panel2: #eef1f6; --border: #dbe2ea;
+      --text: #14202e; --muted: #5b6b7c; --accent: #0f9d8f; --accent2: #b5790a;
+      --good: #1f9d55; --bad: #c0392b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+  }
+  header {
+    display: flex; align-items: center; gap: 1.5rem; padding: 0.9rem 1.5rem;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10; flex-wrap: wrap;
+  }
+  header h1 { font-size: 1.1rem; margin: 0; letter-spacing: 0.02em; }
+  header h1 span { color: var(--accent); }
+  .stat { display: flex; flex-direction: column; gap: 0.1rem; }
+  .stat .v { font-family: var(--mono); font-size: 1rem; font-weight: 600; }
+  .stat .k { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  main { display: grid; grid-template-columns: 1.3fr 1fr; gap: 1rem; padding: 1.2rem; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .col { display: flex; flex-direction: column; gap: 1rem; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1rem; overflow: hidden;
+  }
+  .panel h2 {
+    margin: 0 0 0.75rem 0; font-size: 0.85rem; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--muted); display: flex; justify-content: space-between; align-items: center;
+  }
+  .badge {
+    background: var(--panel2); color: var(--muted); border-radius: 999px;
+    padding: 0.1rem 0.55rem; font-size: 0.72rem; font-family: var(--mono);
+  }
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 0.82rem; }
+  th, td { text-align: left; padding: 0.4rem 0.4rem; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 0.72rem; text-transform: uppercase; }
+  tr.row { cursor: pointer; }
+  tr.row:hover { background: var(--panel2); }
+  tr.row.selected { background: var(--panel2); outline: 1px solid var(--accent); }
+  .mono { font-family: var(--mono); }
+  .hash { color: var(--accent); }
+  .muted { color: var(--muted); }
+  .scroll { max-height: 340px; overflow-y: auto; }
+  .empty { color: var(--muted); font-style: italic; padding: 0.5rem 0; }
+  .tx-io { font-size: 0.78rem; margin: 0.3rem 0; padding: 0.4rem 0.5rem; background: var(--panel2); border-radius: 6px; }
+  .tx-io .addr { color: var(--accent2); }
+  .amt { color: var(--good); font-weight: 600; }
+  #proofBox { display: flex; flex-direction: column; gap: 0.4rem; align-items: stretch; }
+  .proof-step { display: flex; align-items: center; gap: 0.5rem; font-family: var(--mono); font-size: 0.78rem; }
+  .hashbox {
+    padding: 0.35rem 0.5rem; border-radius: 6px; background: var(--panel2);
+    border: 1px solid var(--border); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .hashbox.leaf { border-color: var(--accent); color: var(--accent); }
+  .hashbox.root { border-color: var(--accent2); color: var(--accent2); font-weight: 700; }
+  .op { color: var(--muted); width: 1.4rem; text-align: center; flex-shrink: 0; }
+  .arrow { text-align: center; color: var(--muted); font-size: 0.9rem; }
+  .proof-result { padding: 0.5rem; border-radius: 6px; font-weight: 600; text-align: center; margin-top: 0.4rem; }
+  .proof-result.ok { background: rgba(79,209,125,0.15); color: var(--good); }
+  .proof-result.bad { background: rgba(240,85,79,0.15); color: var(--bad); }
+  .log-line { font-family: var(--mono); font-size: 0.76rem; padding: 0.15rem 0; border-bottom: 1px dotted var(--border); }
+  .log-line .t { color: var(--muted); margin-right: 0.5rem; }
+  #peerGraph { width: 100%; height: 200px; }
+  #peerGraph text { fill: var(--text); font-family: var(--mono); font-size: 10px; }
+  #peerGraph circle.self { fill: var(--accent); }
+  #peerGraph circle.peer { fill: var(--accent2); }
+  #peerGraph line { stroke: var(--border); stroke-width: 2; }
+  select, button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.35rem 0.6rem; font-family: inherit; font-size: 0.8rem; cursor: pointer;
+  }
+  button:hover, select:hover { border-color: var(--accent); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CON<span>CORD</span> explorer</h1>
+  <div class="stat"><div class="v" id="statNode">–</div><div class="k">node</div></div>
+  <div class="stat"><div class="v" id="statHeight">–</div><div class="k">height</div></div>
+  <div class="stat"><div class="v" id="statPeers">–</div><div class="k">peers</div></div>
+  <div class="stat"><div class="v" id="statMempool">–</div><div class="k">mempool</div></div>
+  <div class="stat"><div class="v" id="statDifficulty">–</div><div class="k">difficulty target (hex, low = hard)</div></div>
+</header>
+
+<main>
+  <div class="col">
+    <div class="panel">
+      <h2>Chain <span class="badge" id="chainCount">0 blocks</span></h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>height</th><th>hash</th><th>txs</th><th>time</th></tr></thead>
+          <tbody id="chainBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Block detail <span class="badge" id="blockDetailHash">select a block</span></h2>
+      <div id="blockDetail" class="empty">Click a block above to inspect its transactions.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Merkle inclusion proof <span class="badge" id="proofTx">select a transaction</span></h2>
+      <div id="proofBox"><div class="empty">Click a transaction in the block detail panel to prove its inclusion.</div></div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="panel">
+      <h2>Mempool <span class="badge" id="mempoolCount">0 pending</span></h2>
+      <div class="scroll" id="mempoolBody"><div class="empty">No pending transactions.</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Peers</h2>
+      <svg id="peerGraph"></svg>
+    </div>
+
+    <div class="panel">
+      <h2>Activity</h2>
+      <div class="scroll" id="eventLog"><div class="empty">No events yet.</div></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let selectedBlockHash = null;
+
+async function getJSON(path) {
+  const res = await fetch(path);
+  return res.json();
+}
+
+function shortHash(h, n = 14) { return h ? h.slice(0, n) + '…' : ''; }
+function fmtTime(t) { return new Date(t * 1000).toLocaleTimeString(); }
+
+async function refreshStatus() {
+  const s = await getJSON('/api/status');
+  $('statNode').textContent = s.name;
+  $('statHeight').textContent = s.height;
+  $('statPeers').textContent = s.peer_count;
+  $('statMempool').textContent = s.mempool_size;
+  $('statDifficulty').textContent = s.difficulty.toString(16).slice(0, 12) + '…';
+  return s;
+}
+
+async function refreshChain() {
+  const blocks = await getJSON('/api/chain');
+  $('chainCount').textContent = blocks.length + ' blocks';
+  const body = $('chainBody');
+  body.innerHTML = '';
+  for (const b of blocks.slice().reverse()) {
+    const tr = document.createElement('tr');
+    tr.className = 'row' + (b.hash === selectedBlockHash ? ' selected' : '');
+    tr.innerHTML = `<td>${b.height}</td><td class="hash">${shortHash(b.hash)}</td><td>${b.tx_count}</td><td class="muted">${fmtTime(b.timestamp)}</td>`;
+    tr.onclick = () => selectBlock(b.hash);
+    body.appendChild(tr);
+  }
+}
+
+async function selectBlock(hash) {
+  selectedBlockHash = hash;
+  $('blockDetailHash').textContent = shortHash(hash, 20);
+  const detail = await getJSON('/api/block/' + hash);
+  const el = $('blockDetail');
+  el.innerHTML = '';
+  const meta = document.createElement('div');
+  meta.className = 'mono muted';
+  meta.style.marginBottom = '0.5rem';
+  meta.textContent = `height ${detail.summary.height} · nonce ${detail.summary.nonce} · merkle root ${shortHash(detail.summary.merkle_root, 24)}`;
+  el.appendChild(meta);
+  detail.transactions.forEach((tx) => {
+    const div = document.createElement('div');
+    div.className = 'tx-io row';
+    const outs = tx.outputs.map(o => `<span class="addr">${shortHash(o.address, 10)}</span> <span class="amt">${o.amount}</span>`).join('<br>');
+    div.innerHTML = `<div class="mono hash">${shortHash(tx.txid, 20)}</div>` +
+      `<div class="muted">${tx.is_coinbase ? 'coinbase' : tx.n_inputs + ' input(s)'} → ${tx.n_outputs} output(s)</div>` +
+      `<div>${outs}</div>`;
+    div.onclick = () => loadProof(hash, tx.txid);
+    el.appendChild(div);
+  });
+  document.querySelectorAll('#chainBody tr').forEach(tr => tr.classList.remove('selected'));
+  refreshChain();
+}
+
+function hexToBytes(hex) {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return out;
+}
+function bytesToHex(buf) {
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function concatBytes(a, b) {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0); out.set(b, a.length);
+  return out;
+}
+// same construction as concord/merkle.py's sha256d: SHA-256 applied twice
+async function sha256d(bytes) {
+  const once = await crypto.subtle.digest('SHA-256', bytes);
+  const twice = await crypto.subtle.digest('SHA-256', once);
+  return new Uint8Array(twice);
+}
+
+async function loadProof(blockHash, txid) {
+  $('proofTx').textContent = shortHash(txid, 20);
+  const proof = await getJSON(`/api/block/${blockHash}/proof/${txid}`);
+  const box = $('proofBox');
+  box.innerHTML = '';
+
+  const leafRow = document.createElement('div');
+  leafRow.className = 'proof-step';
+  leafRow.innerHTML = `<span class="op">leaf</span><span class="hashbox leaf">${proof.leaf}</span>`;
+  box.appendChild(leafRow);
+
+  // recompute the root in the browser via the real Web Crypto SHA-256
+  // primitive — this is an independent re-derivation of the proof, not a
+  // replay of whatever the server claims, so "verified" below means what it says
+  let current = hexToBytes(proof.leaf);
+  for (const step of proof.steps) {
+    const arrow = document.createElement('div');
+    arrow.className = 'arrow';
+    arrow.textContent = '⊕ combine with sibling, hash ↓';
+    box.appendChild(arrow);
+
+    const sibling = hexToBytes(step.sibling);
+    const left = step.is_right ? current : sibling;
+    const right = step.is_right ? sibling : current;
+    current = await sha256d(concatBytes(left, right));
+
+    const row = document.createElement('div');
+    row.className = 'proof-step';
+    const leftHex = bytesToHex(left), rightHex = bytesToHex(right);
+    row.innerHTML = `<span class="hashbox">${shortHash(leftHex, 14)}</span><span class="op">+</span>` +
+      `<span class="hashbox">${shortHash(rightHex, 14)}</span><span class="op">=</span>` +
+      `<span class="hashbox">${shortHash(bytesToHex(current), 14)}</span>`;
+    box.appendChild(row);
+  }
+
+  const computedRoot = bytesToHex(current);
+  const matches = computedRoot === proof.root;
+
+  const rootRow = document.createElement('div');
+  rootRow.className = 'proof-step';
+  rootRow.innerHTML = `<span class="op">root</span><span class="hashbox root">${proof.root}</span>`;
+  box.appendChild(rootRow);
+
+  const result = document.createElement('div');
+  result.className = 'proof-result ' + (matches ? 'ok' : 'bad');
+  result.textContent = matches
+    ? `✓ recomputed in-browser and matches the block's Merkle root`
+    : `✗ recomputed root does NOT match — proof failed`;
+  box.appendChild(result);
+}
+
+async function refreshMempool() {
+  const txs = await getJSON('/api/mempool');
+  $('mempoolCount').textContent = txs.length + ' pending';
+  const el = $('mempoolBody');
+  if (!txs.length) { el.innerHTML = '<div class="empty">No pending transactions.</div>'; return; }
+  el.innerHTML = '';
+  txs.forEach(tx => {
+    const div = document.createElement('div');
+    div.className = 'tx-io';
+    div.innerHTML = `<div class="mono hash">${shortHash(tx.txid, 20)}</div><div class="muted">${tx.n_inputs} in → ${tx.n_outputs} out, total ${tx.total_output}</div>`;
+    el.appendChild(div);
+  });
+}
+
+async function refreshPeers(status) {
+  const peers = await getJSON('/api/peers');
+  const svg = $('peerGraph');
+  const w = svg.clientWidth || 300, h = 200;
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.innerHTML = '';
+  const cx = w / 2, cy = h / 2;
+  const ns = 'http://www.w3.org/2000/svg';
+  const mkCircle = (x, y, r, cls) => {
+    const c = document.createElementNS(ns, 'circle');
+    c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', r); c.setAttribute('class', cls);
+    return c;
+  };
+  const mkText = (x, y, t) => {
+    const el = document.createElementNS(ns, 'text');
+    el.setAttribute('x', x); el.setAttribute('y', y); el.setAttribute('text-anchor', 'middle');
+    el.textContent = t;
+    return el;
+  };
+  peers.forEach((p, i) => {
+    const angle = (2 * Math.PI * i) / Math.max(peers.length, 1) - Math.PI / 2;
+    const r = Math.min(w, h) / 2 - 30;
+    const x = cx + r * Math.cos(angle), y = cy + r * Math.sin(angle);
+    const line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', cx); line.setAttribute('y1', cy); line.setAttribute('x2', x); line.setAttribute('y2', y);
+    svg.appendChild(line);
+    svg.appendChild(mkCircle(x, y, 8, 'peer'));
+    svg.appendChild(mkText(x, y + 22, p));
+  });
+  svg.appendChild(mkCircle(cx, cy, 11, 'self'));
+  svg.appendChild(mkText(cx, cy + 24, status ? status.name : 'this node'));
+}
+
+async function refreshEvents() {
+  const events = await getJSON('/api/events');
+  const el = $('eventLog');
+  if (!events.length) { el.innerHTML = '<div class="empty">No events yet.</div>'; return; }
+  el.innerHTML = '';
+  events.slice().reverse().forEach(e => {
+    const div = document.createElement('div');
+    div.className = 'log-line';
+    div.innerHTML = `<span class="t">${fmtTime(e.t)}</span>${e.msg}`;
+    el.appendChild(div);
+  });
+}
+
+async function tick() {
+  try {
+    const status = await refreshStatus();
+    await Promise.all([refreshChain(), refreshMempool(), refreshPeers(status), refreshEvents()]);
+  } catch (e) {
+    console.error('refresh failed', e);
+  }
+}
+
+tick();
+setInterval(tick, 1500);
+</script>
+</body>
+</html>
