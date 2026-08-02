@@ -128,16 +128,37 @@ def run_attack_demo():
         # just because the pool changed — only when the tip moves), so
         # "one more block" isn't guaranteed to be the confirming one; wait
         # for the actual payment to land, not just for height to advance.
-        ok = wait_until(lambda: merchant2.balance(net.nodes[0].chain.utxo) == 300, timeout=45)
+        #
+        # with 3 independent miners racing concurrently, short-lived forks
+        # between them are a normal, expected event — the block that first
+        # confirms tx_pay can itself be on a losing side of a 1-block fork
+        # a moment later, transiently un-confirming the payment before it
+        # gets re-mined. So: find the block that actually contains tx_pay
+        # by searching the chain directly, re-search after convergence
+        # (don't assume the search done *before* convergence still holds),
+        # and don't assume it's positionally "one block before the current
+        # tip" — more blocks may have been mined since it confirmed.
+        def find_confirming_block(node):
+            if merchant2.balance(node.chain.utxo) != 300:
+                return None
+            for h in node.chain.main_chain_hashes():
+                if any(t.txid() == tx_pay.txid() for t in node.chain.blocks_by_hash[h].transactions):
+                    return h
+            return None
+
+        ok = wait_until(lambda: find_confirming_block(net.nodes[0]) is not None, timeout=45)
         assert ok, "payment to merchant2 was never confirmed"
         ok = wait_until(
             lambda: all(n.chain.tip_hash == net.nodes[0].chain.tip_hash for n in net.nodes), timeout=15
         )
-        assert ok, "honest network failed to converge on the confirming block"
-        assert merchant2.balance(net.nodes[0].chain.utxo) == 300
-        fork_point_hash = net.nodes[0].chain.get_block(net.nodes[0].chain.tip_hash).prev_hash
-        print(f"payment confirmed at height {net.nodes[0].chain.height()} "
-              f"(merchant2 balance = 300) — 'goods are shipped' at this point")
+        assert ok, "honest network failed to converge after confirming the payment"
+        confirming_hash = find_confirming_block(net.nodes[0])
+        assert confirming_hash is not None, \
+            "payment to merchant2 was reorganized away and never reconfirmed by convergence"
+        fork_point_hash = net.nodes[0].chain.blocks_by_hash[confirming_hash].prev_hash
+        print(f"payment confirmed in block {confirming_hash[:12]}... "
+              f"(chain now at height {net.nodes[0].chain.height()}, merchant2 balance = 300) "
+              f"— 'goods are shipped' at this point")
         print(f"attacker will fork one block earlier, at {fork_point_hash[:12]}...")
 
         # build the attacker's private chain: replay every real, honestly-

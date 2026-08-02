@@ -162,6 +162,27 @@ have — but it was a real bug in the verification code, and a flaky demo
 that "usually passes" is exactly the kind of shortcut this phase exists
 to catch.
 
+### 10. Attack script assumed forks can't happen between honest miners (found while writing `demo.sh`)
+
+`concord.attack_demo`'s Part B, after confirming `tx_pay`, re-read
+`merchant2.balance(...)` a second time and assumed the confirming block
+was positionally "one block before whatever the current tip is". Both
+assumptions break under completely normal operation: with 3 independent
+miners racing concurrently, short 1-block forks between them are
+expected, and a block that confirms a payment can itself transiently
+lose a fork moments later (the payment goes back to the mempool and gets
+re-mined shortly after) — so a second balance check performed slightly
+later isn't guaranteed to still read 300, and by the time the network
+converges, more blocks may have been mined on top of the confirming one,
+making "tip's parent" the wrong block entirely. Both are visible only
+under real timing with real concurrent miners — nothing about them is
+wrong in a single-miner or synchronous test. Fixed by searching the
+chain directly for the block that actually contains `tx_pay`, re-running
+that search after convergence rather than trusting an earlier snapshot,
+and deriving the fork point from *that* block's parent rather than from
+whatever the tip happens to be. Re-ran 3 times after the fix with zero
+failures.
+
 ## Deliberately not changed (real limitations, disclosed rather than hidden)
 
 - **Mempool has no fee-market ordering.** `Mempool.select_for_block`
