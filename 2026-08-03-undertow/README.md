@@ -1,12 +1,11 @@
 # Undertow
 
-*Status: PHASE 3 complete — adversarial review found and fixed 11 real bugs
-(a piggybacked-data-drop, a GIL-contention-induced spurious-retransmit bug,
-three separate congestion/RTO pathologies under multi-segment loss, a
-genuine handshake/close race, an fd-reuse hazard, concurrent-close and
-source-spoofing gaps, a missing RST-on-giveup, and an unhandled background
-thread exception). See [`REVIEW.md`](./REVIEW.md) for the full writeup.
-Stretch features + polish next.*
+*Status: PHASE 4 complete — all 3 stretch features shipped (SACK-based
+loss recovery, an interactive HTML visualizer, and an HTTP/1.0 demo app),
+plus polish: CLI input validation with clean error messages, and an HTTP
+handler that returns a real 400 for malformed requests instead of silently
+pretending they're "GET /". See [`REVIEW.md`](./REVIEW.md) for the Phase 3
+adversarial review (11 real bugs found and fixed). Verification next.*
 
 A reliable, ordered, congestion-controlled byte-stream transport protocol
 ("MiniTCP") built entirely from scratch on top of raw, lossy UDP — the same
@@ -44,9 +43,10 @@ python3 -m unittest discover -s tests
 - `viz/generate_report.py` — interactive HTML report (cwnd sawtooth,
   throughput, packet timeline) from a real recorded run
 - `bin/undertow-demo` — CLI driving a full transfer through a lossy network
-- `tests/` — 42 tests covering wire format, RTO, congestion control, the
-  netsim's actual loss behavior, handshake/teardown, reliable transfer under
-  loss/dup/reorder, SACK, and the HTTP demo app
+- `tests/` — 46 tests covering wire format, RTO, congestion control, the
+  netsim's actual loss behavior, handshake/teardown (including concurrent
+  close and source-spoofing rejection), reliable transfer under loss/dup/
+  reorder, SACK, and the HTTP demo app (including malformed-request 400s)
 
 More detail (full feature list, "why this today", results) lands in later
 phases per `PLAN.md`.

@@ -47,13 +47,16 @@ def serve_one_request(local_addr, routes, event_log=None, name="httpd", timeout=
             break
         raw += chunk
 
+    method = path = None
     try:
         request_line = raw.split(CRLF, 1)[0].decode("ascii")
         method, path, _version = request_line.split(" ")
     except (ValueError, UnicodeDecodeError):
-        method, path = "GET", "/"
+        pass  # malformed or empty request — handled as 400 below, not silently treated as "GET /"
 
-    if method != "GET":
+    if method is None:
+        response = _format_response(400, "Bad Request", b"malformed or empty request line")
+    elif method != "GET":
         response = _format_response(405, "Method Not Allowed", b"only GET is supported")
     elif path in routes:
         body = routes[path]

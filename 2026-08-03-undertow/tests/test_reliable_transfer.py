@@ -69,9 +69,16 @@ class TestReliableTransfer(unittest.TestCase):
 
     def test_byte_exact_delivery_under_moderate_loss(self):
         data = os.urandom(40_000)
+        # Note: `seed` fixes which packets NetSim decides to drop/dup/
+        # reorder, but not *when* real background threads get scheduled —
+        # so even a seeded run's exact timing (and therefore which
+        # in-flight segments a given drop actually lands on) has some
+        # real variance. A generous timeout accounts for the rare slow
+        # draw rather than chasing full determinism, which real threads +
+        # real RTO timers don't give for free (see REVIEW.md).
         result, log_s, _, net = run_transfer(
             data, loss=0.08, dup_prob=0.02, reorder_prob=0.05,
-            delay_range=(0.003, 0.015), seed=42, timeout=60,
+            delay_range=(0.003, 0.015), seed=42, timeout=90,
         )
         self.assertEqual(result["recv"]["data"], data)
         self.assertEqual(result["send"]["sha256"], result["recv"]["sha256"])

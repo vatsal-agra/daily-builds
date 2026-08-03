@@ -47,11 +47,29 @@ def main():
     ap.add_argument("--timeout", type=float, default=90.0, help="overall transfer timeout in seconds")
     args = ap.parse_args()
 
+    for name, val in (("--loss", args.loss), ("--dup", args.dup), ("--reorder", args.reorder)):
+        if not (0.0 <= val <= 1.0):
+            ap.error(f"{name} must be between 0 and 1 (got {val})")
+    if args.delay_min < 0 or args.delay_max < 0:
+        ap.error("--delay-min/--delay-max must be non-negative")
+    if args.delay_min > args.delay_max:
+        ap.error(f"--delay-min ({args.delay_min}) cannot exceed --delay-max ({args.delay_max})")
+    if args.timeout <= 0:
+        ap.error("--timeout must be positive")
+
     if args.file:
+        if not os.path.isfile(args.file):
+            print(f"error: --file {args.file!r} does not exist or is not a regular file", file=sys.stderr)
+            sys.exit(1)
         with open(args.file, "rb") as f:
             data = f.read()
+        if not data:
+            print(f"error: --file {args.file!r} is empty — nothing to send", file=sys.stderr)
+            sys.exit(1)
         label = os.path.basename(args.file)
     else:
+        if args.size <= 0:
+            ap.error(f"--size must be positive (got {args.size})")
         rng = __import__("random").Random(args.seed)
         data = bytes(rng.getrandbits(8) for _ in range(args.size))
         label = f"{args.size}-random-bytes"
