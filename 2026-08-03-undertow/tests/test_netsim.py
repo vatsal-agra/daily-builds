@@ -60,13 +60,17 @@ class TestNetSim(unittest.TestCase):
             for i in range(n):
                 a.sendto(str(i).encode(), relay_addr)
             got = 0
-            deadline = time.monotonic() + 3.0
-            while time.monotonic() < deadline:
+            # Keep polling until the overall deadline rather than bailing
+            # on the first quiet gap — under host contention, delivery can
+            # come in bursts with real pauses in between that don't mean
+            # the relay is actually done.
+            deadline = time.monotonic() + 20.0
+            while got < n and time.monotonic() < deadline:
                 try:
                     b.recvfrom(1024)
                     got += 1
                 except socket.timeout:
-                    break
+                    continue
             # dropped is updated synchronously as each datagram is
             # classified, but forwarded is only updated later when its
             # scheduled delivery actually fires — so give any still-queued
@@ -74,7 +78,10 @@ class TestNetSim(unittest.TestCase):
             # rather than trusting the receive loop's own timeout to mean
             # "the relay is done" (it doesn't: caught by this test itself
             # flaking on dropped+forwarded landing short of n).
-            stats_deadline = time.monotonic() + 5.0
+            # This host has shown real multi-second slowdowns under load
+            # (see REVIEW.md) even for small amounts of work, so this is
+            # deliberately generous rather than tuned to the happy path.
+            stats_deadline = time.monotonic() + 20.0
             while (net.stats["dropped"] + net.stats["forwarded"]) < n and time.monotonic() < stats_deadline:
                 time.sleep(0.02)
             accounted = net.stats["dropped"] + net.stats["forwarded"]

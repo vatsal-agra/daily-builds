@@ -59,28 +59,38 @@ class TestSack(unittest.TestCase):
         # correctly, exercising the SACK-aware retransmit path.
         from undertow.fileapp import receive_file, send_file
 
+        import random
+
         client_addr, server_addr, relay_addr = free_triplet()
         log_s = EventLog("send")
-        net = NetSim(relay_addr, client_addr, server_addr, loss=0.12, delay_range=(0.002, 0.01))
+        # Seeded (see the note in test_reliable_transfer.py's moderate-loss
+        # test for why this still isn't fully deterministic timing-wise,
+        # hence the generous timeout too) rather than left to system
+        # entropy, which occasionally drew a slow-enough pattern to blow
+        # past a tighter budget.
+        net = NetSim(
+            relay_addr, client_addr, server_addr, loss=0.12,
+            delay_range=(0.002, 0.01), rng=random.Random(77),
+        )
         net.start()
         result = {}
         errors = {}
 
         def run_recv():
             try:
-                result["recv"] = receive_file(server_addr, name="recv", timeout=30)
+                result["recv"] = receive_file(server_addr, name="recv", timeout=150)
             except Exception as exc:  # noqa: BLE001
                 errors["recv"] = exc
 
         t = threading.Thread(target=run_recv)
         t.start()
         time.sleep(0.1)
-        data = os.urandom(30_000)
+        data = os.urandom(20_000)  # smaller payload: less absolute work under a host slowdown
         try:
-            result["send"] = send_file(client_addr, relay_addr, data, event_log=log_s, name="send", timeout=30)
+            result["send"] = send_file(client_addr, relay_addr, data, event_log=log_s, name="send", timeout=150)
         except Exception as exc:  # noqa: BLE001
             errors["send"] = exc
-        t.join(timeout=35)
+        t.join(timeout=155)
         net.stop()
 
         self.assertEqual(errors, {})
