@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Undertow demo CLI: transfer a real file through a real lossy/reordering/
+duplicating UDP relay using MiniTCPSocket, verify SHA-256 integrity, and
+print a stats report. Optionally writes an event log for the visualizer.
+
+Usage:
+    undertow-demo --size 200000 --loss 0.1 --delay-min 5 --delay-max 25 \
+                   --reorder 0.05 --dup 0.02 --report report.html
+"""
+import argparse
+import hashlib
+import os
+import sys
+import threading
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from undertow.eventlog import EventLog
+from undertow.fileapp import receive_file, send_file
+from undertow.netsim import NetSim
+
+
+def free_port_triplet():
+    import socket
+
+    ports = []
+    for _ in range(3):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.bind(("127.0.0.1", 0))
+        ports.append(s.getsockname()[1])
+        s.close()
+    return ports
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Undertow file-transfer demo over a real lossy network")
+    ap.add_argument("--size", type=int, default=200_000, help="random payload size in bytes")
+    ap.add_argument("--file", type=str, default=None, help="path to a real file to send instead of random data")
+    ap.add_argument("--loss", type=float, default=0.1, help="packet loss probability [0,1]")
+    ap.add_argument("--dup", type=float, default=0.02, help="packet duplication probability [0,1]")
+    ap.add_argument("--reorder", type=float, default=0.05, help="extra-delay reorder probability [0,1]")
+    ap.add_argument("--delay-min", type=float, default=5.0, help="min link delay in ms")
+    ap.add_argument("--delay-max", type=float, default=25.0, help="max link delay in ms")
+    ap.add_argument("--seed", type=int, default=None, help="RNG seed for reproducible runs")
+    ap.add_argument("--report", type=str, default=None, help="write an interactive HTML report to this path")
+    ap.add_argument("--timeout", type=float, default=90.0, help="overall transfer timeout in seconds")
+    args = ap.parse_args()
+
+    if args.file:
+        with open(args.file, "rb") as f:
+            data = f.read()
+        label = os.path.basename(args.file)
+    else:
+        rng = __import__("random").Random(args.seed)
+        data = bytes(rng.getrandbits(8) for _ in range(args.size))
+        label = f"{args.size}-random-bytes"
+
+    client_port, server_port, relay_port = free_port_triplet()
+    CLIENT_ADDR = ("127.0.0.1", client_port)
+    SERVER_ADDR = ("127.0.0.1", server_port)
+    RELAY_ADDR = ("127.0.0.1", relay_port)
+
+    log_send = EventLog("sender")
+    log_recv = EventLog("receiver")
+
+    import random as _random
+
+    net_rng = _random.Random(args.seed) if args.seed is not None else None
+    net = NetSim(
+        RELAY_ADDR,
+        CLIENT_ADDR,
+        SERVER_ADDR,
+        loss=args.loss,
+        dup_prob=args.dup,
+        delay_range=(args.delay_min / 1000.0, args.delay_max / 1000.0),
+        reorder_prob=args.reorder,
+        rng=net_rng,
+    )
+    net.start()
+
+    print(f"Undertow demo: sending {len(data)} bytes ({label})")
+    print(
+        f"  network: loss={args.loss:.0%} dup={args.dup:.0%} reorder={args.reorder:.0%} "
+        f"delay={args.delay_min:.0f}-{args.delay_max:.0f}ms"
+    )
+    print(f"  relay={RELAY_ADDR} client={CLIENT_ADDR} server={SERVER_ADDR}")
+
+    result = {}
+    errors = {}
+
+    def run_receiver():
+        try:
+            result["recv"] = receive_file(SERVER_ADDR, event_log=log_recv, name="receiver", timeout=args.timeout)
+        except Exception as exc:  # noqa: BLE001
+            errors["recv"] = exc
+
+    t = threading.Thread(target=run_receiver)
+    t.start()
+    time.sleep(0.1)
+
+    try:
+        result["send"] = send_file(CLIENT_ADDR, RELAY_ADDR, data, event_log=log_send, name="sender", timeout=args.timeout)
+    except Exception as exc:  # noqa: BLE001
+        errors["send"] = exc
+
+    t.join(timeout=args.timeout + 5)
+    net.stop()
+
+    if errors:
+        for who, exc in errors.items():
+            print(f"ERROR ({who}): {exc}")
+        sys.exit(1)
+
+    sent, recv = result["send"], result["recv"]
+    ok = sent["sha256"] == recv["sha256"] and sent["bytes_sent"] == recv["bytes_received"]
+
+    retransmits = sum(1 for e in log_send.to_list() if e["kind"] == "retransmit")
+    fast_retransmits = sum(1 for e in log_send.to_list() if e["kind"] == "dup_ack")
+    final_cwnd = next((e["cwnd"] for e in reversed(log_send.to_list()) if "cwnd" in e), None)
+
+    print()
+    print("=== Transfer report ===")
+    print(f"  bytes sent:      {sent['bytes_sent']}")
+    print(f"  bytes received:  {recv['bytes_received']}")
+    print(f"  sha256 sent:     {sent['sha256']}")
+    print(f"  sha256 received: {recv['sha256']}")
+    print(f"  integrity:       {'OK — byte-identical' if ok else 'MISMATCH'}")
+    print(f"  elapsed:         {sent['elapsed_seconds']:.3f}s")
+    print(f"  throughput:      {sent['bytes_sent'] / max(sent['elapsed_seconds'], 1e-6) / 1024:.1f} KB/s")
+    print(f"  retransmissions: {retransmits}")
+    print(f"  duplicate ACKs:  {fast_retransmits}")
+    print(f"  final cwnd:      {final_cwnd}")
+    print(f"  netsim stats:    {net.stats}")
+
+    if args.report:
+        from viz.generate_report import generate_report
+
+        generate_report(log_send.to_list(), log_recv.to_list(), net.stats, args.report, label=label)
+        print(f"  report written:  {args.report}")
+
+    sys.exit(0 if ok else 2)
+
+
+if __name__ == "__main__":
+    main()
