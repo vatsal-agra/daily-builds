@@ -1,8 +1,12 @@
 # Undertow
 
-*Status: PHASE 2 — core build complete (4 required features working
-end-to-end), plus SACK, HTML visualizer, and an HTTP/1.0 demo app already
-integrated. Adversarial review next.*
+*Status: PHASE 3 complete — adversarial review found and fixed 11 real bugs
+(a piggybacked-data-drop, a GIL-contention-induced spurious-retransmit bug,
+three separate congestion/RTO pathologies under multi-segment loss, a
+genuine handshake/close race, an fd-reuse hazard, concurrent-close and
+source-spoofing gaps, a missing RST-on-giveup, and an unhandled background
+thread exception). See [`REVIEW.md`](./REVIEW.md) for the full writeup.
+Stretch features + polish next.*
 
 A reliable, ordered, congestion-controlled byte-stream transport protocol
 ("MiniTCP") built entirely from scratch on top of raw, lossy UDP — the same

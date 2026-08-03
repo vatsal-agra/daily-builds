@@ -91,6 +91,7 @@ class MiniTCPSocket:
         self.peer_sack_blocks = []  # most recent SACK blocks reported by peer
         self.rtt_probe_seq = None  # the one in-flight segment currently timing an RTT sample
         self.handshake_done = False  # latched True on entering ESTABLISHED, never reset
+        self.fin_seq = None  # set once our FIN has been sent, so close() is safe to call concurrently
 
         self._running = True
         self._reader = threading.Thread(target=self._reader_loop, daemon=True)
@@ -103,7 +104,16 @@ class MiniTCPSocket:
     # ------------------------------------------------------------------ #
 
     def _send_raw(self, segment):
-        self.udp.sendto(segment.encode(), self.peer_addr)
+        try:
+            self.udp.sendto(segment.encode(), self.peer_addr)
+        except OSError:
+            # The socket can legitimately be mid-close (e.g. a background
+            # thread's RTO fires the same instant the app tears the
+            # connection down) — that's not fatal, just a send that
+            # arrived too late to matter. An earlier version let this
+            # propagate and silently killed the reader/ticker thread with
+            # an unhandled exception the caller had no way to observe.
+            pass
 
     def _in_flight(self):
         return self.next_seq - self.send_una
@@ -281,13 +291,26 @@ class MiniTCPSocket:
                 if time.monotonic() > deadline:
                     raise TimeoutError("close() timed out flushing send buffer")
                 self.cv.wait(0.05)
-            fin_seq = self.next_seq
-            seg = Segment(seq=fin_seq, ack=self.recv_base, flags=FLAG_FIN | FLAG_ACK, window=RECV_WINDOW)
-            self._send_raw(seg)
-            self.unacked[fin_seq] = _Unacked(seg, 1)
-            self.next_seq += 1
-            self.state = LAST_ACK if self.state == CLOSE_WAIT else FIN_WAIT
-            self.log.record("fin_sent", side=self.name, seq=fin_seq, state=self.state)
+            if self.fin_seq is None:
+                # First caller sends the FIN and records its seq. A second,
+                # concurrent close() call (an app is free to call it from
+                # two threads, or a retry after a transient error) must
+                # not send a *second* FIN at a now-stale next_seq — the
+                # peer already ACKed the real one, so that second FIN
+                # would sit in `unacked` forever waiting for an ACK that
+                # will never come, hanging close() until its timeout.
+                # Reusing fin_seq makes concurrent close() calls converge
+                # on the same teardown instead.
+                fin_seq = self.next_seq
+                seg = Segment(seq=fin_seq, ack=self.recv_base, flags=FLAG_FIN | FLAG_ACK, window=RECV_WINDOW)
+                self._send_raw(seg)
+                self.unacked[fin_seq] = _Unacked(seg, 1)
+                self.next_seq += 1
+                self.state = LAST_ACK if self.state == CLOSE_WAIT else FIN_WAIT
+                self.fin_seq = fin_seq
+                self.log.record("fin_sent", side=self.name, seq=fin_seq, state=self.state)
+            else:
+                fin_seq = self.fin_seq
 
         with self.cv:
             while fin_seq in self.unacked:
@@ -382,6 +405,14 @@ class MiniTCPSocket:
                 if now - head.last_send_time >= self.rto.current():
                     if head.retransmit_count >= MAX_RETRANSMITS:
                         self.error = f"gave up after {head.retransmit_count} retransmits of seq {self.send_una}"
+                        # Tell the peer, don't just give up locally. Without
+                        # this, the peer's recv()/close() would block until
+                        # its *own* timeout, with no way to learn the
+                        # connection is actually dead — real TCP sends a
+                        # RST for exactly this reason.
+                        if self.peer_addr is not None:
+                            rst = Segment(seq=self.next_seq, ack=self.recv_base, flags=FLAG_RST)
+                            self._send_raw(rst)
                         self.cv.notify_all()
                         continue
                     self.cc.on_timeout()
@@ -401,6 +432,15 @@ class MiniTCPSocket:
     def _handle_segment(self, seg, src):
         if self.peer_addr is None:
             self.peer_addr = src
+        elif src != self.peer_addr:
+            # Once a peer is established, a datagram from any other
+            # source is either misdirected or forged — real TCP filters
+            # on the (peer IP, peer port) of the connection tuple the same
+            # way. Without this check, anything else on the loopback that
+            # happens to know the (still-unauthenticated) sequence numbers
+            # could inject segments into an active transfer.
+            self.log.record("foreign_segment_dropped", side=self.name, src=src)
+            return
         self.peer_window = seg.window or self.peer_window
         if seg.is_ack():
             self.peer_sack_blocks = seg.sack_blocks
