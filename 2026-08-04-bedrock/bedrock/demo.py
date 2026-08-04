@@ -235,6 +235,7 @@ def run() -> None:
             check("Bedrock Explorer" in html, "explorer serves its HTML UI")
     finally:
         httpd.shutdown()
+        httpd.server_close()
 
     elapsed = time.time() - t_start
     print(f"\nALL DEMO STEPS PASSED in {elapsed:.1f}s")
