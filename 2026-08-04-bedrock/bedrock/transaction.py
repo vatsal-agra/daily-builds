@@ -44,13 +44,12 @@ class TxInput:
     pubkey: bytes = None      # compressed public key bytes, 33 bytes
     signature: bytes = None   # 64-byte (r, s) encoding
 
-    def to_bytes(self, blank_signature: bool = False) -> bytes:
+    def to_bytes(self) -> bytes:
         out = bytes.fromhex(self.prev_txid)
         if len(out) != 32:
             raise TransactionError("prev_txid must be 32 bytes")
         out += binfmt.write_varint(self.prev_index)
-        sig = b"" if blank_signature else (self.signature or b"")
-        out += binfmt.write_bytes(sig)
+        out += binfmt.write_bytes(self.signature or b"")
         out += binfmt.write_bytes(self.pubkey or b"")
         return out
 
@@ -79,11 +78,11 @@ class Transaction:
     def is_coinbase(self) -> bool:
         return self.coinbase_data is not None
 
-    def to_bytes(self, blank_signatures: bool = False) -> bytes:
+    def to_bytes(self) -> bytes:
         out = binfmt.write_varint(self.version)
         out += binfmt.write_varint(len(self.inputs))
         for tx_in in self.inputs:
-            out += tx_in.to_bytes(blank_signature=blank_signatures)
+            out += tx_in.to_bytes()
         out += binfmt.write_varint(len(self.outputs))
         for tx_out in self.outputs:
             out += tx_out.to_bytes()
@@ -108,14 +107,28 @@ class Transaction:
 
     @property
     def txid(self) -> str:
-        return sha256d(self.to_bytes(blank_signatures=False)).hex()
+        return sha256d(self.to_bytes()).hex()
 
     def sighash(self) -> bytes:
-        """The hash every input's owner signs: the whole transaction with
-        every input's signature blanked out. Every input signs the same
-        sighash, so a transaction is only valid once *every* input's owner
-        has co-signed it."""
-        return sha256d(self.to_bytes(blank_signatures=True))
+        """The hash every input's owner signs: a *skeleton* serialization
+        that commits to which utxos are being spent (prev_txid/prev_index
+        only — no pubkey or signature bytes) and where the funds go, but
+        deliberately nothing about signing status. This is what lets inputs
+        be signed in any order or independently by different owners: if the
+        sighash included other inputs' pubkey bytes (set only once *those*
+        inputs are signed), signing input B after input A would silently
+        change the very digest input A's signature was already computed
+        over, invalidating it. Every input signs this same digest."""
+        out = binfmt.write_varint(self.version)
+        out += binfmt.write_varint(len(self.inputs))
+        for tx_in in self.inputs:
+            out += bytes.fromhex(tx_in.prev_txid)
+            out += binfmt.write_varint(tx_in.prev_index)
+        out += binfmt.write_varint(len(self.outputs))
+        for tx_out in self.outputs:
+            out += tx_out.to_bytes()
+        out += binfmt.write_bytes(self.coinbase_data or b"")
+        return sha256d(out)
 
     def sign_input(self, index: int, private_key: int, pubkey) -> None:
         tx_in = self.inputs[index]

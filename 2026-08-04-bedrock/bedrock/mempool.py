@@ -46,11 +46,13 @@ class Mempool:
             self.reserved.add((tx_in.prev_txid, tx_in.prev_index))
         return True
 
-    def select_for_block(self, max_count: int = None) -> list:
-        """Simple greedy-by-fee-rate selection. Fee isn't stored on the
-        Transaction object, so this recomputes it via a throwaway overlay
-        seeded with nothing reserved — good enough at demo scale."""
-        return list(self.txs.values())[:max_count] if max_count else list(self.txs.values())
+    def select_for_block(self, chain, max_count: int = None) -> list:
+        """Transactions ordered highest-fee-first (a real, if simplified,
+        stand-in for a miner's economic incentive — simplified in that it
+        ranks by absolute fee rather than fee *rate*, since nothing here
+        tracks serialized transaction size)."""
+        ordered = sorted(self.txs.values(), key=chain.transaction_fee, reverse=True)
+        return ordered[:max_count] if max_count else ordered
 
     def rebase(self, chain) -> None:
         """Re-validate every pending transaction against the chain's current

@@ -29,17 +29,40 @@ def block_subsidy(height: int) -> int:
     return INITIAL_SUBSIDY >> halvings
 
 
+_GENESIS_CACHE_BYTES = None  # set on first call; see create_genesis_block()
+
+
 def create_genesis_block() -> Block:
-    """Fully deterministic: same content every time, so every independently
-    started node mines/derives the identical genesis block and hash."""
-    coinbase = Transaction.new_coinbase(
-        # Not derived from any known keypair: spending it would require
-        # finding a private key whose address happens to base58check-decode
-        # to this exact literal, i.e. a hash preimage. Practically unspendable.
-        reward_address="1111111111111111111111111",
-        value=INITIAL_SUBSIDY,
-        height=0,
-        extra=GENESIS_MESSAGE,
+    """Fully deterministic: identical content every time, so every
+    independently started node mines/derives the exact same genesis hash —
+    required for any two Bedrock processes to ever be able to sync with each
+    other without manually sharing state. Deliberately does NOT go through
+    Transaction.new_coinbase(), which mixes in a random per-call nonce (to
+    keep ordinary block coinbases from colliding) — for the single, one-off
+    genesis transaction that randomness would make the "same genesis every
+    time" guarantee false, exactly the bug this comment used to gloss over
+    until an adversarial-review pass caught two independent create_genesis_
+    block() calls returning different hashes.
+
+    Mining is real (not hardcoded) but only ever needs to happen once per
+    process: the result is cached, since re-deriving it in every fresh
+    Node() would otherwise re-run the proof-of-work search every time.
+    """
+    global _GENESIS_CACHE_BYTES
+    if _GENESIS_CACHE_BYTES is not None:
+        return Block.from_bytes(_GENESIS_CACHE_BYTES)[0]
+
+    coinbase = Transaction(
+        version=1,
+        inputs=[],
+        outputs=[TxOutput(
+            value=INITIAL_SUBSIDY,
+            # Not derived from any known keypair: spending it would require
+            # finding a private key whose address happens to base58check-
+            # decode to this exact literal, i.e. a hash preimage.
+            address="1111111111111111111111111",
+        )],
+        coinbase_data=GENESIS_MESSAGE,
     )
     header = BlockHeader(
         version=1,
@@ -52,6 +75,7 @@ def create_genesis_block() -> Block:
     block = Block(header, [coinbase])
     header.merkle_root = block.compute_merkle_root()
     bpow.mine(header)
+    _GENESIS_CACHE_BYTES = block.to_bytes()
     return block
 
 
@@ -233,6 +257,20 @@ class Chain:
             raise ChainError("duplicate transaction id within block")
 
     # -- transaction / UTXO application --------------------------------------
+
+    def transaction_fee(self, tx: Transaction) -> int:
+        """Reads the fee a (not-yet-mined) transaction would pay, against
+        the chain's *current* UTXO set. Used both by the mempool's
+        fee-priority ordering and by a miner computing its coinbase reward,
+        so both stay in agreement by construction instead of by two
+        independently-maintained formulas drifting apart."""
+        total_in = 0
+        for tx_in in tx.inputs:
+            prevout = self.utxo_set.get(tx_in.prev_txid, tx_in.prev_index)
+            if prevout is None:
+                raise ChainError(f"transaction {tx.txid} references a utxo no longer available")
+            total_in += prevout.value
+        return total_in - tx.total_output_value()
 
     def apply_transaction(self, tx: Transaction, utxo_set: UTXOSet) -> int:
         """Validates `tx` against `utxo_set` and, only if fully valid,

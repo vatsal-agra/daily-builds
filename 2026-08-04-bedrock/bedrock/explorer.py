@@ -264,7 +264,12 @@ class ExplorerState:
         self.node = node
         self.network = network
         self.wallets = {}  # address -> Wallet
-        self.lock = threading.RLock()
+        # Share the NetworkNode's own lock when one is attached: node.chain
+        # and node.mempool are the same mutable objects both this HTTP
+        # server and the P2P gossip threads touch, so they must serialize
+        # through one lock, not two independent ones that each believe they
+        # have exclusive access (see NetworkNode.__init__'s docstring note).
+        self.lock = network.lock if network is not None else threading.RLock()
 
     def new_wallet(self) -> Wallet:
         w = Wallet.generate()
@@ -412,7 +417,7 @@ def make_handler(state: ExplorerState):
                             "txid": tx.txid,
                             "outputs": [{"value": o.value, "address": o.address} for o in tx.outputs],
                         }
-                        for tx in state.node.mempool.select_for_block()
+                        for tx in state.node.mempool.select_for_block(state.node.chain)
                     ]
                 }
 

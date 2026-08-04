@@ -5,7 +5,8 @@ import time
 
 from bedrock import pow as bpow
 from bedrock.block import Block
-from bedrock.chain import Chain, block_subsidy
+from bedrock.chain import Chain, ChainError, block_subsidy
+from bedrock.crypto import is_valid_address
 from bedrock.mempool import Mempool
 from bedrock.merkle import merkle_root
 from bedrock.transaction import Transaction
@@ -21,15 +22,6 @@ class Node:
     def balance(self, address: str) -> int:
         return self.chain.utxo_set.balance(address)
 
-    def _tx_fee(self, tx: Transaction) -> int:
-        total_in = 0
-        for tx_in in tx.inputs:
-            prevout = self.chain.utxo_set.get(tx_in.prev_txid, tx_in.prev_index)
-            if prevout is None:
-                raise ValueError(f"mempool transaction {tx.txid} references a utxo no longer available")
-            total_in += prevout.value
-        return total_in - tx.total_output_value()
-
     # -- writes ---------------------------------------------------------------
 
     def submit_transaction(self, tx: Transaction) -> bool:
@@ -44,8 +36,13 @@ class Node:
     def mine_block(self, miner_address: str, max_tx: int = 200, max_nonce: int = None, deadline: float = None) -> tuple:
         """Assembles a candidate block from the mempool, mines it, and adds
         it to the chain. Returns (Block, status)."""
-        selected = self.mempool.select_for_block(max_tx)
-        total_fees = sum(self._tx_fee(tx) for tx in selected)
+        if not is_valid_address(miner_address):
+            # Without this check a typo'd reward address would still "mine
+            # successfully" and just silently burn the entire block reward
+            # forever, with nothing telling the miner they lost it.
+            raise ChainError(f"'{miner_address}' is not a valid Bedrock address")
+        selected = self.mempool.select_for_block(self.chain, max_tx)
+        total_fees = sum(self.chain.transaction_fee(tx) for tx in selected)
         height = self.chain.height + 1
         reward = block_subsidy(height) + total_fees
         coinbase = Transaction.new_coinbase(miner_address, reward, height)

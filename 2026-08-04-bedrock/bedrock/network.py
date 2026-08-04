@@ -40,7 +40,7 @@ class Peer:
 
 
 class NetworkNode:
-    def __init__(self, node, host: str = "127.0.0.1", port: int = 0, log=None):
+    def __init__(self, node, host: str = "127.0.0.1", port: int = 0, log=None, lock: threading.RLock = None):
         self.node = node
         self.host = host
         self.port = port
@@ -49,7 +49,13 @@ class NetworkNode:
         self.peers = {}          # (host, advertised_port) -> Peer
         self.seen_blocks = set()
         self.seen_txs = set()
-        self.lock = threading.RLock()
+        # Anyone else who mutates `node` concurrently (e.g. an HTTP handler
+        # thread in explorer.py driving the same node) MUST guard those
+        # mutations with this exact lock object, not a lock of their own —
+        # two different locks each thinking they have exclusive access to
+        # the same underlying node.chain/node.mempool provide no mutual
+        # exclusion at all. Pass `lock=` to share one.
+        self.lock = lock if lock is not None else threading.RLock()
         self._stop = threading.Event()
         self._threads = []
 
@@ -122,7 +128,19 @@ class NetworkNode:
                     msg = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                self._handle_message(peer, msg)
+                try:
+                    self._handle_message(peer, msg)
+                except Exception as exc:
+                    # A malformed/adversarial block or transaction from a
+                    # peer (bad hex, truncated bytes, wrong field types) must
+                    # not be able to kill this connection's read loop —
+                    # that's a remote one-line DoS against this peer link.
+                    # Log it and keep reading; ChainError/MempoolError from a
+                    # genuinely invalid block/tx are already handled inside
+                    # _ingest_block/_ingest_tx, so what lands here is always
+                    # a malformed *message*, not a merely-invalid one.
+                    self._log(f"malformed message from {peer.address}: {exc}")
+                    continue
         except (OSError, ConnectionError):
             pass
         finally:

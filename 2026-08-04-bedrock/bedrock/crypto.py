@@ -171,7 +171,16 @@ def verify(pubkey, message: bytes, signature: tuple) -> bool:
     r, s = signature
     if not (0 < r < N and 0 < s < N):
         return False
-    if not is_on_curve(pubkey) or pubkey is None:
+    if s > N // 2:
+        # Reject the non-canonical high-S form. Both s and N-s satisfy the
+        # verification equation for the same (r, message, pubkey) — without
+        # this check, anyone who observes a valid signature could flip it to
+        # a second, still-valid encoding with a different byte representation
+        # (and thus a different txid), a classic transaction-malleability bug.
+        # sign() only ever produces the canonical low-S form, so this never
+        # rejects an honestly-produced signature.
+        return False
+    if pubkey is None or not is_on_curve(pubkey):
         return False
     e = _hash_to_int(message)
     w = inv_mod(s, N)

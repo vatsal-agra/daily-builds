@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import time
+from decimal import Decimal, InvalidOperation
 
 from bedrock.block import Block
 from bedrock.chain import COIN, ChainError, block_subsidy
@@ -27,7 +28,7 @@ def save_state(path: str, node: Node, wallets: dict) -> None:
             node.chain.get_block(h).to_bytes().hex()
             for h in node.chain.path_from_genesis(node.chain.tip_hash)
         ],
-        "mempool": [tx.to_bytes().hex() for tx in node.mempool.select_for_block()],
+        "mempool": [tx.to_bytes().hex() for tx in node.mempool.select_for_block(node.chain)],
         "wallets": {addr: w.to_wif() for addr, w in wallets.items()},
     }
     tmp = path + ".tmp"
@@ -68,7 +69,18 @@ def fmt_coin(shards: int) -> str:
 
 
 def parse_coin(s: str) -> int:
-    return round(float(s) * COIN)
+    """Parses a decimal coin-amount string into integer shards without
+    going through `float` — float64 can't exactly represent most decimal
+    fractions, and silently rounding a user's requested amount by even one
+    shard is exactly the kind of "close enough" bug a currency shouldn't
+    have."""
+    try:
+        shards = Decimal(s) * COIN
+    except InvalidOperation:
+        raise ValueError(f"'{s}' is not a valid decimal amount")
+    if shards != shards.to_integral_value():
+        raise ValueError(f"'{s}' specifies more precision than Bedrock's {len(str(COIN)) - 1} decimal places support")
+    return int(shards)
 
 
 # -- subcommands --------------------------------------------------------------
@@ -99,11 +111,11 @@ def cmd_send(args):
         print(f"error: '{args.to_address}' is not a valid Bedrock address", file=sys.stderr)
         sys.exit(1)
     wallet = wallets[args.from_address]
-    amount = parse_coin(args.amount)
-    fee = parse_coin(args.fee)
     try:
+        amount = parse_coin(args.amount)
+        fee = parse_coin(args.fee)
         tx = wallet.send(node.chain, node.mempool, args.to_address, amount, fee=fee)
-    except (WalletError, ChainError, MempoolError) as exc:
+    except (ValueError, WalletError, ChainError, MempoolError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
     save_state(args.data, node, wallets)
@@ -153,9 +165,11 @@ def cmd_validate(args):
 
 def cmd_serve(args):
     from bedrock import explorer
-    node, wallets = load_or_new(args.data)
-    for w in wallets.values():
-        pass  # explorer manages its own wallet set; CLI-created wallets aren't auto-imported into it (documented limitation)
+    # `wallets` (CLI-created, from --data) is intentionally unused here: the
+    # explorer manages its own separate, in-memory wallet set created via its
+    # "+ New wallet" button, not the CLI's persisted ones. Documented in the
+    # README as a known seam between the two UIs, not silently glossed over.
+    node, _cli_wallets = load_or_new(args.data)
 
     net = None
     if args.listen or args.peer:
@@ -188,15 +202,18 @@ def cmd_netnode(args):
         net.connect(host, int(port))
         print(f"connected to {peer}")
 
-    miner_wallet = None
-    if args.miner_address:
-        miner_wallet = args.miner_address
+    miner_wallet = args.miner_address
     try:
         while True:
             time.sleep(args.mine_interval)
             if miner_wallet:
-                block, status = node.mine_block(miner_wallet, max_nonce=50_000_000)
-                net.announce_block(block)
+                # Mining mutates node.chain/node.mempool, exactly like the
+                # gossip-message handlers running concurrently on peer
+                # threads — both MUST go through the same lock net owns, or
+                # the two can interleave their mutations and corrupt state.
+                with net.lock:
+                    block, status = node.mine_block(miner_wallet, max_nonce=50_000_000)
+                    net.announce_block(block)
                 print(f"mined height={node.chain.height} status={status}")
     except KeyboardInterrupt:
         pass
