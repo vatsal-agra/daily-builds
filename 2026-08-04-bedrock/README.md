@@ -5,14 +5,15 @@ secp256k1 wallets, a UTXO ledger, real PoW mining with difficulty
 retargeting, full block/transaction validation, chain reorganization,
 a gossiping multi-process P2P network, and a live block explorer.
 
-**Status: Phase 3 — adversarial review complete.** All 4 required features
-and both stretch features are implemented and passing an end-to-end
-scripted demo (`python3 -m bedrock.demo`). A hostile self-review found and
-fixed 2 critical bugs (multi-input transactions had an invalid first
-signature; genesis was non-deterministic across processes, so independent
-nodes could never sync) plus 8 further issues — see [REVIEW.md](REVIEW.md).
-See [PLAN.md](PLAN.md) for the architecture. Polish and a formal test suite
-are next.
+**Status: Phase 4 — stretch features and polish complete.** All 4 required
+features and both stretch features (a real multi-process gossiping P2P
+network, and a server-backed block explorer + wallet web UI) are
+implemented, adversarially reviewed (see [REVIEW.md](REVIEW.md)), and
+polished: clean error messages (never a raw traceback) across every CLI
+command and HTTP endpoint, validated addresses/amounts, and a genuinely
+dark/light-theme-aware UI (screenshot-verified in headless Chromium, zero
+console errors). See [PLAN.md](PLAN.md) for the architecture. A formal
+test suite and `demo.sh` are next.
 
 ## Quick look
 
