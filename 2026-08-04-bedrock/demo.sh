@@ -65,28 +65,51 @@ PID_B=$!
 cleanup_nodes() { kill "$PID_A" "$PID_B" 2>/dev/null || true; }
 trap 'cleanup_nodes; rm -rf "$WORKDIR"' EXIT
 
-# wait for both servers to come up
-for i in $(seq 1 30); do
-  curl -s -o /dev/null http://127.0.0.1:8611/api/status && curl -s -o /dev/null http://127.0.0.1:8612/api/status && break
-  sleep 0.2
-done
+fail_with_logs() {
+  echo "FAIL: $1"
+  echo "--- nodeA.log ---"; cat "$WORKDIR/nodeA.log" 2>/dev/null
+  echo "--- nodeB.log ---"; cat "$WORKDIR/nodeB.log" 2>/dev/null
+  exit 1
+}
 
-MINER="$(curl -s -X POST http://127.0.0.1:8611/api/wallet/new | python3 -c 'import sys,json;print(json.load(sys.stdin)["address"])')"
-curl -s -X POST http://127.0.0.1:8611/api/mine -H 'Content-Type: application/json' \
-  -d "{\"miner_address\":\"$MINER\"}" > /dev/null
+# Retry a curl+JSON call until it parses (genesis mining, thread startup,
+# and process scheduling all mean the very first request or two after
+# spawning a server can legitimately race ahead of it — this loop makes
+# that a retry instead of a flaky failure at demo time).
+curl_json_retry() {
+  local tries=50
+  local out
+  for i in $(seq 1 $tries); do
+    out="$(curl -s --max-time 2 "$@" || true)"
+    if echo "$out" | python3 -c 'import sys,json; json.load(sys.stdin)' >/dev/null 2>&1; then
+      echo "$out"
+      return 0
+    fi
+    sleep 0.2
+  done
+  return 1
+}
+
+MINER_JSON="$(curl_json_retry -X POST http://127.0.0.1:8611/api/wallet/new)" \
+  || fail_with_logs "node A's explorer never returned valid JSON for wallet creation"
+MINER="$(echo "$MINER_JSON" | python3 -c 'import sys,json;print(json.load(sys.stdin)["address"])')"
+
+curl_json_retry -X POST http://127.0.0.1:8611/api/mine -H 'Content-Type: application/json' \
+  -d "{\"miner_address\":\"$MINER\"}" > /dev/null \
+  || fail_with_logs "node A never accepted the mine request"
 
 CONVERGED=0
-for i in $(seq 1 40); do
-  TIP_A="$(curl -s http://127.0.0.1:8611/api/status | python3 -c 'import sys,json;print(json.load(sys.stdin)["tip_hash"])')"
-  TIP_B="$(curl -s http://127.0.0.1:8612/api/status | python3 -c 'import sys,json;print(json.load(sys.stdin)["tip_hash"])')"
-  if [ "$TIP_A" = "$TIP_B" ]; then CONVERGED=1; break; fi
+for i in $(seq 1 60); do
+  TIP_A="$(curl -s --max-time 2 http://127.0.0.1:8611/api/status | python3 -c 'import sys,json;print(json.load(sys.stdin).get("tip_hash",""))' 2>/dev/null)"
+  TIP_B="$(curl -s --max-time 2 http://127.0.0.1:8612/api/status | python3 -c 'import sys,json;print(json.load(sys.stdin).get("tip_hash",""))' 2>/dev/null)"
+  if [ -n "$TIP_A" ] && [ "$TIP_A" = "$TIP_B" ]; then CONVERGED=1; break; fi
   sleep 0.25
 done
 
 cleanup_nodes
 trap 'rm -rf "$WORKDIR"' EXIT
 
-[ "$CONVERGED" = "1" ] || { echo "FAIL: two independent bedrock serve processes never converged"; cat "$WORKDIR/nodeA.log" "$WORKDIR/nodeB.log"; exit 1; }
+[ "$CONVERGED" = "1" ] || fail_with_logs "two independent bedrock serve processes never converged"
 pass "two separately-started OS processes gossip a mined block over real TCP sockets and converge"
 
 echo
