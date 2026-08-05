@@ -1,12 +1,9 @@
 # Braid
 
-*Status: Phase 4 (stretch + polish) complete — both planned stretch
-features (CRDT-aware undo/redo, live presence + network-chaos panel)
-were implemented in Phase 2 and hardened through Phase 3's review; this
-phase added accessibility polish (aria-labels/roles, autofocus, live
-regions) and a mobile-viewport layout fix. See [REVIEW.md](./REVIEW.md)
-for the adversarial-review findings and [PLAN.md](./PLAN.md) for the
-full concept and architecture.*
+*Status: Phase 5 (verification) complete — 72-test `unittest` suite plus
+a full live multi-tab Playwright browser test, all green via
+`./demo.sh`. See [REVIEW.md](./REVIEW.md) for the adversarial-review
+findings and [PLAN.md](./PLAN.md) for the full concept and architecture.*
 
 A real-time collaborative text editor whose consistency guarantee comes
 from a from-scratch **CRDT** (Conflict-free Replicated Data Type) — no
