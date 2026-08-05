@@ -23,18 +23,18 @@
 
     <div class="layout">
       <main class="editor-pane">
-        <div class="toolbar">
-          <button id="undo-btn" class="btn" title="Undo your last edit (Ctrl/Cmd+Z)">↶ Undo</button>
-          <button id="redo-btn" class="btn" title="Redo (Ctrl/Cmd+Shift+Z)">↷ Redo</button>
+        <div class="toolbar" role="toolbar" aria-label="Editor actions">
+          <button id="undo-btn" class="btn" title="Undo your last edit (Ctrl/Cmd+Z)" aria-label="Undo your last edit">↶ Undo</button>
+          <button id="redo-btn" class="btn" title="Redo (Ctrl/Cmd+Shift+Z)" aria-label="Redo your last undone edit">↷ Redo</button>
           <span class="sep"></span>
-          <button id="offline-btn" class="btn btn-toggle" title="Simulate this tab going offline">📡 Go offline</button>
+          <button id="offline-btn" class="btn btn-toggle" title="Simulate this tab going offline" aria-label="Toggle simulated offline mode" aria-pressed="false">📡 Go offline</button>
           <label class="lag-control" title="Delay applying incoming remote edits, to make convergence visible">
             <span>simulated lag</span>
-            <input type="range" id="lag-slider" min="0" max="2000" step="100" value="0" />
+            <input type="range" id="lag-slider" min="0" max="2000" step="100" value="0" aria-label="Simulated network lag in milliseconds" />
             <span id="lag-value">0ms</span>
           </label>
           <span class="sep"></span>
-          <span class="status" id="conn-status">connecting…</span>
+          <span class="status" id="conn-status" role="status" aria-live="polite">connecting…</span>
         </div>
 
         <div class="editor-wrap">
@@ -45,11 +45,13 @@
             spellcheck="false"
             autocomplete="off"
             autocapitalize="off"
+            autofocus
+            aria-label="Shared document — every tab that has this page open edits it live"
             placeholder="Start typing. Open this page in another tab to collaborate live — every keystroke merges through a real CRDT, not a lock."
           ></textarea>
         </div>
 
-        <div class="statusbar">
+        <div class="statusbar" aria-live="polite">
           <span id="char-count">0 characters</span>
           <span class="dim">·</span>
           <span id="node-count">0 nodes (incl. tombstones)</span>
@@ -61,7 +63,7 @@
       <aside class="side-pane">
         <section class="panel">
           <h2>Online now</h2>
-          <ul id="presence-list" class="presence-list"></ul>
+          <ul id="presence-list" class="presence-list" aria-live="polite"></ul>
         </section>
 
         <section class="panel">

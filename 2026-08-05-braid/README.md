@@ -1,9 +1,12 @@
 # Braid
 
-*Status: Phase 3 (adversarial review) complete — 6 real bugs found and
-fixed (2 of them serious CRDT correctness bugs no prior automated test
-had caught), see [REVIEW.md](./REVIEW.md). Build in progress; see
-[PLAN.md](./PLAN.md) for the full concept and architecture.*
+*Status: Phase 4 (stretch + polish) complete — both planned stretch
+features (CRDT-aware undo/redo, live presence + network-chaos panel)
+were implemented in Phase 2 and hardened through Phase 3's review; this
+phase added accessibility polish (aria-labels/roles, autofocus, live
+regions) and a mobile-viewport layout fix. See [REVIEW.md](./REVIEW.md)
+for the adversarial-review findings and [PLAN.md](./PLAN.md) for the
+full concept and architecture.*
 
 A real-time collaborative text editor whose consistency guarantee comes
 from a from-scratch **CRDT** (Conflict-free Replicated Data Type) — no

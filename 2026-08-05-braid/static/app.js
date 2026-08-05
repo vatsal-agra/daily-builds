@@ -409,6 +409,7 @@
   function setOffline(next) {
     isOffline = next;
     offlineBtn.classList.toggle("active", isOffline);
+    offlineBtn.setAttribute("aria-pressed", String(isOffline));
     offlineBtn.textContent = isOffline ? "📡 Go online" : "📡 Go offline";
     if (isOffline) {
       disconnect();
