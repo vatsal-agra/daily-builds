@@ -212,11 +212,26 @@
   }
 
   // ---- local editing: diff the textarea against our last known state -----
+  //
+  // editor.value is a plain JS string, indexed in UTF-16 code *units*.
+  // The CRDT indexes by character — one node per Unicode code *point* —
+  // so an astral character (most emoji: 😀 U+1F600, family/flag emoji,
+  // etc.) is 2 units in the string but must stay exactly 1 CRDT node, or
+  // it becomes two independently-addressable half-characters that a
+  // concurrent edit could wedge something between, corrupting the emoji.
+  // So prefix/suffix are computed in code units (matching how the browser
+  // reports editor.value), nudged off any surrogate-pair boundary, then
+  // converted to code-point offsets before touching the CRDT.
+
+  function isHighSurrogate(code) { return code >= 0xd800 && code <= 0xdbff; }
+  function isLowSurrogate(code) { return code >= 0xdc00 && code <= 0xdfff; }
+  function codePointLength(str) { return [...str].length; }
 
   function commonPrefixLen(a, b) {
     const n = Math.min(a.length, b.length);
     let i = 0;
     while (i < n && a[i] === b[i]) i++;
+    if (i > 0 && i < a.length && isHighSurrogate(a.charCodeAt(i - 1)) && isLowSurrogate(a.charCodeAt(i))) i--;
     return i;
   }
 
@@ -224,6 +239,8 @@
     const n = Math.min(a.length, b.length, maxLen);
     let i = 0;
     while (i < n && a[a.length - 1 - i] === b[b.length - 1 - i]) i++;
+    const cut = a.length - i;
+    if (i > 0 && cut > 0 && isHighSurrogate(a.charCodeAt(cut - 1)) && isLowSurrogate(a.charCodeAt(cut))) i--;
     return i;
   }
 
@@ -234,16 +251,18 @@
     const maxSuffix = Math.min(lastKnownText.length, newText.length) - prefix;
     const suffix = commonSuffixLen(lastKnownText, newText, maxSuffix);
 
-    const deleteLen = lastKnownText.length - prefix - suffix;
+    const deletedRegion = lastKnownText.slice(prefix, lastKnownText.length - suffix);
     const insertedStr = newText.slice(prefix, newText.length - suffix);
+    const prefixNodeIdx = codePointLength(lastKnownText.slice(0, prefix));
+    const deleteLen = codePointLength(deletedRegion);
 
     let ops = [];
-    if (deleteLen > 0) ops = ops.concat(site.typeDeleteRange(prefix, deleteLen));
-    if (insertedStr.length > 0) ops = ops.concat(site.typeText(prefix, insertedStr));
+    if (deleteLen > 0) ops = ops.concat(site.typeDeleteRange(prefixNodeIdx, deleteLen));
+    if (insertedStr.length > 0) ops = ops.concat(site.typeText(prefixNodeIdx, insertedStr));
 
     for (const op of ops) broadcastOp(op);
     if (ops.length > 0) {
-      log(`you: ${deleteLen ? `deleted ${deleteLen}` : ""}${deleteLen && insertedStr ? ", " : ""}${insertedStr ? `inserted ${JSON.stringify(insertedStr)}` : ""} @ ${prefix}`, "mine");
+      log(`you: ${deleteLen ? `deleted ${deleteLen}` : ""}${deleteLen && insertedStr ? ", " : ""}${insertedStr ? `inserted ${JSON.stringify(insertedStr)}` : ""} @ ${prefixNodeIdx}`, "mine");
     }
     lastKnownText = newText;
     renderStats();
@@ -252,19 +271,25 @@
 
   // ---- inbound: applying remote ops with cursor tracking -----------------
 
+  // Cursor math here is in UTF-16 units (utf16IndexOfId / charUnitLength),
+  // matching textarea.selectionStart — NOT visibleIndexOfId's code-point
+  // node count, which would silently drift once any astral character
+  // (most emoji) sits earlier in the document.
   function applyRemoteOpTrackingCursor(op, cursorRef) {
     if (op.type === "insert") {
       site.receive(op);
-      const idx = site.doc.visibleIndexOfId(op.id);
-      if (idx !== -1 && idx <= cursorRef.pos) cursorRef.pos += 1;
+      const idx = site.doc.utf16IndexOfId(op.id);
+      if (idx !== -1 && idx <= cursorRef.pos) cursorRef.pos += op.value.length;
     } else if (op.type === "delete") {
-      const idx = site.doc.visibleIndexOfId(op.target);
+      const idx = site.doc.utf16IndexOfId(op.target);
+      const width = site.doc.charUnitLength(op.target);
       site.receive(op);
-      if (idx !== -1 && idx < cursorRef.pos) cursorRef.pos -= 1;
+      if (idx !== -1 && idx < cursorRef.pos) cursorRef.pos -= width;
     } else if (op.type === "restore") {
       site.receive(op);
-      const idx = site.doc.visibleIndexOfId(op.target);
-      if (idx !== -1 && idx <= cursorRef.pos) cursorRef.pos += 1;
+      const idx = site.doc.utf16IndexOfId(op.target);
+      const width = site.doc.charUnitLength(op.target);
+      if (idx !== -1 && idx <= cursorRef.pos) cursorRef.pos += width;
     }
   }
 

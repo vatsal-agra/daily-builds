@@ -57,6 +57,12 @@ class RGADocument:
         self._index = {}            # id tuple -> current index in `sequence`
 
     # ---- id allocation -----------------------------------------------
+    #
+    # `_counter` is a Lamport clock, not a plain per-site increment: every
+    # time this replica observes a remote op (see apply_remote_op), it
+    # advances `_counter` to at least that op's counter. That's what makes
+    # the tie-break in `_integrate` mean something — see that method's
+    # docstring for the bug this prevents.
 
     def _next_id(self):
         self._counter += 1
@@ -71,7 +77,28 @@ class RGADocument:
     def _integrate(self, node):
         """Insert `node` (already carrying its final id/origin/value) into
         `self.sequence` at the position the RGA algorithm dictates, given
-        whatever nodes are already present locally."""
+        whatever nodes are already present locally.
+
+        The "higher id wins, stays closer to origin" tie-break below is
+        only correct because ids are Lamport-clock-ordered (see
+        `_next_id`/`apply_remote_op`), not just per-site counters. With a
+        plain per-site counter, a site that has typed a lot already would
+        always out-rank a site that just joined — so if B, having fully
+        synced up to "hab", clicks right after "h" and types "X", the
+        *new, non-concurrent* node X could still lose the tie-break to
+        the *old* node "a" (same origin: "h") purely because A's counter
+        was already higher, and X would get pushed all the way past "a"
+        *and* "b" to land at the end — "habX" instead of the obviously
+        correct "hXab", despite there being no concurrency to resolve at
+        all. Lamport clocks fix this: B's clock is bumped to at least
+        "a"'s counter the moment B receives it, so any id B allocates
+        *after* seeing "a" is guaranteed to compare greater than "a"'s —
+        causally-later inserts always win ties against what they already
+        knew about. Genuine concurrent inserts (neither side has seen the
+        other) still tie-break by id either way, which is the documented,
+        expected interleaving anomaly noted in PLAN.md — this fix is
+        about eliminating *spurious* interleaving of non-concurrent
+        edits, not about achieving full intention-preservation."""
         origin = node["origin"]
         left_idx = self._index[origin] if origin is not None else -1
         i = left_idx + 1
@@ -189,6 +216,13 @@ class RGADocument:
         caller is expected to buffer and retry such ops. Applying the
         same insert op twice is a safe no-op (idempotent), which matters
         because the network may duplicate messages."""
+        # Lamport clock: observing ANY op (applied now or only buffered —
+        # "observed" is what matters, not "integrated") advances our own
+        # clock to at least its counter, so the next id *we* allocate is
+        # guaranteed to compare greater than everything we've seen so far.
+        seen_counter = op["id"][0]
+        if seen_counter > self._counter:
+            self._counter = seen_counter
         if op["type"] == "insert":
             node_id = _id_of(op["id"])
             if node_id in self.by_id:

@@ -34,6 +34,10 @@ class RGADocument {
     this.index = new Map();  // idKey -> current index in `sequence`
   }
 
+  // `counter` is a Lamport clock, not a plain per-site increment — see
+  // applyRemoteOp and _integrate's comments for why that distinction is
+  // load-bearing (it's what makes the tie-break correctly favor a
+  // causally-later, non-concurrent insert over one it already knew about).
   _nextId() {
     this.counter += 1;
     return [this.counter, this.siteId];
@@ -45,6 +49,11 @@ class RGADocument {
     }
   }
 
+  // "higher id wins, stays closer to origin" — correct only because ids
+  // are Lamport-clock-ordered (see _nextId / applyRemoteOp), not raw
+  // per-site counters; see rga.py's _integrate docstring for the bug
+  // that would otherwise cause (a non-concurrent insert losing a tie to
+  // an *older* node purely because the other site had typed more first).
   _integrate(node) {
     const origin = node.origin;
     const leftIdx = origin !== null ? this.index.get(idKey(origin)) : -1;
@@ -93,7 +102,13 @@ class RGADocument {
   }
 
   localInsert(index, value) {
-    if (value.length !== 1) throw new Error("localInsert takes exactly one character");
+    // Count by Unicode CODE POINT, not UTF-16 code unit: most emoji (and
+    // everything outside the Basic Multilingual Plane) are two UTF-16
+    // units (a surrogate pair) but ONE character. `value.length` counts
+    // units — [...value].length counts code points, matching how Python
+    // (this engine's other half) already indexes strings, and matching
+    // how one CRDT node is meant to represent one character.
+    if ([...value].length !== 1) throw new Error("localInsert takes exactly one character");
     const origin = this._originForVisibleIndex(index);
     const nodeId = this._nextId();
     const node = { id: nodeId, origin, value, deleted: false };
@@ -127,6 +142,11 @@ class RGADocument {
   }
 
   applyRemoteOp(op) {
+    // Lamport clock bump: observing any op (even one we can't integrate
+    // yet because its dependency hasn't arrived) advances our clock to
+    // at least its counter, so the next id we allocate outranks it.
+    const seenCounter = op.id[0];
+    if (seenCounter > this.counter) this.counter = seenCounter;
     if (op.type === "insert") {
       const nodeId = idOf(op.id);
       if (this.byId.has(idKey(nodeId))) return true; // duplicate delivery
@@ -161,11 +181,9 @@ class RGADocument {
     return c;
   }
 
-  // Number of visible characters strictly before the node with this id —
-  // i.e. the position it occupies in the visible string if it's visible
-  // itself, or the position it *would* occupy if it were. Used by the
-  // browser UI to keep the local caret sane across remote edits (see
-  // app.js) without needing a full Yjs-style relative-position system.
+  // Number of visible *characters* (CRDT nodes — one per code point)
+  // strictly before the node with this id. Used for indexing into the
+  // CRDT itself (typeText/typeDeleteRange take a node index).
   visibleIndexOfId(id) {
     const key = idKey(id);
     let count = 0;
@@ -174,6 +192,28 @@ class RGADocument {
       if (!node.deleted) count += 1;
     }
     return -1;
+  }
+
+  // Same idea, but counting UTF-16 *code units* instead of nodes — what
+  // `textarea.selectionStart` actually measures in. A node's `value` is
+  // one code point but can be 1 or 2 UTF-16 units (most emoji are 2), so
+  // this is NOT the same number as visibleIndexOfId once any astral
+  // character precedes the target — app.js's cursor math needs this one.
+  utf16IndexOfId(id) {
+    const key = idKey(id);
+    let count = 0;
+    for (const node of this.sequence) {
+      if (idKey(node.id) === key) return count;
+      if (!node.deleted) count += node.value.length;
+    }
+    return -1;
+  }
+
+  // UTF-16 unit width (1 or 2) of a node's character — nodes persist as
+  // tombstones, so this is available even for a just-deleted id.
+  charUnitLength(id) {
+    const node = this.byId.get(idKey(id));
+    return node ? node.value.length : 1;
   }
 }
 
@@ -222,8 +262,9 @@ class Site {
   typeText(index, text) {
     const ops = [];
     const nodeIds = [];
-    for (let i = 0; i < text.length; i++) {
-      const op = this.doc.localInsert(index + i, text[i]);
+    const chars = [...text]; // code-point iteration — keeps surrogate pairs (most emoji) intact as one character
+    for (let i = 0; i < chars.length; i++) {
+      const op = this.doc.localInsert(index + i, chars[i]);
       this._recordLocal(op);
       ops.push(op);
       nodeIds.push(op.id);

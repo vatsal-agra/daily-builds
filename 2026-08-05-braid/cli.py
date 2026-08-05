@@ -19,6 +19,21 @@ from crdt.network import Simulation
 from crdt.site import Site
 
 
+def _int_at_least(minimum):
+    """An argparse `type=` that rejects out-of-range values with a clean
+    CLI error instead of letting a nonsensical value (e.g. --sites 0)
+    reach the simulator and blow up with a raw traceback."""
+    def parse(raw):
+        try:
+            value = int(raw)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{raw!r} is not an integer")
+        if value < minimum:
+            raise argparse.ArgumentTypeError(f"must be >= {minimum}, got {value}")
+        return value
+    return parse
+
+
 def cmd_simulate(args):
     sim = Simulation(args.seed, num_sites=args.sites, gossip_every=args.gossip_every)
     result = sim.run(num_ops=args.ops)
@@ -138,24 +153,25 @@ def main(argv=None):
 
     p_sim = sub.add_parser("simulate", help="run one seeded chaos simulation")
     p_sim.add_argument("--seed", type=int, default=1)
-    p_sim.add_argument("--sites", type=int, default=4)
-    p_sim.add_argument("--ops", type=int, default=60)
-    p_sim.add_argument("--gossip-every", type=int, default=8)
+    p_sim.add_argument("--sites", type=_int_at_least(2), default=4,
+                        help="number of simulated replicas (min 2 — convergence needs someone to converge with)")
+    p_sim.add_argument("--ops", type=_int_at_least(0), default=60)
+    p_sim.add_argument("--gossip-every", type=_int_at_least(1), default=8)
     p_sim.add_argument("-v", "--verbose", action="store_true", help="print the full edit history")
     p_sim.set_defaults(func=cmd_simulate)
 
     p_sweep = sub.add_parser("sweep", help="run many seeds, report the convergence rate")
-    p_sweep.add_argument("--count", type=int, default=100)
-    p_sweep.add_argument("--sites", type=int, default=4)
-    p_sweep.add_argument("--ops", type=int, default=40)
-    p_sweep.add_argument("--gossip-every", type=int, default=8)
+    p_sweep.add_argument("--count", type=_int_at_least(1), default=100)
+    p_sweep.add_argument("--sites", type=_int_at_least(2), default=4)
+    p_sweep.add_argument("--ops", type=_int_at_least(0), default=40)
+    p_sweep.add_argument("--gossip-every", type=_int_at_least(1), default=8)
     p_sweep.set_defaults(func=cmd_sweep)
 
     p_scenario = sub.add_parser("scenario", help="narrated offline/reconnect walkthrough")
     p_scenario.set_defaults(func=cmd_scenario)
 
     p_serve = sub.add_parser("serve", help="start the live collaborative web editor")
-    p_serve.add_argument("--port", type=int, default=8420)
+    p_serve.add_argument("--port", type=_int_at_least(1), default=8420)
     p_serve.set_defaults(func=cmd_serve)
 
     args = parser.parse_args(argv)

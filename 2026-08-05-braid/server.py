@@ -40,6 +40,39 @@ CONTENT_TYPES = {
 }
 
 
+def _is_valid_op_id(x):
+    return (isinstance(x, list) and len(x) == 2
+            and isinstance(x[0], int) and not isinstance(x[0], bool)
+            and isinstance(x[1], str) and x[1] != "")
+
+
+def _validate_op(op):
+    """The server is a dumb relay (see module docstring) — it never
+    interprets an op's CRDT meaning — but a malformed op would still get
+    broadcast to every connected browser, whose CRDT engine trusts op
+    shape without re-validating it (see rga.js). So the one place op
+    shape *does* get checked is here, at the door, not deep inside
+    someone else's merge logic."""
+    if not isinstance(op, dict):
+        raise ValueError("op must be an object")
+    if op.get("type") not in ("insert", "delete", "restore"):
+        raise ValueError(f"op.type must be insert/delete/restore, got {op.get('type')!r}")
+    if not _is_valid_op_id(op.get("id")):
+        raise ValueError("op.id must be a [counter:int, site:str] pair")
+    if op["type"] == "insert":
+        origin = op.get("origin")
+        if origin is not None and not _is_valid_op_id(origin):
+            raise ValueError("op.origin must be null or a [counter:int, site:str] pair")
+        value = op.get("value")
+        if not isinstance(value, str) or len(value) == 0:
+            raise ValueError("op.value must be a non-empty string")
+        if len(list(value)) != 1:
+            raise ValueError("op.value must be exactly one character")
+    else:  # delete / restore
+        if not _is_valid_op_id(op.get("target")):
+            raise ValueError("op.target must be a [counter:int, site:str] pair")
+
+
 class Hub:
     """All the mutable shared state for one document, guarded by one lock.
     A real multi-document deployment would key this by document id; this
@@ -132,7 +165,13 @@ class Handler(BaseHTTPRequestHandler):
     def _serve_file(self, rel_path):
         rel_path = rel_path.split("?", 1)[0]
         safe_path = os.path.normpath(os.path.join(STATIC_DIR, rel_path))
-        if not safe_path.startswith(STATIC_DIR):
+        # `safe_path.startswith(STATIC_DIR)` alone is a classic trap: a
+        # sibling directory named e.g. "static-evil" also starts with the
+        # string "static", so a bare prefix check can be walked right past
+        # the intended root. Require an exact match or a path *under* it
+        # (STATIC_DIR + separator), not just a string that happens to
+        # start with the same characters.
+        if safe_path != STATIC_DIR and not safe_path.startswith(STATIC_DIR + os.sep):
             self.send_error(403, "forbidden")
             return
         if not os.path.isfile(safe_path):
@@ -204,9 +243,8 @@ class Handler(BaseHTTPRequestHandler):
             body = self._read_json_body()
             from_site = body["from"]
             op = body["op"]
-            if "type" not in op or "id" not in op:
-                raise ValueError("malformed op")
-        except (KeyError, ValueError, json.JSONDecodeError) as e:
+            _validate_op(op)
+        except (KeyError, ValueError, TypeError, json.JSONDecodeError) as e:
             self.send_error(400, f"bad request: {e}")
             return
         HUB.relay_op(from_site, op)
@@ -237,7 +275,16 @@ class Handler(BaseHTTPRequestHandler):
 
 def run_server(port=8420):
     addr = ("0.0.0.0", port)
-    httpd = ThreadingHTTPServer(addr, Handler)
+    try:
+        httpd = ThreadingHTTPServer(addr, Handler)
+    except OSError as e:
+        if e.errno == 98:  # EADDRINUSE
+            print(f"error: port {port} is already in use — is Braid (or something else) "
+                  f"already running there?")
+            print(f"try: braid serve --port {port + 1}")
+        else:
+            print(f"error: couldn't start the server on port {port}: {e}")
+        raise SystemExit(1)
     print(f"Braid collaborative editor running at http://localhost:{port}/")
     print("Open it in two or more browser tabs to see live CRDT sync.")
     print("Press Ctrl+C to stop.")

@@ -105,6 +105,11 @@ class Simulation:
     they converge."""
 
     def __init__(self, seed, num_sites=4, gossip_every=8):
+        if num_sites < 2:
+            raise ValueError(
+                f"Simulation needs at least 2 sites to simulate anything (got {num_sites}). "
+                "Convergence between replicas is meaningless with fewer than two replicas."
+            )
         self.seed = seed
         self.rng = random.Random(seed ^ 0xB1AAD)
         self.net = Network(seed)

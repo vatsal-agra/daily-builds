@@ -1,8 +1,9 @@
 # Braid
 
-*Status: Phase 2 (core build) complete — all 4 required features work
-end-to-end. Build in progress; see [PLAN.md](./PLAN.md) for the full
-concept and architecture.*
+*Status: Phase 3 (adversarial review) complete — 6 real bugs found and
+fixed (2 of them serious CRDT correctness bugs no prior automated test
+had caught), see [REVIEW.md](./REVIEW.md). Build in progress; see
+[PLAN.md](./PLAN.md) for the full concept and architecture.*
 
 A real-time collaborative text editor whose consistency guarantee comes
 from a from-scratch **CRDT** (Conflict-free Replicated Data Type) — no

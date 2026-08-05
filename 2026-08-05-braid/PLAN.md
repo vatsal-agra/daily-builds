@@ -105,11 +105,19 @@ static/style.css        force offline, watch it heal), CRDT-aware undo/redo
 CRDTs give **Strong Eventual Consistency**: replicas that have delivered
 the same set of operations converge to an identical state, regardless of
 delivery order. That is the property this build proves, exhaustively, via
-seeded property-based testing. RGA (like its cousin YATA/Yjs) does **not**
-guarantee "intention preservation" for concurrent inserts at the exact
-same cursor position from two sites in the same instant — two peers
-typing at the same spot at the same time can get *interleaved* character
-ordering rather than either person's characters staying contiguous. This
-is a documented, known characteristic of the RGA family, not a bug; it
-will be demonstrated and called out explicitly in REVIEW.md rather than
-glossed over.
+seeded property-based testing.
+
+RGA's id tie-break uses **Lamport clocks**, not raw per-site counters
+(see REVIEW.md #3) — every replica advances its own clock to at least the
+highest counter it has observed before allocating a new id. That
+eliminates *spurious* interleaving: a purely sequential, non-concurrent
+insert always lands exactly where the user expects, because its id is
+guaranteed to outrank everything it already knew about. What it can't
+eliminate — because no CRDT in the RGA/WOOT lineage can, without a
+materially more complex algorithm like YATA/Fugue — is interleaving from
+**genuine** concurrency: two peers inserting at the exact same cursor
+position in the same instant, with *neither* having seen the other's
+edit yet, can still get their characters interleaved rather than either
+person's text staying contiguous. That narrower, honest limitation is
+demonstrated and called out explicitly in REVIEW.md rather than glossed
+over.
