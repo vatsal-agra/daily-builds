@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Braid — collaborative CRDT editor</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧶</text></svg>" />
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">🧶</span>
+        <span class="brand-name">Braid</span>
+        <span class="brand-sub">a from-scratch CRDT editor</span>
+      </div>
+      <div class="me" id="me-badge" title="This tab's identity">
+        <span class="dot" id="me-dot"></span>
+        <span id="me-name">you</span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <main class="editor-pane">
+        <div class="toolbar">
+          <button id="undo-btn" class="btn" title="Undo your last edit (Ctrl/Cmd+Z)">↶ Undo</button>
+          <button id="redo-btn" class="btn" title="Redo (Ctrl/Cmd+Shift+Z)">↷ Redo</button>
+          <span class="sep"></span>
+          <button id="offline-btn" class="btn btn-toggle" title="Simulate this tab going offline">📡 Go offline</button>
+          <label class="lag-control" title="Delay applying incoming remote edits, to make convergence visible">
+            <span>simulated lag</span>
+            <input type="range" id="lag-slider" min="0" max="2000" step="100" value="0" />
+            <span id="lag-value">0ms</span>
+          </label>
+          <span class="sep"></span>
+          <span class="status" id="conn-status">connecting…</span>
+        </div>
+
+        <div class="editor-wrap">
+          <div class="cursor-overlay" id="cursor-overlay" aria-hidden="true"></div>
+          <textarea
+            id="editor"
+            class="editor"
+            spellcheck="false"
+            autocomplete="off"
+            autocapitalize="off"
+            placeholder="Start typing. Open this page in another tab to collaborate live — every keystroke merges through a real CRDT, not a lock."
+          ></textarea>
+        </div>
+
+        <div class="statusbar">
+          <span id="char-count">0 characters</span>
+          <span class="dim">·</span>
+          <span id="node-count">0 nodes (incl. tombstones)</span>
+          <span class="dim">·</span>
+          <span id="outbox-count"></span>
+        </div>
+      </main>
+
+      <aside class="side-pane">
+        <section class="panel">
+          <h2>Online now</h2>
+          <ul id="presence-list" class="presence-list"></ul>
+        </section>
+
+        <section class="panel">
+          <h2>What's happening</h2>
+          <p class="explain">
+            Every tab holds its <strong>own independent CRDT replica</strong> —
+            your keystrokes apply instantly, locally, with no round trip.
+            Edits merge over the network in the background using a
+            Replicated Growable Array. Try it:
+          </p>
+          <ol class="explain-list">
+            <li>Open this page in a second tab.</li>
+            <li>Type in both at once — no waiting.</li>
+            <li>Click <strong>Go offline</strong> in one tab, keep typing in
+              both, then go back online. Watch them converge without
+              either tab "winning."</li>
+          </ol>
+        </section>
+
+        <section class="panel">
+          <h2>Raw log</h2>
+          <div id="event-log" class="event-log"></div>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <script src="/static/rga.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
