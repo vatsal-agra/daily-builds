@@ -153,6 +153,41 @@
   .badge.over { color: var(--bad); border-color: #6b3a34; }
   .badge.check { color: var(--check); border-color: #6b3a34; }
 
+  .game-over-banner {
+    width: min(88vw, 520px);
+    text-align: center;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    background: linear-gradient(180deg, #3a2420, #2c1a17);
+    border: 1px solid #6b3a34;
+    color: #f2c9c0;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  }
+  .game-over-banner[hidden] { display: none; }
+
+  .capture-tray {
+    width: min(88vw, 520px);
+    min-height: 22px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1px;
+    font-size: 1.1rem;
+    line-height: 1;
+    color: var(--text-dim);
+    opacity: 0.85;
+  }
+  .capture-tray .cap-piece.white { color: #fbf6ec; text-shadow: 0 1px 1px rgba(0,0,0,0.5); }
+  .capture-tray .cap-piece.black { color: #1c1712; text-shadow: 0 1px 1px rgba(255,255,255,0.15); }
+  .capture-tray .cap-material {
+    margin-left: 6px;
+    font-size: 0.7rem;
+    align-self: center;
+    color: var(--good);
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+
   .controls {
     display: flex;
     gap: 8px;
@@ -247,9 +282,12 @@
       <div class="turn" id="turnLabel">White to move</div>
       <div class="badge" id="statusBadge">ready</div>
     </div>
+    <div class="game-over-banner" id="gameOverBanner" hidden></div>
+    <div class="capture-tray" id="capturedTop" aria-label="pieces Black has captured"></div>
     <div class="board-wrap">
       <div class="board" id="board"></div>
     </div>
+    <div class="capture-tray" id="capturedBottom" aria-label="pieces White has captured"></div>
     <div class="controls">
       <select id="sideSelect">
         <option value="white">Play as White</option>
@@ -316,8 +354,56 @@
   const msgEl = document.getElementById("msg");
   const sideSelect = document.getElementById("sideSelect");
   const timeSelect = document.getElementById("timeSelect");
+  const gameOverBanner = document.getElementById("gameOverBanner");
+  const capturedTopEl = document.getElementById("capturedTop");
+  const capturedBottomEl = document.getElementById("capturedBottom");
+
+  const STARTING_COUNTS = { P: 8, N: 2, B: 2, R: 2, Q: 1 };
+  const PIECE_VALUE = { P: 1, N: 3, B: 3, R: 5, Q: 9 };
+  const CAPTURE_ORDER = ["Q", "R", "B", "N", "P"];
 
   function squareName(file, rank) { return FILES[file] + (rank + 1); }
+
+  function renderCaptureTrays(grid) {
+    const onBoard = { w: {}, b: {} };
+    for (const piece of Object.values(grid)) {
+      const color = piece === piece.toUpperCase() ? "w" : "b";
+      const kind = piece.toUpperCase();
+      if (kind === "K") continue;
+      onBoard[color][kind] = (onBoard[color][kind] || 0) + 1;
+    }
+    let whiteMaterial = 0, blackMaterial = 0;
+    const capturedWhite = []; // white pieces that are missing -> Black captured them
+    const capturedBlack = [];
+    for (const kind of CAPTURE_ORDER) {
+      const startCount = STARTING_COUNTS[kind];
+      const wOnBoard = onBoard.w[kind] || 0;
+      const bOnBoard = onBoard.b[kind] || 0;
+      whiteMaterial += wOnBoard * PIECE_VALUE[kind];
+      blackMaterial += bOnBoard * PIECE_VALUE[kind];
+      for (let i = 0; i < startCount - wOnBoard; i++) capturedWhite.push(kind);
+      for (let i = 0; i < startCount - bOnBoard; i++) capturedBlack.push(kind.toLowerCase());
+    }
+
+    const renderTray = (el, captured, materialDiff) => {
+      el.innerHTML = "";
+      for (const p of captured) {
+        const span = document.createElement("span");
+        span.className = "cap-piece " + (p === p.toUpperCase() ? "white" : "black");
+        span.textContent = PIECE_GLYPH[p];
+        el.appendChild(span);
+      }
+      if (materialDiff > 0) {
+        const tag = document.createElement("span");
+        tag.className = "cap-material";
+        tag.textContent = `+${materialDiff}`;
+        el.appendChild(tag);
+      }
+    };
+    // top tray = captured WHITE pieces (Black's captures), shown with Black's material lead
+    renderTray(capturedTopEl, capturedWhite, blackMaterial - whiteMaterial);
+    renderTray(capturedBottomEl, capturedBlack, whiteMaterial - blackMaterial);
+  }
 
   function fenToGrid(fen) {
     const placement = fen.split(" ")[0];
@@ -419,6 +505,16 @@
       statusBadge.classList.add("thinking");
     } else {
       statusBadge.textContent = state.to_move === state.human_color ? "your move" : "engine's move";
+    }
+
+    renderCaptureTrays(grid);
+
+    if (state.game_over) {
+      gameOverBanner.hidden = false;
+      const resultGlyph = state.state === "checkmate" ? "♚✕" : "½–½";
+      gameOverBanner.textContent = `${resultGlyph}  ${state.message || "Game over"}`;
+    } else {
+      gameOverBanner.hidden = true;
     }
 
     renderMoveList();
