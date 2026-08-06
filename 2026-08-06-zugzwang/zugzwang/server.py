@@ -8,6 +8,7 @@ modules wired to HTTP.
 import json
 import os
 import argparse
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -37,7 +38,14 @@ class GameSession:
         self.reset()
 
     def reset(self, fen=None, human_color=WHITE, think_time=2.0):
-        self.board = Board.from_fen(fen) if fen else Board.from_fen(START_FEN)
+        # Validate before mutating any session state -- a bad FEN must
+        # leave the previous (still-active) game session fully intact,
+        # not half-overwritten with the rejected FEN string.
+        new_start_fen = fen if fen else START_FEN
+        new_board = Board.from_fen(new_start_fen)
+
+        self.start_fen = new_start_fen
+        self.board = new_board
         self.human_color = human_color
         self.think_time = think_time
         self.san_history = []
@@ -101,6 +109,11 @@ class GameSession:
 
 
 SESSION = GameSession()
+# ThreadingHTTPServer runs each request on its own thread; a search taking
+# multiple seconds must not overlap with another request mutating the same
+# SESSION.board (e.g. two browser tabs, or a double-click firing two POSTs).
+# One process-wide lock makes every request handled atomically end-to-end.
+SESSION_LOCK = threading.Lock()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -141,6 +154,10 @@ class Handler(BaseHTTPRequestHandler):
             return {}
 
     def do_GET(self):
+        with SESSION_LOCK:
+            self._handle_get()
+
+    def _handle_get(self):
         parsed = urlparse(self.path)
         path = parsed.path
 
@@ -171,11 +188,15 @@ class Handler(BaseHTTPRequestHandler):
                               "promotion": bool(m.promotion)})
             self._send_json({"from": square_str, "moves": dests})
         elif path == "/api/pgn":
-            self._send_json({"pgn": game_to_pgn(SESSION.san_history)})
+            self._send_json({"pgn": game_to_pgn(SESSION.san_history, start_fen=SESSION.start_fen)})
         else:
             self._send_json({"error": "not found"}, 404)
 
     def do_POST(self):
+        with SESSION_LOCK:
+            self._handle_post()
+
+    def _handle_post(self):
         parsed = urlparse(self.path)
         path = parsed.path
         data = self._read_json()

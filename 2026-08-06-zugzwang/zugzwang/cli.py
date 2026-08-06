@@ -2,6 +2,7 @@
 
 import argparse
 import re
+import sys
 
 from .board import Board, START_FEN, parse_square, WHITE, BLACK
 from .movegen import generate_legal_moves, game_state, is_in_check
@@ -60,6 +61,17 @@ def parse_user_move(board, text):
         raise
 
 
+def _load_board(fen):
+    """Board.from_fen on a malformed string can raise almost anything
+    (IndexError, ValueError, KeyError) depending on which field is bad --
+    normalize all of that into one clean, actionable CLI error."""
+    try:
+        return Board.from_fen(fen)
+    except Exception as e:
+        print(f"error: not a valid FEN: {fen!r} ({e})", file=sys.stderr)
+        sys.exit(1)
+
+
 def describe_state(board, position_history=None):
     state = game_state(board, position_history)
     if state == "checkmate":
@@ -77,7 +89,8 @@ def describe_state(board, position_history=None):
 
 
 def play(args):
-    board = Board.from_fen(args.fen) if args.fen else Board.from_fen(START_FEN)
+    start_fen = args.fen if args.fen else START_FEN
+    board = _load_board(start_fen)
     searcher = Searcher()
     human_color = WHITE if args.side == "white" else BLACK
     san_history = []
@@ -98,10 +111,17 @@ def play(args):
         print(f"\n{turn} to move." + (" (in check)" if in_check else ""))
 
         if board.to_move == human_color:
-            raw = input("> ").strip()
+            try:
+                raw = input("> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n{turn} resigns (input closed).")
+                break
             if raw.lower() in ("quit", "resign"):
                 print(f"{turn} resigns.")
                 break
+            if not raw:
+                print("  (enter a move, e.g. e4, Nf3, or e2e4)")
+                continue
             try:
                 move = parse_user_move(board, raw)
             except ValueError as e:
@@ -124,16 +144,18 @@ def play(args):
 
     if args.pgn:
         with open(args.pgn, "w") as f:
-            f.write(game_to_pgn(san_history))
+            f.write(game_to_pgn(san_history, start_fen=start_fen))
         print(f"\nPGN saved to {args.pgn}")
 
 
 def selfplay(args):
-    board = Board.from_fen(args.fen) if args.fen else Board.from_fen(START_FEN)
+    start_fen = args.fen if args.fen else START_FEN
+    board = _load_board(start_fen)
     searcher = Searcher()
     book = opening_book.OpeningBook() if not args.no_book else None
     san_history = []
     position_history = [hash_board(board)]
+    start_to_move, start_move_no = board.to_move, board.fullmove_number
 
     for ply in range(args.max_moves * 2):
         msg, over = describe_state(board, position_history)
@@ -150,8 +172,11 @@ def selfplay(args):
         board.make_move(move)
         san_history.append(san)
         position_history.append(hash_board(board))
-        mover = "White" if ply % 2 == 0 else "Black"
-        print(f"{ply // 2 + 1}{'.' if ply % 2 == 0 else '...'} {san:<8} ({mover}, {source})")
+        mover_is_white = (board.to_move == BLACK)  # just flipped after make_move
+        move_no = start_move_no + (ply + (0 if start_to_move == WHITE else 1)) // 2
+        leader = "." if mover_is_white else "..."
+        mover = "White" if mover_is_white else "Black"
+        print(f"{move_no}{leader} {san:<8} ({mover}, {source})")
     else:
         print(f"Stopped after {args.max_moves} full moves.")
 
@@ -160,7 +185,7 @@ def selfplay(args):
 
     if args.pgn:
         with open(args.pgn, "w") as f:
-            f.write(game_to_pgn(san_history))
+            f.write(game_to_pgn(san_history, start_fen=start_fen))
         print(f"\nPGN saved to {args.pgn}")
 
 
@@ -192,13 +217,17 @@ def main(argv=None):
     p_perft.set_defaults(func=lambda a: _run_perft(a))
 
     args = parser.parse_args(argv)
-    args.func(args)
+    try:
+        args.func(args)
+    except KeyboardInterrupt:
+        print("\ninterrupted.")
+        sys.exit(130)
 
 
 def _run_perft(args):
     from .perft import perft
     import time
-    board = Board.from_fen(args.fen)
+    board = _load_board(args.fen)
     for d in range(1, args.depth + 1):
         t0 = time.time()
         n = perft(board, d)

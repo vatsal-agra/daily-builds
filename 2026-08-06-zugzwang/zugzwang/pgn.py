@@ -51,8 +51,12 @@ def _disambiguate(board, move, legal_moves):
     return src
 
 
-def game_to_pgn(moves_san, result="*", headers=None):
-    """moves_san: list of SAN strings in play order. Returns a PGN string."""
+def game_to_pgn(moves_san, result="*", headers=None, start_fen=None):
+    """moves_san: list of SAN strings in play order, starting from
+    `start_fen` (defaults to the standard initial position). Returns a PGN
+    string. Correctly numbers games that start mid-game with Black to move,
+    and adds [SetUp]/[FEN] tags (standard PGN convention) whenever the game
+    doesn't start from the normal initial position."""
     default_headers = {
         "Event": "Zugzwang Engine Game",
         "Site": "local",
@@ -62,6 +66,15 @@ def game_to_pgn(moves_san, result="*", headers=None):
         "Black": "Black",
         "Result": result,
     }
+
+    side_to_move, start_move_no = "w", 1
+    if start_fen and start_fen != START_FEN:
+        parts = start_fen.split()
+        side_to_move = parts[1] if len(parts) > 1 else "w"
+        start_move_no = int(parts[5]) if len(parts) > 5 and parts[5].isdigit() else 1
+        default_headers["SetUp"] = "1"
+        default_headers["FEN"] = start_fen
+
     if headers:
         default_headers.update(headers)
 
@@ -69,11 +82,19 @@ def game_to_pgn(moves_san, result="*", headers=None):
     lines.append("")
 
     move_text = ""
-    for i, san in enumerate(moves_san):
-        if i % 2 == 0:
-            move_text += f"{i // 2 + 1}. {san} "
-        else:
-            move_text += f"{san} "
+    move_no = start_move_no
+    i = 0
+    if side_to_move == "b" and i < len(moves_san):
+        move_text += f"{move_no}... {moves_san[i]} "
+        i += 1
+        move_no += 1
+    while i < len(moves_san):
+        move_text += f"{move_no}. {moves_san[i]} "
+        i += 1
+        if i < len(moves_san):
+            move_text += f"{moves_san[i]} "
+            i += 1
+        move_no += 1
     move_text += result
     lines.append(move_text.strip())
     return "\n".join(lines) + "\n"
@@ -98,11 +119,19 @@ def parse_pgn_movetext(text):
     for tok in tokens:
         if tok in result_tokens:
             continue
-        # strip trailing move-number dots like "1." or "12..."
+        # Strip a leading "<digits><dots>" move-number prefix -- e.g. "1."
+        # or the no-space-before-move form "1.e4" -- but ONLY a prefix that
+        # is actually followed by a dot. Castling written as "0-0"/"0-0-0"
+        # starts with a digit too but is never followed by a dot, so it's
+        # left untouched rather than being mangled into "-0"/"-0-0".
         cleaned = tok
-        while cleaned and cleaned[0].isdigit():
-            cleaned = cleaned[1:]
-        cleaned = cleaned.lstrip(".")
+        i = 0
+        while i < len(cleaned) and cleaned[i].isdigit():
+            i += 1
+        if i > 0 and i < len(cleaned) and cleaned[i] == ".":
+            while i < len(cleaned) and cleaned[i] == ".":
+                i += 1
+            cleaned = cleaned[i:]
         if cleaned:
             san_moves.append(cleaned)
     return san_moves

@@ -183,11 +183,19 @@ class Searcher:
     def choose_move(self, board, seconds=3.0, max_depth=64):
         """Iterative deepening from depth 1 up to max_depth, bounded by a
         wall-clock time budget. Always returns the best move found by the
-        last fully-completed depth (never a partial, unreliable result)."""
+        last fully-completed depth (never a partial, unreliable result).
+
+        seconds=None means unlimited (search to max_depth) -- intended for
+        callers that explicitly want that (e.g. tests). Any non-positive
+        numeric budget is clamped to a small positive floor instead of
+        being treated as unlimited, so a caller passing --time 0 gets a
+        fast reply rather than an accidental multi-minute hang."""
         self.nodes = 0
         self.killers.clear()
         self.history.clear()
-        self.deadline = time.time() + seconds if seconds else None
+        if seconds is not None and seconds <= 0:
+            seconds = 0.05
+        self.deadline = time.time() + seconds if seconds is not None else None
 
         legal = generate_legal_moves(board)
         if not legal:
