@@ -240,6 +240,11 @@ def mlfq(processes, level_quanta=(4, 8, 16), boost_interval=None):
     level 0 between dispatches — the classic MLFQ starvation fix."""
     if not level_quanta or any(q <= 0 for q in level_quanta):
         raise SchedulerError("level_quanta must be a non-empty list of positive integers")
+    if boost_interval is not None and boost_interval <= 0:
+        # a non-positive boost_interval makes `do_boost`'s `now - last_boost >= boost_interval`
+        # loop either never terminate (0) or walk last_boost to -infinity (negative) -- reject up front
+        raise SchedulerError(f"boost_interval must be positive (or None to disable boosting), "
+                              f"got {boost_interval}")
     _validate(processes)
     arrived = _by_arrival(processes)
     n = len(arrived)

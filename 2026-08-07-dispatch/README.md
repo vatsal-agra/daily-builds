@@ -1,7 +1,16 @@
 # Dispatch
 
-**Status: Phase 2 — core build complete.** An OS process-scheduling &
+**Status: Phase 3 — adversarial review complete.** An OS process-scheduling &
 virtual-memory simulator built entirely from scratch.
+
+Phase 3 found and fixed 3 real bugs (see [`REVIEW.md`](./REVIEW.md)): an
+`mlfq(boost_interval=0)` infinite hang, a stored-XSS-shaped bug in the HTML
+report (unescaped process-id strings reaching `innerHTML`), and a CLI table
+misalignment for long algorithm names — verified via an independent
+tick-based oracle (300 randomized workloads, 0 mismatches vs. the
+event-driven engine), 200 more definitional-invariant fuzz runs, a 300-trial
+"Optimal is a lower bound" VM fuzz check, and a real headless-Chromium XSS
+repro/fix confirmation.
 
 ## What's working right now
 

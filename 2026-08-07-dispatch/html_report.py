@@ -191,6 +191,9 @@ const DATA = __DISPATCH_DATA__;
 const SERIES_COLORS = ["--series-1","--series-2","--series-3","--series-4","--series-5","--series-6","--series-7","--series-8"];
 const root = document.documentElement;
 function cssVar(name) { return getComputedStyle(document.querySelector(".viz-root")).getPropertyValue(name).trim(); }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
 const tooltip = document.getElementById("tooltip");
 function showTip(evt, html) {
   tooltip.innerHTML = html;
@@ -281,7 +284,7 @@ function renderGantt() {
       x: rectX, y, width: rectW, height: rowH, rx: 4,
       fill: `var(${pidColorMap[seg.pid]})`, class: "gbar"
     });
-    rect.addEventListener("mousemove", e => showTip(e, `<b>${seg.pid}</b><br>t=${seg.start}&ndash;${seg.end} (${seg.end-seg.start} units)`));
+    rect.addEventListener("mousemove", e => showTip(e, `<b>${escapeHtml(seg.pid)}</b><br>t=${seg.start}&ndash;${seg.end} (${seg.end-seg.start} units)`));
     rect.addEventListener("mouseleave", hideTip);
     svg.appendChild(rect);
   });
@@ -296,7 +299,7 @@ function renderProcessTable() {
   let html = `<table><thead><tr><th>pid</th><th>arrival</th><th>burst</th><th>start</th>
     <th>completion</th><th>waiting</th><th>turnaround</th><th>response</th></tr></thead><tbody>`;
   sched.results.forEach(r => {
-    html += `<tr><td>${r.pid}</td><td>${r.arrival_time}</td><td>${r.burst_time}</td><td>${r.start_time}</td>
+    html += `<tr><td>${escapeHtml(r.pid)}</td><td>${r.arrival_time}</td><td>${r.burst_time}</td><td>${r.start_time}</td>
       <td>${r.completion_time}</td><td>${r.waiting_time}</td><td>${r.turnaround_time}</td><td>${r.response_time}</td></tr>`;
   });
   html += `</tbody></table><div style="margin-top:8px;font-size:0.82rem;color:var(--text-secondary)">
@@ -334,7 +337,7 @@ function renderComparisonGrid() {
       const y = i * (barH + gap);
       const bw = Math.max(2, (values[i] / maxV) * (w - labelColW - valueColW));
       const rect = svgEl("rect", {x: labelColW, y, width: bw, height: barH, rx: 3, fill: `var(${pidColorMap[alg] || SERIES_COLORS[i % 8]})`, class: "gbar"});
-      rect.addEventListener("mousemove", e => showTip(e, `<b>${alg}</b><br>${spec.label}: ${spec.fmt(values[i])}`));
+      rect.addEventListener("mousemove", e => showTip(e, `<b>${escapeHtml(alg)}</b><br>${spec.label}: ${spec.fmt(values[i])}`));
       rect.addEventListener("mouseleave", hideTip);
       svg.appendChild(rect);
       const lbl = svgEl("text", {x: labelColW - 4, y: y + barH/2 + 4, "text-anchor": "end"});

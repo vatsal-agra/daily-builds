@@ -55,13 +55,18 @@ def render_gantt(schedule, width_scale=1) -> str:
 
 
 def render_metrics_table(rows) -> str:
+    # the algorithm column is sized to the longest name actually present (e.g.
+    # "Priority (non-preemptive)" is far wider than the other columns' fixed width;
+    # a hardcoded width here previously misaligned every column after it) instead
+    # of a hardcoded width that only happened to fit short names like "FCFS"/"SJF".
+    algo_w = max(9, max(len(r["algorithm"]) for r in rows)) if rows else 9
     headers = ["algorithm", "avg_wait", "avg_turnaround", "avg_response",
                "cpu_util", "throughput", "ctx_switches", "makespan"]
-    out = [" | ".join(f"{h:>14}" for h in headers)]
+    out = [" | ".join(f"{h:>{algo_w if i == 0 else 14}}" for i, h in enumerate(headers))]
     out.append("-" * len(out[0]))
     for r in rows:
         out.append(" | ".join([
-            f"{r['algorithm']:>14}",
+            f"{r['algorithm']:>{algo_w}}",
             f"{r['avg_waiting_time']:>14.2f}",
             f"{r['avg_turnaround_time']:>14.2f}",
             f"{r['avg_response_time']:>14.2f}",
