@@ -1,0 +1,12 @@
+{
+  "description": "General-purpose mixed workload (varied arrivals/bursts/priorities) used as the default for `dispatch compare` and the visualizer demo — not hand-verified to a single textbook number, just a realistic-looking mix.",
+  "quantum": 4,
+  "processes": [
+    {"pid": "P1", "arrival_time": 0, "burst_time": 7, "priority": 2},
+    {"pid": "P2", "arrival_time": 2, "burst_time": 4, "priority": 1},
+    {"pid": "P3", "arrival_time": 4, "burst_time": 9, "priority": 3},
+    {"pid": "P4", "arrival_time": 5, "burst_time": 5, "priority": 2},
+    {"pid": "P5", "arrival_time": 11, "burst_time": 3, "priority": 4},
+    {"pid": "P6", "arrival_time": 15, "burst_time": 6, "priority": 1}
+  ]
+}

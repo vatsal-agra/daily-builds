@@ -1,0 +1,14 @@
+{
+  "belady": {
+    "description": "The canonical Belady's Anomaly reference string. FIFO: 9 faults @3 frames, 10 faults @4 frames.",
+    "ref_string": [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5]
+  },
+  "locality": {
+    "description": "A working-set-style reference string with strong temporal locality (small hot set revisited often, occasional far jumps) -- LRU should noticeably beat FIFO here.",
+    "ref_string": [1, 2, 3, 1, 2, 4, 1, 2, 5, 1, 2, 3, 4, 5, 1, 2, 6, 1, 2, 3]
+  },
+  "sequential_worst_case": {
+    "description": "Pure sequential scan longer than the frame count -- the pathological worst case for LRU (every reference is a fault, LRU degrades to FIFO-like behavior since nothing is ever revisited before eviction).",
+    "ref_string": [1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8]
+  }
+}
