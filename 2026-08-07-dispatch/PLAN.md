@@ -90,7 +90,7 @@ tick loop — so results are exact, not sampling-error-prone.
    Anomaly reference string; a `compare` command producing a metrics
    table across all 6 CPU-scheduling algorithms on the same workload.
 
-### Stretch (2, ship ≥1)
+### Stretch (2, ship ≥1) — **both shipped**
 
 5. **Deadlock avoidance & detection** — Banker's Algorithm (safety
    algorithm over allocation/max/available matrices, returns a real safe

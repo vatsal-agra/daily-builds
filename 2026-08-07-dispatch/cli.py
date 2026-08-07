@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from core import scheduler, metrics, vm
+from core import scheduler, metrics, vm, deadlock, aging
 from core.process import load_workload, Process
 from workloads import presets
 
@@ -90,10 +90,10 @@ def render_process_table(schedule) -> str:
     return "\n".join(lines)
 
 
-ALGO_CHOICES = ["fcfs", "sjf", "srtf", "rr", "priority", "priority-preemptive", "mlfq"]
+ALGO_CHOICES = ["fcfs", "sjf", "srtf", "rr", "priority", "priority-preemptive", "priority-aging", "mlfq"]
 
 
-def _run_one(algo, procs, quantum, level_quanta, boost):
+def _run_one(algo, procs, quantum, level_quanta, boost, aging_rate=1, aging_period=5):
     if algo == "fcfs":
         return scheduler.fcfs(procs)
     if algo == "sjf":
@@ -106,6 +106,8 @@ def _run_one(algo, procs, quantum, level_quanta, boost):
         return scheduler.priority_scheduling(procs, preemptive=False)
     if algo == "priority-preemptive":
         return scheduler.priority_scheduling(procs, preemptive=True)
+    if algo == "priority-aging":
+        return aging.priority_aging(procs, aging_rate=aging_rate, aging_period=aging_period)
     if algo == "mlfq":
         return scheduler.mlfq(procs, level_quanta=level_quanta, boost_interval=boost)
     raise ValueError(f"unknown algorithm {algo!r}")
@@ -114,7 +116,7 @@ def _run_one(algo, procs, quantum, level_quanta, boost):
 def cmd_run(args):
     procs, quantum, desc = _load_cpu_workload(args)
     level_quanta = tuple(int(x) for x in args.level_quanta.split(",")) if args.level_quanta else (4, 8, 16)
-    sched = _run_one(args.algo, procs, quantum, level_quanta, args.boost)
+    sched = _run_one(args.algo, procs, quantum, level_quanta, args.boost, args.aging_rate, args.aging_period)
     if desc:
         print(f"# {desc}\n")
     print(f"=== {sched.algorithm} ===\n")
@@ -163,6 +165,48 @@ def cmd_vm(args):
     return 0
 
 
+def cmd_deadlock(args):
+    import json
+    if args.mode == "bankers":
+        available = json.loads(args.available)
+        max_matrix = json.loads(args.max_matrix)
+        allocation = json.loads(args.allocation)
+        safe, sequence = deadlock.bankers_safety(available, max_matrix, allocation)
+        if safe:
+            print(f"SAFE state. Safe sequence: {[f'P{i}' for i in sequence]}")
+        else:
+            print("UNSAFE state -- no safe sequence exists.")
+        if args.request_process is not None:
+            request = json.loads(args.request)
+            granted, reason = deadlock.bankers_request(available, max_matrix, allocation,
+                                                         args.request_process, request)
+            print(f"Request {request} from P{args.request_process}: "
+                  f"{'GRANTED' if granted else 'DENIED'} ({reason})")
+        return 0
+    if args.mode == "detect":
+        assignment = json.loads(args.assignment)
+        request_edges = json.loads(args.request_edges) if args.request_edges else []
+        cycle = deadlock.detect_cycle(assignment, request_edges)
+        if cycle:
+            print(f"DEADLOCK DETECTED. Cycle: {' -> '.join(cycle)}")
+        else:
+            print("No deadlock: resource-allocation graph is acyclic.")
+        return 0
+    return _err(f"unknown deadlock mode {args.mode!r}")
+
+
+def cmd_generate(args):
+    procs = aging.generate_poisson_workload(args.n, args.rate, seed=args.seed)
+    out = {"description": f"Synthetic Poisson-arrival workload (n={args.n}, rate={args.rate}, seed={args.seed})",
+           "quantum": 4,
+           "processes": [{"pid": p.pid, "arrival_time": p.arrival_time, "burst_time": p.burst_time,
+                           "priority": p.priority} for p in procs]}
+    import json
+    Path(args.output).write_text(json.dumps(out, indent=2))
+    print(f"wrote {args.output} ({args.n} processes)")
+    return 0
+
+
 def cmd_report(args):
     from html_report import build_report
     procs, quantum, _desc = _load_cpu_workload(args)
@@ -184,6 +228,27 @@ def cmd_demo(args):
     print(">>> dispatch demo: Belady's Anomaly")
     t3, t4 = vm.belady_anomaly_demo()
     print(f"  FIFO faults: 3 frames={t3.faults}, 4 frames={t4.faults}")
+    print(">>> dispatch demo: Banker's algorithm (classic Silberschatz example)")
+    avail = [3, 3, 2]
+    max_m = [[7, 5, 3], [3, 2, 2], [9, 0, 2], [2, 2, 2], [4, 3, 3]]
+    alloc = [[0, 1, 0], [2, 0, 0], [3, 0, 2], [2, 1, 1], [0, 0, 2]]
+    safe, seq = deadlock.bankers_safety(avail, max_m, alloc)
+    print(f"  safe={safe} sequence={[f'P{i}' for i in seq] if seq else None}")
+    print(">>> dispatch demo: RAG deadlock detection")
+    cycle = deadlock.detect_cycle([("R0", "P0"), ("R1", "P1")], [("P0", "R1"), ("P1", "R0")])
+    print(f"  cycle detected: {cycle}")
+    print(">>> dispatch demo: priority-aging fixes starvation")
+    from core.process import Process
+    starve_procs = [Process("LOW", 0, 5, priority=10)]
+    starve_procs += [Process(f"H{i}", i, 1, priority=1) for i in range(1, 60)]
+    plain = scheduler.priority_scheduling(starve_procs, preemptive=True)
+    aged = aging.priority_aging(starve_procs, aging_rate=2, aging_period=4)
+    plain_low_runs = [s for s in plain.gantt if s[0] == "LOW"]
+    aged_low_runs = [s for s in aged.gantt if s[0] == "LOW"]
+    print(f"  plain preemptive priority: LOW runs {len(plain_low_runs)} times, longest gap "
+          f"{max(b[1]-a[2] for a, b in zip(plain_low_runs, plain_low_runs[1:]))}")
+    print(f"  with aging: LOW runs {len(aged_low_runs)} times, longest gap "
+          f"{max(b[1]-a[2] for a, b in zip(aged_low_runs, aged_low_runs[1:]))}")
     return 0
 
 
@@ -198,6 +263,10 @@ def build_parser():
     r.add_argument("--quantum", type=int, default=None)
     r.add_argument("--level-quanta", default=None, help="comma-separated MLFQ quanta, e.g. 4,8,16")
     r.add_argument("--boost", type=int, default=None, help="MLFQ priority-boost interval")
+    r.add_argument("--aging-rate", dest="aging_rate", type=int, default=1,
+                    help="priority-aging: effective-priority improvement per aging_period waited")
+    r.add_argument("--aging-period", dest="aging_period", type=int, default=5,
+                    help="priority-aging: time units of waiting per aging_rate step")
     r.set_defaults(func=cmd_run)
 
     c = sub.add_parser("compare", help="compare all CPU-scheduling algorithms on one workload")
@@ -210,6 +279,27 @@ def build_parser():
     v.add_argument("--ref", required=True, help=f"preset ({presets.list_vm_presets()}) or comma-separated ints")
     v.add_argument("--frames", type=int, required=True)
     v.set_defaults(func=cmd_vm)
+
+    d = sub.add_parser("deadlock", help="Banker's algorithm safety/request check, or RAG cycle detection")
+    d.add_argument("--mode", required=True, choices=["bankers", "detect"])
+    d.add_argument("--available", default="[]", help="bankers: JSON list, e.g. [3,3,2]")
+    d.add_argument("--max", dest="max_matrix", default="[]", help="bankers: JSON n x m matrix")
+    d.add_argument("--allocation", default="[]", help="bankers: JSON n x m matrix")
+    d.add_argument("--request-process", dest="request_process", type=int, default=None,
+                    help="bankers: process index to test a resource request for")
+    d.add_argument("--request", default="[]", help="bankers: JSON resource-count vector")
+    d.add_argument("--assignment", default="[]",
+                    help='detect: JSON [[resource,process],...] edges, e.g. [["R0","P0"],["R1","P1"]]')
+    d.add_argument("--request-edges", dest="request_edges", default=None,
+                    help='detect: JSON [[process,resource],...] edges')
+    d.set_defaults(func=cmd_deadlock)
+
+    gen = sub.add_parser("generate", help="generate a synthetic Poisson-arrival workload JSON file")
+    gen.add_argument("--n", type=int, required=True)
+    gen.add_argument("--rate", type=float, required=True, help="mean arrivals per time unit")
+    gen.add_argument("--seed", type=int, default=None)
+    gen.add_argument("--output", required=True)
+    gen.set_defaults(func=cmd_generate)
 
     rep = sub.add_parser("report", help="render the interactive HTML visualizer")
     rep.add_argument("--workload", default="mixed_general")
