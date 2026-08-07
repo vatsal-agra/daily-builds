@@ -1,7 +1,12 @@
 # Dispatch
 
-**Status: Phase 4 — stretch features + polish complete.** An OS
-process-scheduling & virtual-memory simulator built entirely from scratch.
+**Status: Phase 5 — verification complete.** An OS process-scheduling &
+virtual-memory simulator built entirely from scratch.
+
+**80/80 automated tests pass** (`python3 -m unittest discover -s tests`) and
+**`./demo.sh`'s 10-step end-to-end walkthrough passes** (runs the full test
+suite plus a live exercise of every CLI feature against real output, not
+mocked). See [Testing](#testing) below.
 
 Phase 3 found and fixed 3 real bugs (see [`REVIEW.md`](./REVIEW.md)): an
 `mlfq(boost_interval=0)` infinite hang, a stored-XSS-shaped bug in the HTML
@@ -57,9 +62,25 @@ python3 cli.py report --workload mixed_general --vm-ref belady --frames 3 --outp
 python3 cli.py demo
 ```
 
+## Testing
+
+```bash
+python3 -m unittest discover -s tests -v   # 80 tests
+./demo.sh                                  # full suite + a live CLI walkthrough, 10 steps
+```
+
+`tests/` includes hand-worked textbook examples, an independently
+re-implemented tick-based oracle cross-checked against the event-driven
+engine over 250 randomized workloads, definitional-invariant fuzzing,
+a 200-trial "Optimal is a lower bound" fuzz check for virtual memory, a
+brute-force cross-check for Banker's Algorithm, CLI subprocess tests
+(happy-path and error-path), and a real headless-Chromium test that
+confirms the Phase-3 XSS bug stays fixed (not just that the source code
+looks escaped).
+
 ## Coming next
 
-Phase 5 (full test suite + demo script), Phase 6 (final README + ledger).
+Phase 6 (final ledger entry).
 
 See [`PLAN.md`](./PLAN.md) for the full architecture and feature list, and
 [`REVIEW.md`](./REVIEW.md) for the adversarial-review findings.
