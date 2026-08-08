@@ -34,7 +34,14 @@ def compute_accelerations(bodies, G=DEFAULT_G, softening=0.0):
             dist_sq = d.norm_sq() + eps_sq
             if dist_sq == 0.0:
                 continue
-            inv_dist3 = dist_sq ** -1.5
+            try:
+                inv_dist3 = dist_sq ** -1.5
+            except OverflowError:
+                raise FloatingPointError(
+                    f"Gravitational singularity: {bi.name!r} and {bj.name!r} are so close "
+                    f"(distance^2={dist_sq:.3e}) that 1/r^3 overflows a float. Use a nonzero "
+                    f"`softening` parameter to avoid this."
+                ) from None
             # a_i += G * m_j * d / |d|^3   (and equal & opposite on j)
             accel[i] += d * (G * bj.mass * inv_dist3)
             accel[j] += d * (-G * bi.mass * inv_dist3)

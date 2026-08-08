@@ -29,7 +29,8 @@ def history_to_traj_data(history, title, description):
     for snap in history:
         frame_bodies = [
             [round(b["position"][0], 6), round(b["position"][1], 6), round(b["position"][2], 6),
-             1 if b["alive"] else 0, b["mass"], round(b["radius"], 6)]
+             1 if b["alive"] else 0, b["mass"], round(b["radius"], 6),
+             round(b["velocity"][0], 6), round(b["velocity"][1], 6), round(b["velocity"][2], 6)]
             for b in snap["bodies"]
         ]
         frames.append({
@@ -150,7 +151,8 @@ _TRAJ_TEMPLATE = r"""<!doctype html>
 </div>
 <div id="controls">
   <button id="play">▶ Play</button>
-  <button id="reset-view">Reset view</button>
+  <button id="reset-view">Fit all</button>
+  <button id="fit-inner">Fit inner (median)</button>
   <span id="time-label">t = 0</span>
   <input id="timeline" type="range" min="0" max="0" value="0" step="1">
   <span>speed</span>
@@ -194,6 +196,25 @@ function autoFit() {
 }
 autoFit();
 
+// "Fit all" scales to the single farthest-ever body, which -- in a scene
+// with a big range of orbit sizes (e.g. Mercury at 0.4 AU vs Neptune at
+// 30 AU) -- squashes everything interesting into a tiny cluster of
+// overlapping dots at the center. This scales to a few times the
+// *median* distance instead, trading "everything visible" for "the
+// typical body visible", with pan/zoom available for the rest.
+function fitInner() {
+  const frame = DATA.frames[frameIdx];
+  const dists = frame.bodies.filter(b => b[3]).map(b => {
+    const [px, py] = project(b[0], b[1], b[2]);
+    return Math.hypot(px, py);
+  }).sort((a, b) => a - b);
+  if (!dists.length) return;
+  const median = dists[Math.floor(dists.length / 2)] || 1e-6;
+  scale = (Math.min(canvas.width, canvas.height) * 0.42) / Math.max(median * 3, 1e-6);
+  offsetX = canvas.width / 2;
+  offsetY = canvas.height / 2;
+}
+
 let frameIdx = 0;
 let playing = false;
 let selected = null;
@@ -218,7 +239,8 @@ function renderSidebarSelection() {
   const b = frame.bodies[selected];
   document.getElementById('info-name').textContent = DATA.names[selected] + (b[3] ? '' : ' (merged away)');
   document.getElementById('info-mass').textContent = b[4].toExponential(3);
-  document.getElementById('info-speed').textContent = '—';
+  const speed = b[3] ? Math.hypot(b[6], b[7], b[8]) : 0;
+  document.getElementById('info-speed').textContent = b[3] ? speed.toFixed(4) : '—';
   document.getElementById('info-pos').textContent = `(${b[0].toFixed(3)}, ${b[1].toFixed(3)}, ${b[2].toFixed(3)})`;
 }
 
@@ -250,13 +272,22 @@ function draw() {
     ctx.stroke();
   }
 
-  // bodies
+  // bodies. Marker radius is log(mass)-scaled relative to the other
+  // *currently alive* bodies in this frame, independent of camera zoom --
+  // physical radii (b[5]) are usually orders of magnitude too small to
+  // see at solar-system scale, and a fixed pixel size can't tell a star
+  // from a planet, so screen size instead encodes relative mass.
+  const aliveMasses = frame.bodies.filter(b => b[3]).map(b => Math.log10(Math.max(b[4], 1e-300)));
+  const minLogM = Math.min(...aliveMasses), maxLogM = Math.max(...aliveMasses);
+  const logSpan = maxLogM - minLogM;
   for (let i = 0; i < DATA.names.length; i++) {
     const b = frame.bodies[i];
     if (!b[3]) continue;
     const [px, py, depth] = project(b[0], b[1], b[2]);
     const sx = offsetX + px * scale, sy = offsetY - py * scale;
-    const r = Math.max(2.2, Math.min(14, Math.sqrt(b[4]) * scale * 0.6, b[5] * scale));
+    const logM = Math.log10(Math.max(b[4], 1e-300));
+    const t = logSpan > 1e-9 ? (logM - minLogM) / logSpan : 0.5;
+    const r = 2.5 + t * 12.5;
     ctx.beginPath();
     ctx.arc(sx, sy, r, 0, Math.PI * 2);
     ctx.fillStyle = DATA.colors[i];
@@ -319,6 +350,7 @@ playBtn.addEventListener('click', () => {
 timeline.addEventListener('input', () => { frameIdx = Number(timeline.value); draw(); });
 speedSlider.addEventListener('input', () => { speedLabel.textContent = speedSlider.value + ' f/s'; });
 document.getElementById('reset-view').addEventListener('click', () => { autoFit(); draw(); });
+document.getElementById('fit-inner').addEventListener('click', () => { fitInner(); draw(); });
 
 // pan & zoom
 let dragging = false, lastX = 0, lastY = 0;

@@ -1,8 +1,10 @@
 # Orrery
 
-**Status: Phase 2 complete — core build.** All 4 required features are
-implemented and demonstrably working end-to-end. See `PLAN.md` for the
-full concept and feature list.
+**Status: Phase 3 complete — adversarial review.** All 4 required
+features are implemented and working end-to-end; 6 real bugs (2 crash
+bugs, 3 UX bugs, 1 silently-ignored-flag issue) found and fixed. See
+`PLAN.md` for the concept/feature list and `REVIEW.md` for the full
+review.
 
 A from-scratch gravitational N-body simulator: Barnes-Hut octree force
 approximation, a symplectic leapfrog integrator (measured against naive
@@ -49,5 +51,24 @@ Scenario library so far: `solar_system`, `binary_star`, `figure_eight`
 (the three-body choreography), `plummer_cluster`, `galaxy_collision`.
 Collision/accretion merging is also implemented (stretch feature).
 
-Adversarial review, polish, verification, and the full README are still
-to come in later phases.
+## Phase 3: adversarial review
+
+Found and fixed 6 real issues — see `REVIEW.md` for full detail:
+
+- Two crash bugs: a raw `ZeroDivisionError` on `--n 0`/negative cluster
+  size, and a raw `OverflowError` on physically-tiny close encounters
+  with `softening=0` (bypassed the "simulation diverged" safety net
+  entirely). Both now raise clean, actionable errors.
+- Three UX bugs in the HTML report: a `|v|` speed field that could never
+  work (velocity was never exported to the client), every body rendering
+  at nearly the same marker size (the Sun indistinguishable from
+  Mercury), and a default camera view that scrunched the solar system's
+  inner planets into unreadable overlapping pixels.
+- Extended the Barnes-Hut benchmark's N range after discovering (and
+  keeping, not hiding) a real finding: Barnes-Hut is *slower* than brute
+  force below N≈300-400 in pure Python — tree-build overhead has to be
+  paid back. The benchmark now runs far enough (N=1000+) to show the
+  actual crossover instead of implying a universal speedup.
+
+Polish, stretch features, verification, and the full README are still to
+come in later phases.

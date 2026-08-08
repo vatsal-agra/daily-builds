@@ -15,6 +15,9 @@ from .vector import Vec3
 from .simulation import Simulation
 
 
+_SEEDABLE_SCENARIOS = ("plummer_cluster", "galaxy_collision")
+
+
 def _build_scenario(args):
     kwargs = {}
     if args.scenario == "plummer_cluster":
@@ -27,6 +30,8 @@ def _build_scenario(args):
             kwargs["n_per_galaxy"] = args.n
         if args.seed is not None:
             kwargs["seed"] = args.seed
+    elif args.scenario not in _SEEDABLE_SCENARIOS and (args.n is not None or args.seed is not None):
+        print(f"  note: --n/--seed have no effect on {args.scenario!r} (fixed body count); ignoring", file=sys.stderr)
     return scenarios.build(args.scenario, **kwargs)
 
 
@@ -227,11 +232,17 @@ def cmd_demo(args):
         report.write_trajectory_report(hist, name, sc.description, out)
         check(f"{name} ran {steps} steps and wrote a report", os.path.exists(out), out)
 
-    print("== 7. Barnes-Hut benchmark report ==")
-    results = report.run_benchmark(ns=(10, 30, 100), thetas=(0.0, 0.5, 1.0))
+    print("== 7. Barnes-Hut benchmark report (speed crossover + accuracy vs theta) ==")
+    results = report.run_benchmark(ns=(10, 50, 150, 400, 1000), thetas=(0.0, 0.5, 1.0))
     bench_out = os.path.join(outdir, "benchmark.html")
     report.render_benchmark_html(results, bench_out)
     check("benchmark report written", os.path.exists(bench_out), bench_out)
+    small_n, big_n = results["timing"][0], results["timing"][-1]
+    speedup_big = big_n["bruteforce_s"] / max(big_n["barnes_hut_s"], 1e-9)
+    check(
+        f"Barnes-Hut overtakes brute force by N={big_n['n']} (small-N overhead is real and expected)",
+        speedup_big > 1.0, f"speedup at N={big_n['n']}: {speedup_big:.2f}x",
+    )
 
     print()
     if failures:
@@ -271,7 +282,7 @@ def build_parser():
     pres.set_defaults(func=cmd_resume)
 
     pb = sub.add_parser("bench", help="Barnes-Hut vs brute-force benchmark")
-    pb.add_argument("--ns", default="10,30,100,300")
+    pb.add_argument("--ns", default="10,50,150,400,1000")
     pb.add_argument("--thetas", default="0.0,0.3,0.5,0.8,1.2")
     pb.add_argument("--out", default="benchmark.html")
     pb.set_defaults(func=cmd_bench)

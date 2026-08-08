@@ -161,7 +161,15 @@ def _accel_from_node(node, target, G, theta, eps_sq):
             dist_sq = d.norm_sq() + eps_sq
             if dist_sq == 0.0:
                 continue
-            acc += d * (G * b.mass * (dist_sq ** -1.5))
+            try:
+                inv_dist3 = dist_sq ** -1.5
+            except OverflowError:
+                raise FloatingPointError(
+                    f"Gravitational singularity: {b.name!r} and {target.name!r} are so close "
+                    f"(distance^2={dist_sq:.3e}) that 1/r^3 overflows a float. Use a nonzero "
+                    f"`softening` parameter to avoid this."
+                ) from None
+            acc += d * (G * b.mass * inv_dist3)
         return acc
 
     d = node.com - target.position
@@ -170,7 +178,15 @@ def _accel_from_node(node, target, G, theta, eps_sq):
     s = node.half_size * 2.0  # full width of this node's cube
     if dist > 0.0 and (s / dist) < theta:
         eff_dist_sq = dist_sq + eps_sq
-        return d * (G * node.mass * (eff_dist_sq ** -1.5))
+        try:
+            inv_dist3 = eff_dist_sq ** -1.5
+        except OverflowError:
+            raise FloatingPointError(
+                f"Gravitational singularity: {target.name!r} is so close to a mass "
+                f"concentration (distance^2={eff_dist_sq:.3e}) that 1/r^3 overflows a float. "
+                f"Use a nonzero `softening` parameter to avoid this."
+            ) from None
+        return d * (G * node.mass * inv_dist3)
 
     acc = Vec3(0.0, 0.0, 0.0)
     for c in node.children:

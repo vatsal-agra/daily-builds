@@ -127,6 +127,8 @@ def _sample_plummer(n, total_mass, scale_radius, G, rng, center=Vec3(0, 0, 0), b
     equilibrium, via the standard Aarseth/Henon/Wielen rejection-sampling
     method. Returns a list of Body.
     """
+    if n < 1:
+        raise ValueError(f"_sample_plummer: n must be >= 1, got {n}")
     m_each = total_mass / n
     bodies = []
     for k in range(n):
@@ -171,6 +173,8 @@ def plummer_cluster(n=60, total_mass=50.0, scale_radius=1.0, seed=42):
     Deterministic for a given seed (default 42) so demo/tests are
     reproducible.
     """
+    if n < 1:
+        raise ValueError(f"plummer_cluster: n must be a positive integer, got {n}")
     rng = random.Random(seed)
     G = 1.0
     bodies = _sample_plummer(n, total_mass, scale_radius, G, rng)
@@ -185,6 +189,8 @@ def plummer_cluster(n=60, total_mass=50.0, scale_radius=1.0, seed=42):
 
 def galaxy_collision(n_per_galaxy=40, seed=7):
     """Two Plummer clusters ('galaxies') on an intercept course."""
+    if n_per_galaxy < 1:
+        raise ValueError(f"galaxy_collision: n_per_galaxy must be a positive integer, got {n_per_galaxy}")
     rng = random.Random(seed)
     G = 1.0
     total_mass = 30.0
