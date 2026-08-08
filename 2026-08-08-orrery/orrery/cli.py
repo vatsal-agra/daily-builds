@@ -313,6 +313,16 @@ def main(argv=None):
     except ValueError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
+    except BrokenPipeError:
+        # A downstream reader (`| head`, `| grep -q`, ...) closed the pipe
+        # before we finished writing -- a normal, well-behaved Unix
+        # pattern, not a real error. Redirect stdout to devnull before
+        # exiting so the interpreter's own shutdown-time flush doesn't
+        # print an "Exception ignored" complaint about the same closed
+        # pipe (the standard idiom for this: see Python docs' SIGPIPE note).
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        return 0
 
 
 if __name__ == "__main__":

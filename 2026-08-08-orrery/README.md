@@ -1,9 +1,9 @@
 # Orrery
 
-**Status: Phase 4 complete — stretch + polish.** All 4 required features
-plus both planned stretch features are implemented and working
-end-to-end. See `PLAN.md` for the concept/feature list and `REVIEW.md`
-for the adversarial review.
+**Status: Phase 5 complete — verification.** 106 unit tests + a
+self-checking CLI demo + an end-to-end `demo.sh`, all green. See
+`PLAN.md` for the concept/feature list and `REVIEW.md` for the
+adversarial review (7 real bugs found and fixed across the whole build).
 
 A from-scratch gravitational N-body simulator: Barnes-Hut octree force
 approximation, a symplectic leapfrog integrator (measured against naive
@@ -88,4 +88,21 @@ report) and got extra polish this phase:
   across every report, including the new collision UI (click-to-jump,
   keyboard shortcuts).
 
-Verification (formal test suite + demo.sh) and the final README are next.
+## Phase 5: verification
+
+- **106 unit tests** (`tests/`, stdlib `unittest`, `python3 -m unittest
+  discover -s tests`) covering vectors, bodies, brute-force and
+  Barnes-Hut gravity (including the singularity/overflow guard), both
+  integrators, Kepler orbital mechanics, collisions, every scenario, the
+  simulation driver (including checkpoint/resume and every validation
+  path), the HTML report generator, and CLI subprocess smoke tests.
+- **`demo.sh`** runs the full test suite, the CLI's self-checking `demo`
+  walkthrough, and additional CLI smoke tests (checkpoint/resume round
+  trip, the benchmark, every bad-input error path, the collisions flag,
+  and pipe robustness) end-to-end, exiting non-zero on the first failure.
+- Verification itself caught one more real bug, documented in `REVIEW.md`:
+  `orrery run | head -2` (an entirely ordinary Unix pattern) crashed with
+  a raw `BrokenPipeError` traceback. Fixed with the standard Python
+  SIGPIPE-handling idiom.
+
+Run it yourself: `bash demo.sh` (takes ~10 seconds).

@@ -114,6 +114,20 @@ it. The benchmark report now shows the honest curve, overhead included.
   combinations, and every generated HTML report opened in headless
   Chromium with zero page/console errors.
 
+## Addendum (found during Phase 5 verification)
+
+7. **CRITICAL — raw `BrokenPipeError` traceback when stdout closes early.**
+   `orrery run ... | head -2` (or `| grep -q ...`, or anything else that
+   stops reading before the CLI finishes writing) crashed with an
+   unhandled `BrokenPipeError` traceback -- a completely ordinary Unix
+   usage pattern, not an edge case a real user would consider unusual.
+   Found while writing `demo.sh` itself (a `grep -q` check on a run's
+   output triggered it immediately). Fixed with the standard Python
+   idiom: catch `BrokenPipeError` in `main()`, redirect stdout to
+   `/dev/null` before exiting so the interpreter's own shutdown-time
+   flush doesn't print a second complaint about the same closed pipe, and
+   exit 0 (a closed downstream reader isn't a failure of the producer).
+
 ## Gate
 
 A fresh run-through (`orrery demo`, plus the manual adversarial commands
