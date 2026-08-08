@@ -19,7 +19,7 @@ from . import octree
 # Trajectory viewer
 # ----------------------------------------------------------------------
 
-def history_to_traj_data(history, title, description):
+def history_to_traj_data(history, title, description, collision_log=None):
     if not history:
         raise ValueError("history_to_traj_data: history is empty")
 
@@ -41,6 +41,16 @@ def history_to_traj_data(history, title, description):
             "angular_momentum": snap["angular_momentum"],
         })
 
+    # Attach each collision to the nearest recorded frame index, so the
+    # UI can jump the timeline straight to it (the collision log has
+    # exact merge times, but the frame list may be thinned by
+    # --record-every and won't necessarily contain that exact t).
+    frame_ts = [f["t"] for f in frames]
+    collisions = []
+    for ev in (collision_log or []):
+        idx = min(range(len(frame_ts)), key=lambda i: abs(frame_ts[i] - ev["t"])) if frame_ts else 0
+        collisions.append({"t": ev["t"], "survivor": ev["survivor"], "absorbed": ev["absorbed"], "frame": idx})
+
     e0 = frames[0]["energy"]
     return {
         "title": title,
@@ -49,11 +59,12 @@ def history_to_traj_data(history, title, description):
         "colors": colors,
         "frames": frames,
         "e0": e0,
+        "collisions": collisions,
     }
 
 
-def write_trajectory_report(history, title, description, out_path):
-    data = history_to_traj_data(history, title, description)
+def write_trajectory_report(history, title, description, out_path, collision_log=None):
+    data = history_to_traj_data(history, title, description, collision_log=collision_log)
     html_doc = _TRAJ_TEMPLATE.replace("__TITLE__", html_escape.escape(title))
     html_doc = html_doc.replace("__DATA_JSON__", json.dumps(data))
     with open(out_path, "w") as f:
@@ -120,6 +131,14 @@ _TRAJ_TEMPLATE = r"""<!doctype html>
   #info-panel { border-top: 1px solid #1c2230; margin-top: 8px; padding-top: 8px; }
   #info-panel .stat span:last-child { color: #ffd24a; }
   #hint { position: absolute; bottom: 8px; left: 8px; font-size: 11px; color: #4b5670; pointer-events: none; }
+  .collision-row {
+    padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 11px; color: #9aa7c2;
+    border-left: 2px solid #ff6b6b; margin-bottom: 3px;
+  }
+  .collision-row:hover { background: #151b28; color: #d8dee9; }
+  #timeline-wrap { flex: 1; position: relative; display: flex; align-items: center; }
+  #timeline-marks { position: absolute; left: 0; right: 0; top: -6px; height: 6px; pointer-events: none; }
+  #timeline-marks div { position: absolute; width: 2px; height: 6px; background: #ff6b6b; }
 </style>
 </head>
 <body>
@@ -130,7 +149,7 @@ _TRAJ_TEMPLATE = r"""<!doctype html>
 <div id="main">
   <div id="canvas-wrap">
     <canvas id="canvas"></canvas>
-    <div id="hint">scroll = zoom · drag = pan · click a body to inspect</div>
+    <div id="hint">scroll = zoom · drag = pan · click a body to inspect · space = play/pause · ←/→ = step</div>
   </div>
   <div id="sidebar">
     <h2>Simulation</h2>
@@ -138,6 +157,8 @@ _TRAJ_TEMPLATE = r"""<!doctype html>
     <div class="stat"><span>Time</span><span id="stat-t"></span></div>
     <div class="stat"><span>Energy drift</span><span id="stat-edrift"></span></div>
     <svg id="energy-chart"></svg>
+    <h2 id="collisions-header" style="display:none">Collisions</h2>
+    <div id="collision-list"></div>
     <h2>Bodies</h2>
     <div id="bodylist"></div>
     <div id="info-panel" style="display:none">
@@ -154,7 +175,10 @@ _TRAJ_TEMPLATE = r"""<!doctype html>
   <button id="reset-view">Fit all</button>
   <button id="fit-inner">Fit inner (median)</button>
   <span id="time-label">t = 0</span>
-  <input id="timeline" type="range" min="0" max="0" value="0" step="1">
+  <div id="timeline-wrap">
+    <div id="timeline-marks"></div>
+    <input id="timeline" type="range" min="0" max="0" value="0" step="1">
+  </div>
   <span>speed</span>
   <input id="speed" type="range" min="1" max="60" value="10" step="1">
   <span id="speed-label">10 f/s</span>
@@ -229,6 +253,26 @@ DATA.names.forEach((name, i) => {
   row.addEventListener('click', () => { selected = (selected === i) ? null : i; renderSidebarSelection(); });
   bodylistEl.appendChild(row);
 });
+
+if (DATA.collisions && DATA.collisions.length) {
+  document.getElementById('collisions-header').style.display = '';
+  const collisionListEl = document.getElementById('collision-list');
+  DATA.collisions.forEach(ev => {
+    const row = document.createElement('div');
+    row.className = 'collision-row';
+    row.textContent = `t=${ev.t.toFixed(4)}: ${ev.survivor} absorbed ${ev.absorbed}`;
+    row.addEventListener('click', () => { frameIdx = ev.frame; draw(); });
+    collisionListEl.appendChild(row);
+  });
+  const marksEl = document.getElementById('timeline-marks');
+  const lastFrame = DATA.frames.length - 1 || 1;
+  DATA.collisions.forEach(ev => {
+    const mark = document.createElement('div');
+    mark.style.left = (ev.frame / lastFrame * 100) + '%';
+    mark.title = `t=${ev.t.toFixed(4)}: ${ev.survivor} absorbed ${ev.absorbed}`;
+    marksEl.appendChild(mark);
+  });
+}
 
 function renderSidebarSelection() {
   document.querySelectorAll('.body-row').forEach(r => r.classList.toggle('selected', Number(r.dataset.idx) === selected));
@@ -351,6 +395,16 @@ timeline.addEventListener('input', () => { frameIdx = Number(timeline.value); dr
 speedSlider.addEventListener('input', () => { speedLabel.textContent = speedSlider.value + ' f/s'; });
 document.getElementById('reset-view').addEventListener('click', () => { autoFit(); draw(); });
 document.getElementById('fit-inner').addEventListener('click', () => { fitInner(); draw(); });
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const last = DATA.frames.length - 1;
+  if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
+  else if (e.code === 'ArrowRight') { frameIdx = Math.min(last, frameIdx + 1); draw(); }
+  else if (e.code === 'ArrowLeft') { frameIdx = Math.max(0, frameIdx - 1); draw(); }
+  else if (e.code === 'Home') { frameIdx = 0; draw(); }
+  else if (e.code === 'End') { frameIdx = last; draw(); }
+});
 
 // pan & zoom
 let dragging = false, lastX = 0, lastY = 0;

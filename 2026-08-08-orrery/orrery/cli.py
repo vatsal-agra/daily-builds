@@ -67,7 +67,7 @@ def cmd_run(args):
         sim.save(args.out)
         print(f"  checkpoint saved -> {args.out}")
     if args.report:
-        report.write_trajectory_report(history, sc.name, sc.description, args.report)
+        report.write_trajectory_report(history, sc.name, sc.description, args.report, collision_log=sim.collision_log)
         print(f"  trajectory report -> {args.report}")
     return 0
 
@@ -92,7 +92,7 @@ def cmd_resume(args):
         sim.save(args.out)
         print(f"  checkpoint saved -> {args.out}")
     if args.report:
-        report.write_trajectory_report(history, "resumed", f"Resumed from {args.checkpoint}", args.report)
+        report.write_trajectory_report(history, "resumed", f"Resumed from {args.checkpoint}", args.report, collision_log=sim.collision_log)
         print(f"  trajectory report -> {args.report}")
     return 0
 
@@ -206,7 +206,7 @@ def cmd_demo(args):
     history8 = sim8.run(steps8, dt8, record_every=max(1, steps8 // 400))
     return_err = max((b.position - s).norm() for b, s in zip(sim8.bodies, start))
     check("figure-eight returns close to its start after one period", return_err < 1e-3, f"return err={return_err:.2e}")
-    report.write_trajectory_report(history8, "figure_eight", sc8.description, os.path.join(outdir, "figure_eight.html"))
+    report.write_trajectory_report(history8, "figure_eight", sc8.description, os.path.join(outdir, "figure_eight.html"), collision_log=sim8.collision_log)
 
     print("== 5. Collision/accretion conserves momentum ==")
     b1 = Body("A", 1.0, Vec3(-1, 0, 0), Vec3(1, 0, 0), radius=0.5)
@@ -222,6 +222,14 @@ def cmd_demo(args):
     check("colliding bodies merge into one", len(alive) == 1, f"alive={[b.name for b in alive]}")
     check("merge conserves total momentum", (p_after - p_before).norm() < 1e-9, f"before={p_before.to_tuple()} after={p_after.to_tuple()}")
 
+    b3 = Body("A", 1.0, Vec3(-1, 0, 0), Vec3(1, 0, 0), radius=0.5)
+    b4 = Body("B", 1.0, Vec3(1, 0, 0), Vec3(-1, 0, 0), radius=0.5)
+    sim_c2 = Simulation([b3, b4], G=0.0, method="leapfrog", use_barnes_hut=False, collisions=True, softening=0.01)
+    hist_c = sim_c2.run(60, 0.02, record_every=1)
+    coll_out = os.path.join(outdir, "collision_merge.html")
+    report.write_trajectory_report(hist_c, "collision_merge", "Two equal-mass bodies on a head-on collision course, merging on contact.", coll_out, collision_log=sim_c2.collision_log)
+    check("collision report written with a collision event", len(sim_c2.collision_log) >= 1 and os.path.exists(coll_out), coll_out)
+
     print("== 6. Full scenario runs + reports ==")
     for name in ("solar_system", "binary_star", "plummer_cluster"):
         sc = scenarios.build(name)
@@ -229,7 +237,7 @@ def cmd_demo(args):
         steps = 800 if name != "plummer_cluster" else 300
         hist = sim.run(steps, sc.recommended_dt, record_every=max(1, steps // 300))
         out = os.path.join(outdir, f"{name}.html")
-        report.write_trajectory_report(hist, name, sc.description, out)
+        report.write_trajectory_report(hist, name, sc.description, out, collision_log=sim.collision_log)
         check(f"{name} ran {steps} steps and wrote a report", os.path.exists(out), out)
 
     print("== 7. Barnes-Hut benchmark report (speed crossover + accuracy vs theta) ==")

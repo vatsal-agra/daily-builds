@@ -1,10 +1,9 @@
 # Orrery
 
-**Status: Phase 3 complete — adversarial review.** All 4 required
-features are implemented and working end-to-end; 6 real bugs (2 crash
-bugs, 3 UX bugs, 1 silently-ignored-flag issue) found and fixed. See
-`PLAN.md` for the concept/feature list and `REVIEW.md` for the full
-review.
+**Status: Phase 4 complete — stretch + polish.** All 4 required features
+plus both planned stretch features are implemented and working
+end-to-end. See `PLAN.md` for the concept/feature list and `REVIEW.md`
+for the adversarial review.
 
 A from-scratch gravitational N-body simulator: Barnes-Hut octree force
 approximation, a symplectic leapfrog integrator (measured against naive
@@ -70,5 +69,23 @@ Found and fixed 6 real issues — see `REVIEW.md` for full detail:
   paid back. The benchmark now runs far enough (N=1000+) to show the
   actual crossover instead of implying a universal speedup.
 
-Polish, stretch features, verification, and the full README are still to
-come in later phases.
+## Phase 4: stretch + polish
+
+Both planned stretch features were already working end-to-end from Phase
+2/3 (collision/accretion; the scenario library + Barnes-Hut benchmark
+report) and got extra polish this phase:
+
+- **Collision visibility.** Previously a merge was only visible as a body
+  silently vanishing and the count dropping by one. The trajectory viewer
+  now lists every collision event in the sidebar (survivor, absorbed,
+  time), red tick marks appear on the timeline at each merge, and
+  clicking an event jumps playback straight to it.
+- **Keyboard shortcuts.** Space to play/pause, ←/→ to step one frame,
+  Home/End to jump to the start/end.
+- All of Phase 3's fixes (clean errors on bad input, the marker-sizing
+  and speed-field bugs, the camera presets) carried through unchanged —
+  re-verified via a full headless-Chromium pass with zero console errors
+  across every report, including the new collision UI (click-to-jump,
+  keyboard shortcuts).
+
+Verification (formal test suite + demo.sh) and the final README are next.
