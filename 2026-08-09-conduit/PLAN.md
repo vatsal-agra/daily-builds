@@ -101,7 +101,10 @@ client) reach a Conduit-backed server through the lossy simulator.
    actually throttling the sender.
 3. **Network simulator ("netsim")** — a seeded, configurable middlebox
    (loss %, delay/jitter, reorder %, duplicate %) that every integration
-   test runs through; deterministic per seed.
+   test runs through; the seed makes loss/reorder/duplicate *rates*
+   reproducible, though delivery itself runs on real threads against the
+   real clock rather than a scripted discrete-event clock, so it is a
+   genuinely unpredictable network, not a byte-exact replay.
 4. **From-scratch HTTP/1.1 server + client running entirely over Conduit**
    (not OS TCP), interoperable end-to-end with the box's real `curl`
    binary via a TCP↔Conduit bridge, through the lossy simulator.
