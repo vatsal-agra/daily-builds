@@ -11,6 +11,7 @@ import unittest
 
 from conduit.api import Listener, connect
 from conduit.netsim import NetworkSimulator
+from conduit.transport import ConduitTimeout
 
 
 def run_server(listener, expected_len, out, accept_timeout=5.0, recv_timeout=8.0):
@@ -156,6 +157,63 @@ class TestLossyNetwork(unittest.TestCase):
         got, stats = self._run_transfer(payload, loss=0.05, dup_prob=0.03, reorder_prob=0.08,
                                          reorder_delay=0.03, seed=5, timeout=40.0)
         self.assertEqual(got, payload)
+
+
+class TestConnectionLifecycle(unittest.TestCase):
+    """Regression tests for bugs found during adversarial review."""
+
+    def test_failed_connect_does_not_leak_threads(self):
+        # Nothing is listening on this port — connect() must time out and
+        # clean up its reader thread + UDP socket rather than leaking them.
+        # (Compares thread *names*, not counts: other tests' background
+        # threads may be winding down concurrently in the same process,
+        # which makes a raw active_count() comparison flaky.)
+        before_names = {t.name for t in threading.enumerate()}
+        with self.assertRaises(ConduitTimeout):
+            connect(("127.0.0.1", 1), timeout=1.0)
+        time.sleep(0.3)
+        after_names = {t.name for t in threading.enumerate()}
+        leaked = {n for n in (after_names - before_names) if "conduit-client" in n}
+        self.assertFalse(leaked, f"leaked threads: {leaked}")
+
+    def test_double_close_is_safe(self):
+        listener = Listener(("127.0.0.1", 0))
+        try:
+            out = {}
+            t = threading.Thread(target=run_server, args=(listener, 5, out))
+            t.start()
+            client = connect(listener.local_addr, timeout=5.0)
+            client.sendall(b"hello")
+            client.close()
+            client.close()  # must not raise
+            t.join(timeout=10)
+            self.assertEqual(out["data"], b"hello")
+        finally:
+            listener.close()
+
+    def test_passive_close_reaches_closed_final(self):
+        # Exercises CLOSE_WAIT -> LAST_ACK -> CLOSED_FINAL on the server
+        # side (the side that did NOT initiate close()).
+        listener = Listener(("127.0.0.1", 0))
+        try:
+            server_conn = {}
+
+            def server():
+                conn = listener.accept(timeout=5.0)
+                server_conn["conn"] = conn
+                conn.recv_exact(4, timeout=5.0)
+                time.sleep(0.2)  # let the client's FIN arrive and put us in CLOSE_WAIT
+                conn.close()
+
+            t = threading.Thread(target=server)
+            t.start()
+            client = connect(listener.local_addr, timeout=5.0)
+            client.sendall(b"ping")
+            client.close()
+            t.join(timeout=10)
+            self.assertEqual(server_conn["conn"].state, "CLOSED_FINAL")
+        finally:
+            listener.close()
 
 
 if __name__ == "__main__":

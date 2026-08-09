@@ -61,7 +61,17 @@ def connect(addr, mss=DEFAULT_MSS, recv_window=DEFAULT_RECV_WINDOW, trace=None,
         send_raw, incoming, mss=mss, recv_window_cap=recv_window, trace=trace,
         peer_addr=addr, name=f"client:{local_port}", on_teardown=teardown,
     )
-    conn.connect(timeout=timeout)
+    try:
+        conn.connect(timeout=timeout)
+    except Exception:
+        # Handshake failed (timeout/reset) — connect() never got a chance to
+        # register `teardown` as a close hook the caller will invoke, since
+        # there's no established connection for them to call close() on.
+        # Without this, a failed connect() leaks the reader thread and the
+        # UDP socket for the life of the process.
+        conn._stop_engine()
+        teardown()
+        raise
     return conn
 
 

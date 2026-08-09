@@ -180,6 +180,8 @@ class ConduitSocket:
                 self._cv.wait(timeout=0.5)
 
     def recv(self, bufsize: int, timeout=None) -> bytes:
+        if bufsize < 0:
+            raise ValueError("bufsize must be >= 0")
         with self._cv:
             deadline = None if timeout is None else time.monotonic() + timeout
             while not self._recv_queue and not self._eof_delivered:
@@ -418,7 +420,7 @@ class ConduitSocket:
             self._process_ack(seg.ack)
         self.peer_window = seg.window
 
-        if seg.payload:
+        if seg.payload and self.state in _CAN_RECV_DATA:
             self._handle_data(seg)
         if seg.has(FLAG_FIN):
             self._handle_fin(seg.seq)
@@ -523,28 +525,30 @@ class ConduitSocket:
             self._peer_fin_seq = None
             self._handle_fin(fin_seq)
 
+        our_fin_acked = (
+            self.state in (FIN_WAIT_1, FIN_WAIT_2, CLOSING, LAST_ACK)
+            and not any(s.is_control() for s in self._outstanding)
+        )
+
+        # Our FIN got acked before the peer's FIN showed up: FIN_WAIT_1 ->
+        # FIN_WAIT_2, same as real TCP. This is distinct from the
+        # simultaneous-close path below, where the peer's FIN arrives
+        # *before* ours is acked and we go to CLOSING instead.
+        if self.state == FIN_WAIT_1 and our_fin_acked and not self._eof_delivered:
+            self.state = FIN_WAIT_2
+            return
+
         if not self._eof_delivered:
             return
 
-        our_fin_acked = not any(s.is_control() for s in self._outstanding) \
-            if self.state in (FIN_WAIT_1, CLOSING, LAST_ACK) else False
-
         if self.state == ESTABLISHED:
             self.state = CLOSE_WAIT
-        elif self.state == FIN_WAIT_1:
-            self.state = CLOSING if not our_fin_acked else TIME_WAIT
-            if self.state == TIME_WAIT:
+        elif self.state in (FIN_WAIT_1, FIN_WAIT_2, CLOSING):
+            if our_fin_acked:
+                self.state = TIME_WAIT
                 self._time_wait_deadline = time.monotonic() + TIME_WAIT_LINGER
-        elif self.state == FIN_WAIT_2:
-            self.state = TIME_WAIT
-            self._time_wait_deadline = time.monotonic() + TIME_WAIT_LINGER
-        elif self.state == CLOSING and our_fin_acked:
-            self.state = TIME_WAIT
-            self._time_wait_deadline = time.monotonic() + TIME_WAIT_LINGER
-
-        if self.state in (FIN_WAIT_1, FIN_WAIT_2, CLOSING) and our_fin_acked and self._eof_delivered:
-            self.state = TIME_WAIT
-            self._time_wait_deadline = time.monotonic() + TIME_WAIT_LINGER
+            elif self.state != CLOSING:
+                self.state = CLOSING  # peer's FIN beat our FIN's ack — simultaneous close
 
         if self.state == LAST_ACK and not any(s.is_control() for s in self._outstanding):
             self.state = CLOSED_FINAL

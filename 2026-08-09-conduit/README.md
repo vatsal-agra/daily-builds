@@ -1,7 +1,7 @@
 # Conduit
 
-*Status: Phase 2 — core build complete, all 4 required features working
-end-to-end, 59/59 tests green.*
+*Status: Phase 3 — adversarial review complete, 4 real bugs found and
+fixed (see [REVIEW.md](REVIEW.md)), 62/62 tests green.*
 
 A TCP-like reliable transport protocol built entirely from scratch on raw
 UDP sockets, exercised under active packet loss/reorder/duplication by a
@@ -36,8 +36,11 @@ Try it:
 
 ```bash
 cd 2026-08-09-conduit
-python3 -m unittest discover -s tests -v   # 59 tests, ~60s
+python3 -m unittest discover -s tests -v   # 62 tests, ~20-60s depending on scheduling
 ```
 
-Next: adversarial review, stretch features (trace visualizer,
-`conduit-cp`), polish, and a runnable demo script.
+See [REVIEW.md](REVIEW.md) for the adversarial-review findings (4 real
+bugs found and fixed, plus honestly-documented known limitations).
+
+Next: stretch features (trace visualizer, `conduit-cp`), polish, and a
+runnable demo script.
