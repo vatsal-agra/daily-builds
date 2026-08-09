@@ -1,7 +1,8 @@
 # Conduit
 
-*Status: Phase 4 — stretch features (trace visualizer, `conduit-cp`) and
-polish complete, 67/67 tests green.*
+*Status: Phase 5 — verification complete. `./demo.sh` runs the full test
+suite, the end-to-end CLI demo, the conduit-cp smoke test, and CLI
+input-validation checks in one shot: all green.*
 
 A TCP-like reliable transport protocol built entirely from scratch on raw
 UDP sockets, exercised under active packet loss/reorder/duplication by a
