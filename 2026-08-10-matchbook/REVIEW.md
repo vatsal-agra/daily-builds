@@ -121,6 +121,32 @@ On a system with a non-UTF-8 default locale, a report containing
 non-ASCII agent names could fail to write or round-trip incorrectly.
 **Fix:** now opens with `encoding="utf-8"` explicitly.
 
+### 10. (Correctness) `NoiseTrader` never actually crosses the spread — CONFIRMED, FIXED (found writing Phase 5 tests)
+
+The docstring claimed `NoiseTrader` provides "small random limit orders
+near the current mid price, occasionally crossing the spread with a
+market order," but the implementation only ever submitted `LIMIT`
+orders priced as `mid - offset` for buys and `mid + offset` for sells —
+by construction, *every* buy prices below mid and *every* sell prices
+above mid, so two noise-trader orders (or a noise-trader order and the
+static seeded book) can never cross each other. A unit test that
+registered a single `NoiseTrader` against a freshly seeded, otherwise
+static book to check "one healthy agent isn't disrupted by a broken
+peer" caught this directly: **zero trades over 300 ticks**, because
+nothing in the scenario was ever capable of crossing the book. In the
+full multi-agent demo this was masked — market makers and momentum/
+mean-reversion traders generate plenty of real crossing activity — but
+the noise trader itself was never contributing the background liquidity-
+taking its own docstring claimed. **Fix:** `NoiseTrader` now spends a
+configurable fraction of ticks (`cross_prob`, default 12%) submitting a
+genuine `MARKET` order instead of a passive limit, actually taking
+liquidity the way real uninformed order flow does. Re-running the full
+3000-tick demo after the fix roughly doubled total trade volume (from
+~1000 to ~13,000 trades across both books) with the book still never
+crossing — this is exactly the kind of bug a test suite that only checks
+"looks plausible in the big demo" would never have caught, and exactly
+why Phase 5 writes isolated single-agent tests, not only end-to-end ones.
+
 ## Verified after fixes
 
 Re-ran the full 3000-tick demo session (`python3 demo.py`) plus a fresh

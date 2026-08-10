@@ -59,12 +59,13 @@ class NoiseTrader(Agent):
     starve for liquidity and lock up. Real exchanges always have this
     background flow (retail, uninformed order flow)."""
 
-    def __init__(self, name, mid_guess=10000, band=150, place_prob=0.55, drift_step=2):
+    def __init__(self, name, mid_guess=10000, band=150, place_prob=0.55, drift_step=2, cross_prob=0.12):
         super().__init__(name)
         self.mid_guess = mid_guess
         self.band = band
         self.place_prob = place_prob
         self.drift_step = drift_step
+        self.cross_prob = cross_prob  # fraction of the time this trader takes liquidity instead of providing it
 
     def on_tick(self, view, rng):
         actions = []
@@ -85,6 +86,20 @@ class NoiseTrader(Agent):
 
         if rng.random() > self.place_prob:
             return actions
+
+        # Most of the time this trader provides passive liquidity (a
+        # resting limit order priced away from mid). A minority of the
+        # time it takes liquidity instead, crossing the spread with a
+        # small market order — real uninformed/retail order flow does
+        # both, and without this a lone noise trader against a static
+        # seeded book can never generate a single trade: its passive buy
+        # orders always price below mid and its passive sells always
+        # price above mid, so by construction they can never cross each
+        # other or the resting book.
+        if rng.random() < self.cross_prob and view.best_bid is not None and view.best_ask is not None:
+            side = rng.choice([Side.BUY, Side.SELL])
+            qty = rng.randint(1, 5)
+            return actions + [Action("place", side=side, otype=OrderType.MARKET, qty=qty)]
 
         if view.best_bid is not None and view.best_ask is not None:
             mid = (view.best_bid + view.best_ask) // 2

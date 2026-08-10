@@ -2,12 +2,34 @@
 
 *A from-scratch limit order book matching engine + multi-agent market simulator.*
 
-**Status: Phase 4 (stretch + polish) complete.** All 4 required features
-plus both stretch features are done: a differential fuzz-testing oracle
-(`fuzz.py`/`src/oracle.py`) and a demonstrated pluggable Agent SDK
-(`examples/custom_agent_demo.py`, plus the built-in cross-book stat-arb
-agent). See [PLAN.md](./PLAN.md) for the concept/architecture/feature
-list and [REVIEW.md](./REVIEW.md) for the adversarial-review findings.
+**Status: Phase 5 (verification) complete — 47/47 tests green.** All 4
+required features plus both stretch features are done and tested. See
+[PLAN.md](./PLAN.md) for the concept/architecture/feature list and
+[REVIEW.md](./REVIEW.md) for all 10 adversarial-review findings
+(9 from Phase 3's hostile self-review, 1 more caught while writing
+Phase 5's tests — a `NoiseTrader` that, by construction, could never
+actually cross the spread).
+
+## Verification
+
+```
+./run_tests.sh
+```
+
+Runs, and requires all-green:
+- **47 unit tests** (`tests/`) — matching-engine invariants (never
+  crosses, FIFO price-time priority, partial fills, all 4 order types,
+  cancel, self-trade prevention, input validation), every agent's
+  decision logic in isolation, candle/depth-snapshot aggregation,
+  full-session simulator behavior (determinism, no self-trades, a
+  malformed custom agent can't crash the session), and the report
+  generator (valid HTML, script-injection escaping, recoverable JSON).
+- **The differential fuzz harness** — 60,000 randomized operations,
+  real engine vs. naive reference matcher, zero disagreements.
+- **The end-to-end demo** — a full 3000-tick, 2-instrument, 10-agent
+  session, checked for zero crossed-book ticks.
+- **The pluggable-agent example** — a third-party strategy dropped in
+  with zero engine changes, run to completion.
 
 ## Stretch features
 
