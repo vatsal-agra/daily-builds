@@ -2,9 +2,12 @@
 
 *A from-scratch limit order book matching engine + multi-agent market simulator.*
 
-**Status: Phase 2 (core build) complete.** All 4 required features work
-end-to-end. See [PLAN.md](./PLAN.md) for the full concept, architecture,
-and feature list.
+**Status: Phase 3 (adversarial review) complete.** All 4 required
+features work end-to-end and 9 real bugs found by a hostile self-review
+— a self-trade bug, a crash-on-malformed-agent-action bug, a script-
+injection hole in the report generator, and more — are fixed and
+verified. See [PLAN.md](./PLAN.md) for the concept/architecture/feature
+list and [REVIEW.md](./REVIEW.md) for the full findings.
 
 ## Quick look
 

@@ -11,8 +11,13 @@ import json
 
 def build_report(session, out_path, title="Matchbook — Session Replay"):
     payload = json.dumps(session, separators=(",", ":"))
+    # A `</` inside the JSON (e.g. a maliciously- or carelessly-named
+    # agent from the pluggable Agent SDK) would otherwise prematurely
+    # close this <script> block and inject arbitrary markup into the
+    # report. Escaping it is inert to JSON.parse but neutralizes the break-out.
+    payload = payload.replace("</", "<\\/")
     html = _HTML_TEMPLATE.replace("__TITLE__", title).replace("__DATA__", payload)
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
     return out_path
 
@@ -101,6 +106,7 @@ _HTML_TEMPLATE = r"""<!doctype html>
     <div class="panel">
       <h2>Cumulative P&amp;L by agent</h2>
       <canvas id="pnlCanvas" height="200"></canvas>
+      <div id="pnlLegend" style="display:flex; flex-wrap:wrap; gap:10px 16px; margin-top:10px; font-size:12px; color:var(--muted);"></div>
     </div>
     <div class="panel">
       <h2>Trade tape</h2>
@@ -145,7 +151,14 @@ let playTimer = null;
 document.getElementById('playBtn').addEventListener('click', () => {
   playing = !playing;
   document.getElementById('playBtn').textContent = playing ? '⏸ Pause' : '▶ Play';
-  if (playing) schedule();
+  if (playing) {
+    schedule();
+  } else {
+    // Pausing must stop immediately — a timer left pending would still
+    // fire once and silently advance the scrubber past where the user
+    // paused it.
+    clearTimeout(playTimer);
+  }
 });
 document.getElementById('stepFwdBtn').addEventListener('click', () => { step(1); });
 document.getElementById('stepBackBtn').addEventListener('click', () => { step(-1); });
@@ -155,6 +168,7 @@ function schedule() {
   if (!playing) return;
   const speed = parseInt(document.getElementById('speedSel').value, 10);
   playTimer = setTimeout(() => {
+    if (!playing) return;  // pause may have fired while this timer was in flight
     step(Math.max(1, Math.round(totalTicks / 400)));
     if (playing) schedule();
   }, speed);
@@ -230,6 +244,20 @@ function drawCandles(t) {
   });
 }
 
+// 12 visually distinct colors — enough that the shipped 10-agent demo
+// never has two agents sharing a color (a 7-color palette meant 3 of
+// the 10 lines silently doubled up on an earlier agent's color).
+const PALETTE = ['#4c8dff','#f5b942','#24c38a','#f0556b','#b57bf2','#37c9d6',
+                  '#ff8a5c','#e2e86b','#7ee787','#ff7ab6','#8ea1ff','#d9a066'];
+
+function drawLegend() {
+  const el = document.getElementById('pnlLegend');
+  el.innerHTML = DATA.agents.map((a, i) =>
+    '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
+    + 'background:' + PALETTE[i % PALETTE.length] + ';margin-right:5px;vertical-align:middle;"></span>' + a + '</span>'
+  ).join('');
+}
+
 function drawPnl(t) {
   const canvas = document.getElementById('pnlCanvas');
   const dpr = window.devicePixelRatio || 1;
@@ -237,7 +265,7 @@ function drawPnl(t) {
   canvas.width = w*dpr; canvas.height = h*dpr;
   const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,w,h);
-  const palette = ['#4c8dff','#f5b942','#24c38a','#f0556b','#b57bf2','#37c9d6','#ff8a5c'];
+  const palette = PALETTE;
   let lo = 0, hi = 0;
   DATA.agents.forEach(a => {
     (DATA.pnl_history[a] || []).forEach(([tt,v]) => { if (tt<=t) { lo = Math.min(lo,v); hi = Math.max(hi,v); } });
@@ -309,6 +337,7 @@ function drawLeaderboard(t) {
     '<tr><td>'+a+'</td><td class="'+cls(pnl)+'">'+fmtPnl(pnl)+'</td><td>'+inv+'</td></tr>').join('');
 }
 
+drawLegend();
 render();
 window.addEventListener('resize', render);
 </script>

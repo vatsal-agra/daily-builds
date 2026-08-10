@@ -86,7 +86,10 @@ class NoiseTrader(Agent):
         if rng.random() > self.place_prob:
             return actions
 
-        mid = view.best_bid and view.best_ask and (view.best_bid + view.best_ask) // 2
+        if view.best_bid is not None and view.best_ask is not None:
+            mid = (view.best_bid + view.best_ask) // 2
+        else:
+            mid = None
         if mid is None:
             mid = self.mid_guess
         else:

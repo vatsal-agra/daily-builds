@@ -42,7 +42,11 @@ def run_session(n_ticks=3000, seed=42):
 
 
 def to_session_json(sim, symbols, bar_ticks=15):
-    out = {"total_ticks": sim.t, "agents": [a.name for a, _ in sim.agents], "symbols": {}, "pnl_history": {}, "final_inventory": {}}
+    out = {
+        "total_ticks": sim.t, "agents": [a.name for a, _ in sim.agents],
+        "rejected_actions": sim.rejected_actions,
+        "symbols": {}, "pnl_history": {}, "final_inventory": {},
+    }
     for sym in symbols:
         book = sim.books[sym]
         trades = sim.trade_tape[sym]

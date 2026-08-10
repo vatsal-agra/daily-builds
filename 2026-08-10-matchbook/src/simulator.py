@@ -10,7 +10,7 @@ import random
 from collections import defaultdict
 
 from order import Side, OrderType
-from book import OrderBook
+from book import OrderBook, RejectedOrder
 from agents import BookView
 from marketdata import DepthRecorder
 
@@ -28,6 +28,7 @@ class MarketSimulator:
         self.pnl_history = defaultdict(list)  # owner -> [(t, pnl), ...]
         self.pnl_every = 5
         self.t = 0
+        self.rejected_actions = 0  # actions dropped for violating engine invariants (e.g. a buggy custom Agent)
 
     def register(self, agent, primary_symbol):
         assert primary_symbol in self.books, f"unknown symbol {primary_symbol!r}"
@@ -42,6 +43,11 @@ class MarketSimulator:
         for i in range(levels):
             book.submit(Side.BUY, OrderType.LIMIT, qty, price=max(1, mid - rung_ticks * (i + 1)), owner="SEED")
             book.submit(Side.SELL, OrderType.LIMIT, qty, price=mid + rung_ticks * (i + 1), owner="SEED")
+        # capture a t=0 depth snapshot of the just-seeded book, before any
+        # agent has acted — otherwise the visualizer's first available
+        # snapshot is at `every_n_ticks` and scrubbing to the very start
+        # of the session shows "no book yet" even though it isn't empty.
+        self.depth_recorders[symbol].snapshots.append({"t": 0, **book.depth(self.depth_recorders[symbol].levels)})
 
     def _make_view(self, symbol, owner, window=40):
         book = self.books[symbol]
@@ -87,9 +93,16 @@ class MarketSimulator:
         if action.kind == "cancel":
             book.cancel(action.order_id)
             return
-        _resting, trades = book.submit(
-            action.side, action.otype, action.qty, price=action.price, owner=agent.name, ts=self.t,
-        )
+        try:
+            _resting, trades = book.submit(
+                action.side, action.otype, action.qty, price=action.price, owner=agent.name, ts=self.t,
+            )
+        except RejectedOrder:
+            # A malformed action (e.g. from a buggy custom strategy
+            # plugged into the Agent SDK) must not take down the whole
+            # session — drop just this one action and keep going.
+            self.rejected_actions += 1
+            return
         if trades:
             self.trade_tape[symbol].extend(trades)
             for tr in trades:

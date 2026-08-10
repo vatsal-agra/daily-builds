@@ -92,8 +92,10 @@ class OrderBook:
             raise RejectedOrder(f"qty must be positive, got {qty}")
         if otype is OrderType.LIMIT and price is None:
             raise RejectedOrder("LIMIT order requires a price")
-        if otype is not OrderType.LIMIT and price is not None and otype not in (OrderType.IOC, OrderType.FOK):
-            raise RejectedOrder(f"{otype} order must not specify a price")
+        if otype is OrderType.MARKET and price is not None:
+            raise RejectedOrder("MARKET order must not specify a price")
+        if price is not None and price <= 0:
+            raise RejectedOrder(f"price must be positive, got {price}")
 
         ts = self._tick if ts is None else ts
         oid = order_id if order_id is not None else _fallback_id(self)
@@ -150,6 +152,13 @@ class OrderBook:
             dq = levels[best_price]
             while dq and order.qty > 0:
                 maker = dq[0]
+                if maker.owner == order.owner:
+                    # self-trade prevention: cancel the resting order
+                    # instead of matching an agent against itself, and
+                    # keep walking the queue at this price level.
+                    dq.popleft()
+                    del self.orders[maker.id]
+                    continue
                 fill_qty = min(order.qty, maker.qty)
                 trade = Trade(
                     price=best_price,
