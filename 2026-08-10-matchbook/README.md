@@ -2,12 +2,27 @@
 
 *A from-scratch limit order book matching engine + multi-agent market simulator.*
 
-**Status: Phase 3 (adversarial review) complete.** All 4 required
-features work end-to-end and 9 real bugs found by a hostile self-review
-— a self-trade bug, a crash-on-malformed-agent-action bug, a script-
-injection hole in the report generator, and more — are fixed and
-verified. See [PLAN.md](./PLAN.md) for the concept/architecture/feature
-list and [REVIEW.md](./REVIEW.md) for the full findings.
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features
+plus both stretch features are done: a differential fuzz-testing oracle
+(`fuzz.py`/`src/oracle.py`) and a demonstrated pluggable Agent SDK
+(`examples/custom_agent_demo.py`, plus the built-in cross-book stat-arb
+agent). See [PLAN.md](./PLAN.md) for the concept/architecture/feature
+list and [REVIEW.md](./REVIEW.md) for the adversarial-review findings.
+
+## Stretch features
+
+- **Differential fuzz-testing oracle** — `src/oracle.py` is a
+  deliberately naive, brute-force reference matcher; `fuzz.py` throws
+  thousands of randomized order/cancel sequences at it and the real
+  engine side by side and asserts every trade, best bid/ask, and full
+  depth ladder match exactly. `python3 fuzz.py --trials 300` runs 60,000
+  randomized operations with zero disagreements.
+- **Pluggable strategy SDK** — any class implementing `Agent.on_tick(view, rng) -> list[Action]`
+  (from `src/agents.py`) can be registered with the simulator, with zero
+  engine changes. `examples/custom_agent_demo.py` defines a brand-new
+  `LayeredMarketMaker` strategy entirely outside `src/` and runs it
+  alongside the built-ins. The shipped demo session also runs
+  `StatArbTrader`, a strategy that trades *two* order books at once.
 
 ## Quick look
 
