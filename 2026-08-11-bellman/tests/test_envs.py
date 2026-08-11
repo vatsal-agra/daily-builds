@@ -120,6 +120,15 @@ class TestCartPolePhysics(unittest.TestCase):
         with self.assertRaises(ValueError):
             env.step(2)
 
+    def test_step_before_reset_raises_a_clean_error(self):
+        # regression test: used to crash with a raw, confusing
+        # "TypeError: cannot unpack non-iterable NoneType object" instead
+        # of a clear error -- GridWorld already guarded this, CartPole
+        # didn't, found in adversarial review (REVIEW.md)
+        env = cartpole.CartPoleEnv(seed=0)
+        with self.assertRaises(RuntimeError):
+            env.step(0)
+
     def test_symmetry_of_the_dynamics(self):
         """Pushing left from a mirrored state should mirror the result of
         pushing right from the original state -- the physics has no

@@ -16,6 +16,20 @@ from .envs import gridworld, cartpole
 from .agents import dp, tabular, dqn, reinforce
 
 
+def positive_int(raw):
+    """argparse type for --episodes/--seed-style flags: rejects
+    zero/negative counts with a clean argparse error instead of letting
+    an empty-episode run crash deep inside statistics.mean() on an empty
+    reward list."""
+    try:
+        value = int(raw)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{raw!r} is not an integer")
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {value}")
+    return value
+
+
 def cmd_dp(args):
     env = gridworld.make(args.env)
     V, Q, policy = dp.value_iteration(env)
@@ -123,31 +137,31 @@ def main(argv=None):
     p_tab = sub.add_parser("tabular", help="train a tabular agent on a gridworld env")
     p_tab.add_argument("agent", choices=sorted(tabular.AGENTS))
     p_tab.add_argument("env", choices=sorted(gridworld.REGISTRY))
-    p_tab.add_argument("--episodes", type=int, default=800)
+    p_tab.add_argument("--episodes", type=positive_int, default=800)
     p_tab.add_argument("--seed", type=int, default=0)
     p_tab.set_defaults(func=cmd_tabular)
 
     p_cliff = sub.add_parser("cliff-compare", help="Q-learning vs SARSA on CliffWalking")
-    p_cliff.add_argument("--episodes", type=int, default=800)
+    p_cliff.add_argument("--episodes", type=positive_int, default=800)
     p_cliff.add_argument("--seed", type=int, default=2)
     p_cliff.set_defaults(func=cmd_cliff_compare)
 
     p_dqn = sub.add_parser("dqn", help="train a Deep Q-Network on CartPole")
-    p_dqn.add_argument("--episodes", type=int, default=400)
+    p_dqn.add_argument("--episodes", type=positive_int, default=260)
     p_dqn.add_argument("--seed", type=int, default=0)
     p_dqn.set_defaults(func=cmd_dqn)
 
     p_re = sub.add_parser("reinforce", help="train a REINFORCE policy-gradient agent on CartPole")
-    p_re.add_argument("--episodes", type=int, default=400)
+    p_re.add_argument("--episodes", type=positive_int, default=350)
     p_re.add_argument("--seed", type=int, default=0)
     p_re.set_defaults(func=cmd_reinforce)
 
     p_rep = sub.add_parser("report", help="run everything and build the HTML report")
     p_rep.add_argument("--out", default="report.html")
     p_rep.add_argument("--seed", type=int, default=0)
-    p_rep.add_argument("--dqn-episodes", type=int, default=400)
-    p_rep.add_argument("--reinforce-episodes", type=int, default=400)
-    p_rep.add_argument("--tabular-episodes", type=int, default=800)
+    p_rep.add_argument("--dqn-episodes", type=positive_int, default=260)
+    p_rep.add_argument("--reinforce-episodes", type=positive_int, default=350)
+    p_rep.add_argument("--tabular-episodes", type=positive_int, default=800)
     p_rep.set_defaults(func=cmd_report)
 
     args = parser.parse_args(argv)

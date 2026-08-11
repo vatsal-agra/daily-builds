@@ -48,6 +48,20 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("training complete", result.stdout)
 
+    def test_episodes_zero_is_rejected_cleanly(self):
+        # a hostile input (0 or negative episodes) must fail fast with a
+        # clean argparse error, not crash deep inside statistics.mean()
+        # on an empty reward list
+        result = run_cli("dqn", "--episodes", "0")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("positive", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_episodes_negative_is_rejected_cleanly(self):
+        result = run_cli("tabular", "qlearning", "gridworld", "--episodes", "-5")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_no_command_shows_usage_error(self):
         result = subprocess.run([PY, "-m", "bellman.cli"], cwd=ROOT,
                                  capture_output=True, text=True)

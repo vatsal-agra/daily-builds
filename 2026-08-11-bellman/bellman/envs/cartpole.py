@@ -48,6 +48,8 @@ class CartPoleEnv:
         return self.state
 
     def step(self, action):
+        if self.state is None:
+            raise RuntimeError("call reset() before step()")
         if action not in ACTIONS:
             raise ValueError(f"action must be 0 or 1, got {action!r}")
         x, x_dot, theta, theta_dot = self.state
