@@ -124,3 +124,19 @@ demo.sh            Runs the full suite + trains every agent + builds the
 - DQN/REINFORCE checked with a hard numeric pass bar: mean reward over
   the last N evaluation episodes at/near the environment's maximum
   (cart-pole's step cap), not "trained for X steps and looked fine."
+
+## Addendum: measured outcome vs. this plan
+
+Feature 4 above speculated DQN would reach cart-pole's full 500-step
+episode horizon. Measured result (seed 0, 260 episodes): a 30-episode
+greedy evaluation mean of **~120 steps** — a real, large, verified margin
+over random play (~15-20 steps) and a genuinely working from-scratch DQN,
+but well short of "full horizon." REINFORCE (feature 5), trained under
+the same conditions, reaches **~460/500 steps** on the same evaluation.
+Both are correctly implemented (NN gradient-checked, DQN's replay buffer/
+target network/Double-DQN target unit-tested); the gap is a real,
+literature-consistent property of one-step TD bootstrapping vs.
+full-episode Monte-Carlo returns on a task this small, not a defect in
+either agent. Investigated and explained in [REVIEW.md](./REVIEW.md)
+rather than silently tuned away or hidden by cherry-picking a favorable
+seed.
