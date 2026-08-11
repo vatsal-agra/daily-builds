@@ -106,6 +106,16 @@ class TestGridWorldModel(unittest.TestCase):
         self.assertEqual(r, outcomes[0][2])
 
 
+class TestGridWorldInvalidInput(unittest.TestCase):
+    def test_empty_grid_raises_a_clean_error(self):
+        with self.assertRaises(ValueError):
+            gridworld.GridWorld([])
+
+    def test_ragged_grid_raises_a_clean_error(self):
+        with self.assertRaises(ValueError):
+            gridworld.GridWorld(["...", ".."])
+
+
 class TestCartPolePhysics(unittest.TestCase):
     def test_reset_gives_small_perturbation_near_origin(self):
         env = cartpole.CartPoleEnv(seed=0)

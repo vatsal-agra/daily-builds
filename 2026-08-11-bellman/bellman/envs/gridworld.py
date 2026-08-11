@@ -52,6 +52,8 @@ class GridWorld:
     ):
         self.name = name
         self.rows = [row for row in grid]
+        if not self.rows:
+            raise ValueError("grid must contain at least one row")
         self.n_rows = len(self.rows)
         self.n_cols = len(self.rows[0])
         for row in self.rows:

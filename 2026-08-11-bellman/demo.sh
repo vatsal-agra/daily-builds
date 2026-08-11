@@ -23,11 +23,17 @@ python3 -m bellman.cli cliff-compare --episodes 800
 
 echo
 echo "== 4/4  function approximation on CartPole (DQN + REINFORCE) =="
-python3 -m bellman.cli dqn --episodes 260
-python3 -m bellman.cli reinforce --episodes 350
+# short smoke runs here -- the CLI plumbing (args, training loop, eval,
+# clean output) is what's under test in this step. The real, full-scale,
+# hard-numeric-pass-bar training run already happened above inside
+# tests/test_dqn.py + tests/test_reinforce.py (260/350 episodes each,
+# exactly what the report below also uses), so re-paying that ~7-minute
+# cost a third time here would just be wasted wall-clock, not more signal.
+python3 -m bellman.cli dqn --episodes 30
+python3 -m bellman.cli reinforce --episodes 30
 
 echo
-echo "== building the HTML report =="
+echo "== building the HTML report (full-scale training run) =="
 python3 -m bellman.cli report --out report.html
 echo "wrote report.html"
 
