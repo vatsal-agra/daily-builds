@@ -107,6 +107,13 @@ def bytes_to_pubkey(data: bytes):
         point = (x, y)
     elif data[0] in (0x02, 0x03):
         x = int.from_bytes(data[1:33], "big")
+        if x >= P:
+            # x must be canonically reduced mod P. Without this check, x
+            # and x-P behave identically in every downstream curve
+            # computation (everything is mod P anyway) — not a security
+            # hole — but it lets a single point be encoded two different
+            # ways, which a correct decoder should reject as malformed.
+            raise ValueError("x-coordinate is not a valid field element (>= P)")
         y_sq = (x * x * x + A * x + B) % P
         y = pow(y_sq, (P + 1) // 4, P)  # P % 4 == 3, so this recovers a sqrt
         if (y % 2 == 0) != (data[0] == 0x02):

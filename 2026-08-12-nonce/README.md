@@ -4,16 +4,18 @@ A blockchain / cryptocurrency built entirely from scratch: SHA-256, secp256k1
 ECDSA, merkle trees, UTXO transactions, proof-of-work mining, and a
 simulated multi-node P2P network reaching Nakamoto consensus.
 
-**Status: Phase 4 — stretch + polish complete.** 6 real bugs found and
-fixed across adversarial review and live testing (see
-[REVIEW.md](REVIEW.md)) — including one that silently defeated the
-merkle tamper-detection check itself, an ECDSA transaction-malleability
-gap, a block-template selection bug that could waste real mining work or
-drop valid chained transactions, a missing address-validation check that
-let a typo silently burn funds, and — caught by actually watching the
-live explorer — a fork-tie-break gap that could leave the network
-*permanently* split after a partition healed. All 4 required features
-work end-to-end (see [PLAN.md](PLAN.md)):
+**Status: Phase 5 — verification complete.** `demo.sh` runs a 100-test
+suite plus the full scripted multi-node demo plus a persisted-CLI sanity
+pass, end to end, all green. 8 real bugs found and fixed across
+adversarial review, live explorer testing, and writing the formal test
+suite (see [REVIEW.md](REVIEW.md)) — including one that silently
+defeated the merkle tamper-detection check itself, an ECDSA
+transaction-malleability gap, two separate block-template selection bugs
+that could waste real mining work or drop valid chained transactions, a
+missing address-validation check that let a typo silently burn funds,
+and a fork-tie-break gap that could leave the network *permanently*
+split after a partition healed. All 4 required features work end-to-end
+(see [PLAN.md](PLAN.md)):
 
 1. Proof-of-work blockchain core (SHA-256d, adjustable target, real
    nonce-grinding miner).
@@ -44,4 +46,8 @@ python3 -m nonce local balance
 
 ![Nonce block explorer](docs/explorer-screenshot.png)
 
-The formal test suite is next.
+```
+./demo.sh    # full verification: 100-test suite + scripted demo + persisted-CLI checks
+```
+
+Final polish and shipping are next.

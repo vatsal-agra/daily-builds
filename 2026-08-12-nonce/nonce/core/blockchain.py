@@ -299,17 +299,19 @@ class Blockchain:
         NOT call add_block — caller decides when/whether to submit it.
 
         Selection walks a local UTXO copy and applies each accepted tx to
-        it immediately (mirroring _apply_transactions' own rules) rather
+        it immediately (mirroring _apply_transactions' own rules — same
+        UTXO-existence, signature, ownership, and balance checks — right
+        down to using the same local-copy-and-apply structure) rather
         than checking every tx against the static confirmed UTXO set.
-        That matters for two real cases a naive "check against
-        self.utxo_set" selection gets wrong: (1) two mempool transactions
-        that both spend the same confirmed output would both look valid
-        in isolation, get included together, and only be caught later —
-        at full block validation — wasting the entire mining effort on a
-        block that's DOA; (2) a legitimate *chain* of unconfirmed
-        transactions (tx2 spending tx1's own not-yet-confirmed output)
-        would have tx2 rejected for "spending an unknown output" even
-        though it's perfectly valid once tx1 is included first."""
+        That matters for real cases a naive "check against self.utxo_set"
+        selection gets wrong: two mempool transactions that both spend
+        the same confirmed output, or a signature that doesn't actually
+        match the UTXO it claims to spend, would each look fine in
+        isolation and only be caught later at full block validation —
+        wasting the entire mining effort on a block that's DOA. A
+        legitimate *chain* of unconfirmed transactions (tx2 spending
+        tx1's own not-yet-confirmed output) is the mirror-image case this
+        same local-copy approach gets right instead of wrongly excluding."""
         from .block import build_candidate
         prev_hash = self.tip_hash
         height = self.height() + 1
@@ -319,13 +321,15 @@ class Blockchain:
         utxo = dict(self.utxo_set)  # local scratch copy; never mutates self.utxo_set
         included = []
         for tx in mempool_txs:
+            if tx.is_coinbase() or not tx.inputs or not tx.verify_signatures():
+                continue
             input_sum = 0
             ok = True
             consumed = []
             for txin in tx.inputs:
                 key = (txin.prev_txid, txin.prev_index)
                 entry = utxo.get(key)
-                if entry is None:
+                if entry is None or pubkey_to_address(txin.pubkey) != entry.to_address:
                     ok = False
                     break
                 consumed.append(key)

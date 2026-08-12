@@ -171,6 +171,32 @@ converge on the identical winner immediately — no need to wait for a
 third block to break the tie. Verified with a 20-seed sweep forcing
 exact-work ties under partition + heal: 0 failures to converge.
 
+### 7. `mine_new_block` selection checked UTXO existence but not signature ownership (HIGH — found by the Phase 5 test suite)
+
+The Phase 3 fix to `mine_new_block` (finding #3 above) made selection
+walk a local UTXO copy to catch double-spends and support chained
+transactions, but it only checked that a spent key *existed* in that
+copy — not that the spending signature's pubkey actually hashed to the
+UTXO's locking address. A transaction signed with the *wrong* private
+key (structurally valid signature, wrong signer — exactly
+`test_forged_signature_fails_verification`) would sail through
+selection, get mined into a real block, and only be rejected by
+`add_block`'s full validation afterward — the identical "wasted a real
+proof-of-work grind on a DOA block" failure mode as the original
+double-spend bug, just via a different unchecked field.
+
+**Fix:** selection now calls `tx.verify_signatures()` and checks
+`pubkey_to_address(txin.pubkey) == entry.to_address` for every input,
+mirroring `_apply_transactions` completely rather than partially.
+
+### 8. `bytes_to_pubkey` accepted a non-canonically-encoded x-coordinate (LOW — found by the Phase 5 test suite)
+
+A compressed pubkey with `x >= P` decoded successfully instead of being
+rejected. Not a security hole (every downstream curve operation is mod
+P anyway, so `x` and `x - P` behave identically in practice), but it
+meant a single point had two accepted encodings, which a correct decoder
+shouldn't allow. Fixed with an explicit `x < P` range check.
+
 ## Things considered and deliberately *not* changed
 
 - **CVE-2012-2459-style merkle ambiguity.** Bitcoin's real merkle
@@ -197,6 +223,9 @@ exact-work ties under partition + heal: 0 failures to converge.
 ## Verification
 
 Re-ran the full `nonce demo` scripted scenario and every standalone
-repro script above after each fix — all green, zero regressions. The
-scenarios above (plus the pre-existing full demo run) now live as
-permanent regression tests in `tests/`, run by `demo.sh`.
+repro script above after each fix — all green, zero regressions. Every
+finding above (including #7 and #8, which only surfaced once the formal
+Phase 5 test suite was written) now has a dedicated regression test in
+`tests/`. The full suite — 100 tests across crypto, merkle, difficulty,
+blockchain, network, wallet, persistence, and the end-to-end demo
+scenario — passes with zero failures, run by `demo.sh`.
