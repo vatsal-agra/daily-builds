@@ -143,6 +143,34 @@ nonce local send notAnAddress 1
 #          valid Nonce address: bad base58check checksum"
 ```
 
+### 6. Equal-work forks could leave the network *permanently* split after a partition heals (HIGH — found live, via the explorer)
+
+Caught by actually watching the live explorer under Playwright, not by
+reasoning about the code: the network log showed `partition healed,
+resynced — STILL DIVERGENT at height 17` after a scripted
+partition/heal cycle. Root cause: `add_block` only switched the active
+tip when a competing block's cumulative work was *strictly greater* than
+the current tip's ("first-seen wins" on a tie). Two independent miners
+finding a block at nearly the same time — a routine, expected event in
+any POW network, not an attack — produces exactly one such tie whenever
+both sides of a partition mine the same number of blocks at the same
+difficulty. With first-seen-wins as the *only* rule, different nodes
+each keep whichever side *they personally* saw first, and since neither
+side's work is ever strictly greater than the other's, nothing in
+`resync_all` could ever force them back into agreement — the split
+could persist forever, not just until the next block (in this run it
+happened to self-resolve once mining continued and one side pulled
+ahead, which is why the explorer's node panel later showed reconvergence
+by tick 22 — but that resolution was luck, not a guarantee).
+
+**Fix:** ties now break deterministically by hash (`work == tip_work and
+new_hash < tip_hash`). Every node evaluates the exact same comparison
+over the exact same two blocks once it has learned about both, so as
+soon as a resync makes every node aware of every candidate, all of them
+converge on the identical winner immediately — no need to wait for a
+third block to break the tie. Verified with a 20-seed sweep forcing
+exact-work ties under partition + heal: 0 failures to converge.
+
 ## Things considered and deliberately *not* changed
 
 - **CVE-2012-2459-style merkle ambiguity.** Bitcoin's real merkle
@@ -153,11 +181,6 @@ nonce local send notAnAddress 1
   `seen_txids` check), which closes this off completely — a block can
   never reach the merkle-ambiguous state in the first place. No further
   change needed; documented in `blockchain.py`.
-- **Fork tie-breaking on equal cumulative work.** `add_block` only
-  reorgs when a competing block's work is *strictly greater* than the
-  current tip's — a tie leaves the current tip in place ("first-seen
-  wins"). This is a deliberate, common convention (not a bug); most real
-  chains do something equivalent.
 - **Difficulty floor.** `next_bits` clamps any single retarget step to
   [0.25x, 4x] and clamps the resulting target to `>= 1`, but a
   target of literally 1 would make mining practically impossible. This

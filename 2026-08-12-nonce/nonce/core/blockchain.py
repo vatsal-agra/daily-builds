@@ -235,7 +235,20 @@ class Blockchain:
                                "utxo_snapshot": utxo_snapshot}
 
         reorg = None
-        if work > self.block_meta[self.tip_hash]["work"]:
+        tip_work = self.block_meta[self.tip_hash]["work"]
+        # Tie-break equal-work forks by hash (lower wins) rather than only
+        # "first seen": two independent miners finding a block at nearly
+        # the same time is a routine, expected event (not an attack), and
+        # with a pure first-seen rule, different nodes can each keep a
+        # different tip forever — whichever one THEY happened to see
+        # first — with no guarantee resync ever reconciles them, since
+        # neither side's work is ever *strictly* greater than the
+        # other's. Comparing hashes is deterministic and every node
+        # computes the exact same comparison over the exact same two
+        # blocks, so once all nodes have seen both sides of a tie, they
+        # all converge on the identical tip immediately — no need to wait
+        # for a third block to break the tie.
+        if work > tip_work or (work == tip_work and h < self.tip_hash):
             reorg = self._reorg_to(h)
             self.tip_hash = h
             self.utxo_set = utxo_snapshot
