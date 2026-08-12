@@ -283,27 +283,49 @@ class Blockchain:
     def mine_new_block(self, mempool_txs, reward_address: str, extra_nonce=0, should_abort=None) -> Block:
         """Assemble a candidate block from mempool_txs on top of the
         current tip, mine it (blocking), and return the mined block. Does
-        NOT call add_block — caller decides when/whether to submit it."""
+        NOT call add_block — caller decides when/whether to submit it.
+
+        Selection walks a local UTXO copy and applies each accepted tx to
+        it immediately (mirroring _apply_transactions' own rules) rather
+        than checking every tx against the static confirmed UTXO set.
+        That matters for two real cases a naive "check against
+        self.utxo_set" selection gets wrong: (1) two mempool transactions
+        that both spend the same confirmed output would both look valid
+        in isolation, get included together, and only be caught later —
+        at full block validation — wasting the entire mining effort on a
+        block that's DOA; (2) a legitimate *chain* of unconfirmed
+        transactions (tx2 spending tx1's own not-yet-confirmed output)
+        would have tx2 rejected for "spending an unknown output" even
+        though it's perfectly valid once tx1 is included first."""
         from .block import build_candidate
         prev_hash = self.tip_hash
         height = self.height() + 1
         bits = self.expected_bits(prev_hash)
 
         fees = 0
-        utxo = self.utxo_set
+        utxo = dict(self.utxo_set)  # local scratch copy; never mutates self.utxo_set
         included = []
         for tx in mempool_txs:
             input_sum = 0
             ok = True
+            consumed = []
             for txin in tx.inputs:
-                entry = utxo.get((txin.prev_txid, txin.prev_index))
+                key = (txin.prev_txid, txin.prev_index)
+                entry = utxo.get(key)
                 if entry is None:
                     ok = False
                     break
+                consumed.append(key)
                 input_sum += entry.amount
-            if not ok:
+            output_sum = tx.total_output()
+            if not ok or output_sum > input_sum:
                 continue
-            fees += input_sum - tx.total_output()
+            for key in consumed:
+                del utxo[key]
+            txid = tx.txid()
+            for idx, txout in enumerate(tx.outputs):
+                utxo[(txid, idx)] = txout
+            fees += input_sum - output_sum
             included.append(tx)
 
         coinbase = Transaction.coinbase(reward_address, subsidy_at(height) + fees, extra_nonce=extra_nonce)

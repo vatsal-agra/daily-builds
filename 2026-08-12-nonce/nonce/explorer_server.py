@@ -64,7 +64,7 @@ class Simulation:
                       f"(height {block.height}, {len(block.transactions)} tx)")
 
             # periodically demonstrate a partition -> fork -> heal -> reorg cycle
-            if self.tick % 14 == 0 and not self.partitioned and len(self.node_names) >= 3:
+            if self.tick % 14 == 0 and not self.partitioned and len(self.node_names) >= 2:
                 self._start_partition()
             elif self.partitioned and self.tick % 14 == 6:
                 self._heal_partition()

@@ -4,7 +4,7 @@ build signed transactions against a blockchain's UTXO set."""
 import secrets
 
 from .crypto import secp256k1 as ec
-from .core.transaction import Transaction, TxIn, TxOut, pubkey_to_address
+from .core.transaction import Transaction, TxIn, TxOut, pubkey_to_address, address_to_pkh
 
 
 class InsufficientFunds(Exception):
@@ -30,6 +30,14 @@ class Wallet:
         leftover is sent back to this wallet as a change output."""
         if amount <= 0:
             raise ValueError("amount must be positive")
+        try:
+            address_to_pkh(to_address)
+        except (ValueError, IndexError) as e:
+            # Fail loudly and *before* mining, not silently: TxOut never
+            # checks its own to_address, so without this a typo'd or
+            # garbage destination would mine successfully and just burn
+            # the funds forever, with the sender none the wiser.
+            raise ValueError(f"{to_address!r} is not a valid Nonce address: {e}") from None
         available = blockchain.utxos_for(self.address)
         if extra_utxos:
             available = {**available, **{k: v for k, v in extra_utxos.items() if v.to_address == self.address}}

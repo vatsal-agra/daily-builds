@@ -179,6 +179,16 @@ def verify(pubkey, msg_hash: bytes, signature) -> bool:
     r, s = signature
     if not (1 <= r < N and 1 <= s < N):
         return False
+    if s > N // 2:
+        # ECDSA is symmetric in s (both s and N-s validate for the same r,
+        # z, pubkey), so accepting high-s signatures lets a third party
+        # take any valid signature and flip it to a different, still-valid
+        # encoding — changing the transaction's id without invalidating
+        # any signature ("transaction malleability", the exact class of
+        # bug that motivated Bitcoin's BIP-62). sign() only ever produces
+        # low-s, so rejecting high-s here makes low-s the one canonical
+        # encoding a valid signature can have.
+        return False
     if not is_on_curve(pubkey):
         return False
     z = int.from_bytes(msg_hash, "big")

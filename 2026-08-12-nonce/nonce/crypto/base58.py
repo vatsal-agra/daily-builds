@@ -22,7 +22,10 @@ def b58encode(data: bytes) -> str:
 def b58decode(s: str) -> bytes:
     n = 0
     for ch in s:
-        n = n * _BASE + _ALPHABET.index(ch)
+        try:
+            n = n * _BASE + _ALPHABET.index(ch)
+        except ValueError:
+            raise ValueError(f"{ch!r} is not a valid base58 character (in {s!r})") from None
     n_leading_ones = len(s) - len(s.lstrip("1"))
     body = n.to_bytes((n.bit_length() + 7) // 8, "big") if n > 0 else b""
     return b"\x00" * n_leading_ones + body
@@ -35,8 +38,12 @@ def b58check_encode(version: bytes, payload: bytes) -> str:
 
 
 def b58check_decode(s: str):
-    """Returns (version, payload). Raises ValueError on bad checksum."""
+    """Returns (version, payload). Raises ValueError on bad checksum or
+    a string too short to even contain one (e.g. an empty/truncated
+    address someone fat-fingered)."""
     raw = b58decode(s)
+    if len(raw) < 5:  # at least 1 version byte + 4 checksum bytes
+        raise ValueError(f"{s!r} is too short to be a valid base58check-encoded value")
     body, checksum = raw[:-4], raw[-4:]
     if sha256d(body)[:4] != checksum:
         raise ValueError("bad base58check checksum")
