@@ -1,11 +1,10 @@
 # Braid
 
-*Status: Phase 4 complete — all 3 planned stretch features (character
-attribution, causal undo/redo, convergence-hash indicator) were already
-built during core development; this phase added polish (favicon, log-panel
-scroll fix, disabled-state UX, edge-case hardening for empty docs / large
-pastes / single-peer removal). 16/16 tests passing. Final verification and
-ship writeup still to come.*
+*Status: Phase 5 complete — full verification pass. Writing the end-to-end
+browser demo script surfaced 2 more real bugs beyond Phase 3's review (a
+join-snapshot gap and a partition-label mismatch, both HIGH severity — see
+[REVIEW.md](./REVIEW.md)), now fixed. 18/18 unit tests + 14/14 live-browser
+checks passing, stable across repeated runs. Ship writeup still to come.*
 
 A from-scratch CRDT (Replicated Growable Array) collaborative text editor
 with an adversarial network simulator, built entirely in vanilla JS with
@@ -15,9 +14,11 @@ feature list.
 ## Quick look
 
 ```
-npm test        # 16 tests: RGA unit tests, a 100-scenario randomized
+npm test        # 18 tests: RGA unit tests, a 100-scenario randomized
                  # convergence proof (latency, reordering, loss, partitions),
-                 # and regression tests for 3 real bugs found in review
+                 # and regression tests for 5 real bugs found in review
+./demo.sh        # npm test + a real-browser end-to-end smoke test
+                 # (multi-peer UI, partitions, attribution, undo/redo)
 python3 -m http.server 8000   # then open index.html in a browser
 ```
 

@@ -14,15 +14,6 @@ export class Peer {
     this.undoStack = [];
     // redoStack entries: {type:'undo-insert', target, vote} | {type:'undo-delete', target, vote}
     this.redoStack = [];
-    // every op this peer has ever ORIGINATED locally (not ops relayed in
-    // from elsewhere). This is the peer's own anti-entropy log: a real
-    // network can genuinely drop a packet, so periodically re-announcing
-    // "here is everything I've ever created" (see resyncOps()) is what
-    // lets a delivered-but-lost edit still get through eventually, without
-    // requiring the transport to be reliable. Applying an already-known op
-    // again is a no-op (see Doc._applyInsert's idempotency check), so this
-    // is always safe to call.
-    this.myOps = [];
   }
 
   get text() {
@@ -70,7 +61,6 @@ export class Peer {
     for (let i = 0; i < removed.length; i++) {
       const op = this.doc.localDeleteAt(start); // same index each time: they shift left as we delete
       ops.push(op);
-      this.myOps.push(op);
       this.undoStack.push({ type: 'delete', target: op.target, vote: op.vote });
     }
 
@@ -78,7 +68,6 @@ export class Peer {
     for (let i = 0; i < inserted.length; i++) {
       const op = this.doc.localInsertAt(start + i, inserted[i]);
       ops.push(op);
-      this.myOps.push(op);
       this.undoStack.push({ type: 'insert', id: op.id });
     }
 
@@ -117,7 +106,6 @@ export class Peer {
       op = this.doc.localUndelete(entry.target, entry.vote);
       this.redoStack.push({ type: 'undo-delete', target: entry.target });
     }
-    this.myOps.push(op);
     this.lastText = this.doc.getText();
     return op;
   }
@@ -135,15 +123,18 @@ export class Peer {
       op = this.doc.localDelete(entry.target);
       this.undoStack.push({ type: 'delete', target: op.target, vote: op.vote });
     }
-    this.myOps.push(op);
     this.lastText = this.doc.getText();
     return op;
   }
 
-  /** Everything this peer has ever originated, for anti-entropy resync
-   * over an unreliable transport. Safe to re-broadcast at any time. */
-  resyncOps() {
-    return this.myOps;
+  /** Full current-state snapshot (see Doc.snapshotOps), for bootstrapping
+   * a newly-joined peer or for anti-entropy resync over an unreliable
+   * transport. Includes everything this replica has ever received,
+   * regardless of who originated it — unlike replaying only this peer's
+   * own edits, which would miss anything only ever received from a site
+   * that has since left. Safe to re-broadcast at any time (idempotent). */
+  snapshotOps() {
+    return this.doc.snapshotOps();
   }
 }
 

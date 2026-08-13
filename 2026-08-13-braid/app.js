@@ -52,7 +52,11 @@ function syncNetworkParamsFromSliders() {
 syncNetworkParamsFromSliders();
 
 els.healBtn.addEventListener('click', () => {
-  net.healAll();
+  // Must heal to OUR OWN default label, not the network module's internal
+  // one — those are different strings, and a peer added later would
+  // compute its join group from our label, landing it in a partition
+  // nobody else is actually in (see REVIEW.md bug #6).
+  net.healAll(ALL_GROUP);
   for (const entry of peers.values()) entry.group = ALL_GROUP;
   renderPartitionRow();
   logEvent('— network healed —');
@@ -81,14 +85,15 @@ function addPeer() {
   const siteId = nameAllocator.next();
   const peer = new Peer(siteId);
 
-  // Join snapshot: a brand-new replica catches up by replaying every op
-  // every EXISTING peer has ever originated. Union of "ops each site
-  // originated" is the complete history, and replaying is safe regardless
-  // of order (inserts causally-buffer themselves; applying a known op
-  // twice is a no-op) — this is exactly how a real client bootstraps off
-  // an existing peer's state when it joins a live document.
+  // Join snapshot: a brand-new replica catches up by replaying a full
+  // current-state snapshot from every existing peer (Peer.snapshotOps() —
+  // NOT just what each of them personally typed, which would miss content
+  // originated by a since-departed peer; see REVIEW.md bug #5). Replaying
+  // is safe regardless of order (inserts causally-buffer themselves;
+  // applying a known op twice is a no-op) — this is exactly how a real
+  // client bootstraps off an existing peer's state when it joins.
   for (const { peer: existing } of peers.values()) {
-    for (const op of existing.resyncOps()) peer.receive(op);
+    for (const op of existing.snapshotOps()) peer.receive(op);
   }
 
   // Join whichever group already has people in it (an arbitrary existing
@@ -335,12 +340,14 @@ setInterval(() => {
   while (els.logPanel.children.length > 300) els.logPanel.removeChild(els.logPanel.firstChild);
 }, 500);
 
-// periodic anti-entropy: re-announce each peer's own history, so genuine
-// packet loss (not just latency/partition) still converges eventually —
-// re-applying an already-known op is always a no-op.
+// periodic anti-entropy: each peer re-broadcasts its FULL current-state
+// snapshot (not just what it personally typed — see REVIEW.md bug #5), so
+// genuine packet loss (not just latency/partition) still converges
+// eventually, even after whoever originated the lost content has left.
+// Re-applying an already-known op is always a no-op.
 setInterval(() => {
   for (const [siteId, entry] of peers) {
-    for (const op of entry.peer.resyncOps()) net.broadcast(siteId, op);
+    for (const op of entry.peer.snapshotOps()) net.broadcast(siteId, op);
   }
 }, 4000);
 
@@ -355,3 +362,7 @@ setInterval(() => {
 addPeer();
 addPeer();
 addPeer();
+
+// exposed for debugging / scripted testing only — not required for the
+// app itself, harmless to leave in
+window.__braid = { peers, net };

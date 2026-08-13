@@ -38,7 +38,7 @@ class Node {
     this.char = char;
     this.origin = origin; // id this was inserted after (or null = HEAD)
     this.next = null; // linked-list pointer maintained by the Doc
-    this.deletedBy = new Set(); // set of vote-id strings; tombstone iff non-empty
+    this.deletedBy = new Map(); // voteIdStr -> vote id object; tombstone iff non-empty
   }
   get tombstone() {
     return this.deletedBy.size > 0;
@@ -196,7 +196,7 @@ export class Doc {
       this._buffer(this.pendingByTarget, key, op);
       return;
     }
-    node.deletedBy.add(idStr(op.vote));
+    node.deletedBy.set(idStr(op.vote), op.vote);
     this._resolvePendingVotes(op.target, op.vote);
   }
 
@@ -249,5 +249,27 @@ export class Doc {
   /** True if there are no ops still waiting on a causal dependency. */
   isFullyDelivered() {
     return this.pendingByOrigin.size === 0 && this.pendingByTarget.size === 0 && this.pendingByVote.size === 0;
+  }
+
+  /** Reconstruct a full, replayable op list from the CURRENT structure —
+   * every node (including tombstoned ones) as an insert, plus every
+   * still-active delete vote. This is a complete snapshot of everything
+   * THIS replica has ever received, regardless of which site originated
+   * each piece — unlike replaying "just what I personally typed", which
+   * silently omits anything this replica only ever received from someone
+   * else. Applying the result elsewhere reproduces this exact document
+   * state; re-applying it anywhere that already has some of it is a safe
+   * no-op (see _applyInsert / _applyAddVote's idempotency checks). This is
+   * what makes a new peer's join-snapshot and periodic anti-entropy both
+   * correct even after the original author of some content has left. */
+  snapshotOps() {
+    const ops = [];
+    for (let n = this.head.next; n; n = n.next) {
+      ops.push({ type: 'insert', id: n.id, char: n.char, origin: n.origin });
+      for (const vote of n.deletedBy.values()) {
+        ops.push({ type: 'addVote', target: n.id, vote });
+      }
+    }
+    return ops;
   }
 }

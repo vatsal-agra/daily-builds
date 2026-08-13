@@ -114,6 +114,80 @@ weren't going anywhere.
 currently in (arbitrary existing peer, since group membership is otherwise
 symmetric), so "Add peer" always joins the live conversation by default.
 
+---
+
+Phase 5 (verification) turned up two more real bugs while writing the
+end-to-end browser demo script — worth documenting in the same place since
+they're the same category of problem (the app layer silently losing an
+edit, not the CRDT algorithm itself).
+
+### 5. [HIGH] A peer's join-snapshot missed content originated by anyone no longer present
+
+**How it was found:** the Phase 5 browser demo script does exactly what a
+real session looks like — remove a peer, add a new one, type in it, check
+everyone converges. It failed: the brand-new peer's pane came up **empty**
+even though the other two panes plainly had text in them.
+
+**Root cause:** the original join-snapshot bootstrapped a new peer by
+replaying `resyncOps()` from every currently-existing peer — but at the
+time, `resyncOps()` returned only the ops *that peer itself had typed*
+(exactly what it needs for its own anti-entropy retries, which is a
+narrower and legitimately different job). If everyone who ever typed the
+existing content has since left — even though the content is sitting
+right there in the remaining peers' documents, received from that
+now-departed peer — the union of "what each remaining peer personally
+typed" can be empty. Same underlying gap as bug #2, one level removed: the
+receiving peers correctly have the content, but had no way to *hand it
+back out* to a new joiner.
+
+**Fix:** added `Doc.snapshotOps()` / `Peer.snapshotOps()`, which
+reconstructs a full, replayable op list from the replica's **current
+structure** (walk every node, including tombstoned ones, plus its active
+delete votes) rather than from history of who-typed-what. This is a
+complete, from-any-single-peer-derivable snapshot regardless of origin,
+and it's what both the join-snapshot and the periodic anti-entropy
+resync use now — the self-only `myOps`/`resyncOps()` approach was removed
+entirely rather than kept alongside, since the full-snapshot approach is
+strictly more correct for both jobs and no more expensive to compute.
+
+**Regression test:** `test/regression.test.js` reproduces the exact
+Alice/Bob/Carol/Dave scenario (Alice types, leaves; Bob and Carol only
+ever received it; Dave joins bootstrapping off Bob and Carol only) and
+asserts Dave still gets the content, then that Dave's own new edit still
+reaches everyone.
+
+### 6. [HIGH] `healAll()` reset peers to the network module's own internal default label, not the app's — silently isolating any peer added after a heal
+
+**How it was found:** same Phase 5 demo run, same symptom (new peer's
+edits never arrived elsewhere) — but tracing it (via a temporary
+`window.__braid` debug hook exposing live peer/network state) showed the
+join-snapshot fix above wasn't the whole story: the new peer's `text` was
+correct, but its ops sat forever in `net.blocked`, never delivered.
+
+**Root cause:** `app.js` labels its "everyone together" partition group
+`"A"`. `Network.healAll()` (no argument) always reset every peer's
+internal partition to the module's own hardcoded `DEFAULT_PARTITION`
+constant (`'__default__'`) — a *different string* representing the same
+*concept* but not `===` to `"A"`. Right after a heal, existing peers were
+internally on `'__default__'`; a peer added afterward computed its join
+group by copying an existing peer's app-level label (`"A"`) and called
+`net.setPartition(newId, "A")` — landing it in a partition of one,
+indistinguishable from every other peer's perspective (their broadcasts
+to it, and its to them, were silently queued as "blocked by partition"
+forever, since nothing ever un-splits two groups that were never
+configured to be the same group in the first place).
+
+**Fix:** `Network.healAll(group)` now takes the target label as a
+parameter (defaulting to the module's own constant for callers with no
+labeling scheme of their own), and `app.js` calls `net.healAll(ALL_GROUP)`
+so the network's actual internal state and the UI's displayed state are
+always driven from the exact same value.
+
+**Regression test:** `test/regression.test.js` exercises `Network`
+directly with a caller-supplied heal label and asserts a peer joining
+that same label afterward can actually exchange messages with peers
+healed earlier — the scenario that silently failed before the fix.
+
 ## Things considered and deliberately NOT changed
 
 - **Packet loss can still cause temporary, not permanent, divergence.**
@@ -126,22 +200,25 @@ symmetric), so "Add peer" always joins the live conversation by default.
   sync works (gossip / anti-entropy, not per-message acks). The test
   suite accounts for this correctly: it resyncs until convergence (capped
   at 25 passes) rather than assuming one flush after healing is enough.
-- **`resyncOps()` grows unboundedly over a long session** (every op a peer
-  has ever made, re-sent on every anti-entropy pass). For a demo/lab of
-  this scope that's fine — a real system would replace this with a
-  compact state summary (version vector) rather than full history replay.
-  Documented as a known scope limitation, not fixed, per PLAN.md's
-  non-goals (no persistence layer).
+- **`snapshotOps()` re-sends the full document on every anti-entropy pass**
+  (every node, including tombstoned ones). For a demo/lab of this scope
+  that's fine — a real system would replace this with a compact state
+  summary (version vector) rather than full-document replay every few
+  seconds. Documented as a known scope limitation, not fixed, per
+  PLAN.md's non-goals (no persistence layer, no compaction).
 - **Large pastes generate one CRDT op per character**, not a single batch
   op. Functionally correct (just more messages), and keeps the wire
   format uniform. Left as-is; a production system would batch.
 
 ## Verification
 
-All 16 tests pass after fixes (`npm test`): 9 RGA unit tests, 4 convergence
-scenarios (including the 100-seed randomized sweep), and 3 regression tests
-pinning the exact bugs above. Re-ran the 100-seed sweep 5 times in a row
-with no failures (previously failed intermittently before fix #1).
-Re-verified all three fixes live in a real browser via Playwright: remove
-+ re-add no longer reuses a name, the new peer's edits propagate
-correctly, and concurrent emoji edits converge without tearing.
+All 18 tests pass (`npm test`): 9 RGA unit tests, 4 convergence scenarios
+(including the 100-seed randomized sweep), and 5 regression tests pinning
+the bugs above (bug #1's ordering fix is covered by both a dedicated
+regression test and the 100-seed sweep going stably green — it failed
+intermittently before that fix). The Phase 5 browser demo
+(`demo.sh` / `test/browser-demo.mjs`) drives the actual app in a real
+Chromium instance end to end — multi-peer convergence, partition + heal,
+attribution view, causal undo/redo, peer add/remove, and the empty-doc /
+last-peer-removal edge cases — 14/14 checks passing with zero console
+errors.

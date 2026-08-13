@@ -97,10 +97,12 @@ function runScenario(seed, { numPeers, numRounds, lossRate, partitionsEnabled })
   // Genuine packet loss (lossRate > 0) is real, unrecoverable loss of that
   // one delivery attempt though — nothing queues it — so on its own it CAN
   // leave peers permanently diverged. What recovers from that is
-  // anti-entropy: each peer periodically re-announces every op it has ever
-  // originated (Peer.resyncOps()); re-applying an already-known op is a
-  // no-op, so this is always safe, and each resync pass is an independent
-  // trial against the loss rate. A handful of passes drives the residual
+  // anti-entropy: each peer periodically re-broadcasts its full current
+  // snapshot (Peer.snapshotOps() — everything it has, not just what it
+  // personally typed, so this works even after whoever originated some
+  // content has left); re-applying an already-known op is a no-op, so
+  // this is always safe, and each resync pass is an independent trial
+  // against the loss rate. A handful of passes drives the residual
   // divergence probability to ~0 for any lossRate < 1.
   net.healAll();
   clock.runAll();
@@ -110,7 +112,7 @@ function runScenario(seed, { numPeers, numRounds, lossRate, partitionsEnabled })
     if (hashesNow.size === 1) break; // already converged, no need to keep resyncing
     for (const id of siteIds) {
       const peer = peers.get(id);
-      for (const op of peer.resyncOps()) net.broadcast(id, op);
+      for (const op of peer.snapshotOps()) net.broadcast(id, op);
     }
     clock.runAll();
   }

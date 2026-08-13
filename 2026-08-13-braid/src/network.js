@@ -82,8 +82,15 @@ export class Network {
     this._flushBlocked();
   }
 
-  healAll() {
-    for (const siteId of this.peers.keys()) this.partitions.set(siteId, DEFAULT_PARTITION);
+  /** Reset every peer to the same group, healing any split. Accepts an
+   * explicit group label so a caller with its own labeling scheme (e.g. an
+   * app that always uses "A" for "everyone together") can heal to exactly
+   * the value it already uses elsewhere — using this method's own default
+   * instead would silently create a THIRD group distinct from both, and
+   * any peer added after that heal would land in a group nobody else is
+   * in (isolated, with no indication why). */
+  healAll(group = DEFAULT_PARTITION) {
+    for (const siteId of this.peers.keys()) this.partitions.set(siteId, group);
     this._flushBlocked();
   }
 

@@ -1,12 +1,13 @@
 // regression.test.js — one test per real bug found during the Phase 3
-// adversarial review (see REVIEW.md for the full writeup), pinned here so
-// none of them can silently come back.
+// adversarial review and the Phase 5 verification pass (see REVIEW.md for
+// the full writeup), pinned here so none of them can silently come back.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Doc } from '../src/rga.js';
 import { Peer } from '../src/peer.js';
 import { NameAllocator, NAME_POOL } from '../src/names.js';
+import { Network, VirtualClock } from '../src/network.js';
 
 test('REGRESSION: a reused site id must not silently swallow the new peer\'s edits', () => {
   // This is the bug: two DIFFERENT Peer instances sharing the same siteId
@@ -15,10 +16,10 @@ test('REGRESSION: a reused site id must not silently swallow the new peer\'s edi
   oldAlice.setText('hello');
 
   const newAlice = new Peer('Alice'); // deliberately reusing the id
-  for (const op of oldAlice.myOps) newAlice.receive(op);
+  for (const op of oldAlice.doc.snapshotOps()) newAlice.receive(op);
 
   const carolDoc = new Doc('Carol');
-  for (const op of oldAlice.myOps) carolDoc.applyOp(op);
+  for (const op of oldAlice.doc.snapshotOps()) carolDoc.applyOp(op);
 
   const ops = newAlice.setText(newAlice.text + 'X');
   for (const op of ops) carolDoc.applyOp(op);
@@ -35,6 +36,51 @@ test('REGRESSION: a reused site id must not silently swallow the new peer\'s edi
     assert.equal(seen.has(name), false, `NameAllocator reused "${name}"`);
     seen.add(name);
   }
+});
+
+test('REGRESSION: a peer that joins AFTER the original author left must still receive that content', () => {
+  // Found while writing the Phase 5 browser demo: Alice types "hello",
+  // Bob and Carol receive it over the network (they never typed it
+  // themselves). Alice then leaves. A brand-new peer, Dave, joins and
+  // bootstraps off Bob's and Carol's current state.
+  //
+  // The bug: an earlier version of the join-snapshot logic replayed each
+  // existing peer's own snapshotOps()-equivalent as "only what that peer
+  // personally originated" (Peer.myOps at the time) — but Bob and Carol
+  // never originated "hello", they only ever RECEIVED it. So the union of
+  // "what each existing peer typed" was empty, and Dave's join snapshot
+  // silently came back blank even though Bob and Carol both plainly have
+  // the text right there. The fix: Peer.snapshotOps() (backed by
+  // Doc.snapshotOps()) reconstructs a full snapshot from the replica's
+  // CURRENT STRUCTURE, regardless of who originated each character.
+  const alice = new Peer('Alice');
+  alice.setText('hello');
+
+  const bob = new Peer('Bob');
+  const carol = new Peer('Carol');
+  for (const op of alice.snapshotOps()) {
+    bob.receive(op);
+    carol.receive(op);
+  }
+  assert.equal(bob.text, 'hello');
+  assert.equal(carol.text, 'hello');
+
+  // Alice is gone now — nothing from her is available anymore. Dave joins
+  // and bootstraps ONLY from Bob and Carol, exactly as app.js's addPeer() does.
+  const dave = new Peer('Dave');
+  for (const existing of [bob, carol]) {
+    for (const op of existing.snapshotOps()) dave.receive(op);
+  }
+  assert.equal(dave.text, 'hello', "Dave's join snapshot must include content Alice originated, even though Alice is gone and Bob/Carol only ever received it");
+
+  // and Dave's own new edit must reach everyone else, unaffected
+  const ops = dave.setText(dave.text + ' world');
+  for (const op of ops) {
+    bob.receive(op);
+    carol.receive(op);
+  }
+  assert.equal(bob.text, 'hello world');
+  assert.equal(carol.text, 'hello world');
 });
 
 test('REGRESSION: concurrent inserts must not tear an astral character (emoji) apart', () => {
@@ -98,6 +144,38 @@ test('REGRESSION: RGA insert must skip an entire sibling subtree, not just the s
   for (const order of orders) {
     assert.equal(applyInOrder(order), canonical, `order ${JSON.stringify(order)} must match the canonical linearization`);
   }
+});
+
+test("REGRESSION: healAll() must reset to the CALLER's group label, not the module's own internal default", () => {
+  // Found while writing the Phase 5 browser demo: app.js labels its
+  // "everyone together" group "A". Network.healAll() used to always reset
+  // to its own internal '__default__' label instead. Both mean "healed",
+  // but they're different STRINGS, and broadcast() compares them with
+  // strict equality — so any peer added (or repartitioned) using the
+  // caller's "A" label after a healAll() landed in a group nobody else
+  // was actually in, silently isolated with no error anywhere.
+  const clock = new VirtualClock();
+  const net = new Network({ clock, minLatency: 1, maxLatency: 2, lossRate: 0 });
+  const received = { A: [], B: [] };
+  net.addPeer('A', (op) => received.A.push(op));
+  net.addPeer('B', (op) => received.B.push(op));
+
+  net.setPartition('A', 'split1');
+  net.setPartition('B', 'split2');
+  net.healAll('everyone'); // caller's own label, NOT the module's default
+
+  net.broadcast('A', { type: 'insert', id: { site: 'A', seq: 0 }, char: 'x', origin: null });
+  clock.runAll();
+  assert.equal(received.B.length, 1, "B must receive A's broadcast after healing to a shared label");
+
+  // a THIRD peer joining afterward and explicitly placed in that same
+  // caller label must also actually be able to reach the others
+  net.addPeer('C', (op) => {});
+  net.setPartition('C', 'everyone');
+  net.broadcast('C', { type: 'insert', id: { site: 'C', seq: 0 }, char: 'y', origin: null });
+  clock.runAll();
+  assert.equal(received.A.length, 1, 'a peer joining the healed-to label must reach peers healed to that same label');
+  assert.equal(received.B.length, 2);
 });
 
 function hasLoneSurrogate(s) {
