@@ -38,20 +38,31 @@ export class Peer {
     const oldText = this.lastText;
     if (newText === oldText) return [];
 
+    // Diff by Unicode CODE POINT, not by raw UTF-16 index. Every CRDT node
+    // is meant to be one atomic character; splitting on code units would
+    // let an astral character (most emoji — two UTF-16 units, one code
+    // point) get diffed as two independent "characters" that could then
+    // be reordered relative to each other by a concurrent remote op,
+    // tearing it into two lone, unrenderable surrogate halves. Iterating
+    // the string (its default iterator, and what Array.from uses) walks
+    // by code point, so a surrogate pair is always one indivisible entry.
+    const oldChars = Array.from(oldText);
+    const newChars = Array.from(newText);
+
     // common prefix / suffix, so we only touch what actually changed
     let start = 0;
-    const maxStart = Math.min(oldText.length, newText.length);
-    while (start < maxStart && oldText[start] === newText[start]) start++;
+    const maxStart = Math.min(oldChars.length, newChars.length);
+    while (start < maxStart && oldChars[start] === newChars[start]) start++;
 
-    let endOld = oldText.length;
-    let endNew = newText.length;
-    while (endOld > start && endNew > start && oldText[endOld - 1] === newText[endNew - 1]) {
+    let endOld = oldChars.length;
+    let endNew = newChars.length;
+    while (endOld > start && endNew > start && oldChars[endOld - 1] === newChars[endNew - 1]) {
       endOld--;
       endNew--;
     }
 
-    const removed = oldText.slice(start, endOld);
-    const inserted = newText.slice(start, endNew);
+    const removed = oldChars.slice(start, endOld);
+    const inserted = newChars.slice(start, endNew);
 
     const ops = [];
 

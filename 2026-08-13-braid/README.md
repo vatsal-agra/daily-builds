@@ -1,8 +1,9 @@
 # Braid
 
-*Status: Phase 2 complete — core CRDT, network simulator, live multi-peer
-editor UI, and randomized convergence test harness are all built and
-verified working end-to-end. Adversarial review and polish still to come.*
+*Status: Phase 3 complete — adversarial review found and fixed 4 real bugs,
+including one genuine CRDT-correctness bug in the merge algorithm itself
+(see [REVIEW.md](./REVIEW.md)). 16/16 tests passing. Stretch features and
+final polish still to come.*
 
 A from-scratch CRDT (Replicated Growable Array) collaborative text editor
 with an adversarial network simulator, built entirely in vanilla JS with
@@ -12,8 +13,9 @@ feature list.
 ## Quick look
 
 ```
-npm test        # 13 tests: RGA unit tests + a 100-scenario randomized
-                 # convergence proof (latency, reordering, loss, partitions)
+npm test        # 16 tests: RGA unit tests, a 100-scenario randomized
+                 # convergence proof (latency, reordering, loss, partitions),
+                 # and regression tests for 3 real bugs found in review
 python3 -m http.server 8000   # then open index.html in a browser
 ```
 

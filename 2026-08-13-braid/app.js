@@ -4,8 +4,8 @@
 import { Peer } from './src/peer.js';
 import { Network, RealClock } from './src/network.js';
 import { hashText, colorForSite } from './src/attribution.js';
+import { NameAllocator } from './src/names.js';
 
-const NAME_POOL = ['Alice', 'Bob', 'Carol', 'Dave', 'Eve', 'Frank', 'Grace', 'Heidi', 'Ivan', 'Judy'];
 const GROUP_LABELS = ['A', 'B', 'C', 'D'];
 const ALL_GROUP = 'A'; // group label meaning "everyone" right after a heal
 
@@ -16,6 +16,7 @@ const peers = new Map();
 let siteOrder = []; // stable color-assignment order
 let attributionOn = false;
 let logOn = false;
+const nameAllocator = new NameAllocator(); // never reuses a name — see src/names.js
 
 const els = {
   peersGrid: document.getElementById('peersGrid'),
@@ -76,13 +77,8 @@ els.addPeerBtn.addEventListener('click', () => addPeer());
 
 // ---------- peer lifecycle ----------
 
-function nextName() {
-  for (const n of NAME_POOL) if (!peers.has(n)) return n;
-  return `Peer${peers.size + 1}`;
-}
-
 function addPeer() {
-  const siteId = nextName();
+  const siteId = nameAllocator.next();
   const peer = new Peer(siteId);
 
   // Join snapshot: a brand-new replica catches up by replaying every op
@@ -95,14 +91,20 @@ function addPeer() {
     for (const op of existing.resyncOps()) peer.receive(op);
   }
 
+  // Join whichever group already has people in it (an arbitrary existing
+  // peer's group), not a hardcoded default — otherwise adding a peer while
+  // everyone else has split off into other groups would silently strand
+  // the newcomer alone, unable to reach anyone, with no indication why.
+  const joinGroup = peers.size > 0 ? [...peers.values()][0].group : ALL_GROUP;
+
   siteOrder.push(siteId);
   const cardEls = buildPeerCard(siteId, peer);
-  peers.set(siteId, { peer, group: ALL_GROUP, els: cardEls });
+  peers.set(siteId, { peer, group: joinGroup, els: cardEls });
   net.addPeer(siteId, (op) => {
     peer.receive(op);
     onRemoteApplied(siteId);
   });
-  net.setPartition(siteId, ALL_GROUP);
+  net.setPartition(siteId, joinGroup);
 
   renderPartitionRow();
   refreshPeerCard(siteId);
