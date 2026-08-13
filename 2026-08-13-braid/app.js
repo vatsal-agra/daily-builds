@@ -109,6 +109,7 @@ function addPeer() {
   renderPartitionRow();
   refreshPeerCard(siteId);
   updateConvergenceBadge();
+  updateRemoveButtonsState();
 }
 
 function removePeer(siteId) {
@@ -119,6 +120,18 @@ function removePeer(siteId) {
   siteOrder = siteOrder.filter((s) => s !== siteId);
   renderPartitionRow();
   updateConvergenceBadge();
+  updateRemoveButtonsState();
+}
+
+/** The last remaining peer can't be removed (nothing left to converge to) —
+ * disable the button rather than silently doing nothing on click, so it's
+ * clear why. */
+function updateRemoveButtonsState() {
+  const onlyOne = peers.size <= 1;
+  for (const { els: e } of peers.values()) {
+    e.removeBtn.disabled = onlyOne;
+    e.removeBtn.title = onlyOne ? "can't remove the last peer" : 'remove peer';
+  }
 }
 
 // ---------- peer card DOM ----------
@@ -178,7 +191,7 @@ function buildPeerCard(siteId, peer) {
   removeBtn.addEventListener('click', () => removePeer(siteId));
 
   els.peersGrid.appendChild(card);
-  return { card, textarea, attribution, undoBtn, redoBtn, pendingBadge, groupBadge, hashStat };
+  return { card, textarea, attribution, undoBtn, redoBtn, removeBtn, pendingBadge, groupBadge, hashStat };
 }
 
 function onRemoteApplied(siteId) {
@@ -306,17 +319,20 @@ function logEvent(text) {
   while (els.logPanel.children.length > 300) els.logPanel.removeChild(els.logPanel.firstChild);
 }
 
-// mirror low-level network deliveries into the activity log too
+// mirror low-level network deliveries into the activity log too — append
+// only what's NEW since the last tick (never wipe+rebuild) so a scrolled-up
+// user reading history doesn't get yanked back to the top every 500ms.
+let logCursor = 0;
 setInterval(() => {
   if (!logOn) return;
-  const recent = net.log.slice(-40);
-  els.logPanel.innerHTML = '';
-  for (const e of recent) {
+  for (; logCursor < net.log.length; logCursor++) {
+    const e = net.log[logCursor];
     const line = document.createElement('div');
     line.className = `entry ${e.status}`;
     line.innerHTML = `<span class="t"></span><span>${e.from} → ${e.to}: <span class="status">${e.status}</span> <code>${e.op.type}</code></span>`;
     els.logPanel.appendChild(line);
   }
+  while (els.logPanel.children.length > 300) els.logPanel.removeChild(els.logPanel.firstChild);
 }, 500);
 
 // periodic anti-entropy: re-announce each peer's own history, so genuine

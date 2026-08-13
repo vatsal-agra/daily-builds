@@ -1,9 +1,11 @@
 # Braid
 
-*Status: Phase 3 complete — adversarial review found and fixed 4 real bugs,
-including one genuine CRDT-correctness bug in the merge algorithm itself
-(see [REVIEW.md](./REVIEW.md)). 16/16 tests passing. Stretch features and
-final polish still to come.*
+*Status: Phase 4 complete — all 3 planned stretch features (character
+attribution, causal undo/redo, convergence-hash indicator) were already
+built during core development; this phase added polish (favicon, log-panel
+scroll fix, disabled-state UX, edge-case hardening for empty docs / large
+pastes / single-peer removal). 16/16 tests passing. Final verification and
+ship writeup still to come.*
 
 A from-scratch CRDT (Replicated Growable Array) collaborative text editor
 with an adversarial network simulator, built entirely in vanilla JS with
