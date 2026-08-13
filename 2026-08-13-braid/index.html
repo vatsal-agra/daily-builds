@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Braid — CRDT collaborative editor &amp; convergence lab</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1><span class="braid-mark"></span> Braid</h1>
+      <p class="tagline">
+        A from-scratch CRDT (Replicated Growable Array) text editor. Every pane below is an
+        independent replica connected by a simulated, adjustable, breakable network — type in
+        one, watch it merge into the others. No server, no library: the merge algorithm is
+        <code>src/rga.js</code>.
+      </p>
+    </div>
+    <div class="convergence-badge" id="convergenceBadge">
+      <span class="dot"></span>
+      <span id="convergenceLabel">all peers in sync</span>
+      <span class="hashes" id="convergenceHashes"></span>
+    </div>
+  </header>
+
+  <section class="panel">
+    <h2>Network simulator</h2>
+    <div class="controls-grid">
+      <div class="control">
+        <label>Min latency <span class="val" id="minLatencyVal">150ms</span></label>
+        <input type="range" id="minLatency" min="0" max="1500" step="10" value="150" />
+      </div>
+      <div class="control">
+        <label>Max latency <span class="val" id="maxLatencyVal">900ms</span></label>
+        <input type="range" id="maxLatency" min="0" max="3000" step="10" value="900" />
+      </div>
+      <div class="control">
+        <label>Packet loss <span class="val" id="lossRateVal">0%</span></label>
+        <input type="range" id="lossRate" min="0" max="80" step="1" value="0" />
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <div class="buttons-row">
+          <button id="healBtn">🩹 Heal network</button>
+          <button id="addPeerBtn" class="primary">＋ Add peer</button>
+          <button id="attributionToggle" class="toggle">🎨 Attribution view</button>
+          <button id="logToggle" class="toggle">📡 Activity log</button>
+        </div>
+      </div>
+    </div>
+    <h2 style="margin-top:18px">Partitions — peers only reach others in the same group</h2>
+    <div class="partition-row" id="partitionRow"></div>
+  </section>
+
+  <div class="peers-grid" id="peersGrid"></div>
+
+  <section class="panel" id="logPanelWrap" style="display:none">
+    <h2>Network activity</h2>
+    <div class="log-panel" id="logPanel"></div>
+  </section>
+
+  <p class="footer-note">
+    Undo/redo is <strong>causal</strong> — it only ever affects the exact character(s) that
+    specific peer inserted or deleted, so undoing your own edit stays correct even after other
+    peers have typed around it. Try: split into two partitions, edit both sides, then heal —
+    watch the histories merge deterministically instead of one side clobbering the other.
+    Run <code>npm test</code> for the 100-scenario randomized convergence proof behind this.
+  </p>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "braid",
+  "version": "1.0.0",
+  "description": "A from-scratch CRDT collaborative text editor and network convergence lab.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/"
+  }
+}
