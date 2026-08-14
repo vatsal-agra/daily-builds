@@ -1,0 +1,20 @@
+; The ".com" TLD zone -- delegates "example.com." to its own authoritative
+; server, with in-bailiwick glue (ns1.example.com. lives inside the very
+; domain being delegated, so the parent has to ship its address itself).
+;
+; com.'s own nameserver, a.gtld-servers.cascade., is deliberately named
+; *outside* the com. namespace (mirroring real life: a.gtld-servers.net is
+; its own separate zone, not part of any TLD it serves) -- its address is
+; glue root.zone carries, not something com.zone can hold for itself.
+$TTL 3600
+$ORIGIN com.
+@                         IN  SOA  a.gtld-servers.cascade. hostmaster.gtld-servers.cascade. (
+                                   2026081401
+                                   3600
+                                   900
+                                   604800
+                                   3600 )
+@                         IN  NS   a.gtld-servers.cascade.
+
+example.com.              IN  NS   ns1.example.com.
+ns1.example.com.          IN  A    127.0.0.4

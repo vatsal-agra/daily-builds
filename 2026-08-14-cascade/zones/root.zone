@@ -1,0 +1,16 @@
+; Cascade's fake-internet root zone. Real DNS root servers hold delegations
+; for every TLD; ours holds just enough to demo real iterative resolution --
+; a single TLD ("com.") -- without needing internet access.
+$TTL 3600
+$ORIGIN .
+@                        IN  SOA  a.root-servers.cascade. hostmaster.root-servers.cascade. (
+                                  2026081401 ; serial
+                                  3600       ; refresh
+                                  900        ; retry
+                                  604800     ; expire
+                                  3600 )     ; minimum
+@                        IN  NS   a.root-servers.cascade.
+a.root-servers.cascade.  IN  A    127.0.0.2
+
+com.                     IN  NS   a.gtld-servers.cascade.
+a.gtld-servers.cascade.  IN  A    127.0.0.3

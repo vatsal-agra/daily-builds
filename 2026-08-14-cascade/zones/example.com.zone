@@ -1,0 +1,22 @@
+; example.com.'s own authoritative zone: A/AAAA at the apex, a CNAME, an MX,
+; a TXT record, and a further delegation down to "dev.example.com." (its own
+; server, its own glue) to demonstrate a second level of real delegation.
+$TTL 3600
+$ORIGIN example.com.
+@                        IN  SOA  ns1.example.com. hostmaster.example.com. (
+                                  2026081401
+                                  3600
+                                  900
+                                  604800
+                                  3600 )
+@                        IN  NS    ns1.example.com.
+ns1.example.com.         IN  A     127.0.0.4
+@                        IN  A     93.184.216.34
+@                        IN  AAAA  2606:2800:220:1:248:1893:25c8:1946
+@                        IN  MX    10 mail.example.com.
+@                        IN  TXT   "v=spf1 -all"
+www                      IN  CNAME @
+mail                     IN  A     93.184.216.40
+
+dev.example.com.         IN  NS    ns1.dev.example.com.
+ns1.dev.example.com.     IN  A     127.0.0.5

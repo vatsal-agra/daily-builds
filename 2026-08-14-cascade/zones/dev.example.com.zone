@@ -1,0 +1,15 @@
+; The delegated "dev.example.com." zone: a normal A record, a short-TTL
+; record to demo real TTL expiry, and a wildcard to demo wildcard synthesis.
+$TTL 3600
+$ORIGIN dev.example.com.
+@                        IN  SOA  ns1.dev.example.com. hostmaster.dev.example.com. (
+                                  2026081401
+                                  3600
+                                  900
+                                  604800
+                                  3600 )
+@                        IN  NS  ns1.dev.example.com.
+ns1.dev.example.com.     IN  A   127.0.0.5
+api                      IN  A   127.0.0.6
+ticker                 2  IN  A   127.0.0.7
+*                        IN  A   127.0.0.9
