@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import socket
 import struct
+import sys
 import threading
 
 from .consts import (
@@ -80,6 +81,18 @@ def answer_in_zone(zone: Zone, qname: Name, qtype: int, resp: DNSMessage) -> Non
             resp.authority = [_soa_rr(zone)]
             return
 
+        # An empty non-terminal ("no data here, but something exists below
+        # this name") is a *real* existing name and must be checked before
+        # wildcard synthesis: RFC 1034 4.3.2/4.3.3 only lets a wildcard
+        # apply when no name -- of any kind, including an empty
+        # non-terminal -- already exists at the query name. Checking the
+        # wildcard first would let it wrongly answer for a name that should
+        # get NODATA instead. (Found by adversarial review -- see REVIEW.md #1.)
+        if zone.is_empty_non_terminal(current):
+            resp.answers = answers
+            resp.authority = [_soa_rr(zone)]
+            return
+
         wc = zone.wildcard_match(current)
         if wc is not None:
             synthesized = [RR(current, r.rtype, r.rclass, r.ttl, r.rdata) for r in wc]
@@ -91,11 +104,6 @@ def answer_in_zone(zone: Zone, qname: Name, qtype: int, resp: DNSMessage) -> Non
                 resp.authority = [_soa_rr(zone)]
             return
 
-        if zone.is_empty_non_terminal(current):
-            resp.answers = answers
-            resp.authority = [_soa_rr(zone)]
-            return
-
         resp.rcode = RCODE_NXDOMAIN
         resp.answers = answers
         resp.authority = [_soa_rr(zone)]
@@ -103,6 +111,13 @@ def answer_in_zone(zone: Zone, qname: Name, qtype: int, resp: DNSMessage) -> Non
 
     resp.rcode = RCODE_SERVFAIL  # chased through MAX_CNAME_CHASE hops without resolving
     resp.answers = answers
+
+
+def _servfail(query: DNSMessage) -> DNSMessage:
+    resp = DNSMessage(id=query.id, qr=True, opcode=query.opcode, rd=query.rd, ra=False,
+                       rcode=RCODE_SERVFAIL)
+    resp.questions = list(query.questions)
+    return resp
 
 
 def build_response(zones: dict, query: DNSMessage) -> DNSMessage:
@@ -159,10 +174,18 @@ class AuthoritativeServer:
         self._udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._udp_sock.bind((self.host, self.port))
 
-        self._tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._tcp_sock.bind((self.host, self.port))
-        self._tcp_sock.listen(16)
+        try:
+            self._tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self._tcp_sock.bind((self.host, self.port))
+            self._tcp_sock.listen(16)
+        except OSError:
+            # Don't leak the UDP socket we already opened if the TCP bind
+            # fails (e.g. port already in use). Found by adversarial review
+            # while fixing REVIEW.md #2/#4.
+            self._udp_sock.close()
+            self._udp_sock = None
+            raise
 
         t_udp = threading.Thread(target=self._udp_loop, daemon=True, name=f"cascade-udp-{self.port}")
         t_tcp = threading.Thread(target=self._tcp_loop, daemon=True, name=f"cascade-tcp-{self.port}")
@@ -189,11 +212,20 @@ class AuthoritativeServer:
                 break
             try:
                 query = DNSMessage.from_wire(data)
+            except DNSFormatError:
+                continue  # malformed wire bytes: real servers drop these silently, not crash
+            try:
                 resp = build_response(self.zones, query)
                 max_size = resp.edns.udp_payload_size if resp.edns is not None else CLASSIC_UDP_MAX
                 wire = resp.to_wire(max_size=max_size)
-            except DNSFormatError:
-                continue  # malformed packet: real servers drop these silently, not crash
+            except Exception as e:
+                # A bug anywhere in answer-building must not take the whole
+                # listener down for every future client (found by
+                # adversarial review -- see REVIEW.md #2): answer SERVFAIL
+                # for *this* query and keep serving everyone else.
+                print(f"cascade: internal error answering query, returning SERVFAIL: {e}",
+                      file=sys.stderr)
+                wire = _servfail(query).to_wire()
             try:
                 self._udp_sock.sendto(wire, addr)
             except OSError:
@@ -218,9 +250,20 @@ class AuthoritativeServer:
                 data = _recv_exact(conn, length)
                 if data is None:
                     return
-                query = DNSMessage.from_wire(data)
-                resp = build_response(self.zones, query)
-                wire = resp.to_wire()  # no 512-byte cap over TCP
+                try:
+                    query = DNSMessage.from_wire(data)
+                except DNSFormatError:
+                    return  # malformed wire bytes: just drop the connection
+                try:
+                    resp = build_response(self.zones, query)
+                    wire = resp.to_wire()  # no 512-byte cap over TCP
+                except Exception as e:
+                    # Same reasoning as _udp_loop (REVIEW.md #2): a bug in
+                    # answer-building shouldn't just vanish -- SERVFAIL for
+                    # this connection so the client gets a real response.
+                    print(f"cascade: internal error answering TCP query, returning SERVFAIL: {e}",
+                          file=sys.stderr)
+                    wire = _servfail(query).to_wire()
                 conn.sendall(struct.pack("!H", len(wire)) + wire)
-        except (DNSFormatError, OSError, socket.timeout):
+        except (OSError, socket.timeout):
             pass

@@ -168,7 +168,17 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (DNSFormatError, ZoneFileError, OSError, ResolutionError,
+            transport.QueryTimeout, transport.QueryError) as e:
+        # Expected, user-triggerable failures (bad name, bad zone file, port
+        # already in use, unreachable server, ...) get a clean one-line
+        # message instead of a raw traceback. Anything else is a genuine
+        # Cascade bug and should keep surfacing its full traceback -- see
+        # REVIEW.md #4.
+        print(f"cascade: error: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

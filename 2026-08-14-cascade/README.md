@@ -18,4 +18,12 @@ assertions against all of the above, plus the two stretch features
 (EDNS0 + TCP truncation fallback, HTML resolution-trace visualizer) that
 were built alongside the wire/transport layer since they're inseparable
 from it. See [`PLAN.md`](PLAN.md) for the full concept and feature list.
-Adversarial review (Phase 3) is next.
+**Status: Phase 3 (adversarial review) complete.** See [`REVIEW.md`](REVIEW.md)
+for the full hostile-testing pass: 4 real bugs found and fixed (a wildcard
+that could override a legitimate NODATA answer, a single bad query that
+could permanently kill the whole UDP listener, silent TXT-record data
+corruption from quote-unaware zone-file parsing, and raw Python tracebacks
+on ordinary user mistakes), plus a 1,000-case differential fuzz of the wire
+codec against `dnspython` (clean) and one suspected bug that was run down
+and found to be a test-methodology artifact, not a real one. Stretch
+features + polish (Phase 4) are next.

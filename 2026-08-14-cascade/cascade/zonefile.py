@@ -43,6 +43,40 @@ def _strip_comment(line: str) -> str:
     return "".join(out)
 
 
+def _paren_delta(line: str) -> int:
+    """Net '(' minus ')' count, ignoring both inside a quoted string -- a
+    literal paren in a TXT string must not be treated as a line-continuation
+    marker."""
+    delta = 0
+    in_quotes = False
+    for c in line:
+        if c == '"':
+            in_quotes = not in_quotes
+        elif not in_quotes:
+            if c == "(":
+                delta += 1
+            elif c == ")":
+                delta -= 1
+    return delta
+
+
+def _strip_parens_outside_quotes(text: str) -> str:
+    """Replace '(' and ')' with spaces, except inside a quoted string.
+    (Found by adversarial review -- see REVIEW.md #3: the previous
+    blanket `.replace()` silently deleted parens from TXT record data.)"""
+    out = []
+    in_quotes = False
+    for c in text:
+        if c == '"':
+            in_quotes = not in_quotes
+            out.append(c)
+        elif c in "()" and not in_quotes:
+            out.append(" ")
+        else:
+            out.append(c)
+    return "".join(out)
+
+
 def _logical_lines(text: str):
     """Yield (logical_line, owner_field_present) pairs, joining parenthesized
     continuations and dropping comments/blank lines. `owner_field_present` is
@@ -57,12 +91,12 @@ def _logical_lines(text: str):
         line = _strip_comment(raw)
         if not buf:
             starts_unindented = bool(line.strip()) and not line[:1].isspace()
-        depth += line.count("(") - line.count(")")
+        depth += _paren_delta(line)
         if depth < 0:
             raise ZoneFileError(f"unbalanced parenthesis: {raw!r}")
         buf.append(line)
         if depth == 0:
-            logical = " ".join(buf).replace("(", " ").replace(")", " ")
+            logical = _strip_parens_outside_quotes(" ".join(buf))
             if logical.strip():
                 lines.append((logical, bool(starts_unindented)))
             buf = []
