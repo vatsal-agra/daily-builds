@@ -7,7 +7,7 @@ import sys
 import time
 
 from .cache import Cache
-from .consts import NAME_TO_TYPE, TYPE_NAMES
+from .consts import NAME_TO_TYPE, TYPE_NAMES, RCODE_NOERROR, RCODE_NXDOMAIN
 from .fakenet import FakeInternet
 from .message import DNSMessage, Question
 from .name import Name, DNSFormatError
@@ -95,7 +95,9 @@ def cmd_resolve(args) -> int:
             with open(args.viz, "w", encoding="utf-8") as f:
                 f.write(html)
             print(f"\n;; wrote resolution-trace visualizer to {args.viz}")
-    return 0 if result.rcode == 0 else (0 if result.rcode == 3 else 2)
+    # Like real `dig`: a clean negative answer (NXDOMAIN) is not a tool
+    # failure and exits 0; anything else unusual (SERVFAIL, ...) exits 2.
+    return 0 if result.rcode in (RCODE_NOERROR, RCODE_NXDOMAIN) else 2
 
 
 def cmd_viz(args) -> int:

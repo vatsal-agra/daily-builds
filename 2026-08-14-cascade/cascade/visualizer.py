@@ -21,8 +21,12 @@ def _esc(s: str) -> str:
 
 
 def _step_html(i: int, step) -> str:
-    where = f"{_esc(step.server_name)} &middot; <span class=\"addr\">{_esc(step.server_addr)}</span>" \
-        if step.server_name else "<span class=\"addr\">local cache</span>"
+    if step.server_name:
+        where = f"{_esc(step.server_name)} &middot; <span class=\"addr\">{_esc(step.server_addr)}</span>"
+    elif step.kind == "cache_hit":
+        where = "<span class=\"addr\">local cache</span>"
+    else:
+        where = "<span class=\"addr\">no server reached</span>"
     rcode_badge = f'<span class="badge rcode-{_esc(step.rcode)}">{_esc(step.rcode)}</span>' if step.rcode else ""
 
     sections = ""

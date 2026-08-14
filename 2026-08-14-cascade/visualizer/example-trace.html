@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cascade &middot; resolution trace for www.example.com</title>
+<style>
+  :root {
+    --bg: #f7f7fb; --panel: #ffffff; --text: #1a1c23; --muted: #6b7080;
+    --border: #e2e4ea; --accent: #3b5bfd; --mono-bg: #f1f2f7;
+    --query: #3b5bfd; --cache: #1a9c6a; --error: #d1373f;
+    --rc-ok: #1a9c6a; --rc-bad: #d1373f;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14151c; --panel: #1c1e29; --text: #e7e8ee; --muted: #9297ab;
+      --border: #2c2f3d; --accent: #7d93ff; --mono-bg: #12131a;
+      --query: #7d93ff; --cache: #4ad999; --error: #ff6b74;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); margin: 0; padding: 2.5rem 1.5rem; }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 0.15rem 0; }
+  .subtitle { color: var(--muted); font-size: 0.95rem; margin-bottom: 1.75rem; }
+  .subtitle code { background: var(--mono-bg); padding: 0.1rem 0.4rem; border-radius: 4px; }
+  .summary {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 1rem 1.25rem; margin-bottom: 1.75rem; display: flex; align-items: center; gap: 0.9rem;
+    flex-wrap: wrap;
+  }
+  .status-badge {
+    font-weight: 600; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.85rem;
+    background: var(--rc-ok);
+    color: white;
+  }
+  .summary .meta { color: var(--muted); font-size: 0.9rem; }
+  .answers { margin-top: 0.6rem; width: 100%; }
+  .timeline { position: relative; }
+  .step { display: flex; gap: 1rem; margin-bottom: 1.1rem; }
+  .step-num {
+    flex: 0 0 auto; width: 1.9rem; height: 1.9rem; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+    display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600;
+  }
+  .step-body {
+    flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 0.9rem 1.1rem;
+  }
+  .step-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.3rem; }
+  .kind-badge {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700;
+    padding: 0.15rem 0.45rem; border-radius: 4px; color: white;
+  }
+  .kind-query { background: var(--query); }
+  .kind-cache_hit { background: var(--cache); }
+  .kind-error { background: var(--error); }
+  .where { font-weight: 600; }
+  .addr { color: var(--muted); font-weight: 400; font-family: ui-monospace, monospace; font-size: 0.85rem; }
+  .badge {
+    font-size: 0.72rem; font-family: ui-monospace, monospace; padding: 0.1rem 0.4rem;
+    border-radius: 4px; background: var(--mono-bg); color: var(--muted); margin-left: auto;
+  }
+  .step-detail { color: var(--muted); font-size: 0.88rem; margin-bottom: 0.4rem; }
+  .section { margin-top: 0.5rem; }
+  .section-label {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
+    margin-bottom: 0.2rem; font-weight: 700;
+  }
+  .rr {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.83rem;
+    background: var(--mono-bg); padding: 0.25rem 0.55rem; border-radius: 5px; margin-bottom: 0.2rem;
+    overflow-x: auto; white-space: pre;
+  }
+  .rr.empty { color: var(--muted); font-style: italic; }
+  footer { margin-top: 2rem; color: var(--muted); font-size: 0.8rem; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Resolution trace</h1>
+  <div class="subtitle">Real recursive resolution for <code>www.example.com A</code>
+    against Cascade's own root &rarr; TLD &rarr; authoritative fake internet.</div>
+
+  <div class="summary">
+    <span class="status-badge">NOERROR</span>
+    <span class="meta">3 step(s) recorded</span>
+    <div class="answers">
+      <div class='rr'>www.example.com. 3600 IN CNAME example.com.</div>
+<div class='rr'>example.com. 3600 IN A 93.184.216.34</div>
+    </div>
+  </div>
+
+  <div class="timeline">
+    
+    <div class="step step-query">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-head">
+          <span class="kind-badge kind-query">query</span>
+          <span class="where">a.root-servers.cascade. &middot; <span class="addr">127.0.0.2:5391</span></span>
+          <span class="badge rcode-NOERROR">NOERROR</span>
+        </div>
+        <div class="step-detail">referral</div>
+        <div class='section'><div class='section-label'>AUTHORITY</div><div class='rr'>com. 3600 IN NS a.gtld-servers.cascade.</div></div><div class='section'><div class='section-label'>ADDITIONAL</div><div class='rr'>a.gtld-servers.cascade. 3600 IN A 127.0.0.3</div></div>
+      </div>
+    </div>
+
+    <div class="step step-query">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-head">
+          <span class="kind-badge kind-query">query</span>
+          <span class="where">a.gtld-servers.cascade. &middot; <span class="addr">127.0.0.3:5391</span></span>
+          <span class="badge rcode-NOERROR">NOERROR</span>
+        </div>
+        <div class="step-detail">referral</div>
+        <div class='section'><div class='section-label'>AUTHORITY</div><div class='rr'>example.com. 3600 IN NS ns1.example.com.</div></div><div class='section'><div class='section-label'>ADDITIONAL</div><div class='rr'>ns1.example.com. 3600 IN A 127.0.0.4</div></div>
+      </div>
+    </div>
+
+    <div class="step step-query">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-head">
+          <span class="kind-badge kind-query">query</span>
+          <span class="where">ns1.example.com. &middot; <span class="addr">127.0.0.4:5391</span></span>
+          <span class="badge rcode-NOERROR">NOERROR</span>
+        </div>
+        <div class="step-detail">authoritative answer</div>
+        <div class='section'><div class='section-label'>ANSWER</div><div class='rr'>www.example.com. 3600 IN CNAME example.com.</div>
+<div class='rr'>example.com. 3600 IN A 93.184.216.34</div></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>Generated by Cascade &middot; every step above is a real UDP/TCP exchange or a real cache lookup, not a diagram.</footer>
+</div>
+</body>
+</html>
