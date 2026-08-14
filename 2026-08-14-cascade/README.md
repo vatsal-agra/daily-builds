@@ -37,4 +37,20 @@ Phase 4's polish pass then caught a fifth issue while eyeballing the
 rendered visualizer, not just reading the code: a failed-query step was
 mislabeled as a cache lookup.
 
-Verification (Phase 5) is next.
+**Status: Phase 5 (verification) complete.** `./demo.sh` installs the
+dev-only dependencies, runs the full automated test suite, runs the
+`cascade demo` walkthrough, and regenerates the checked-in example
+visualizer -- all in one command, exiting non-zero on any failure. The
+suite itself is 100 tests across 9 files: wire-codec unit tests including
+the exact RFC 1035 §4.1.4 worked compression example, a 1,000-case
+differential fuzz against `dnspython`, zone-file parser tests, authoritative
+answer-logic tests (including regression tests for every bug in
+`REVIEW.md`), a TTL/negative-cache test suite, live-socket resolver tests
+against the real fake internet, and subprocess-driven CLI end-to-end tests.
+Writing it caught 3 more real bugs beyond Phase 3's adversarial pass --
+`stop()` could return while a server's listener threads (and its port) were
+still alive, `to_wire()` silently discarded an explicitly-set TC flag, and a
+mid-file `$ORIGIN` change could corrupt a zone's own identity -- all
+documented and fixed in `REVIEW.md` (#5-#7) rather than folded in quietly.
+
+Shipping (Phase 6) is next.

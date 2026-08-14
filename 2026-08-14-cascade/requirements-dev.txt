@@ -1,0 +1,5 @@
+# Dev/test-only dependencies -- never imported by anything under cascade/.
+# Runtime code uses the Python 3 stdlib exclusively (sockets, struct,
+# ipaddress, argparse, dataclasses, threading).
+pytest>=8
+dnspython>=2.7   # external differential oracle for the wire codec (tests/test_dnspython_oracle.py)

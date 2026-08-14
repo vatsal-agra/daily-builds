@@ -3,10 +3,13 @@
 Hostile self-review of Cascade: constructed zones and inputs specifically
 intended to break the parser, the answer logic, and the server, plus a
 1,000-case differential fuzz of the wire codec against `dnspython`. Four real
-issues found and fixed below; one suspected issue investigated and found to
-be a test artifact, not a Cascade bug (also documented, since a false alarm
-that isn't run down is exactly the kind of thing that erodes trust in the
-rest of the review).
+issues found and fixed below during the review pass itself; one suspected
+issue investigated and found to be a test artifact, not a Cascade bug (also
+documented, since a false alarm that isn't run down is exactly the kind of
+thing that erodes trust in the rest of the review); and a fifth real issue
+(#5) that only surfaced once Phase 5 put a real automated test suite behind
+the server, added here rather than filed separately since it's exactly the
+kind of thing this document is for.
 
 ## Found and fixed
 
@@ -102,6 +105,82 @@ that this was *their* mistake rather than a Cascade crash.
 exiting 1. Genuinely unexpected exceptions (real Cascade bugs) still surface
 a full traceback rather than being swallowed — silently hiding those would
 just trade this bug for a worse one.
+
+### 5. `stop()` could return while its listener threads -- and the port -- were still alive
+
+**Found while writing Phase 5's test suite**, not by inspection: tests that
+started a server, stopped it, and immediately started a new one on the same
+address (routine in a test suite, and a real scenario for e.g. a fast
+`cascade serve` restart) intermittently failed with `OSError: [Errno 98]
+Address already in use`, even *after* `stop()` had returned and even after
+adding an extra second of retry-sleep. Direct inspection showed why:
+
+```
+cascade-udp-5482 alive after stop(): True
+cascade-tcp-5482 alive after stop(): True
+```
+
+`stop()` closed the sockets, then called `thread.join(timeout=2.0)` and
+returned regardless of whether the join actually succeeded. The assumption
+was that closing a socket from another thread reliably interrupts that
+thread's blocking `recvfrom()`/`accept()` call -- it doesn't, portably: on
+this platform, both listener threads were still parked in their blocking
+calls, `join()` silently timed out doing nothing, and `stop()` returned
+"successfully" while both the port and the threads were still very much
+alive.
+
+**Fix:** both loops (`cascade/server.py`) now use a 0.5s socket timeout and
+poll `self._stop` instead of blocking forever, so a thread notices
+`stop()` was called within half a second no matter what the platform does
+with a concurrently-closed fd. `stop()` now joins the threads *before*
+closing the sockets (rather than the other way around) and gets a real
+guarantee: by the time it returns, both loops have actually exited and the
+port is genuinely free for a new `start()`.
+
+### 6. A mid-file `$ORIGIN` change corrupted the zone's own identity
+
+**Found while writing Phase 5's test suite**, testing the unremarkable-
+sounding claim that "`$ORIGIN` can change partway through a file" (a normal,
+common BIND convention for grouping records under a shorter relative
+suffix). `Zone.from_text(text, origin=...)` used `parse_zone`'s *returned*
+end-of-file origin -- whatever the last `$ORIGIN` directive in the file
+happened to set -- as `zone.origin`, instead of the `origin` the caller
+actually asked to load. A file for `example.com.` that used `$ORIGIN
+sub.example.com.` anywhere before EOF ended up with a `Zone` whose own
+`origin` was `sub.example.com.` -- at which point the zone's *own apex SOA
+and NS records*, still owned by `example.com.`, failed the
+"is this record inside the zone?" check against the zone's own (wrong)
+origin, and the whole zone rejected itself as self-contradictory. None of
+Cascade's four shipped zone files happen to use a mid-file `$ORIGIN` change,
+so this never showed up in the demo -- only a test written specifically to
+exercise the feature caught it.
+
+**Fix:** `Zone.from_text`/`from_file` (`cascade/zonefile.py`) now set
+`zone.origin` to the caller-supplied `origin` parameter -- what zone this
+*is* -- never to whatever a `$ORIGIN` directive last pointed at while
+parsing, exactly like a real `zone "origin" { file ...; };` block in a real
+nameserver's config is what defines a zone's identity, not anything written
+inside the file itself.
+
+### 7. `to_wire()` silently discarded an explicitly-set TC flag
+
+**Found by Phase 5's flag round-trip test** (construct a message with every
+combination of the 5 header flags, encode, decode, compare): `qr=True,
+aa=True, tc=True, rd=True, ra=True` came back with `tc=False`.
+`DNSMessage.to_wire()` always started its truncation loop from a hardcoded
+`tc = False` local variable, completely ignoring `self.tc` unless its own
+truncation logic decided to set it -- so a message explicitly constructed
+with `tc=True` silently encoded as `tc=False` on the wire whenever it
+happened to fit under `max_size` (or `max_size` wasn't given at all).
+Cascade's own server code never manually sets `.tc` before encoding (only
+`to_wire()`'s own truncation path ever sets it), which is why this never
+surfaced in the demo or in manual `dig`-style testing -- it took a test that
+checked *every* flag combination, not just the ones the server happens to
+produce, to catch it.
+
+**Fix:** `to_wire()` (`cascade/message.py`) now seeds its loop from
+`self.tc` instead of a hardcoded `False`, so truncation can still *set* TC
+but can never silently clear one the caller set explicitly.
 
 ## Investigated, not a bug
 

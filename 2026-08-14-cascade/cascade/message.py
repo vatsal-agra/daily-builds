@@ -179,7 +179,10 @@ class DNSMessage:
         bit is set, matching real truncation behavior.
         """
         answers, authority, additional = self.answers, self.authority, self.additional
-        tc = False
+        # Seed from self.tc (not a hardcoded False): truncation here can
+        # only ever *set* TC, never silently clear a caller-set one. Found
+        # by Phase 5's flag round-trip test -- see REVIEW.md #7.
+        tc = self.tc
         while True:
             buf = self._build(answers, authority, additional, tc)
             if max_size is None or len(buf) <= max_size:

@@ -173,12 +173,22 @@ class AuthoritativeServer:
         self._udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._udp_sock.bind((self.host, self.port))
+        # A timeout, not a blocking call: closing a socket from another
+        # thread does not reliably unblock a thread parked in recvfrom()/
+        # accept() on it (found empirically during Phase 5 verification --
+        # stop() was joining threads that were, in practice, still alive
+        # and still holding the port, so an immediate restart on the same
+        # port failed with EADDRINUSE even though stop() had "finished").
+        # Polling with a short timeout sidesteps relying on that platform-
+        # dependent cross-thread-close behavior entirely.
+        self._udp_sock.settimeout(0.5)
 
         try:
             self._tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self._tcp_sock.bind((self.host, self.port))
             self._tcp_sock.listen(16)
+            self._tcp_sock.settimeout(0.5)
         except OSError:
             # Don't leak the UDP socket we already opened if the TCP bind
             # fails (e.g. port already in use). Found by adversarial review
@@ -195,19 +205,21 @@ class AuthoritativeServer:
 
     def stop(self) -> None:
         self._stop.set()
+        for t in self._threads:
+            t.join(timeout=3.0)  # both loops poll _stop at least every 0.5s
         for sock in (self._udp_sock, self._tcp_sock):
             try:
                 if sock is not None:
                     sock.close()
             except OSError:
                 pass
-        for t in self._threads:
-            t.join(timeout=2.0)
 
     def _udp_loop(self) -> None:
         while not self._stop.is_set():
             try:
                 data, addr = self._udp_sock.recvfrom(65535)
+            except socket.timeout:
+                continue
             except OSError:
                 break
             try:
@@ -235,6 +247,8 @@ class AuthoritativeServer:
         while not self._stop.is_set():
             try:
                 conn, addr = self._tcp_sock.accept()
+            except socket.timeout:
+                continue
             except OSError:
                 break
             threading.Thread(target=self._handle_tcp, args=(conn,), daemon=True).start()

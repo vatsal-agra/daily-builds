@@ -29,12 +29,10 @@ def _qtype(text: str) -> int:
 
 
 def cmd_serve(args) -> int:
+    # Zone-file and bind errors are left to propagate to main()'s single
+    # error boundary, so every command reports failures the same way.
     origin = Name.from_text(args.origin)
-    try:
-        zone = Zone.from_file(args.zonefile, origin, default_ttl=args.default_ttl)
-    except (ZoneFileError, DNSFormatError, OSError) as e:
-        print(f"cascade serve: {e}", file=sys.stderr)
-        return 1
+    zone = Zone.from_file(args.zonefile, origin, default_ttl=args.default_ttl)
     server = AuthoritativeServer({zone.origin: zone}, args.host, args.port)
     server.start()
     print(f"cascade: serving {zone.origin.to_text()} ({len(zone.records)} names) "

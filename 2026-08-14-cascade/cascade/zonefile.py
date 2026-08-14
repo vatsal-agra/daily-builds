@@ -284,8 +284,14 @@ class Zone:
 
     @staticmethod
     def from_text(text: str, origin: Name, default_ttl: int | None = None) -> "Zone":
-        entries, final_origin = parse_zone(text, origin, default_ttl)
-        zone = Zone(origin=final_origin)
+        entries, _final_origin_in_file = parse_zone(text, origin, default_ttl)
+        # The zone's identity is the origin the *caller* asked to load (the
+        # zone this file is for), not whatever a $ORIGIN directive last set
+        # while parsing -- a mid-file $ORIGIN change is just a convenience
+        # for writing relative names, exactly like in real BIND zone files,
+        # not a redefinition of what zone this is. Using the parsed
+        # final-in-file origin here was a real bug: see REVIEW.md #6.
+        zone = Zone(origin=origin)
         for rr in entries:
             if not rr.name.is_subdomain_of(zone.origin):
                 raise ZoneFileError(
