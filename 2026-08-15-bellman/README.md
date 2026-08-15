@@ -5,9 +5,12 @@ no NumPy, no PyTorch/TensorFlow/JAX, no `gym`/`gymnasium`. Every algorithm,
 environment, and neural net is hand-written and checked against independent
 ground truth wherever one exists.
 
-**Status: Phase 2 — core build complete.** All 4 required features work
-end-to-end (see verification numbers below). Adversarial review, stretch
-features, and final polish are still to come.
+**Status: Phase 3 — adversarial review complete.** All 4 required features
+work end-to-end and have survived a hostile-reviewer pass — see
+[`REVIEW.md`](./REVIEW.md) for the 10 real issues found (including a
+critical recursion bug in the autodiff engine) and how each was fixed, with
+a regression test guarding every one. Stretch features and final polish are
+still to come.
 
 ## What's here so far
 

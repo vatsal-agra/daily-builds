@@ -33,6 +33,20 @@ class GridWorldEnv:
     actions = [0, 1, 2, 3]
 
     def __init__(self, rows=4, cols=12, slip_prob=0.0, seed=None):
+        if rows < 2 or cols < 2:
+            # With rows=1, the cliff row IS the only row -- start and goal
+            # sit on the same row as the cliff with no row above to detour
+            # through, so the goal becomes provably unreachable (confirmed:
+            # value_iteration correctly refuses to converge on this input
+            # rather than silently returning a wrong answer, but the
+            # resulting "did not converge" error is a confusing way to learn
+            # the real problem is a degenerate grid). Reject it up front with
+            # a clear message instead.
+            raise ValueError(
+                f"GridWorldEnv requires rows>=2 and cols>=2 so a cliff-free "
+                f"detour path always exists above the cliff row (got rows={rows}, cols={cols})")
+        if not 0.0 <= slip_prob <= 1.0:
+            raise ValueError(f"slip_prob must be in [0, 1], got {slip_prob}")
         self.rows, self.cols = rows, cols
         self.slip_prob = slip_prob
         self.start = (rows - 1, 0)
@@ -229,7 +243,10 @@ class BlackjackEnv:
         fresh natural deal, so every state-action pair the policy is graded on
         actually gets visited during training.
         """
-        assert 12 <= player_total <= 21, "reset_to only covers the graded 12..21 range"
+        if not 12 <= player_total <= 21:
+            raise ValueError(f"reset_to only covers the graded 12..21 range, got {player_total}")
+        if not 1 <= dealer_showing <= 10:
+            raise ValueError(f"dealer_showing must be 1..10 (1=ace), got {dealer_showing}")
         if usable_ace:
             self.player = [1, player_total - 11]  # ace (=1) + a card making the soft total
         elif player_total == 21:
@@ -256,7 +273,11 @@ class BlackjackEnv:
         return self._obs(), reward, True, {}
 
     def step(self, action):
-        assert not self.done, "step() called on a finished episode"
+        if self.done:
+            # A plain `assert` here would silently vanish under `python -O`
+            # and let a caller keep dealing cards into an already-finished
+            # hand -- raise unconditionally instead.
+            raise RuntimeError("BlackjackEnv.step() called on a finished episode; call reset() first")
         p_total, _ = self._sum_hand(self.player)
 
         if action == 1:  # hit

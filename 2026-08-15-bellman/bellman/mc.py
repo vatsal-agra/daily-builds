@@ -24,6 +24,8 @@ Two variants are implemented:
 """
 import random
 
+from .envs import BlackjackEnv
+
 
 def mc_control(env_factory, episodes=500_000, gamma=1.0,
                epsilon_start=1.0, epsilon_end=0.05, seed=0):
@@ -32,13 +34,14 @@ def mc_control(env_factory, episodes=500_000, gamma=1.0,
     randomly -- so the Q-table grows lazily, keyed by whatever states are
     actually visited)."""
     rng = random.Random(seed)
+    actions = env_factory().actions  # a fixed, env-independent action set -- read once
     Q = {}
     counts = {}
 
     def ensure(state):
         if state not in Q:
-            Q[state] = {a: 0.0 for a in env_factory().actions}
-            counts[state] = {a: 0 for a in env_factory().actions}
+            Q[state] = {a: 0.0 for a in actions}
+            counts[state] = {a: 0 for a in actions}
 
     for ep in range(episodes):
         epsilon = epsilon_start + (epsilon_end - epsilon_start) * min(ep / max(episodes - 1, 1), 1.0)
@@ -81,8 +84,6 @@ def mc_es_control(episodes=500_000, gamma=1.0, seed=0):
     inside it too (or busts, ending the episode) -- the domain is closed
     under `step()`, which is what lets a plain dict keyed by these states
     (no lazy growth needed) work here."""
-    from .envs import BlackjackEnv
-
     rng = random.Random(seed)
     all_states = [(t, d, ace) for t in range(12, 22) for d in range(1, 11) for ace in (False, True)]
     Q = {s: {0: 0.0, 1: 0.0} for s in all_states}

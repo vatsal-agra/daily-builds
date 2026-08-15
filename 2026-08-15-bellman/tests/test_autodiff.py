@@ -66,6 +66,21 @@ class TestAutodiff(unittest.TestCase):
         for lg in logits:
             self.assertTrue(math.isfinite(lg.grad))
 
+    def test_backward_does_not_recurse_on_long_chains(self):
+        # Regression test for a real bug found in adversarial review: the
+        # original recursive topological-sort in backward() blew Python's
+        # call stack (RecursionError) on long computation chains -- and a
+        # REINFORCE episode's loss is exactly that shape, one term per
+        # timestep, left-associatively summed. 5000 terms is comfortably
+        # past where the old recursive version broke (~1500-2000).
+        loss = Value(0.0)
+        leaves = [Value(1.0) for _ in range(5000)]
+        for leaf in leaves:
+            loss = loss + leaf * 2.0
+        loss.backward()  # must not raise RecursionError
+        for leaf in leaves:
+            self.assertAlmostEqual(leaf.grad, 2.0)
+
     def test_softmax_matches_manual_computation(self):
         rng = random.Random(0)
         raw = [rng.uniform(-3, 3) for _ in range(5)]

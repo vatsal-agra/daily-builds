@@ -72,19 +72,25 @@ def cmd_viz(args):
     return 0
 
 
+def _parsed(*argv):
+    """Parse argv through the real subparsers so `demo` always runs each
+    subcommand with its actual current defaults -- not a second, hand-copied
+    set of numbers here that could silently drift out of sync with them."""
+    return build_parser().parse_args(list(argv))
+
+
 def cmd_demo(args):
     print("=== Bellman demo: exercising every feature end to end ===\n")
     print("--- DP oracle ---")
-    cmd_oracle(argparse.Namespace(rows=4, cols=12))
+    cmd_oracle(_parsed("oracle"))
     print("\n--- GridWorld TD control (Q-Learning / SARSA / SARSA(lambda)) ---")
-    cmd_gridworld(argparse.Namespace(rows=4, cols=12, slip=0.0, episodes=500, seed=0))
+    cmd_gridworld(_parsed("gridworld"))
     print("\n--- CartPole REINFORCE ---")
-    cmd_cartpole(argparse.Namespace(episodes=400, seed=1))
+    cmd_cartpole(_parsed("cartpole"))
     print("\n--- Blackjack Monte Carlo Exploring Starts ---")
-    cmd_blackjack(argparse.Namespace(episodes=500_000, seed=0))
+    cmd_blackjack(_parsed("blackjack"))
     print("\n--- Building interactive HTML report ---")
-    cmd_viz(argparse.Namespace(gridworld_episodes=500, cartpole_episodes=400, blackjack_episodes=500_000,
-                                skip_blackjack=False, out="viz/report.html", seed=0))
+    cmd_viz(_parsed("viz", "--out", "viz/report.html"))
     print("\n=== Demo complete ===")
     return 0
 

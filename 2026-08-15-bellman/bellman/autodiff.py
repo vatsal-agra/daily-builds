@@ -113,16 +113,29 @@ class Value:
         return out
 
     def backward(self):
+        # Iterative post-order DFS topological sort -- NOT recursive. A
+        # REINFORCE episode's loss graph is one long left-associative chain
+        # of additions (one term per timestep), so a naive recursive
+        # `build(child)` walk recurses as deep as the episode is long, and a
+        # few hundred timesteps is enough to blow Python's default ~1000
+        # call-stack recursion limit (verified: a 2000-step episode crashes
+        # with RecursionError under the recursive version). An explicit
+        # stack has no such ceiling.
         topo = []
         visited = set()
-
-        def build(v):
-            if id(v) not in visited:
-                visited.add(id(v))
-                for child in v._prev:
-                    build(child)
-                topo.append(v)
-        build(self)
+        stack = [(self, False)]
+        while stack:
+            node, expanded = stack.pop()
+            if expanded:
+                topo.append(node)
+                continue
+            if id(node) in visited:
+                continue
+            visited.add(id(node))
+            stack.append((node, True))
+            for child in node._prev:
+                if id(child) not in visited:
+                    stack.append((child, False))
 
         self.grad = 1.0
         for v in reversed(topo):

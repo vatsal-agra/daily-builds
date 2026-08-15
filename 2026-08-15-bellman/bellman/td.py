@@ -20,10 +20,15 @@ def _linear_decay(start, end, t, total):
 
 
 def q_learning(env, episodes=500, alpha=0.5, gamma=1.0,
-               epsilon_start=1.0, epsilon_end=0.01, max_steps=10_000, seed=0):
+               epsilon_start=1.0, epsilon_end=0.01, max_steps=10_000, seed=0,
+               on_episode_end=None):
     """Off-policy TD control (Watkins 1989):
         Q(s,a) <- Q(s,a) + alpha * [ r + gamma * max_a' Q(s',a') - Q(s,a) ]
     Learns the value of the *greedy* policy regardless of how it explores.
+
+    `on_episode_end(episode, Q)`, if given, is called after every episode --
+    e.g. `train.py`'s viz snapshotting hooks in here instead of maintaining a
+    second, separately-drifting copy of this training loop.
     """
     rng = random.Random(seed)
     Q = {s: {a: 0.0 for a in env.actions} for s in env.states}
@@ -43,6 +48,8 @@ def q_learning(env, episodes=500, alpha=0.5, gamma=1.0,
             if done:
                 break
         episode_returns.append(total_reward)
+        if on_episode_end is not None:
+            on_episode_end(ep, Q)
 
     policy = {s: max(env.actions, key=lambda a: Q[s][a]) for s in env.states}
     return Q, policy, episode_returns

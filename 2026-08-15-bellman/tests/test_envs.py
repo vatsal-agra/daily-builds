@@ -58,6 +58,22 @@ class TestGridWorldEnv(unittest.TestCase):
         self.assertEqual(len(lines), 4)
         self.assertEqual(len(lines[0].split()), 12)
 
+    def test_rejects_degenerate_dimensions(self):
+        # Regression test: rows=1 puts the cliff on the *only* row (no row
+        # above to detour through), making the goal provably unreachable --
+        # value_iteration used to just fail to converge with a confusing
+        # error instead of the constructor rejecting the input outright.
+        with self.assertRaises(ValueError):
+            GridWorldEnv(rows=1, cols=12)
+        with self.assertRaises(ValueError):
+            GridWorldEnv(rows=4, cols=1)
+
+    def test_rejects_invalid_slip_probability(self):
+        with self.assertRaises(ValueError):
+            GridWorldEnv(slip_prob=1.5)
+        with self.assertRaises(ValueError):
+            GridWorldEnv(slip_prob=-0.1)
+
 
 class TestCartPoleEnv(unittest.TestCase):
     def test_reset_gives_small_random_state(self):
@@ -161,6 +177,22 @@ class TestBlackjackEnv(unittest.TestCase):
         _, reward, done, _ = env.resolve_natural()
         self.assertEqual(reward, 1.0)
         self.assertTrue(done)
+
+    def test_step_after_done_raises_instead_of_silently_continuing(self):
+        env = BlackjackEnv(seed=0)
+        env.player = [10, 9]
+        env.dealer = [9, 8]
+        env.step(0)  # stick -> resolves, done=True
+        self.assertTrue(env.done)
+        with self.assertRaises(RuntimeError):
+            env.step(1)
+
+    def test_reset_to_rejects_out_of_range_inputs(self):
+        env = BlackjackEnv(seed=0)
+        with self.assertRaises(ValueError):
+            env.reset_to(11, 5, False)  # below the graded 12..21 range
+        with self.assertRaises(ValueError):
+            env.reset_to(15, 11, False)  # invalid dealer up-card
 
     def test_dealer_plays_fixed_policy_hits_below_17(self):
         env = BlackjackEnv(seed=1)

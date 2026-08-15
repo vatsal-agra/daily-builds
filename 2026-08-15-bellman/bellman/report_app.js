@@ -203,7 +203,8 @@ function renderGridworld() {
   const stats = el("div", { class: "stat-row" }, [
     statTile("DP-optimal return", fmt(gw.optimal_return), "Value Iteration, ground truth"),
     statTile("Q-Learning greedy return", fmt(gw.q_learning.greedy_return),
-      gw.q_learning.greedy_return === gw.optimal_return ? "matches optimal exactly" : "", true),
+      gw.q_learning.greedy_return === gw.optimal_return ? "matches optimal exactly" : "",
+      gw.q_learning.greedy_return === gw.optimal_return),
     statTile("SARSA greedy return", fmt(gw.sarsa.greedy_return), "on-policy: prefers the safer path"),
     statTile("SARSA(λ) greedy return", fmt(gw.sarsa_lambda.greedy_return), "eligibility traces"),
   ]);
@@ -372,11 +373,12 @@ function renderGridworld() {
 }
 
 function statTile(label, value, note, good) {
-  return el("div", { class: "stat-tile" }, [
+  const children = [
     el("div", { class: "label" }, [label]),
     el("div", { class: "value" + (good ? " good" : "") }, [value]),
-    note ? el("div", { class: "note" }, [note]) : el("div", {}, []),
-  ]);
+  ];
+  if (note) children.push(el("div", { class: "note" }, [note]));
+  return el("div", { class: "stat-tile" }, children);
 }
 function legendSwatch(color, label) {
   return el("div", { class: "item" }, [el("div", { class: "swatch", style: "background:" + color }, []), label]);
@@ -435,7 +437,7 @@ function renderCartpole() {
 
   root.appendChild(el("div", { class: "stat-row" }, [
     statTile("Trained policy (eval mean)", fmt(cp.eval_mean, 1) + " steps",
-      "held out over 30 episodes, cap " + cp.eval_cap, true),
+      "held out over 30 episodes, cap " + cp.eval_cap, cp.eval_mean > cp.baseline_mean * 2),
     statTile("Random-policy baseline", fmt(cp.baseline_mean, 1) + " steps", "same 30-episode protocol"),
     statTile("Improvement", "×" + fmt(cp.eval_mean / cp.baseline_mean, 1),
       "trained vs. random, held-out episodes"),

@@ -7,46 +7,29 @@ import time
 
 from .envs import GridWorldEnv, CartPoleEnv, BlackjackEnv
 from .dp import value_iteration, greedy_rollout_return, blackjack_optimal_policy
-from .td import sarsa, sarsa_lambda, epsilon_greedy, _linear_decay
+from .td import q_learning, sarsa, sarsa_lambda
 from .mc import mc_es_control
 from .pg import train_reinforce, evaluate as pg_evaluate
 
 
 def q_learning_with_snapshots(env, episodes, snapshot_every=25, **kwargs):
-    """Like td.q_learning, but also returns periodic (episode, Q-copy, policy-copy)
-    checkpoints so the viewer can scrub the learned policy across training time."""
-    rng = random.Random(kwargs.pop("seed", 0))
-    alpha = kwargs.pop("alpha", 0.5)
-    gamma = kwargs.pop("gamma", 1.0)
-    epsilon_start = kwargs.pop("epsilon_start", 1.0)
-    epsilon_end = kwargs.pop("epsilon_end", 0.01)
-    max_steps = kwargs.pop("max_steps", 10_000)
-
-    Q = {s: {a: 0.0 for a in env.actions} for s in env.states}
-    episode_returns = []
+    """Thin wrapper around td.q_learning that also records periodic
+    (episode, Q-copy, policy-copy) checkpoints, via q_learning's
+    `on_episode_end` hook, so the HTML viewer can scrub the learned policy
+    across training time. Deliberately NOT a second copy of the training
+    loop -- there is exactly one implementation of Q-Learning in this
+    project (td.py's), so a future change to it can't silently leave this
+    snapshot path out of sync.
+    """
     snapshots = []
 
-    for ep in range(episodes):
-        epsilon = _linear_decay(epsilon_start, epsilon_end, ep, episodes)
-        s = env.reset()
-        total = 0.0
-        for _ in range(max_steps):
-            a = epsilon_greedy(Q, s, env.actions, epsilon, rng)
-            ns, r, done, _ = env.step(a)
-            total += r
-            best_next = 0.0 if done else max(Q[ns].values())
-            Q[s][a] += alpha * (r + gamma * best_next - Q[s][a])
-            s = ns
-            if done:
-                break
-        episode_returns.append(total)
-
+    def maybe_snapshot(ep, Q):
         if ep % snapshot_every == 0 or ep == episodes - 1:
             q_copy = {s: dict(a_vals) for s, a_vals in Q.items()}
             policy_copy = {s: max(env.actions, key=lambda a: Q[s][a]) for s in env.states}
             snapshots.append({"episode": ep, "Q": q_copy, "policy": policy_copy})
 
-    policy = {s: max(env.actions, key=lambda a: Q[s][a]) for s in env.states}
+    Q, policy, episode_returns = q_learning(env, episodes=episodes, on_episode_end=maybe_snapshot, **kwargs)
     return Q, policy, episode_returns, snapshots
 
 
@@ -62,7 +45,7 @@ def run_gridworld_experiment(rows=4, cols=12, slip_prob=0.0, episodes=500, seed=
     # dominate the reward-curve's y-axis and hide the actual learning signal.
     max_steps = 200
 
-    Q_q, policy_q, rewards_q, snapshots_q = q_learning_with_snapshots(
+    _, policy_q, rewards_q, snapshots_q = q_learning_with_snapshots(
         GridWorldEnv(rows=rows, cols=cols, slip_prob=slip_prob, seed=seed),
         episodes=episodes, alpha=0.5, gamma=1.0, seed=seed, max_steps=max_steps)
 

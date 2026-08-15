@@ -1,6 +1,7 @@
 import unittest
 
-from bellman.mc import mc_es_control
+from bellman.envs import BlackjackEnv
+from bellman.mc import mc_control, mc_es_control
 from bellman.dp import blackjack_optimal_policy
 
 
@@ -38,6 +39,32 @@ class TestMonteCarloExploringStarts(unittest.TestCase):
         Q_a, policy_a = mc_es_control(episodes=5000, seed=3)
         Q_b, policy_b = mc_es_control(episodes=5000, seed=3)
         self.assertEqual(policy_a, policy_b)
+
+
+class TestMonteCarloEpsilonGreedy(unittest.TestCase):
+    """The general on-policy epsilon-greedy variant (mc_control) exists as a
+    deliberate contrast to Exploring Starts -- see mc.py's module docstring
+    for why ES was chosen for the shipped Blackjack feature. Exercised here
+    so it stays a working, tested piece of the project rather than orphaned
+    code nothing ever calls."""
+
+    def test_produces_a_valid_policy_over_visited_states(self):
+        Q, policy = mc_control(lambda: BlackjackEnv(), episodes=40_000,
+                                gamma=1.0, epsilon_start=1.0, epsilon_end=0.05, seed=0)
+        self.assertGreater(len(policy), 50)
+        for state, action in policy.items():
+            self.assertIn(action, (0, 1))
+            player_total, dealer_showing, usable_ace = state
+            self.assertTrue(1 <= dealer_showing <= 10)
+
+    def test_still_gets_the_easy_calls_right_despite_soft_policy_bias(self):
+        # mc.py's module docs explain epsilon-soft MC control converges to
+        # Q_pi (value under continued exploration), not Q*, which biases the
+        # closer decisions -- but the *large*-margin decisions should still
+        # come out right even so.
+        Q, policy = mc_control(lambda: BlackjackEnv(), episodes=100_000,
+                                gamma=1.0, epsilon_start=1.0, epsilon_end=0.02, seed=0)
+        self.assertEqual(policy.get((20, 10, False)), 0)  # always stand on 20
 
 
 if __name__ == "__main__":
