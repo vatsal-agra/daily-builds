@@ -118,9 +118,11 @@ CartPole physics drives the live browser animation.
 
 **Stretch (2+, implement at least 1):**
 
-5. **Monte Carlo control on Blackjack**, compared against the actual
-   textbook-optimal Blackjack basic-strategy table (a second, independent
-   ground truth besides the DP oracle).
+5. **Monte Carlo Exploring Starts control on Blackjack**, compared against
+   an independently-computed optimal Blackjack policy (exact expected-value
+   backward induction over the dealer's outcome distribution — a second,
+   separate ground truth besides the GridWorld DP oracle, sharing no code
+   with `dp.py`'s Value/Policy Iteration).
 
 6. **SARSA(λ) with eligibility traces**, benchmarked against plain SARSA to
    show the faster-credit-propagation effect of traces on the same

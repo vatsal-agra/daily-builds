@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bellman — RL Laboratory</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --surface-2:      #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1: #2a78d6; /* blue   - Q-Learning */
+    --series-2: #eb6834; /* orange - SARSA */
+    --series-3: #1baf7a; /* aqua   - SARSA(lambda) */
+    --series-4: #eda100; /* yellow - REINFORCE / trained */
+    --good:     #0ca30c;
+    --critical: #d03b3b;
+    --seq-100: #cde2fb; --seq-200: #9ec5f4; --seq-300: #6da7ec;
+    --seq-400: #3987e5; --seq-500: #256abf; --seq-600: #184f95; --seq-700: #0d366b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --surface-2:      #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --series-4: #c98500;
+      --good:     #0ca30c;
+      --critical: #e66767;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --surface-2:      #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --good:     #0ca30c;
+    --critical: #e66767;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--surface-2);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 64px; }
+  header.page { margin-bottom: 20px; }
+  header.page h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: -0.01em; }
+  header.page p { margin: 0; color: var(--text-secondary); font-size: 14.5px; line-height: 1.5; max-width: 72ch; }
+
+  nav.tabs { display: flex; gap: 4px; margin: 22px 0 18px; border-bottom: 1px solid var(--border); }
+  nav.tabs button {
+    appearance: none; border: none; background: none; cursor: pointer;
+    padding: 10px 16px; font-size: 14px; font-weight: 600; color: var(--text-muted);
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    font-family: inherit;
+  }
+  nav.tabs button.active { color: var(--text-primary); border-bottom-color: var(--series-1); }
+  nav.tabs button:hover { color: var(--text-primary); }
+
+  section.tab { display: none; }
+  section.tab.active { display: block; }
+
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 16px; }
+  .card .sub { margin: 0 0 14px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .stat-tile .label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .stat-tile .value { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .stat-tile .value.good { color: var(--good); }
+  .stat-tile .note { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--text-secondary); margin-bottom: 8px; }
+  .legend .item { display: flex; align-items: center; gap: 6px; }
+  .legend .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+  .legend .line { width: 14px; height: 2px; border-radius: 1px; flex: none; }
+
+  canvas { display: block; max-width: 100%; }
+  .chart-wrap { position: relative; }
+  .tooltip {
+    position: absolute; pointer-events: none; background: var(--text-primary); color: var(--surface-1);
+    font-size: 11.5px; padding: 6px 8px; border-radius: 6px; opacity: 0; transform: translate(-50%, -110%);
+    white-space: nowrap; transition: opacity 0.08s; z-index: 5;
+  }
+
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .controls button {
+    appearance: none; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-primary);
+    border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .controls button:hover { border-color: var(--text-muted); }
+  .controls input[type=range] { flex: 1; min-width: 140px; accent-color: var(--series-1); }
+  .controls .readout { font-size: 12.5px; color: var(--text-secondary); min-width: 7em; font-variant-numeric: tabular-nums; }
+
+  .grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 720px) { .grid-two { grid-template-columns: 1fr; } }
+
+  table.policy-grid { border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
+  table.policy-grid th, table.policy-grid td {
+    width: 22px; height: 20px; text-align: center; border: 1px solid var(--border); padding: 0;
+  }
+  table.policy-grid th { color: var(--text-muted); font-weight: 500; background: var(--surface-1); }
+  table.policy-grid td { cursor: default; }
+  table.policy-grid caption { caption-side: top; text-align: left; font-size: 12.5px; color: var(--text-secondary); padding-bottom: 6px; }
+
+  footer.page { margin-top: 28px; color: var(--text-muted); font-size: 12px; text-align: center; }
+  code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <h1>Bellman</h1>
+    <p>A reinforcement-learning laboratory built from scratch — tabular TD control (Q-Learning,
+       SARSA, SARSA(&lambda;)) graded against a dynamic-programming oracle, REINFORCE policy-gradient
+       CartPole control backed by a hand-rolled autodiff engine, and Monte Carlo Exploring Starts on
+       Blackjack graded against an independently-computed optimal policy. Every chart below is
+       generated from a real training run, not illustrative data.</p>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="gridworld" class="active">GridWorld</button>
+    <button data-tab="cartpole">CartPole</button>
+    <button data-tab="blackjack">Blackjack</button>
+  </nav>
+
+  <section class="tab active" id="tab-gridworld"></section>
+  <section class="tab" id="tab-cartpole"></section>
+  <section class="tab" id="tab-blackjack"></section>
+
+  <footer class="page">Generated by Bellman's <code>bellman viz</code> command. No external assets, no CDN.</footer>
+</div>
+
+<script id="bellman-data" type="application/json">__DATA_JSON__</script>
+<script>
+__APP_JS__
+</script>
+</body>
+</html>
