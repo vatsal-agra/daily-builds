@@ -11,6 +11,21 @@ from .train import run_gridworld_experiment, run_cartpole_experiment, run_blackj
 from .report import build_report
 
 
+def positive_int(value):
+    """argparse type= validator: rejects 0/negative/non-integer episode
+    counts at parse time with a clean message, instead of silently running
+    a 0-episode "experiment" that produces meaningless output (an untrained,
+    all-zero Q-table's greedy rollout just bounces off the wall until the
+    step cap -- garbage that looks superficially like a real result)."""
+    try:
+        iv = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected an integer, got {value!r}")
+    if iv < 1:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {iv}")
+    return iv
+
+
 def cmd_oracle(args):
     env = GridWorldEnv(rows=args.rows, cols=args.cols, slip_prob=0.0)
     V, policy = value_iteration(env, gamma=1.0)
@@ -108,25 +123,25 @@ def build_parser():
     gp.add_argument("--rows", type=int, default=4)
     gp.add_argument("--cols", type=int, default=12)
     gp.add_argument("--slip", type=float, default=0.0, help="stochastic slip probability (0 = classic)")
-    gp.add_argument("--episodes", type=int, default=500)
+    gp.add_argument("--episodes", type=positive_int, default=500)
     gp.add_argument("--seed", type=int, default=0)
     gp.set_defaults(func=cmd_gridworld)
 
     cp = sub.add_parser("cartpole", help="Train a REINFORCE policy-gradient agent on CartPole.")
-    cp.add_argument("--episodes", type=int, default=400)
+    cp.add_argument("--episodes", type=positive_int, default=400)
     cp.add_argument("--seed", type=int, default=1)
     cp.set_defaults(func=cmd_cartpole)
 
     bp = sub.add_parser("blackjack", help="Train Monte Carlo Exploring Starts on Blackjack.")
-    bp.add_argument("--episodes", type=int, default=500_000)
+    bp.add_argument("--episodes", type=positive_int, default=500_000)
     bp.add_argument("--seed", type=int, default=0)
     bp.set_defaults(func=cmd_blackjack)
 
     vp = sub.add_parser("viz", help="Run all experiments and build the interactive HTML report.")
     vp.add_argument("--out", default="viz/report.html")
-    vp.add_argument("--gridworld-episodes", type=int, default=500)
-    vp.add_argument("--cartpole-episodes", type=int, default=400)
-    vp.add_argument("--blackjack-episodes", type=int, default=500_000)
+    vp.add_argument("--gridworld-episodes", type=positive_int, default=500)
+    vp.add_argument("--cartpole-episodes", type=positive_int, default=400)
+    vp.add_argument("--blackjack-episodes", type=positive_int, default=500_000)
     vp.add_argument("--skip-blackjack", action="store_true")
     vp.add_argument("--seed", type=int, default=0)
     vp.set_defaults(func=cmd_viz)
@@ -140,7 +155,15 @@ def build_parser():
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (ValueError, RuntimeError) as e:
+        # Domain errors from bellman/envs.py, dp.py, etc. (e.g. GridWorldEnv
+        # rejecting a degenerate --rows/--cols combination) are meaningful,
+        # already-clear messages -- a raw Python traceback would bury that
+        # message under implementation detail the user doesn't need.
+        print(f"bellman: error: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

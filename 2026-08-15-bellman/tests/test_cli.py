@@ -53,6 +53,22 @@ class TestCLI(unittest.TestCase):
         with self.assertRaises(SystemExit):
             main([])
 
+    def test_zero_episodes_is_a_clean_argparse_error_not_garbage_output(self):
+        with self.assertRaises(SystemExit):
+            run_cli(["gridworld", "--episodes", "0"])
+
+    def test_negative_episodes_is_a_clean_argparse_error(self):
+        with self.assertRaises(SystemExit):
+            run_cli(["cartpole", "--episodes", "-5"])
+
+    def test_non_integer_episodes_is_a_clean_argparse_error(self):
+        with self.assertRaises(SystemExit):
+            run_cli(["blackjack", "--episodes", "abc"])
+
+    def test_degenerate_grid_dimensions_give_clean_error_not_traceback(self):
+        code, out = run_cli(["oracle", "--rows", "1", "--cols", "12"])
+        self.assertEqual(code, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

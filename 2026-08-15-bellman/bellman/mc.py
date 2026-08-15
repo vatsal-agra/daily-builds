@@ -25,6 +25,7 @@ Two variants are implemented:
 import random
 
 from .envs import BlackjackEnv
+from .validation import require_positive_episodes
 
 
 def mc_control(env_factory, episodes=500_000, gamma=1.0,
@@ -33,6 +34,7 @@ def mc_control(env_factory, episodes=500_000, gamma=1.0,
     fixed `states` list to pre-size a table with, since hands are dealt
     randomly -- so the Q-table grows lazily, keyed by whatever states are
     actually visited)."""
+    require_positive_episodes(episodes)
     rng = random.Random(seed)
     actions = env_factory().actions  # a fixed, env-independent action set -- read once
     Q = {}
@@ -84,6 +86,7 @@ def mc_es_control(episodes=500_000, gamma=1.0, seed=0):
     inside it too (or busts, ending the episode) -- the domain is closed
     under `step()`, which is what lets a plain dict keyed by these states
     (no lazy growth needed) work here."""
+    require_positive_episodes(episodes)
     rng = random.Random(seed)
     all_states = [(t, d, ace) for t in range(12, 22) for d in range(1, 11) for ace in (False, True)]
     Q = {s: {0: 0.0, 1: 0.0} for s in all_states}

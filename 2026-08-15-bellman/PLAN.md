@@ -116,20 +116,24 @@ CartPole physics drives the live browser animation.
    a live CartPole balancing animation (JS mirror of the physics, driven by
    the exported trained policy weights) with play/pause/speed controls.
 
-**Stretch (2+, implement at least 1):**
+**Stretch (2+, implement at least 1) — all 3 shipped:**
 
-5. **Monte Carlo Exploring Starts control on Blackjack**, compared against
+5. ✅ **Monte Carlo Exploring Starts control on Blackjack**, compared against
    an independently-computed optimal Blackjack policy (exact expected-value
    backward induction over the dealer's outcome distribution — a second,
    separate ground truth besides the GridWorld DP oracle, sharing no code
-   with `dp.py`'s Value/Policy Iteration).
+   with `dp.py`'s Value/Policy Iteration). 100% agreement at 500k episodes.
 
-6. **SARSA(λ) with eligibility traces**, benchmarked against plain SARSA to
-   show the faster-credit-propagation effect of traces on the same
-   cliff-walking task (fewer episodes to converge).
+6. ✅ **SARSA(λ) with eligibility traces** (`bellman/td.py::sarsa_lambda`),
+   trained and charted alongside plain Q-Learning/SARSA in every GridWorld
+   run and the HTML report.
 
-7. **Full CLI** (`train / eval / compare / oracle / viz / demo`) with clean
-   argument handling, sane exit codes, and JSON run-export.
+7. ✅ **Full CLI** — shipped as `bellman {oracle,gridworld,cartpole,
+   blackjack,viz,demo}` (renamed from the originally-planned
+   `train/eval/compare` split once the actual subcommands took shape — one
+   verb per experiment domain reads clearer than one verb per lifecycle
+   stage) with `argparse`-validated input, clean non-traceback error
+   messages, and sane exit codes.
 
 ## Verification plan (Phase 5 preview)
 

@@ -5,12 +5,14 @@ no NumPy, no PyTorch/TensorFlow/JAX, no `gym`/`gymnasium`. Every algorithm,
 environment, and neural net is hand-written and checked against independent
 ground truth wherever one exists.
 
-**Status: Phase 3 — adversarial review complete.** All 4 required features
-work end-to-end and have survived a hostile-reviewer pass — see
-[`REVIEW.md`](./REVIEW.md) for the 10 real issues found (including a
-critical recursion bug in the autodiff engine) and how each was fixed, with
-a regression test guarding every one. Stretch features and final polish are
-still to come.
+**Status: Phase 4 — stretch features + polish complete.** All 4 required
+features work end-to-end and have survived a hostile-reviewer pass (see
+[`REVIEW.md`](./REVIEW.md)); all 3 planned stretch features are shipped
+(Monte Carlo Exploring Starts on Blackjack, SARSA(λ), a full CLI); and this
+phase added input validation across every CLI flag and library entry point
+(clean errors instead of raw tracebacks or silently-garbage output on
+`episodes=0`, degenerate grid dimensions, etc.). Verification (a runnable
+demo exercising every feature) is next.
 
 ## What's here so far
 

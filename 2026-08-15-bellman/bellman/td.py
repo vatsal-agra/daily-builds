@@ -5,6 +5,8 @@ a fair oracle to grade them against.
 """
 import random
 
+from .validation import require_positive_episodes
+
 
 def epsilon_greedy(Q, state, actions, epsilon, rng):
     if rng.random() < epsilon:
@@ -30,6 +32,7 @@ def q_learning(env, episodes=500, alpha=0.5, gamma=1.0,
     e.g. `train.py`'s viz snapshotting hooks in here instead of maintaining a
     second, separately-drifting copy of this training loop.
     """
+    require_positive_episodes(episodes)
     rng = random.Random(seed)
     Q = {s: {a: 0.0 for a in env.actions} for s in env.states}
     episode_returns = []
@@ -64,6 +67,7 @@ def sarsa(env, episodes=500, alpha=0.5, gamma=1.0,
     all, which is why it prefers the safer path near a cliff while epsilon
     is still non-trivial.
     """
+    require_positive_episodes(episodes)
     rng = random.Random(seed)
     Q = {s: {a: 0.0 for a in env.actions} for s in env.states}
     episode_returns = []
@@ -98,6 +102,7 @@ def sarsa_lambda(env, episodes=500, alpha=0.5, gamma=1.0, lam=0.9,
     instead of one step at a time -- converges in fewer episodes than plain
     SARSA on the same task.
     """
+    require_positive_episodes(episodes)
     rng = random.Random(seed)
     Q = {s: {a: 0.0 for a in env.actions} for s in env.states}
     episode_returns = []

@@ -15,6 +15,7 @@ import random
 
 from .autodiff import Value, softmax
 from .nn import MLP
+from .validation import require_positive_episodes
 
 
 class ReinforceAgent:
@@ -67,6 +68,7 @@ class ReinforceAgent:
 
 def train_reinforce(env, episodes=400, hidden=8, lr=0.02, gamma=0.99,
                      max_steps=300, seed=0, log_every=25, callback=None):
+    require_positive_episodes(episodes)
     agent = ReinforceAgent(obs_dim=4, n_actions=2, hidden=hidden, lr=lr, gamma=gamma, seed=seed)
     episode_returns = []
 
