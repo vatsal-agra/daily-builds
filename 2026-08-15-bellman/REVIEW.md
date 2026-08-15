@@ -7,6 +7,52 @@ silently come back.
 
 ## Bugs found and fixed
 
+### 0. CRITICAL, found in Phase 5 — `autodiff.Value._prev` as a `set` broke reproducibility across process runs
+
+Phase 5's `demo.sh` runs the real CLI end-to-end (not internal function
+calls), and its first full run failed: `bellman cartpole --episodes 400
+--seed 1`, run as its own process, produced an eval-mean of 90.0 steps --
+far below the 500.0 the *identical command* had produced minutes earlier.
+Direct reproduction nailed it down: the same `train_reinforce(..., seed=1)`
+call, run in three separate `python3` subprocess invocations, produced three
+different results (eval means 40.6 / 431.8 / ...) despite byte-identical
+code and seeds -- while `test_pg.test_training_is_deterministic_given_seed`
+(which compares two runs *within one process*) kept passing throughout,
+because the bug only shows up across processes.
+
+Root cause: `Value._prev` was `set(_children)`. `Value` has no custom
+`__hash__`, so Python hashes it by identity (`id()`), which depends on the
+object's memory address -- and that address varies run to run (allocator
+state, ASLR) even with identical code and seeds. A weight `Value` is reused
+across every timestep of an episode (hundreds of forward passes sharing the
+same parameter nodes), so its `.grad` accumulates hundreds of `+=`
+contributions during `backward()` -- and floating-point addition is not
+associative for 3+ terms, so the *order* those contributions sum in (driven
+by `_prev`'s set-iteration order) changes the result's last bit. CartPole's
+chaotic nonlinear dynamics plus probability-weighted action sampling
+amplify that single-bit drift into completely different training
+trajectories. This directly undercuts the project's central verification
+story ("same seed reproduces"), and every reward number quoted anywhere in
+this project prior to this fix should be read as "a real, valid result for
+*a* run" rather than "the reproducible result for seed=1."
+
+**Fix:** `_prev` is now a plain `tuple` (order-preserving, and that order is
+fully determined by the deterministic sequence of Python operations that
+built the graph -- not by memory layout). `backward()`'s `visited` set
+already guards against reprocessing a node reachable via more than one
+path, so `_prev` never needed set semantics for correctness, only for
+(accidentally, and wrongly) providing an *order*. Verified by direct
+reproduction: 3 separate process runs, bit-for-bit identical output after
+the fix (previously: 40.6 / 431.8 / non-reproducing). Regression test:
+`test_cross_process_determinism.py` spawns real separate Python processes
+(the only way to exercise this bug at all) and asserts identical output.
+`test_pg.py`'s existing hyperparameter choices were also revisited: now
+that results are truly deterministic, one test's original 250-episode
+checkpoint reproducibly lands at a mediocre (but real, non-buggy) result for
+this specific seed -- REINFORCE's return curve is noisy and non-monotonic
+in training length, not a smooth curve -- so the test now uses a checkpoint
+verified to reproduce a comfortable margin instead.
+
 ### 1. CRITICAL — `Value.backward()` recursion blows the call stack on long episodes
 `autodiff.py`'s topological sort was a recursive `build(child)` DFS. A
 REINFORCE episode's loss graph is one long left-associative chain of
@@ -145,3 +191,16 @@ Full suite: **76/76 tests green** (up from 69 — 7 new regression tests
 added directly from these findings). Report regenerated and re-inspected in
 headless Chromium (light + dark mode, all three tabs, CartPole animation
 played) with zero console errors after every fix in this pass.
+
+## Addendum: one more critical bug, found by Phase 5's real end-to-end run
+
+This Phase 3 pass reviewed the code by reading it and exercising it through
+Python function calls and the in-process test suite -- which is exactly why
+issue #0 above (cross-process non-determinism) slipped past it: nothing in
+this phase ever ran the actual CLI as a separate OS process twice and diffed
+the output. Phase 5's `demo.sh` does exactly that, and caught it on its
+first real run. Folded into this document (as issue #0) rather than a
+separate one, since it's the same kind of hostile-review finding this phase
+is about -- it just took a different, equally legitimate form of adversarial
+pressure (real subprocess execution) to surface. Full suite after this fix:
+**85/85 tests green**.

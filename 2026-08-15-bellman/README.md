@@ -5,14 +5,13 @@ no NumPy, no PyTorch/TensorFlow/JAX, no `gym`/`gymnasium`. Every algorithm,
 environment, and neural net is hand-written and checked against independent
 ground truth wherever one exists.
 
-**Status: Phase 4 — stretch features + polish complete.** All 4 required
-features work end-to-end and have survived a hostile-reviewer pass (see
-[`REVIEW.md`](./REVIEW.md)); all 3 planned stretch features are shipped
-(Monte Carlo Exploring Starts on Blackjack, SARSA(λ), a full CLI); and this
-phase added input validation across every CLI flag and library entry point
-(clean errors instead of raw tracebacks or silently-garbage output on
-`episodes=0`, degenerate grid dimensions, etc.). Verification (a runnable
-demo exercising every feature) is next.
+**Status: Phase 5 — verification complete, 85/85 tests + 14/14 end-to-end
+checks green.** All 4 required features work end-to-end, all 3 stretch
+features are shipped, and the whole thing has survived two rounds of
+hostile review (see [`REVIEW.md`](./REVIEW.md)) — including a **critical
+cross-process non-determinism bug in the autodiff engine** that only
+`demo.sh`'s real CLI-as-subprocess run caught (in-process tests couldn't).
+Final polish is next.
 
 ## What's here so far
 
@@ -45,6 +44,7 @@ python3 -m bellman.cli cartpole --episodes 400    # REINFORCE on CartPole
 python3 -m bellman.cli blackjack --episodes 500000  # Monte Carlo Exploring Starts
 python3 -m bellman.cli viz --out viz/report.html    # build the interactive report
 python3 -m unittest discover -s tests -v            # run the test suite
+bash demo.sh                                        # full end-to-end verification (real CLI, real numbers)
 ```
 
 See [`PLAN.md`](./PLAN.md) for the full concept, architecture, and feature

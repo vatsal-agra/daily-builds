@@ -18,7 +18,27 @@ class Value:
         self.data = float(data)
         self.grad = 0.0
         self._backward = lambda: None
-        self._prev = set(_children)
+        # NOT a set. A weight Value gets reused across every timestep of an
+        # episode (hundreds of forward passes sharing the same parameter
+        # nodes), so its .grad accumulates hundreds of `+=` contributions
+        # during backward() -- and floating-point addition, unlike exact
+        # arithmetic, is not associative for 3+ terms: the *order* those
+        # contributions sum in changes the last bit of the result. A `set`
+        # orders its elements by hash, and Value has no custom __hash__, so
+        # it falls back to id()-based identity hashing -- which depends on
+        # each object's memory address and so varies run to run (allocator
+        # state, ASLR), even with an identical seed and identical code. That
+        # tiny last-bit drift is exactly the kind of perturbation a chaotic
+        # nonlinear system like CartPole amplifies: reproduced empirically
+        # here as the SAME seed=1, 400-episode run landing anywhere from
+        # eval-mean 40 to eval-mean 500 across separate process runs of
+        # identical code. A plain tuple preserves insertion order, which is
+        # fully determined by the (deterministic) order operations were
+        # written/executed in -- restoring true bit-for-bit reproducibility
+        # for a fixed seed. (backward()'s `visited` set already guards
+        # against reprocessing a node reachable via more than one path, so
+        # _prev doesn't need set semantics for correctness -- only order.)
+        self._prev = tuple(_children)
         self._op = _op
 
     def __repr__(self):
