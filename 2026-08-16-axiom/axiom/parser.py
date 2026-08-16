@@ -67,11 +67,15 @@ def tokenize(text):
     return tokens
 
 
+MAX_NESTING_DEPTH = 100  # well under sys.getrecursionlimit() / (frames per level)
+
+
 class Parser:
     def __init__(self, text):
         self.text = text
         self.tokens = tokenize(text)
         self.i = 0
+        self.depth = 0
 
     def peek(self):
         return self.tokens[self.i]
@@ -97,12 +101,24 @@ class Parser:
 
     # expr := term (('+'|'-') term)*
     def parse_expr(self):
-        left = self.parse_term()
-        while self.peek().kind in ("PLUS", "MINUS"):
-            op = self.advance()
-            right = self.parse_term()
-            left = add(left, right) if op.kind == "PLUS" else add(left, mul(num(-1), right))
-        return left
+        # parse_expr recurses through every '(' and every function-call
+        # argument, so a pathologically nested input ("(((((...x...)))))")
+        # would otherwise blow Python's own recursion limit — an uncaught
+        # RecursionError, not a clean error. Cap it explicitly instead.
+        self.depth += 1
+        if self.depth > MAX_NESTING_DEPTH:
+            raise ParseError(
+                f"expression nested more than {MAX_NESTING_DEPTH} levels deep",
+                self.text, self.peek().pos)
+        try:
+            left = self.parse_term()
+            while self.peek().kind in ("PLUS", "MINUS"):
+                op = self.advance()
+                right = self.parse_term()
+                left = add(left, right) if op.kind == "PLUS" else add(left, mul(num(-1), right))
+            return left
+        finally:
+            self.depth -= 1
 
     _ATOM_START = ("NUMBER", "IDENT", "LPAREN")
 

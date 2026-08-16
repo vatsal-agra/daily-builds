@@ -6,6 +6,8 @@ test suite against a from-scratch Gauss-Jordan reference (for the pure
 rational-number case) and against `A @ A.inverse() == I`.
 """
 
+from fractions import Fraction
+
 from .errors import AxiomError
 from .expr import Expr, add, mul, num, power
 
@@ -112,11 +114,41 @@ class Matrix:
             return self[0, 0]
         if n == 2:
             return add(self[0, 0] * self[1, 1], mul(num(-1), self[0, 1] * self[1, 0]))
+        from .expr import Num
+        if all(isinstance(self[i, j], Num) for i in range(n) for j in range(n)):
+            return num(self._bareiss_det())
+        # Symbolic entries: Bareiss needs exact division by the running pivot,
+        # which isn't generally meaningful for arbitrary Expr, so fall back
+        # to plain cofactor expansion (correct for any entries, just O(n!)).
         terms = []
         for j in range(n):
             sign = 1 if j % 2 == 0 else -1
             terms.append(mul(num(sign), self[0, j], self.minor(0, j).det()))
         return add(*terms)
+
+    def _bareiss_det(self):
+        """Fraction-free Gaussian elimination (Bareiss 1968): exact, O(n^3),
+        every intermediate division is provably exact (no rational-arithmetic
+        blowup and no floating point) — used for the numeric-entry fast path
+        so det() stays practical well past the ~8x8 ceiling of the O(n!)
+        cofactor expansion above."""
+        n = self.nrows
+        M = [[self[i, j].value for j in range(n)] for i in range(n)]
+        sign = 1
+        prev_pivot = Fraction(1)
+        for k in range(n - 1):
+            if M[k][k] == 0:
+                swap = next((r for r in range(k + 1, n) if M[r][k] != 0), None)
+                if swap is None:
+                    return Fraction(0)
+                M[k], M[swap] = M[swap], M[k]
+                sign = -sign
+            for i in range(k + 1, n):
+                for j in range(k + 1, n):
+                    M[i][j] = (M[i][j] * M[k][k] - M[i][k] * M[k][j]) / prev_pivot
+                M[i][k] = Fraction(0)
+            prev_pivot = M[k][k]
+        return sign * M[n - 1][n - 1]
 
     def cofactor_matrix(self):
         n = self.nrows

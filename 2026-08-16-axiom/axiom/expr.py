@@ -201,6 +201,12 @@ NEG_ONE = Num(Fraction(-1))
 FUNC_NAMES = ("sin", "cos", "tan", "exp", "log", "sqrt", "abs",
               "asin", "acos", "atan", "sinh", "cosh", "tanh")
 
+# "pi" and "e" parse as ordinary Symbols (so they differentiate/substitute
+# like anything else), but conceptually they're constants, not variables —
+# CLI/report "which variable did you mean" auto-inference skips them so
+# `diff "sin(pi*x)"` picks x without being asked to disambiguate pi vs x.
+RESERVED_CONSTANT_NAMES = ("pi", "e")
+
 
 def func(name, argument):
     if name not in FUNC_NAMES:
@@ -535,6 +541,8 @@ def _subs(e, mapping):
     raise TypeError(type(e))
 
 
+_RESERVED_CONSTANTS = {"pi": complex(math.pi), "e": complex(math.e)}
+
 _CMATH_FUNCS = {
     "sin": cmath.sin, "cos": cmath.cos, "tan": cmath.tan,
     "exp": cmath.exp, "sqrt": cmath.sqrt,
@@ -547,9 +555,11 @@ def _evalf(e, bindings):
     if isinstance(e, Num):
         return complex(e.value)
     if isinstance(e, Symbol):
-        if e.name not in bindings:
-            raise DomainError(f"free symbol '{e.name}' has no numeric binding")
-        return bindings[e.name]
+        if e.name in bindings:
+            return bindings[e.name]
+        if e.name in _RESERVED_CONSTANTS:
+            return _RESERVED_CONSTANTS[e.name]
+        raise DomainError(f"free symbol '{e.name}' has no numeric binding")
     if isinstance(e, Add):
         return sum((_evalf(t, bindings) for t in e.terms), complex(0))
     if isinstance(e, Mul):

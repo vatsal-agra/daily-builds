@@ -147,6 +147,11 @@ def _integrate(e, var):
                 by_parts = _try_by_parts(rest.factors[1], rest.factors[0], var)
             if by_parts is not None:
                 return mul(const, by_parts)
+            sub = _try_substitution(rest.factors[0], rest.factors[1], var)
+            if sub is None:
+                sub = _try_substitution(rest.factors[1], rest.factors[0], var)
+            if sub is not None:
+                return mul(const, sub)
         return mul(const, _integrate_atom(rest, var))
     return _integrate_atom(e, var)
 
@@ -196,6 +201,92 @@ def _integrate_atom(e, var):
     raise AxiomError(
         f"cannot symbolically integrate '{e}' with respect to {var} — "
         f"out of scope for this from-scratch integrator")
+
+
+def _try_substitution(inner, outer, var):
+    """u-substitution for `f(g(x)) * g'(x)` (up to a constant factor). Tries
+    every plausible reading of `inner` as `f(g(...))` in order:
+      1. `Pow(g, n)`         -> g = the Pow's own base       (e.g. (x^2+1)^-1)
+      2. `Func(name, g)`     -> g = that function's argument (e.g. exp(x^2))
+      3. `inner` itself      -> g = inner, n = 1             (e.g. sin(x) in
+                                                                sin(x)*cos(x))
+    For whichever `g` a reading proposes, if `outer == c * g'(x)` for some
+    constant `c` (checked exactly via polynomial division), the integral is
+    `c * F(g(x))` — power rule for reading 1/3, the same function table
+    `_integrate_atom` uses for reading 2."""
+    candidates = []
+    if isinstance(inner, Pow) and isinstance(inner.exp, Num):
+        candidates.append(("pow", inner.base, inner.exp.value))
+    if isinstance(inner, Func) and inner.name in _RAW_ANTIDERIV:
+        candidates.append(("func", inner.arg, inner.name))
+    candidates.append(("pow", inner, Fraction(1)))
+
+    for kind, g, extra in candidates:
+        if var not in g.free_symbols():
+            continue
+        dg = differentiate(g, var)
+        if isinstance(dg, Num) and dg.value == 0:
+            continue
+        c = _constant_ratio(outer, dg, var)
+        if c is None:
+            continue
+        if kind == "func":
+            return mul(c, _RAW_ANTIDERIV[extra](var).subs({var: g}))
+        n = extra
+        if n == -1:
+            return mul(c, func("log", func("abs", g)))
+        return mul(c, power(g, num(n + 1)), power(num(n + 1), NEG_ONE))
+    return None
+
+
+def _constant_ratio(a, b, var):
+    """Expr `c` (not containing var) such that a == c*b — or None if no
+    such constant exists. Two tiers: an exact check via polynomial division
+    when both sides are polynomials in var (handles the common case, e.g.
+    a=2x, b=2x for x*exp(x^2)); otherwise a numeric-probe fallback (checks
+    a(x)/b(x) is the *same* value at several independent random points,
+    which a genuine non-constant ratio can't fake) for transcendental cases
+    like a=sin(x), b=-sin(x) in sin(x)*cos(x) — those aren't polynomials in
+    x, so exact polynomial division doesn't apply, but the ratio is still a
+    plain constant. Any wrong guess here would fail this build's own
+    differentiate-the-result verification, so a false positive can't hide."""
+    from . import polynomial as P
+    try:
+        da, db = P.poly_degree(a, var), P.poly_degree(b, var)
+        a_coeffs = [P.poly_coeffs(a, var).get(k, ZERO).value for k in range(da, -1, -1)]
+        b_coeffs = [P.poly_coeffs(b, var).get(k, ZERO).value for k in range(db, -1, -1)]
+        q, r = P.poly_divmod(a_coeffs, b_coeffs)
+        if not any(x != 0 for x in r) and len(q) == 1:
+            return num(q[0])
+    except AxiomError:
+        pass
+    return _numeric_constant_ratio(a, b, var)
+
+
+def _numeric_constant_ratio(a, b, var, samples=5, tol=1e-9):
+    import random
+    rng = random.Random(0)  # deterministic: same input always probed the same way
+    ratios = []
+    for _ in range(samples * 4):
+        if len(ratios) >= samples:
+            break
+        xv = rng.uniform(0.15, 2.5)
+        try:
+            av, bv = a.evalf({var: xv}), b.evalf({var: xv})
+        except AxiomError:
+            continue
+        if abs(bv) < 1e-9 or abs(av.imag) > 1e-9 or abs(bv.imag) > 1e-9:
+            continue
+        ratios.append(av.real / bv.real)
+    if len(ratios) < samples:
+        return None
+    c0 = ratios[0]
+    if any(abs(r - c0) > tol * max(1.0, abs(c0)) for r in ratios):
+        return None
+    frac = Fraction(c0).limit_denominator(10 ** 6)
+    if abs(float(frac) - c0) > 1e-7:
+        return None
+    return num(frac)
 
 
 def _try_by_parts(poly_factor, trans_factor, var):

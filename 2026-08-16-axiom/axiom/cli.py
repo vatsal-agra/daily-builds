@@ -4,7 +4,7 @@ import argparse
 import sys
 
 from .errors import AxiomError
-from .expr import symbols
+from .expr import RESERVED_CONSTANT_NAMES, symbols
 from .parser import parse
 
 
@@ -14,12 +14,18 @@ def _var(name, *exprs):
     fs = set()
     for e in exprs:
         fs |= e.free_symbols()
-    if len(fs) == 1:
-        return next(iter(fs))
-    if len(fs) == 0:
+    # "pi"/"e" read as constants, not candidate variables — sin(pi*x) should
+    # infer x without being asked to disambiguate pi vs x — unless pi/e is
+    # genuinely the *only* symbol present, in which case there's nothing else to pick.
+    non_constant = {s for s in fs if s.name not in RESERVED_CONSTANT_NAMES}
+    candidates = non_constant or fs
+    if len(candidates) == 1:
+        return next(iter(candidates))
+    if len(candidates) == 0:
         return symbols("x")[0]
     raise AxiomError(
-        f"expression has multiple symbols {sorted(s.name for s in fs)} — pass --var explicitly")
+        f"expression has multiple symbols {sorted(s.name for s in candidates)} "
+        f"— pass --var explicitly")
 
 
 def cmd_simplify(args):
@@ -90,13 +96,25 @@ def cmd_eval(args):
     e = parse(args.expr)
     bindings = {}
     for kv in args.bind or []:
+        if "=" not in kv:
+            raise AxiomError(f"--bind expects name=value, got {kv!r}")
         k, v = kv.split("=", 1)
-        bindings[k] = float(v)
+        try:
+            bindings[k] = float(v)
+        except ValueError:
+            raise AxiomError(f"--bind {kv!r}: {v!r} is not a number") from None
     result = e.evalf(bindings)
-    if abs(result.imag) < 1e-12:
-        print(result.real)
+    # Python's native complex ** introduces float noise on irrational powers
+    # of negative numbers (e.g. sqrt(-1) comes back as 6.1e-17+1j, not
+    # exactly 1j) — clean up components that are zero within float epsilon
+    # before printing, purely a presentation step (the underlying evalf
+    # stays untouched; exact-rational results elsewhere never hit this path).
+    real = 0.0 if abs(result.real) < 1e-12 * max(1.0, abs(result.imag)) else result.real
+    imag = 0.0 if abs(result.imag) < 1e-12 * max(1.0, abs(result.real)) else result.imag
+    if imag == 0.0:
+        print(real)
     else:
-        print(result)
+        print(complex(real, imag))
 
 
 def cmd_repl(args):
@@ -244,6 +262,11 @@ def main(argv=None):
         args.func(args)
     except AxiomError as ex:
         print(f"error: {ex}", file=sys.stderr)
+        sys.exit(1)
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except Exception as ex:  # defense in depth: never a raw traceback for a CLI typo
+        print(f"error: {type(ex).__name__}: {ex}", file=sys.stderr)
         sys.exit(1)
 
 

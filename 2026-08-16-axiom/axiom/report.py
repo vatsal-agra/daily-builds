@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .calculus import differentiate, integrate
 from .errors import AxiomError
-from .expr import sym
+from .expr import RESERVED_CONSTANT_NAMES, sym
 from .parser import parse as parse_expr
 from .polynomial import expand, factor
 from .simplify import simplify
@@ -29,12 +29,14 @@ PLOT_SAMPLES = 400
 
 def _infer_var(e):
     fs = e.free_symbols()
-    if not fs:
+    non_constant = {s for s in fs if s.name not in RESERVED_CONSTANT_NAMES}
+    candidates = non_constant or fs
+    if not candidates:
         return sym("x")
-    for s in fs:
+    for s in candidates:
         if s.name == "x":
             return s
-    return sorted(fs, key=lambda s: s.name)[0]
+    return sorted(candidates, key=lambda s: s.name)[0]
 
 
 def _sample(expr, var):
@@ -427,7 +429,19 @@ async function analyze(expr) {
   const data = await res.json();
   const results = document.getElementById("results");
   if (data.error) {
-    results.innerHTML = '<div class="card"><p class="err">' + data.error + '</p></div>';
+    // data.error can embed the raw user input verbatim (a parse error's
+    // caret diagnostic repeats the offending text) — build this with DOM
+    // methods, not string-concatenated innerHTML, so a submitted expression
+    // like "<img src=x onerror=...>" is inert text, never executed markup.
+    results.innerHTML = "";
+    const card = document.createElement("div");
+    card.className = "card";
+    const p = document.createElement("p");
+    p.className = "err";
+    p.style.whiteSpace = "pre-wrap";
+    p.textContent = data.error;
+    card.appendChild(p);
+    results.appendChild(card);
     return;
   }
   results.innerHTML = "";
