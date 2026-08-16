@@ -1,11 +1,11 @@
 # Axiom — a Computer Algebra System from scratch
 
-> **Status: Phase 3 (Adversarial review) complete.** 12 real issues found
-> and fixed — see [REVIEW.md](REVIEW.md), including a working XSS
-> vulnerability in the live playground, a real parser/printer round-trip
-> bug, and a gap vs. the plan's own promised Bareiss-determinant
-> architecture. Stretch polish (Phase 4) is next. See [PLAN.md](PLAN.md)
-> for the full architecture.
+> **Status: Phase 4 (Stretch + polish) complete.** All 3 stretch features
+> (integration, the interactive HTML playground, symbolic matrices) are
+> shipped; 12 real issues from adversarial review are fixed (see
+> [REVIEW.md](REVIEW.md)); UI polish (example chips, verified mobile
+> layout, dark/light themes) is done. Verification (Phase 5) is next. See
+> [PLAN.md](PLAN.md) for the full architecture.
 
 ## What it is (short version)
 

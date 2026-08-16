@@ -312,7 +312,13 @@ svg { width: 100%; height: auto; }
 .err { color: var(--accent2); font-size: 0.9rem; }
 input[type=text] { width: 100%; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid var(--border);
        background: var(--bg); color: var(--text); font-size: 1rem; font-family: monospace; }
-.playground-form { display: flex; gap: 0.6rem; }
+.playground-form { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.playground-form input { flex: 1 1 240px; }
+.examples { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.75rem; }
+.examples-label { color: var(--muted); font-size: 0.8rem; margin-right: 0.15rem; }
+.chip { background: var(--code-bg); color: var(--text); border: 1px solid var(--border);
+        border-radius: 999px; padding: 0.25rem 0.7rem; font-size: 0.82rem; font-family: monospace; }
+.chip:hover { border-color: var(--accent); opacity: 1; }
 footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 2rem; }
 """
 
@@ -416,6 +422,14 @@ _PLAYGROUND_PAGE = """<!doctype html>
       <input type="text" id="expr" value="x^2 * sin(x)" autocomplete="off">
       <button type="submit">Analyze</button>
     </form>
+    <div class="examples">
+      <span class="examples-label">try:</span>
+      <button type="button" class="chip" data-expr="x^2*sin(x)">x&sup2;&middot;sin(x)</button>
+      <button type="button" class="chip" data-expr="x/(x^2+1)">x/(x&sup2;+1)</button>
+      <button type="button" class="chip" data-expr="x^3-6*x^2+11*x-6">x&sup3;-6x&sup2;+11x-6</button>
+      <button type="button" class="chip" data-expr="sqrt(x^2+4)">&radic;(x&sup2;+4)</button>
+      <button type="button" class="chip" data-expr="x*exp(-x^2)">x&middot;e<sup>-x&sup2;</sup></button>
+    </div>
   </div>
   <div id="results"></div>
   <footer>server-backed &mdash; the browser holds zero symbolic-math logic</footer>
@@ -450,6 +464,12 @@ async function analyze(expr) {
 document.getElementById("form").addEventListener("submit", function(e) {
   e.preventDefault();
   analyze(document.getElementById("expr").value);
+});
+document.querySelectorAll(".chip").forEach(function(btn) {
+  btn.addEventListener("click", function() {
+    document.getElementById("expr").value = btn.dataset.expr;
+    analyze(btn.dataset.expr);
+  });
 });
 analyze(document.getElementById("expr").value);
 </script>
