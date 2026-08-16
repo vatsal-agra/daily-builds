@@ -107,6 +107,45 @@ one of them a working, exploitable security bug.
     instead of string-concatenated `innerHTML`, and **re-verified the exploit
     no longer fires** with the same live reproduction.
 
+## One more, found during Phase 5 (writing the test suite)
+
+A randomized "factor a polynomial, then re-expand it and demand the exact
+original coefficients back" test (the same kind of oracle this build
+promised throughout PLAN.md) failed on `-x^2 - 5*x + 3`: re-expanding its
+factored form gave `-x^2 - 5*x + 37/4 - 25/4` — numerically equal to `3`,
+but printed as **two separate, never-combined constant terms**, which is
+supposed to be structurally impossible in a kernel that folds every
+constant into one running accumulator.
+
+**Root cause, traced to `mul()` itself:** when `mul()` combines repeated
+factors of the same base by summing their exponents (`x^a · x^b -> x^(a+b)`),
+a base can itself be a plain number (e.g. the `37` in an unresolved radical
+`37^(1/2)`). If the *summed* exponent happens to fully resolve
+`power(base, exponent)` back down to a plain `Num` — exactly what happens
+when a factored quadratic's two conjugate radical terms multiply back
+together, `37^(1/2) · 37^(1/2) -> 37^1 -> 37` — that resulting `Num` was
+appended to the factor list as if it were an ordinary symbolic factor,
+instead of being folded into the running numeric coefficient. The result:
+a `Mul` silently holding two never-multiplied `Num`s side by side. Every
+downstream `add()` call then saw that malformed `Mul` as a distinct
+"term" rather than a foldable constant, so it never merged with a sibling
+plain-`Num` term — the exact **structural invariant** this whole kernel is
+built on ("every expression is always fully folded") was quietly false in
+this one path.
+
+**Fixed** by folding any `Num`-resolving factor into `coeff` at the point
+`mul()` reconstructs its factor list, with the failure mode and the exact
+factored-quadratic trigger documented in the code itself so it can't
+regress silently. Re-verified against 200 freshly-seeded random polynomials
+(degree 1–5, `factor()` → `expand()` → exact coefficient match) with zero
+mismatches, plus the full existing test suite still green.
+
+This is the same class of finding several of this repo's past builds have
+flagged as their worst bug (Coil's GC-untracking hazard, Loom's autograd
+reference cycle): invisible until a specific structural combination is
+exercised, caught only by testing the *invariant* (re-expand and demand
+exact equality) rather than eyeballing a few happy-path outputs.
+
 ## What a fresh run-through now looks like
 
 - `python3 -m axiom.cli demo` — all sections print correctly, every inline

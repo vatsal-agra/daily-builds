@@ -1,11 +1,10 @@
 # Axiom — a Computer Algebra System from scratch
 
-> **Status: Phase 4 (Stretch + polish) complete.** All 3 stretch features
-> (integration, the interactive HTML playground, symbolic matrices) are
-> shipped; 12 real issues from adversarial review are fixed (see
-> [REVIEW.md](REVIEW.md)); UI polish (example chips, verified mobile
-> layout, dark/light themes) is done. Verification (Phase 5) is next. See
-> [PLAN.md](PLAN.md) for the full architecture.
+> **Status: Phase 5 (Verification) complete.** 154 unit tests (incl. a
+> `sympy` differential oracle) + a 19-check `demo.sh` walkthrough, all
+> green — including the random-battery test that caught a genuine kernel
+> invariant bug (see [REVIEW.md](REVIEW.md)) during this very phase.
+> Final ship writeup (Phase 6) is next.
 
 ## What it is (short version)
 

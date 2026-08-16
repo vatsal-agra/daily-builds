@@ -379,7 +379,25 @@ def mul(*args):
         e = bases[base]
         if isinstance(e, Num) and e.value == 0:
             continue
-        factors.append(power(base, e))
+        resolved = power(base, e)
+        # A base can itself be a Num (e.g. an unresolved radical base like
+        # 37 in 37^(1/2)) — if the *accumulated* exponent from combining
+        # several such factors (e.g. 37^(1/2) * 37^(1/2)) happens to fully
+        # resolve power(base, e) back down to a plain Num, that value MUST
+        # be folded into `coeff`, not appended to `factors` as if it were
+        # an ordinary symbolic factor. Missing this left a genuine bug: a
+        # Mul could end up holding two never-multiplied Num entries (e.g.
+        # Mul(Num(-1/4), Num(37))), which downstream add() calls then treat
+        # as two structurally-distinct "terms" instead of one folded
+        # constant — caught by a random polynomial-factoring test where
+        # re-expanding a factored quadratic came back as "...+ 37/4 - 25/4"
+        # instead of the single combined "...+ 3".
+        if isinstance(resolved, Num):
+            coeff *= resolved.value
+            continue
+        factors.append(resolved)
+    if coeff == 0:
+        return ZERO
     factors.sort(key=sort_key)
 
     if coeff != 1 or not factors:
