@@ -1,0 +1,7 @@
+# Folio itself has zero dependencies (pure Python 3 stdlib).
+#
+# This file is only for the Chromium ground-truth oracle used by
+# tests/test_layout_block.py's TestAgainstChromium suite (and by
+# tools/oracle.py). If playwright isn't installed, that test class is
+# skipped automatically -- everything else in the suite still runs.
+playwright
