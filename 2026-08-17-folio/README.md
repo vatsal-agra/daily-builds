@@ -4,12 +4,20 @@ A browser rendering engine built from scratch in pure Python: HTML parser →
 DOM → CSS cascade → computed styles → CSS2.1 box-model layout → paint —
 verified against real headless Chromium, not just against itself.
 
-**Status: Phase 3 (adversarial review) complete.** All four required
-features are implemented, hostile-reviewed, and covered by an automated
-test suite (125 tests, including a Chromium differential suite). See
-`PLAN.md` for the architecture/feature list and `REVIEW.md` for the full
-adversarial-review writeup (11 real bugs found and fixed, including a
-CRITICAL quirks-mode trap in the verification setup itself).
+**Status: Phase 4 (stretch + polish) complete.** All four required features
+plus both planned stretch features — float layout and an interactive
+box-model inspector with a live Chromium oracle-diff panel — are
+implemented, hostile-reviewed, and covered by an automated test suite (138
+tests, including a Chromium differential suite). See `PLAN.md` for the
+architecture/feature list and `REVIEW.md` for the full adversarial-review
+writeup (14 real bugs found and fixed across both phases).
+
+## Try the inspector
+
+```bash
+python3 cli.py inspect fixtures/sample1.html -o inspect.html --width 600
+# open inspect.html in a browser: click any element for its box model
+```
 
 ## Quick start
 

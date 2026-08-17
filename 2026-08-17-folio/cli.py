@@ -112,6 +112,19 @@ def cmd_demo(args):
     demo_mod.run(args.outdir)
 
 
+def cmd_inspect(args):
+    from folio import inspector
+
+    if not os.path.isfile(args.html):
+        raise CLIError("no such file: %s" % args.html)
+    out_path = args.output or (os.path.splitext(args.html)[0] + ".inspect.html")
+    try:
+        inspector.build(args.html, args.css or [], args.width, out_path, use_oracle=not args.no_oracle)
+    except ValueError as e:
+        raise CLIError(str(e))
+    print("wrote %s" % out_path)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="folio")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -142,6 +155,13 @@ def main(argv=None):
     sp = sub.add_parser("demo", help="run the bundled demo suite")
     sp.add_argument("--outdir", default="demo_out")
     sp.set_defaults(func=cmd_demo)
+
+    sp = sub.add_parser("inspect", help="render the interactive box-model inspector viewer")
+    add_common(sp)
+    sp.add_argument("--width", type=float, default=800)
+    sp.add_argument("-o", "--output")
+    sp.add_argument("--no-oracle", action="store_true", help="skip the Chromium diff panel")
+    sp.set_defaults(func=cmd_inspect)
 
     args = p.parse_args(argv)
     try:

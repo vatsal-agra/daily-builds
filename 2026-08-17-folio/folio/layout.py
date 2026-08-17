@@ -11,11 +11,12 @@ sibling-to-sibling collapsing and self-collapsing empty boxes exactly, and
 parent<->first/last-child collapse-through recursively (so it *does*
 compose through arbitrarily many zero-border/padding wrapper levels, not
 just one) -- see `_layout_block_children` below. What it does not attempt:
-collapsing across a block that establishes a new block formatting context
-(floats, absolutely-positioned boxes, and anything with `overflow` other
-than `visible` all correctly wall off collapsing by never being considered
-a first/last in-flow block child in the first place, since floats aren't
-in `block_children` at all).
+collapsing across a block that establishes a new block formatting context:
+floats correctly wall off collapsing by never being considered a
+first/last *in-flow* block child (`first_in_flow_block_child` etc. filter
+by `float_type`), even though they're still ordinary members of
+`block_children` -- source order matters for float placement, so they stay
+in that one shared list rather than being split out.
 """
 
 from . import fontmetrics
@@ -29,7 +30,7 @@ class LayoutBox:
         "element", "style", "is_anonymous",
         "mode",  # 'block' | 'inline' | 'none' (empty)
         "block_children", "inline_items", "lines",
-        "float_type", "position",
+        "float_type", "position", "clear",
         "x", "border_box_top", "content_width",
         "content_box_top", "content_box_bottom",
         "margin_top", "margin_right", "margin_bottom", "margin_left",
@@ -47,6 +48,7 @@ class LayoutBox:
         self.lines = []
         self.float_type = "none"
         self.position = "static"
+        self.clear = "none"
         self.x = 0.0
         self.border_box_top = 0.0
         self.content_width = 0.0
@@ -98,17 +100,32 @@ def build_layout_tree(element, styles):
     return _build_block_box(element, style, styles)
 
 
+def _effective_display(style):
+    """CSS2.1 9.7: a floated (or absolutely-positioned) element's `display`
+    is "blockified" -- an inline element with `float: left` lays out as a
+    block box, not inline content. Without this, `<img style="float:left">`
+    (img defaults to inline) would be flattened into the surrounding text
+    run instead of becoming a real floated box."""
+    display = style.get("display", "inline")
+    if display == "none":
+        return display
+    if style.get("float", "none") in ("left", "right") and display not in BLOCK_DISPLAYS:
+        return "block"
+    return display
+
+
 def _build_block_box(element, style, styles):
     box = LayoutBox(element, style)
     box.float_type = style.get("float", "none")
     box.position = style.get("position", "static")
+    box.clear = style.get("clear", "none")
 
     def _is_displayed(node):
-        return not (node.is_element and styles[node]["display"] == "none")
+        return not (node.is_element and _effective_display(styles[node]) == "none")
 
     kids = [c for c in element.children if _is_displayed(c)]
     has_block_child = any(
-        c.is_element and styles[c]["display"] in BLOCK_DISPLAYS for c in kids
+        c.is_element and _effective_display(styles[c]) in BLOCK_DISPLAYS for c in kids
     )
 
     if has_block_child:
@@ -135,9 +152,10 @@ def _build_block_box(element, style, styles):
 
         for child in element.children:
             if child.is_element:
-                if styles[child]["display"] == "none":
+                cdisplay = _effective_display(styles[child])
+                if cdisplay == "none":
                     continue
-                if styles[child]["display"] in BLOCK_DISPLAYS:
+                if cdisplay in BLOCK_DISPLAYS:
                     flush_run()
                     child_box = _build_block_box(child, styles[child], styles)
                     box.block_children.append(child_box)
@@ -213,8 +231,73 @@ def in_flow_block_children(box):
     return [c for c in box.block_children if c.float_type == "none"]
 
 
-def float_children(box):
-    return [c for c in box.block_children if c.float_type in ("left", "right")]
+# ---------------------------------------------------------------------------
+# Floats (CSS2.1 9.5) -- STRETCH feature.
+#
+# Scope: one FloatContext per distinct content-width scope -- a fresh one
+# is created every time `_layout_block_children` starts laying out a box's
+# own children, including across top-margin collapse-through delegation
+# (a zero-border/padding wrapper can still have its own explicit width
+# different from its parent's, so its floats must be scoped to *its*
+# content box, not reused from the outer one -- an earlier draft shared
+# the outer float_ctx across delegation and got exactly this wrong: a
+# `width:400px` wrapper's float ended up placed against an 800px outer
+# width. See REVIEW.md). Floats affect direct sibling content within that
+# same container -- in-flow text wraps around them and `clear` respects
+# them -- but Folio does not propagate float avoidance into a *nested*
+# descendant container (e.g. a wrapper `<div>` around a paragraph two
+# levels below an ancestor's float). Real browsers do propagate arbitrarily
+# deep; the single-container scope here still covers the overwhelmingly
+# common real-world float pattern (an image or pull-quote floated beside
+# the paragraph(s) that follow it in the same container) and is disclosed
+# explicitly rather than silently approximated -- see REVIEW.md.
+# ---------------------------------------------------------------------------
+
+class FloatContext:
+    def __init__(self, content_x, content_width):
+        self.content_x = content_x
+        self.content_width = content_width
+        self.left_floats = []  # list of [x1, x2, y1, y2] in absolute page coords
+        self.right_floats = []
+
+    def place(self, side, width, height, y_min):
+        """Place a new float of `side` ('left'|'right'), sized width x
+        height, no higher than `y_min`. Returns its absolute (x, y)."""
+        same = self.left_floats if side == "left" else self.right_floats
+        other = self.right_floats if side == "left" else self.left_floats
+        y = y_min
+        for _ in range(10000):  # bounded: each iteration consumes a real float
+            active_same = [f for f in same if f[2] < y + max(height, 1e-6) and f[3] > y]
+            active_other = [f for f in other if f[2] < y + max(height, 1e-6) and f[3] > y]
+            left_taken = max([f[1] for f in active_same], default=self.content_x)
+            right_taken = min([f[0] for f in active_other], default=self.content_x + self.content_width)
+            available = right_taken - left_taken
+            if available >= width - 1e-6 or (not active_same and not active_other):
+                x = left_taken if side == "left" else right_taken - width
+                same.append([x, x + width, y, y + height])
+                return x, y
+            blockers = active_same + active_other
+            y = min(f[3] for f in blockers)
+        return left_taken, y  # pragma: no cover -- defensive only
+
+    def clear_y(self, clear_value, y_min):
+        ys = [y_min]
+        if clear_value in ("left", "both"):
+            ys += [f[3] for f in self.left_floats]
+        if clear_value in ("right", "both"):
+            ys += [f[3] for f in self.right_floats]
+        return max(ys)
+
+    def available_range(self, y, height):
+        """The [x_start, x_end) still free at vertical band [y, y+height)."""
+        active_left = [f for f in self.left_floats if f[2] < y + max(height, 1e-6) and f[3] > y]
+        active_right = [f for f in self.right_floats if f[2] < y + max(height, 1e-6) and f[3] > y]
+        left_taken = max([f[1] for f in active_left], default=self.content_x)
+        right_taken = min([f[0] for f in active_right], default=self.content_x + self.content_width)
+        return left_taken, max(left_taken, right_taken)
+
+    def has_any(self):
+        return bool(self.left_floats or self.right_floats)
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +359,71 @@ def resolve_box_width(box, cb_width):
     box.padding_left, box.padding_right = pl, pr
     box.margin_left, box.margin_right = ml, mr
     box.content_width = w
+
+
+def resolve_float_width(box, cb_width):
+    """Floats follow a *different* width algorithm than normal in-flow
+    blocks (CSS2.1 10.3.5, not 10.3.3): critically, they never get the
+    "adjust margin-right to make an over-specified box exactly fill the
+    containing block" treatment `resolve_box_width` applies -- reusing that
+    function for a float with an explicit width and default (0, not auto)
+    margins was a real bug caught in testing: a `width:150px` float ended
+    up with a 450px margin-right silently added to make 150+450=600 (the
+    container width), turning a 150px-wide float into one whose *margin
+    box* spanned the entire container and blocked all text from wrapping
+    beside it at all. Auto margins on a float always compute to 0 (never
+    centering); width:auto uses a shrink-to-fit approximation."""
+    bl = _border_width(box, "left")
+    br = _border_width(box, "right")
+    pl, _ = _len(box, "padding-left", cb_width, False)
+    pr, _ = _len(box, "padding-right", cb_width, False)
+    w, w_auto = _len(box, "width", cb_width, True)
+    ml, ml_auto = _len(box, "margin-left", cb_width, True)
+    mr, mr_auto = _len(box, "margin-right", cb_width, True)
+    if ml_auto:
+        ml = 0.0
+    if mr_auto:
+        mr = 0.0
+    if w_auto:
+        insets = bl + pl + pr + br + ml + mr
+        w = max(0.0, min(_shrink_to_fit_width(box), max(0.0, cb_width - insets)))
+    box.border_left, box.border_right = bl, br
+    box.padding_left, box.padding_right = pl, pr
+    box.margin_left, box.margin_right = ml, mr
+    box.content_width = w
+
+
+def _shrink_to_fit_width(box):
+    """A deliberately simple shrink-to-fit approximation for auto-width
+    floats: the widest naturally-occurring (unwrapped) run of inline
+    content, ignoring descendant block structure entirely. A fully general
+    CSS shrink-to-fit (recursive min/max-content-width over arbitrary
+    nested block content) is a substantially larger undertaking than this
+    stretch feature calls for -- real-world floats overwhelmingly specify
+    an explicit width for exactly this reason (image floats, sidebars),
+    which take the exact branch above instead of this one."""
+    if box.mode != "inline":
+        return float("inf")  # no shrink-to-fit data available -> behave like a normal block (fills available width)
+    widest = 0.0
+    total = 0.0
+    needs_space = False
+    for kind, text, item_style in box.inline_items:
+        if kind == "br":
+            widest = max(widest, total)
+            total = 0.0
+            needs_space = False
+            continue
+        font_size = item_style.get("font-size", 16.0)
+        bold = item_style.get("font-weight", "normal") == "bold"
+        words, lead, trail = _tokenize_words(text or "")
+        for w in words:
+            if total > 0.0 or needs_space:
+                total += fontmetrics.char_width(font_size, bold=bold)
+            total += fontmetrics.measure_text(w, font_size, bold=bold)
+            needs_space = False
+        needs_space = trail
+    widest = max(widest, total)
+    return widest
 
 
 def _explicit_height(box):
@@ -353,8 +501,9 @@ def layout_subtree(root_element, styles, viewport_width):
     if root_box is None:
         root_box = LayoutBox(root_element, styles[root_element], is_anonymous=True)
         root_box.mode = "none"
+    float_ctx = FloatContext(0.0, viewport_width)
     y_cursor, group, pending = _layout_block_children(
-        [root_box], 0.0, [], [], viewport_width, 0.0, viewport_width, []
+        [root_box], 0.0, [], [], viewport_width, 0.0, viewport_width, float_ctx
     )
     _flush_pending(pending, y_cursor)
     return root_box
@@ -371,17 +520,75 @@ def _flush_pending(pending, y):
         box.border_box_top = box.content_box_top = box.content_box_bottom = y
 
 
-def _establishes_new_bfc(box):
-    # Folio's float-avoidance model only: floats themselves start a fresh BFC.
-    return box.float_type in ("left", "right")
+def _shift_box_tree(box, dx, dy):
+    """Translate an already-fully-laid-out box (and everything inside it,
+    including inline line fragments) by (dx, dy). Used to move a float's
+    subtree from the provisional position it was measured at into its real
+    position once that's known -- see `_place_float`."""
+    box.x += dx
+    box.border_box_top += dy
+    box.content_box_top += dy
+    box.content_box_bottom += dy
+    for line in box.lines:
+        line.y += dy
+        for frag in line.fragments:
+            frag[0] += dx
+    for c in box.block_children:
+        _shift_box_tree(c, dx, dy)
 
 
-def _layout_block_children(children, y_cursor, group, pending, cb_width, content_x, viewport_width, floats):
-    """Lay out `children` (in-flow block boxes, already known to belong to
-    one block formatting context) top-to-bottom starting at `y_cursor` with
-    `group` = pending (unflushed) adjoining margins and `pending` = the
+def _place_float(box, y_cursor, cb_width, content_x, viewport_width, float_ctx):
+    """Lay out a floated box: measure its (margin-box) size with a trial
+    layout at a provisional position, ask `float_ctx` where a box of that
+    size actually fits, then translate the whole already-laid-out subtree
+    there. Floats establish their own BFC (CSS2.1 9.5), so their own
+    content gets a fresh, empty FloatContext -- Folio does not support a
+    float dodging an *outer* float's exclusion zone from inside a float's
+    own content (a rare, doubly-nested case)."""
+    resolve_float_width(box, cb_width)
+    _vertical_box_props(box, cb_width)
+    box.x = content_x + box.margin_left
+    box.border_box_top = y_cursor
+    box.content_box_top = box.border_box_top + box.border_top + box.padding_top
+    inner_float_ctx = FloatContext(box.x + box.border_left + box.padding_left, box.content_width)
+    if box.mode == "block" and box.block_children:
+        y_end, trailing_group, inner_pending = _layout_block_children(
+            box.block_children, box.content_box_top, [], [], box.content_width,
+            box.x + box.border_left + box.padding_left, viewport_width, inner_float_ctx,
+        )
+        # A float is its own BFC root: nothing left to bleed *out* of it,
+        # so any still-pending trailing margin is consumed here, not left
+        # dangling for a caller that will never ask for it again.
+        extra = collapse(trailing_group)
+        _flush_pending(inner_pending, y_end + extra)
+        box.content_box_bottom = y_end + extra
+    elif box.mode == "inline":
+        cx = box.x + box.border_left + box.padding_left
+        box.content_box_bottom = layout_inline_content(box, cx, box.content_box_top, box.content_width, inner_float_ctx)
+    else:
+        box.content_box_bottom = box.content_box_top
+    explicit_h = _explicit_height(box)
+    if explicit_h is not None:
+        box.content_box_bottom = box.content_box_top + explicit_h
+
+    margin_box_w = box.margin_left + box.border_box_width + box.margin_right
+    margin_box_h = box.margin_top + box.border_box_height + box.margin_bottom
+    y_min = float_ctx.clear_y(box.clear, y_cursor) if box.clear != "none" else y_cursor
+    mx, my = float_ctx.place(box.float_type, margin_box_w, margin_box_h, y_min)
+    dx = (mx + box.margin_left) - box.x
+    dy = (my + box.margin_top) - box.border_box_top
+    if dx or dy:
+        _shift_box_tree(box, dx, dy)
+
+
+def _layout_block_children(children, y_cursor, group, pending, cb_width, content_x, viewport_width, float_ctx):
+    """Lay out `children` (block-level boxes -- in-flow AND floated, still
+    in source order) top-to-bottom starting at `y_cursor` with `group` =
+    pending (unflushed) adjoining margins and `pending` = the
     self-collapsing boxes already absorbed into `group` whose on-screen
-    position is still undetermined (see `_flush_pending`). Returns
+    position is still undetermined (see `_flush_pending`). `float_ctx` is
+    the FloatContext for this container (floats are placed into it; in-flow
+    inline content queries it to wrap around them). Returns
     (y_cursor_final, group_final, pending_final): `group_final`/
     `pending_final` are what's left unresolved, for the caller to either
     bleed further outward or finally consume (calling `_flush_pending`)."""
@@ -393,7 +600,27 @@ def _layout_block_children(children, y_cursor, group, pending, cb_width, content
     # iterations (each reassignment either mutates the current list or
     # replaces it outright at a flush point), so in-place mutation is safe.
     for child in children:
+        if child.float_type in ("left", "right"):
+            # A float never itself flushes the pending margin `group` (it's
+            # transparent to collapsing, same as spec), but it still needs
+            # to be placed *below* whatever space that group represents --
+            # using the raw, unflushed `y_cursor` here was a real bug: a
+            # float that was the first thing inside a delegating (zero
+            # border/padding) box landed 8px too high, ignoring the still-
+            # pending body margin above it. `group`/`pending` themselves are
+            # left completely untouched for the next in-flow sibling.
+            float_y_min = y_cursor + collapse(group)
+            _place_float(child, float_y_min, cb_width, content_x, viewport_width, float_ctx)
+            continue  # floats are out-of-flow: never touch y_cursor/group/pending
+
         layout_block_box(child, content_x, cb_width, viewport_width)
+        if child.clear != "none" and float_ctx.has_any():
+            # Simplified (documented) clearance model: `clear` floors the
+            # box's final top at the relevant floats' bottom edge, applied
+            # on top of normal margin collapsing, rather than the full
+            # CSS2.1 rule that clearance *suppresses* collapsing outright.
+            # See REVIEW.md.
+            y_cursor = max(y_cursor, float_ctx.clear_y(child.clear, y_cursor) - collapse(group + [child.margin_top]))
         group.append(child.margin_top)
         first_block = first_in_flow_block_child(child) if child.mode == "block" else None
 
@@ -413,12 +640,20 @@ def _layout_block_children(children, y_cursor, group, pending, cb_width, content
         if delegate_top:
             # child's own top margin (already pushed onto `group` above)
             # collapses straight through into its first child's subtree --
-            # recurse in the SAME collapsing scope rather than starting a
+            # recurse in the SAME *collapsing* scope rather than starting a
             # fresh one, so child's border-box-top ends up exactly where
-            # its (recursively-collapsed) first descendant's does.
+            # its (recursively-collapsed) first descendant's does. This is
+            # NOT the same as sharing the same *float* scope, though: child
+            # may have its own explicit width different from the outer
+            # float_ctx's (a zero-border/padding wrapper can still narrow
+            # the containing block) -- always give it a fresh FloatContext
+            # sized to its own content box, matching the "one FloatContext
+            # per distinct content-width scope" rule used everywhere else.
+            delegate_cx = child.x + child.border_left + child.padding_left
+            delegate_float_ctx = FloatContext(delegate_cx, child.content_width)
             y_cursor, group, pending = _layout_block_children(
                 child.block_children, y_cursor, group, pending, child.content_width,
-                child.x + child.border_left + child.padding_left, viewport_width, floats,
+                delegate_cx, viewport_width, delegate_float_ctx,
             )
             child.border_box_top = first_block.border_box_top
             child.content_box_top = child.border_box_top
@@ -431,14 +666,16 @@ def _layout_block_children(children, y_cursor, group, pending, cb_width, content
             group = []
             child.content_box_top = child.border_box_top + child.border_top + child.padding_top
 
-            if child.mode == "block" and in_flow_block_children(child):
+            if child.mode == "block" and child.block_children:
+                child_cx = child.x + child.border_left + child.padding_left
+                child_float_ctx = FloatContext(child_cx, child.content_width)
                 y_cursor, group, pending = _layout_block_children(
-                    in_flow_block_children(child), child.content_box_top, [], [], child.content_width,
-                    child.x + child.border_left + child.padding_left, viewport_width, floats,
+                    child.block_children, child.content_box_top, [], [], child.content_width,
+                    child_cx, viewport_width, child_float_ctx,
                 )
             elif child.mode == "inline":
                 cx = child.x + child.border_left + child.padding_left
-                bottom = layout_inline_content(child, cx, child.content_box_top, child.content_width)
+                bottom = layout_inline_content(child, cx, child.content_box_top, child.content_width, float_ctx)
                 child.content_box_bottom = bottom
                 y_cursor = child.content_box_bottom
                 group = []
@@ -478,14 +715,16 @@ def _layout_block_children(children, y_cursor, group, pending, cb_width, content
 # ---------------------------------------------------------------------------
 
 class LineBox:
-    __slots__ = ("y", "height", "fragments", "width_used", "ends_with_forced_break")
+    __slots__ = ("y", "height", "fragments", "width_used", "ends_with_forced_break", "left_edge", "avail_width")
 
-    def __init__(self, y, height):
+    def __init__(self, y, height, left_edge=0.0, avail_width=0.0):
         self.y = y
         self.height = height
-        self.fragments = []  # list of (x, text, style, width)
+        self.fragments = []  # list of (x, text, style, width) -- x is line-relative until the final pass
         self.width_used = 0.0
         self.ends_with_forced_break = False
+        self.left_edge = left_edge
+        self.avail_width = avail_width
 
 
 def _tokenize_words(text):
@@ -507,15 +746,29 @@ def _tokenize_words(text):
     return words, leading_ws, trailing_ws
 
 
-def layout_inline_content(box, content_x, content_top, content_width):
+def layout_inline_content(box, content_x, content_top, content_width, float_ctx=None):
     """Greedy line-breaking over box.inline_items. Returns the y-coordinate
-    of the bottom of the last line (== content bottom)."""
+    of the bottom of the last line (== content bottom). If `float_ctx` has
+    any floats registered, each line's available width/x-offset is
+    (re-)queried per line so text wraps around them (CSS2.1 9.5) instead of
+    using one fixed width for the whole block -- with no floats active
+    `float_ctx.available_range` (or its absence) degenerates to exactly
+    (content_x, content_x + content_width), so non-float layout is
+    unaffected."""
     style = box.style
     font_size = style.get("font-size", 16.0)
     bold = style.get("font-weight", "normal") == "bold"
     line_h = fontmetrics.resolve_line_height(style.get("line-height", "normal"), font_size)
     align = style.get("text-align", "left")
     white_space = style.get("white-space", "normal")
+
+    def line_geometry(y):
+        if float_ctx is None:
+            return content_x, content_width
+        raw_left, raw_right = float_ctx.available_range(y, line_h)
+        left = max(raw_left, content_x)
+        right = min(raw_right, content_x + content_width)
+        return left, max(0.0, right - left)
 
     # Build a flat word list: (word_text, style, starts_new_line_after)
     words = []
@@ -545,7 +798,8 @@ def layout_inline_content(box, content_x, content_top, content_width):
             pending_space_before_next = True
 
     lines = []
-    cur = LineBox(content_top, line_h)
+    first_left, first_avail = line_geometry(content_top)
+    cur = LineBox(content_top, line_h, first_left, first_avail)
     cur_x = 0.0
     cur_font_size_max = font_size
     any_word_on_line = False
@@ -554,7 +808,9 @@ def layout_inline_content(box, content_x, content_top, content_width):
         nonlocal cur, cur_x, any_word_on_line, cur_font_size_max
         cur.ends_with_forced_break = forced_break
         lines.append(cur)
-        cur = LineBox(cur.y + cur.height, line_h)
+        new_y = cur.y + cur.height
+        left, avail = line_geometry(new_y)
+        cur = LineBox(new_y, line_h, left, avail)
         cur_x = 0.0
         any_word_on_line = False
         cur_font_size_max = font_size
@@ -577,7 +833,7 @@ def layout_inline_content(box, content_x, content_top, content_width):
         space_w = fontmetrics.char_width(item_font_size, bold=item_bold) if need_space else 0.0
         word_w = fontmetrics.measure_text(w, item_font_size, bold=item_bold)
         projected = cur_x + space_w + word_w
-        if any_word_on_line and projected > content_width + 1e-6:
+        if any_word_on_line and projected > cur.avail_width + 1e-6:
             push_line()
             need_space = False
             space_w = 0.0
@@ -598,19 +854,19 @@ def layout_inline_content(box, content_x, content_top, content_width):
         # forced break (<br>), are never justified -- only lines that wrap
         # naturally get the extra inter-word space.
         is_last = i == len(lines) - 1
-        _apply_text_align(line, content_width, align, is_last=is_last or line.ends_with_forced_break)
+        _apply_text_align(line, line.avail_width, align, is_last=is_last or line.ends_with_forced_break)
         for f in line.fragments:
-            f[0] += content_x
+            f[0] += line.left_edge
 
     if not lines:
         return content_top
     return lines[-1].y + lines[-1].height
 
 
-def _apply_text_align(line, content_width, align, is_last):
+def _apply_text_align(line, avail_width, align, is_last):
     if not line.fragments:
         return
-    extra = content_width - line.width_used
+    extra = avail_width - line.width_used
     if extra <= 0:
         return
     if align == "right":

@@ -127,6 +127,30 @@ than a toy approximation.
    style; a second panel overlays Folio's block geometry against the
    Playwright/Chromium oracle for the same fixture with numeric px deltas.
 
+## Phase 4 status
+
+Both stretch features shipped:
+
+5. **Float layout** — `float:left/right`, source-order left-to-right/
+   right-to-left packing with wrap-to-next-line when a float doesn't fit,
+   `clear:left/right/both`, CSS2.1 9.7 "blockification" of a floated
+   inline-level element (a floated `<img>` lays out as a block, not
+   flattened text), and a documented shrink-to-fit approximation for
+   `float` boxes with `width:auto`. In-flow text re-queries the float
+   exclusion zone per line and wraps around it; a real bug (a float's
+   margin box silently absorbing the rest of its container's width by
+   reusing the *normal* block width algorithm, which is wrong for floats)
+   was caught by direct testing and fixed with a dedicated
+   `resolve_float_width` — see REVIEW.md.
+6. **Interactive box-model inspector + Chromium oracle-diff viewer**
+   (`folio inspect`) — a self-contained HTML page (no CDN, no build step):
+   click any rendered element to see a Chrome-DevTools-style nested
+   content/padding/border/margin diagram and its resolved computed style,
+   plus (when `data-t` attributes and Playwright are available) a live
+   Folio-vs-Chromium Δpx table for the same fixture — the test suite's
+   oracle, made visible and interactive rather than only living in
+   `tests/test_layout_block.py`.
+
 ## What could replace a required feature
 
 Not anticipated to be necessary — the four required features are the

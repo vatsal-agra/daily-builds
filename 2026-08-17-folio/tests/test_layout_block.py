@@ -323,6 +323,23 @@ class TestAgainstChromium(unittest.TestCase):
             '<div data-t="next" style="height:10px;margin-top:5px">next</div>'
         )
 
+    def test_floats_pack_left_to_right_and_wrap(self):
+        self._check(
+            '<div style="width:300px">'
+            '<div data-t="a" style="float:left;width:150px;height:50px">a</div>'
+            '<div data-t="b" style="float:left;width:150px;height:50px">b</div>'
+            '<div data-t="c" style="float:left;width:150px;height:50px">c</div>'
+            '<div data-t="d" style="clear:both;height:10px">d</div>'
+            "</div>"
+        )
+
+    def test_right_float(self):
+        self._check(
+            '<div style="width:400px">'
+            '<div data-t="r" style="float:right;width:100px;height:60px">r</div>'
+            "</div>"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

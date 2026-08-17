@@ -1,3 +1,46 @@
+# Phase 4 addendum — bugs found while building the stretch features
+
+Building floats (a genuinely new subsystem) turned up three more real bugs,
+caught the same way as Phase 3: by actually running the code against
+concrete fixtures and checking the numbers, not by inspection.
+
+1. **CRITICAL — a float's width algorithm was wrong, not just imprecise.**
+   The first working version resolved a float's box model with the same
+   `resolve_box_width` used for normal in-flow blocks. That function's
+   "over-constrained" branch (correct for normal blocks: if width + both
+   margins are all specified and don't sum to the containing block width,
+   adjust `margin-right` to make them fit) does not apply to floats at all
+   (CSS2.1 10.3.5) — but since an *unspecified* margin also resolves to a
+   concrete `0`, not an `auto` sentinel, the function couldn't tell the
+   difference and "fixed" the apparent mismatch anyway. A `width:150px`
+   float inside a 600px container ended up with `margin-right: 450px`
+   silently added, so its *margin box* spanned the full 600px and no text
+   could ever wrap beside it — the float "worked" in the sense that nothing
+   crashed, but it was functionally not a float at all. Fixed with a
+   dedicated `resolve_float_width`; caught immediately because the very
+   first hand-written test rendered the float and looked at the actual
+   numbers instead of just checking "did it run."
+2. **Floats ignored a pending (not-yet-flushed) margin-collapse group.**
+   A float placed using the raw, unflushed `y_cursor` landed too high
+   whenever it was the first thing inside a zero-border/padding delegating
+   box — e.g. 8px too high under a `<body>` with the UA default margin,
+   because that 8px hadn't been "spent" yet (nothing had flushed it into
+   real space). Fixed by placing floats at `y_cursor + collapse(group)`
+   without mutating `group` itself (floats are transparent to collapsing,
+   not a party to it) — caught by the Chromium oracle test for float
+   packing, which is exactly the kind of trap a self-only test suite would
+   have missed.
+3. **A zero-border/padding wrapper's own explicit width was ignored when
+   placing its floats.** The first attempt shared one `FloatContext` across
+   top-margin collapse-through delegation (reasoning: "no visual boundary,
+   so same container"), which happens to be true for vertical margins but
+   is *not* true for width — a wrapper can set its own `width` while having
+   zero border/padding. A `width:400px` wrapper's float ended up placed
+   against the *outer* (800px) width instead of its own. Fixed by scoping
+   one `FloatContext` per distinct content-width scope, created fresh even
+   across delegation, rather than trying to reuse one based on a "visually
+   transparent" heuristic that didn't actually hold for this property.
+
 # Phase 3 — Adversarial Review
 
 Hostile self-review of the Phase 2 build: hunting for bugs, broken edge
