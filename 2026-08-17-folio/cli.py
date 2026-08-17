@@ -176,6 +176,13 @@ def main(argv=None):
             file=sys.stderr,
         )
         return 1
+    except Exception as e:
+        from folio.demo import DemoFailure
+
+        if isinstance(e, DemoFailure):
+            print("folio: demo check failed: %s" % e, file=sys.stderr)
+            return 1
+        raise
 
 
 if __name__ == "__main__":
