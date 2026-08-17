@@ -103,7 +103,10 @@ def _build_block_box(element, style, styles):
     box.float_type = style.get("float", "none")
     box.position = style.get("position", "static")
 
-    kids = [c for c in element.children if not (c.is_element and styles.get(c, {}).get("display") == "none" if c.is_element else False)]
+    def _is_displayed(node):
+        return not (node.is_element and styles[node]["display"] == "none")
+
+    kids = [c for c in element.children if _is_displayed(c)]
     has_block_child = any(
         c.is_element and styles[c]["display"] in BLOCK_DISPLAYS for c in kids
     )
@@ -137,10 +140,7 @@ def _build_block_box(element, style, styles):
                 if styles[child]["display"] in BLOCK_DISPLAYS:
                     flush_run()
                     child_box = _build_block_box(child, styles[child], styles)
-                    if child_box.float_type in ("left", "right"):
-                        box.block_children.append(child_box)  # floats still recorded; layout skips them in flow
-                    else:
-                        box.block_children.append(child_box)
+                    box.block_children.append(child_box)
                 else:
                     run.append(child)
             elif child.is_text:
@@ -191,21 +191,26 @@ def _flatten_inline(node, styles, context_style):
 
 
 def first_in_flow_block_child(box):
+    # Note: `position: absolute/fixed` is parsed (ComputedStyle exposes it)
+    # but Folio does not implement out-of-flow positioned layout -- such an
+    # element is deliberately kept "in flow" here rather than silently
+    # dropped from the tree, which would be worse than not implementing the
+    # feature at all (a vanishing element vs. a mispositioned one).
     for c in box.block_children:
-        if c.float_type == "none" and c.position != "absolute":
+        if c.float_type == "none":
             return c
     return None
 
 
 def last_in_flow_block_child(box):
     for c in reversed(box.block_children):
-        if c.float_type == "none" and c.position != "absolute":
+        if c.float_type == "none":
             return c
     return None
 
 
 def in_flow_block_children(box):
-    return [c for c in box.block_children if c.float_type == "none" and c.position != "absolute"]
+    return [c for c in box.block_children if c.float_type == "none"]
 
 
 def float_children(box):
@@ -380,9 +385,16 @@ def _layout_block_children(children, y_cursor, group, pending, cb_width, content
     (y_cursor_final, group_final, pending_final): `group_final`/
     `pending_final` are what's left unresolved, for the caller to either
     bleed further outward or finally consume (calling `_flush_pending`)."""
+    # `group`/`pending` are mutated in place (.append) rather than rebuilt
+    # with `+ [x]` on every margin: this loop is the hot path for wide
+    # sibling lists (thousands of paragraphs/rows), and `list + [x]` is an
+    # O(n) copy -- rebuilding it on every child makes the whole walk
+    # O(n^2). Nothing aliases an old snapshot of either list across
+    # iterations (each reassignment either mutates the current list or
+    # replaces it outright at a flush point), so in-place mutation is safe.
     for child in children:
         layout_block_box(child, content_x, cb_width, viewport_width)
-        group = group + [child.margin_top]
+        group.append(child.margin_top)
         first_block = first_in_flow_block_child(child) if child.mode == "block" else None
 
         if _is_self_collapsing(child):
@@ -392,8 +404,8 @@ def _layout_block_children(children, y_cursor, group, pending, cb_width, content
             # that keeps bleeding until something non-self-collapsing (or
             # the end of this children list) finally consumes it. Its own
             # displayed position isn't known yet either -- defer it.
-            group = group + [child.margin_bottom]
-            pending = pending + [child]
+            group.append(child.margin_bottom)
+            pending.append(child)
             continue
 
         delegate_top = child.border_top == 0 and child.padding_top == 0 and first_block is not None
@@ -449,7 +461,7 @@ def _layout_block_children(children, y_cursor, group, pending, cb_width, content
             group = [child.margin_bottom]
         elif can_bleed:
             child.content_box_bottom = y_cursor
-            group = group + [child.margin_bottom]
+            group.append(child.margin_bottom)
         else:
             extra = collapse(group)
             child.content_box_bottom = y_cursor + extra
@@ -466,13 +478,14 @@ def _layout_block_children(children, y_cursor, group, pending, cb_width, content
 # ---------------------------------------------------------------------------
 
 class LineBox:
-    __slots__ = ("y", "height", "fragments", "width_used")
+    __slots__ = ("y", "height", "fragments", "width_used", "ends_with_forced_break")
 
     def __init__(self, y, height):
         self.y = y
         self.height = height
         self.fragments = []  # list of (x, text, style, width)
         self.width_used = 0.0
+        self.ends_with_forced_break = False
 
 
 def _tokenize_words(text):
@@ -537,8 +550,9 @@ def layout_inline_content(box, content_x, content_top, content_width):
     cur_font_size_max = font_size
     any_word_on_line = False
 
-    def push_line():
+    def push_line(forced_break=False):
         nonlocal cur, cur_x, any_word_on_line, cur_font_size_max
+        cur.ends_with_forced_break = forced_break
         lines.append(cur)
         cur = LineBox(cur.y + cur.height, line_h)
         cur_x = 0.0
@@ -548,7 +562,7 @@ def layout_inline_content(box, content_x, content_top, content_width):
     for entry in words:
         w, item_style, need_space = entry
         if w == "__BR__":
-            push_line()
+            push_line(forced_break=True)
             continue
         item_font_size = item_style.get("font-size", font_size)
         item_bold = item_style.get("font-weight", "normal") == "bold"
@@ -580,7 +594,11 @@ def layout_inline_content(box, content_x, content_top, content_width):
     box.lines = lines
     for i, line in enumerate(lines):
         line.width_used = max((f[0] + f[3] for f in line.fragments), default=0.0)
-        _apply_text_align(line, content_width, align, is_last=(i == len(lines) - 1))
+        # CSS2.1 16.2: the last line of a block, AND any line ending in a
+        # forced break (<br>), are never justified -- only lines that wrap
+        # naturally get the extra inter-word space.
+        is_last = i == len(lines) - 1
+        _apply_text_align(line, content_width, align, is_last=is_last or line.ends_with_forced_break)
         for f in line.fragments:
             f[0] += content_x
 

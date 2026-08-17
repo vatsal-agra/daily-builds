@@ -147,5 +147,19 @@ class TestTextAlign(unittest.TestCase):
         self.assertLess(last_end, right_edge - 1.0)
 
 
+    def test_forced_break_line_not_justified(self):
+        _, _, root, t = render(
+            '<p data-t="p" style="width:300px;margin:0;text-align:justify">short line<br>'
+            "one two three four five six seven eight nine ten</p>"
+        )
+        box = t["p"]
+        self.assertGreaterEqual(len(box.lines), 2)
+        first_line = box.lines[0]
+        right_edge = box.border_box_x + box.content_width
+        last_frag_x, _, _, last_w = first_line.fragments[-1]
+        # the <br>-terminated first line must NOT be stretched to the edge.
+        self.assertLess(last_frag_x + last_w, right_edge - 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()

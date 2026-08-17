@@ -37,9 +37,15 @@ class Node:
         return child
 
     def iter_descendants(self):
-        for child in self.children:
-            yield child
-            yield from child.iter_descendants()
+        # Iterative (explicit stack), not recursive: a deeply-nested
+        # document (thousands of levels -- not unheard of from WYSIWYG
+        # editor output) must not blow Python's recursion limit just to be
+        # walked for style extraction or searching.
+        stack = list(reversed(self.children))
+        while stack:
+            node = stack.pop()
+            yield node
+            stack.extend(reversed(node.children))
 
     def iter_element_descendants(self):
         for node in self.iter_descendants():
@@ -126,6 +132,23 @@ def find_first(root, predicate):
 
 def find_element(root, tag):
     return find_first(root, lambda n: n.is_element and n.tag == tag)
+
+
+def pick_layout_root(document):
+    """The element layout should start from: <body> if present, else
+    <html>, else the first top-level element, else None if the document has
+    no elements at all (e.g. an empty file) -- callers must handle that
+    case explicitly rather than assuming a root always exists."""
+    body = find_element(document, "body")
+    if body is not None:
+        return body
+    html = find_element(document, "html")
+    if html is not None:
+        return html
+    for child in document.children:
+        if child.is_element:
+            return child
+    return None
 
 
 def pretty(node, depth=0, out=None):

@@ -97,6 +97,7 @@ _PERCENT_OK = frozenset(
     ]
 )
 _AUTO_OK = frozenset(["width", "height", "margin-top", "margin-right", "margin-bottom", "margin-left"])
+_NEGATIVE_OK = frozenset(["margin-top", "margin-right", "margin-bottom", "margin-left"])
 _COLOR_PROPS = frozenset(
     ["color", "background-color", "border-top-color", "border-right-color",
      "border-bottom-color", "border-left-color"]
@@ -146,9 +147,11 @@ def expand_shorthand(prop, value):
 
 
 def _looks_like_length(tok):
-    return bool(tok) and (tok[0].isdigit() or tok[0] == "-") and any(
-        tok.endswith(u) for u in ("px", "em", "%", "rem")
-    ) or tok.replace(".", "", 1).lstrip("-").isdigit()
+    if not tok or not (tok[0].isdigit() or tok[0] == "-"):
+        return False
+    has_unit = any(tok.endswith(u) for u in ("px", "em", "%", "rem"))
+    is_bare_number = tok.replace(".", "", 1).lstrip("-").isdigit()
+    return has_unit or is_bare_number
 
 
 def _four_side_values(parts):
@@ -167,6 +170,29 @@ def _four_side_values(parts):
 # Selector matching
 # ---------------------------------------------------------------------------
 
+def _attr_op_matches(op, actual, val):
+    """[attr] (op=='' or val is None): presence only, already checked by the
+    caller. Every other operator must be handled explicitly here -- silently
+    treating an unrecognized operator as "matches" would make e.g.
+    `[class^=x]` wrongly match *any* element that merely has a `class`
+    attribute, regardless of its value."""
+    if val is None or op == "":
+        return True
+    if op == "=":
+        return actual == val
+    if op == "~=":
+        return val in actual.split()
+    if op == "^=":
+        return bool(val) and actual.startswith(val)
+    if op == "$=":
+        return bool(val) and actual.endswith(val)
+    if op == "*=":
+        return bool(val) and val in actual
+    if op == "|=":
+        return actual == val or actual.startswith(val + "-")
+    return False
+
+
 def _compound_matches(comp, element):
     if comp.tag and comp.tag != element.tag:
         return False
@@ -180,9 +206,7 @@ def _compound_matches(comp, element):
         actual = element.attrs.get(name)
         if actual is None:
             return False
-        if op == "=" and actual != val:
-            return False
-        if op == "~=" and val not in actual.split():
+        if not _attr_op_matches(op, actual, val):
             return False
     for pseudo in comp.pseudo:
         if pseudo == "first-child" and not _is_nth_element_child(element, 0):
@@ -297,13 +321,19 @@ def _resolve_value(prop, raw_value, font_size_px, current_color):
             allow_auto=prop in _AUTO_OK,
             allow_percent=prop in _PERCENT_OK,
         )
+        if length is not None and not length.is_auto and length.value < 0 and prop not in _NEGATIVE_OK:
+            # Per CSS2.1, width/height/padding/border-width are invalid if
+            # negative -- the whole declaration is dropped (falls back to
+            # inherited/initial), not silently clamped to a nonsense box.
+            # margin-* is explicitly exempt: negative margins are valid.
+            return None
         return length
     if prop in _COLOR_PROPS:
         color = parse_color(raw_value, current_color=current_color)
         return color
     if prop == "font-size":
         length = parse_length(raw_value, font_size_px=font_size_px, allow_auto=False, allow_percent=False)
-        if length is None or length.kind != "px":
+        if length is None or length.kind != "px" or length.value < 0:
             return None
         return length.value
     if prop == "line-height":

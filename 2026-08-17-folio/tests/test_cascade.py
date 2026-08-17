@@ -135,6 +135,49 @@ class TestCascade(unittest.TestCase):
         el = find_element(doc, "input")
         self.assertEqual(styles[el]["color"][:3], (255, 0, 0))
 
+    def test_attribute_operator_selectors_dont_over_match(self):
+        # A regression check: an unimplemented/mishandled operator must
+        # never silently degrade to "matches anything with the attribute."
+        doc, styles = styles_for(
+            '<a href="https://example.com">x</a><a href="mailto:a@b.com">y</a>',
+            'a[href^="https://"] { color: red; } a[href$=".com"] { font-weight: bold; } '
+            'a[href*="example"] { text-align: center; }',
+        )
+        links = [n for n in doc.iter_element_descendants() if n.tag == "a"]
+        https_link, mailto_link = links
+        self.assertEqual(styles[https_link]["color"][:3], (255, 0, 0))
+        self.assertNotEqual(styles[mailto_link]["color"][:3], (255, 0, 0))
+        self.assertEqual(styles[https_link]["font-weight"], "bold")
+        self.assertEqual(styles[mailto_link]["font-weight"], "bold")  # both end in .com
+        self.assertEqual(styles[https_link]["text-align"], "center")
+        self.assertEqual(styles[mailto_link]["text-align"], "left")
+
+    def test_attribute_presence_selector(self):
+        doc, styles = styles_for('<input disabled><input>', "input[disabled] { color: red; }")
+        els = [n for n in doc.iter_element_descendants() if n.tag == "input"]
+        self.assertEqual(styles[els[0]]["color"][:3], (255, 0, 0))
+        self.assertNotEqual(styles[els[1]]["color"][:3], (255, 0, 0))
+
+    def test_negative_width_rejected_falls_back_to_auto(self):
+        doc, styles = styles_for("<div style='width:-50px'>t</div>")
+        st = styles[find_element(doc, "div")]
+        self.assertTrue(st["width"].is_auto)
+
+    def test_negative_padding_rejected(self):
+        doc, styles = styles_for("<div style='padding-left:-5px'>t</div>")
+        st = styles[find_element(doc, "div")]
+        self.assertEqual(st["padding-left"].value, 0.0)
+
+    def test_negative_margin_is_valid(self):
+        doc, styles = styles_for("<div style='margin-left:-5px'>t</div>")
+        st = styles[find_element(doc, "div")]
+        self.assertEqual(st["margin-left"].value, -5.0)
+
+    def test_negative_font_size_rejected(self):
+        doc, styles = styles_for("<div style='font-size:-2px'>t</div>")
+        st = styles[find_element(doc, "div")]
+        self.assertEqual(st["font-size"], 16.0)  # falls back to inherited/initial
+
     def test_first_last_child_pseudo(self):
         doc, styles = styles_for(
             "<ul><li>a</li><li>b</li><li>c</li></ul>",

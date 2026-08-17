@@ -4,10 +4,12 @@ A browser rendering engine built from scratch in pure Python: HTML parser →
 DOM → CSS cascade → computed styles → CSS2.1 box-model layout → paint —
 verified against real headless Chromium, not just against itself.
 
-**Status: Phase 2 (core build) complete.** All four required features are
-implemented and covered by an automated test suite (112 tests, including a
-Chromium differential suite). See `PLAN.md` for the architecture and full
-feature list.
+**Status: Phase 3 (adversarial review) complete.** All four required
+features are implemented, hostile-reviewed, and covered by an automated
+test suite (125 tests, including a Chromium differential suite). See
+`PLAN.md` for the architecture/feature list and `REVIEW.md` for the full
+adversarial-review writeup (11 real bugs found and fixed, including a
+CRITICAL quirks-mode trap in the verification setup itself).
 
 ## Quick start
 
