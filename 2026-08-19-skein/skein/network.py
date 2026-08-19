@@ -111,6 +111,9 @@ class SimNetwork:
     def has_in_flight(self) -> bool:
         return bool(self._in_flight)
 
+    def in_flight_count(self) -> int:
+        return len(self._in_flight)
+
     def drain(self, max_ticks: int = 100_000) -> List[Tuple[str, object]]:
         """Step until nothing is left in flight. Returns every
         (dest, op) delivered, in delivery order."""

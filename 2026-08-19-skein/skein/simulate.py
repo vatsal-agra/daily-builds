@@ -48,6 +48,52 @@ class Simulation:
         self.network.send(site_id, op)
         return op
 
+    def delete_range(self, site_id: str, pos: int, count: int):
+        """Delete `count` characters starting at `pos` — each one its
+        own DeleteOp (deleting at the same `pos` repeatedly, since every
+        deletion shifts what's visible left by one). Returns the ops.
+
+        Validates the *entire* range up front and applies nothing at all
+        if it doesn't fit, rather than deleting characters one at a time
+        until one iteration happens to go out of range. The naive
+        loop-and-let-it-raise version of this method really did exactly
+        that: `delete_range(site, 0, 9999)` on a 5-character document
+        deleted all 5 real characters — broadcasting each deletion to
+        every other replica over the network — before the 6th iteration
+        finally raised IndexError, so the caller saw a clean error
+        response while every replica's document had silently, partially,
+        irreversibly been wiped out. Found while polishing the web API's
+        error handling, not by a unit test — a reminder that "the
+        function raises a clean exception" and "the function has no
+        side effects when it raises" are different guarantees."""
+        available = len(self.sites[site_id].text)
+        if not (0 <= pos <= available) or not (0 <= count <= available - pos):
+            raise IndexError(
+                f"delete_range(pos={pos}, count={count}) out of range for a "
+                f"{available}-character document — nothing was deleted"
+            )
+        ops = []
+        for _ in range(count):
+            ops.append(self.delete_at(site_id, pos))
+        return ops
+
+    def undo(self, site_id: str):
+        """Undo `site_id`'s own most recent edit and broadcast the
+        result. Returns None (and sends nothing) if that site has
+        nothing left to undo."""
+        op = self.sites[site_id].undo()
+        if op is not None:
+            self.all_ops.append(op)
+            self.network.send(site_id, op)
+        return op
+
+    def redo(self, site_id: str):
+        op = self.sites[site_id].redo()
+        if op is not None:
+            self.all_ops.append(op)
+            self.network.send(site_id, op)
+        return op
+
     # -- network control ----------------------------------------------------
 
     def partition(self, site_id: str) -> None:

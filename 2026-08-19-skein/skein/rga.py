@@ -72,8 +72,18 @@ class RGA:
         if not 0 <= pos <= len(visible):
             raise IndexError(f"insert position {pos} out of range [0, {len(visible)}]")
         origin = visible[pos - 1] if pos > 0 else None
+        return self.insert_after(origin, char)
+
+    def insert_after(self, origin: Optional[CharId], char: str) -> InsertOp:
+        """Insert `char` immediately after the node `origin` (or at the
+        very start of the document if `origin` is None), addressing the
+        insertion point by id rather than by visible position. Used
+        directly by `local_insert` and by `undo.py` (re-inserting an
+        undone deletion has to land next to where the character actually
+        was, which a position number can't reliably express once other
+        edits have moved things around)."""
         if len(char) != 1:
-            raise ValueError(f"local_insert char must be a single character, got {char!r}")
+            raise ValueError(f"insert_after char must be a single character, got {char!r}")
         op = InsertOp(id=self.clock.tick(), char=char, origin=origin)
         self.apply(op)
         return op
@@ -181,6 +191,14 @@ class RGA:
 
     def __len__(self) -> int:
         return len(self._visible_ids())
+
+    def char_and_origin(self, char_id: CharId):
+        """(char, origin) for a node that exists locally, tombstoned or
+        not — tombstoning only flips a flag, it never forgets the
+        character's value or where it was, which is exactly what
+        `undo.py` needs to know how to bring a deleted character back."""
+        node = self._nodes[char_id]
+        return node.char, node.origin
 
     def node_count(self) -> int:
         """Total nodes including tombstones — useful for tombstone-growth

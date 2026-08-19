@@ -4,6 +4,7 @@
     skein chaos [--trials N] [--seed N]
     skein shuffle-proof [--trials N] [--seed N] [--edits N]
     skein demo
+    skein serve [--port N]
 """
 
 from __future__ import annotations
@@ -149,6 +150,14 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    _require(1 <= args.port <= 65535, f"--port must be in [1, 65535], got {args.port}")
+    from .web.server import serve
+
+    serve(port=args.port)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="skein", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="command", required=True)
@@ -175,6 +184,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     dp = sub.add_parser("demo", help="run the full narrated demo")
     dp.set_defaults(func=cmd_demo)
+
+    srv = sub.add_parser("serve", help="run the interactive multi-user playground")
+    srv.add_argument("--port", type=int, default=8765)
+    srv.set_defaults(func=cmd_serve)
 
     return p
 

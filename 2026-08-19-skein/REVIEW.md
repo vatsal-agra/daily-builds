@@ -110,6 +110,48 @@ and grapheme-cluster segmentation is a substantial, orthogonal Unicode
 feature that would meaningfully bloat this project's scope; disclosed
 as a known limitation rather than silently unhandled.
 
+## Addendum — found while building Phase 4's web playground
+
+### 4. CRITICAL — `delete_range` (added for the playground's range-delete
+API) was non-atomic and silently destroyed data on a failed call
+
+While manually poking at the new `/api/delete` endpoint with an
+intentionally-oversized `count` (`{"pos": 0, "count": 9999}` on a
+5-character document), the API correctly returned a 400 error — but
+checking the document afterward, **every character was gone anyway**,
+on every replica, not just the one that received the bad request.
+
+Root cause: `Simulation.delete_range` deleted characters one at a time
+in a loop, letting the position-bounds check inside `delete_at` do the
+validation implicitly. That check is exactly right for a single
+delete — but for a *range*, it means the loop happily deletes
+characters 0 through *however many actually exist*, broadcasting each
+deletion to every other site as it goes, and only raises once it tries
+to delete character N+1 that isn't there. The caller sees a clean
+error and reasonably assumes nothing happened; in fact almost
+everything happened, and it already propagated over the network to
+every other replica by the time the exception unwound.
+
+This is a materially worse failure mode than a raw traceback: a crash
+at least *looks* like nothing succeeded. A clean-looking error that
+quietly commits a large, broadcast, hard-to-reverse mutation is a
+silent-data-loss bug, and it's exactly the kind of thing a
+"let each element's own bounds check double as range validation"
+shortcut produces.
+
+**Fix:** validate the *entire* range against the document's current
+length in one check before deleting anything, so the operation is
+atomic — either the whole range is valid and gets deleted, or nothing
+is touched and a clean `IndexError` explains why. Verified both paths:
+an oversized range now leaves every replica's document byte-for-byte
+unchanged, and a valid range still deletes correctly.
+
+Not caught by the Phase 3 adversarial pass because `delete_range`
+didn't exist yet — it was added for Phase 4's playground. Recorded here
+rather than quietly folded into the method, per the instructions'
+"forbidden shortcuts" list: a real bug that Phase 3 couldn't have
+caught doesn't get to hide just because Phase 3 is technically over.
+
 ## Verification after fixes
 
 - `python3 -m skein.cli demo` — clean pass, all 4 sections green.

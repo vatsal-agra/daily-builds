@@ -1,10 +1,12 @@
-"""A Site: one user's replica plus their outgoing edit log."""
+"""A Site: one user's replica plus their outgoing edit log and their own
+local undo/redo history."""
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from .rga import RGA
+from .undo import UndoManager
 
 
 class Site:
@@ -12,12 +14,14 @@ class Site:
         self.site_id = site_id
         self.rga = RGA(site_id)
         self.log: List[object] = []  # every op this site has ever locally produced
+        self.undo_mgr = UndoManager(self.rga)
 
     # -- the "user" API ---------------------------------------------------
 
     def type_at(self, pos: int, char: str):
         op = self.rga.local_insert(pos, char)
         self.log.append(op)
+        self.undo_mgr.record_insert(op)
         return op
 
     def type_str(self, pos: int, text: str) -> list:
@@ -31,8 +35,33 @@ class Site:
 
     def delete_at(self, pos: int):
         op = self.rga.local_delete(pos)
+        char, origin = self.rga.char_and_origin(op.id)
         self.log.append(op)
+        self.undo_mgr.record_delete(char, origin)
         return op
+
+    def undo(self):
+        """Undo this site's own most recent not-yet-undone local edit.
+        Returns the op produced (to broadcast), or None if there's
+        nothing left to undo."""
+        op = self.undo_mgr.undo()
+        if op is not None:
+            self.log.append(op)
+        return op
+
+    def redo(self):
+        """Redo this site's own most recently undone edit. Returns the
+        op produced (to broadcast), or None if there's nothing to redo."""
+        op = self.undo_mgr.redo()
+        if op is not None:
+            self.log.append(op)
+        return op
+
+    def can_undo(self) -> bool:
+        return self.undo_mgr.can_undo()
+
+    def can_redo(self) -> bool:
+        return self.undo_mgr.can_redo()
 
     def receive(self, op) -> None:
         self.rga.apply(op)

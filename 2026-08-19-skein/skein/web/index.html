@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Skein — collaborative CRDT playground</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧵</text></svg>">
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161922;
+    --panel-2: #1d212c;
+    --border: #2a2f3d;
+    --text: #e6e9f0;
+    --muted: #8992a8;
+    --accent: #6ea8fe;
+    --accent-dim: #3a5a8c;
+    --good: #4ade80;
+    --bad: #f87171;
+    --warn: #fbbf24;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 800px at 20% -10%, #182034 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: var(--sans);
+    padding: 24px;
+    min-height: 100vh;
+  }
+  header { margin-bottom: 20px; }
+  h1 {
+    font-size: 1.5rem;
+    margin: 0 0 4px 0;
+    letter-spacing: -0.02em;
+    background: linear-gradient(90deg, #cfe0ff, #6ea8fe);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .subtitle { color: var(--muted); font-size: 0.9rem; max-width: 70ch; }
+  .layout {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  .site-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: border-color 0.2s, opacity 0.2s;
+  }
+  .site-card.partitioned { border-color: var(--bad); opacity: 0.85; }
+  .site-head { display: flex; align-items: center; justify-content: space-between; }
+  .site-name { font-weight: 600; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--good); box-shadow: 0 0 8px var(--good); }
+  .dot.off { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+  .site-card textarea {
+    width: 100%;
+    min-height: 130px;
+    resize: vertical;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    font-family: var(--mono);
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+  .site-card textarea:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 6px 11px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button.danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
+  button.primary { background: var(--accent-dim); border-color: var(--accent); }
+
+  .panels { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .panels { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .panel h2 { font-size: 0.95rem; margin: 0 0 10px 0; color: var(--muted); font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; font-size: 0.75rem; }
+
+  .status-banner {
+    padding: 9px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .status-banner.ok { background: rgba(74,222,128,0.12); color: var(--good); border: 1px solid rgba(74,222,128,0.35); }
+  .status-banner.bad { background: rgba(248,113,113,0.12); color: var(--bad); border: 1px solid rgba(248,113,113,0.35); }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 0.8rem; margin-bottom: 12px; }
+  .stat { background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; }
+  .stat .n { font-family: var(--mono); font-size: 1.1rem; color: var(--accent); }
+  .stat .l { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; }
+
+  .sliders { display: flex; flex-direction: column; gap: 10px; }
+  .slider-row { display: flex; align-items: center; gap: 10px; font-size: 0.82rem; }
+  .slider-row label { width: 100px; color: var(--muted); flex-shrink: 0; }
+  .slider-row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .slider-row .val { width: 40px; text-align: right; font-family: var(--mono); color: var(--accent); }
+
+  .log {
+    height: 210px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .log div { padding: 2px 0; color: var(--muted); border-bottom: 1px dotted rgba(255,255,255,0.04); }
+  .log div .tick { color: var(--accent); margin-right: 6px; }
+
+  footer { color: var(--muted); font-size: 0.78rem; margin-top: 18px; text-align: center; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🧵 Skein</h1>
+  <div class="subtitle">
+    Three real, independent CRDT replicas talking over a simulated unreliable network.
+    Type in any pane — the server broadcasts your edit through a network that adds latency,
+    reorders, drops, duplicates, and can be fully partitioned — and watch every replica
+    converge to the identical document without any of them ever talking to a central authority.
+  </div>
+</header>
+
+<div class="layout" id="sites"></div>
+
+<div class="panels">
+  <div class="panel">
+    <h2>Network</h2>
+    <div id="statusBanner" class="status-banner ok">converging…</div>
+    <div class="stat-grid" id="statGrid"></div>
+    <div class="sliders">
+      <div class="slider-row">
+        <label>Drop rate</label>
+        <input type="range" id="dropSlider" min="0" max="100" value="0">
+        <span class="val" id="dropVal">0%</span>
+      </div>
+      <div class="slider-row">
+        <label>Duplicate rate</label>
+        <input type="range" id="dupSlider" min="0" max="100" value="0">
+        <span class="val" id="dupVal">0%</span>
+      </div>
+      <div class="slider-row">
+        <label>Latency (ticks)</label>
+        <input type="range" id="latSlider" min="1" max="20" value="3">
+        <span class="val" id="latVal">1–3</span>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <button class="primary" onclick="Skein.resetSession()">↺ Reset session</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Network activity log</h2>
+    <div class="log" id="eventLog"></div>
+  </div>
+</div>
+
+<footer>
+  Every keystroke here is a real HTTP call into a real <code>Simulation</code> running
+  server-side (see <code>skein/web/server.py</code>) — this page has no CRDT logic of its own.
+</footer>
+
+<script>
+const SITES = ["Alice", "Bob", "Carol"];
+const local = {};      // last value WE (this browser) know for each site's textarea
+const els = {};        // DOM refs
+const queues = {};     // per-site promise chains so keystrokes never race each other
+SITES.forEach(s => queues[s] = Promise.resolve());
+
+function diff(oldStr, newStr) {
+  let p = 0;
+  const maxP = Math.min(oldStr.length, newStr.length);
+  while (p < maxP && oldStr[p] === newStr[p]) p++;
+  let oldEnd = oldStr.length, newEnd = newStr.length;
+  while (oldEnd > p && newEnd > p && oldStr[oldEnd - 1] === newStr[newEnd - 1]) { oldEnd--; newEnd--; }
+  return { pos: p, deletedCount: oldEnd - p, insertedText: newStr.slice(p, newEnd) };
+}
+
+async function postJSON(path, body) {
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) console.error(path, data.error);
+  return data;
+}
+
+function buildUI() {
+  const container = document.getElementById("sites");
+  SITES.forEach(site => {
+    local[site] = "";
+    const card = document.createElement("div");
+    card.className = "site-card";
+    card.id = "card-" + site;
+    card.innerHTML = `
+      <div class="site-head">
+        <div class="site-name"><span class="dot" id="dot-${site}"></span>${site}</div>
+        <button id="conn-${site}" onclick="Skein.togglePartition('${site}')">Disconnect</button>
+      </div>
+      <textarea id="ta-${site}" spellcheck="false" placeholder="Type here as ${site}…"></textarea>
+      <div class="row">
+        <button id="undo-${site}" onclick="Skein.undo('${site}')">↶ Undo</button>
+        <button id="redo-${site}" onclick="Skein.redo('${site}')">↷ Redo</button>
+      </div>
+    `;
+    container.appendChild(card);
+    const ta = document.getElementById("ta-" + site);
+    els[site] = ta;
+    ta.addEventListener("input", () => onInput(site));
+    ta.addEventListener("blur", () => fetchAndApply());
+  });
+}
+
+function onInput(site) {
+  const newVal = els[site].value;
+  const { pos, deletedCount, insertedText } = diff(local[site], newVal);
+  local[site] = newVal;
+  queues[site] = queues[site].then(async () => {
+    if (deletedCount > 0) await postJSON("/api/delete", { site, pos, count: deletedCount });
+    if (insertedText.length > 0) await postJSON("/api/type", { site, pos, text: insertedText });
+  }).catch(e => console.error(e));
+}
+
+const Skein = {
+  async undo(site) {
+    const data = await postJSON("/api/undo", { site });
+    applyState(data);
+  },
+  async redo(site) {
+    const data = await postJSON("/api/redo", { site });
+    applyState(data);
+  },
+  async togglePartition(site) {
+    const btn = document.getElementById("conn-" + site);
+    const isPartitioned = btn.dataset.partitioned === "1";
+    const data = await postJSON(isPartitioned ? "/api/heal" : "/api/partition", { site });
+    applyState(data);
+  },
+  async resetSession() {
+    const data = await postJSON("/api/reset", {});
+    SITES.forEach(s => local[s] = "");
+    applyState(data);
+  },
+};
+
+function applyState(data) {
+  SITES.forEach(site => {
+    const s = data.sites[site];
+    const ta = els[site];
+    const focused = document.activeElement === ta;
+    if (!focused) {
+      ta.value = s.text;
+      local[site] = s.text;
+    }
+    document.getElementById("dot-" + site).className = "dot" + (s.partitioned ? " off" : "");
+    document.getElementById("card-" + site).classList.toggle("partitioned", s.partitioned);
+    const connBtn = document.getElementById("conn-" + site);
+    connBtn.textContent = s.partitioned ? "Reconnect" : "Disconnect";
+    connBtn.dataset.partitioned = s.partitioned ? "1" : "0";
+    document.getElementById("undo-" + site).disabled = !s.can_undo;
+    document.getElementById("redo-" + site).disabled = !s.can_redo;
+  });
+
+  const banner = document.getElementById("statusBanner");
+  if (data.converged) {
+    banner.className = "status-banner ok";
+    banner.textContent = "✓ All replicas converged to the identical document";
+  } else {
+    banner.className = "status-banner bad";
+    banner.textContent = "… replicas differ right now (expect this mid-chaos — it should always resolve once messages land)";
+  }
+
+  const st = data.network.stats;
+  document.getElementById("statGrid").innerHTML = `
+    <div class="stat"><div class="n">${data.network.tick}</div><div class="l">tick</div></div>
+    <div class="stat"><div class="n">${data.network.in_flight}</div><div class="l">in flight</div></div>
+    <div class="stat"><div class="n">${st.delivered}</div><div class="l">delivered</div></div>
+    <div class="stat"><div class="n">${st.dropped}</div><div class="l">dropped</div></div>
+    <div class="stat"><div class="n">${st.duplicated}</div><div class="l">duplicated</div></div>
+    <div class="stat"><div class="n">${st.partition_blocked}</div><div class="l">blocked (partition)</div></div>
+  `;
+
+  const log = document.getElementById("eventLog");
+  log.innerHTML = data.log.map(e => `<div><span class="tick">t${e.tick}</span>${escapeHtml(e.msg)}</div>`).join("");
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+async function fetchAndApply() {
+  try {
+    const res = await fetch("/api/state");
+    const data = await res.json();
+    applyState(data);
+  } catch (e) { /* transient network hiccup — next poll will retry */ }
+}
+
+async function poll() {
+  await fetchAndApply();
+  setTimeout(poll, 400);
+}
+
+function wireChaosSliders() {
+  const dropS = document.getElementById("dropSlider");
+  const dupS = document.getElementById("dupSlider");
+  const latS = document.getElementById("latSlider");
+  const dropV = document.getElementById("dropVal");
+  const dupV = document.getElementById("dupVal");
+  const latV = document.getElementById("latVal");
+
+  async function push() {
+    const drop = dropS.value / 100;
+    const dup = dupS.value / 100;
+    const latMax = parseInt(latS.value, 10);
+    dropV.textContent = dropS.value + "%";
+    dupV.textContent = dupS.value + "%";
+    latV.textContent = "1–" + latMax;
+    await postJSON("/api/chaos", { drop, dup, latency_min: 1, latency_max: latMax });
+  }
+  [dropS, dupS, latS].forEach(el => el.addEventListener("change", push));
+}
+
+buildUI();
+wireChaosSliders();
+poll();
+</script>
+</body>
+</html>
