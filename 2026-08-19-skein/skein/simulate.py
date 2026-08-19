@@ -55,17 +55,25 @@ class Simulation:
 
     def heal(self, site_id: str) -> None:
         """Reconnect `site_id` and run a full anti-entropy resync: every
-        site (not just the one reconnecting) gets resent the complete op
-        history. That covers both directions a real partition breaks —
-        what `site_id` missed from everyone else, *and* what `site_id`
-        itself produced while cut off, which the network dropped outright
-        rather than queuing (see SimNetwork.send) and so no one else has
-        ever seen yet. Idempotent apply means resending ops a site
-        already has is harmless — this is not "cheating," it's exactly
-        what a real system's reconciliation/gossip round does."""
+        currently-*reachable* site (not just the one reconnecting) gets
+        resent the complete op history. That covers both directions a
+        real partition breaks — what `site_id` missed from everyone
+        else, *and* what `site_id` itself produced while cut off, which
+        the network dropped outright rather than queuing (see
+        SimNetwork.send) and so no one else has ever seen yet.
+        Idempotent apply means resending ops a site already has is
+        harmless — this is not "cheating," it's exactly what a real
+        system's reconciliation/gossip round does.
+
+        Critically, this must skip any OTHER site that is still
+        partitioned: resyncing everyone unconditionally would leak
+        `site_id`'s edits to a still-isolated third site the instant
+        *anyone* reconnects, silently breaking the partition guarantee
+        that an isolated site sees nothing until it is itself healed."""
         self.network.heal(site_id)
         for sid in self.sites:
-            self.network.resync(sid, list(self.all_ops))
+            if not self.network.is_partitioned(sid):
+                self.network.resync(sid, list(self.all_ops))
 
     def heal_all(self) -> None:
         for sid in list(self.sites):

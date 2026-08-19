@@ -72,8 +72,10 @@ class RGA:
         if not 0 <= pos <= len(visible):
             raise IndexError(f"insert position {pos} out of range [0, {len(visible)}]")
         origin = visible[pos - 1] if pos > 0 else None
+        if len(char) != 1:
+            raise ValueError(f"local_insert char must be a single character, got {char!r}")
         op = InsertOp(id=self.clock.tick(), char=char, origin=origin)
-        self._apply_insert(op)
+        self.apply(op)
         return op
 
     def local_delete(self, pos: int) -> DeleteOp:
@@ -83,21 +85,38 @@ class RGA:
         if not 0 <= pos < len(visible):
             raise IndexError(f"delete position {pos} out of range [0, {len(visible) - 1}]")
         op = DeleteOp(id=visible[pos])
-        self._apply_delete(op)
+        self.apply(op)
         return op
 
     # -- remote/replay application --------------------------------------
 
     def apply(self, op) -> None:
-        """Apply a (possibly out-of-order, possibly duplicate) remote op.
-        Safe to call with the same op more than once."""
-        if isinstance(op, InsertOp):
-            self.clock.observe(op.id.counter)
-            self._apply_insert(op)
-        elif isinstance(op, DeleteOp):
-            self._apply_delete(op)
-        else:
+        """Apply a (possibly out-of-order, possibly duplicate) remote op —
+        or a local one; local_insert/local_delete route through here too.
+        Safe to call with the same op more than once.
+
+        Applying one op can unblock a whole chain of previously-buffered
+        ops waiting on it (e.g. a long typed passage delivered in exactly
+        reverse order unblocks one more character with every op applied).
+        That cascade is driven by an explicit worklist, deliberately
+        *not* recursion — a naive "apply, then recursively replay
+        whatever that unblocked" implementation blows Python's recursion
+        limit on any such chain longer than ~1000, which a real typing
+        session or a sufficiently adversarial delivery order reaches
+        easily."""
+        if not isinstance(op, (InsertOp, DeleteOp)):
             raise TypeError(f"unknown op type: {type(op)!r}")
+
+        worklist = [op]
+        while worklist:
+            current = worklist.pop()
+            if isinstance(current, InsertOp):
+                self.clock.observe(current.id.counter)
+                newly_available = self._try_apply_insert(current)
+                if newly_available is not None:
+                    worklist.extend(self._pending.pop(newly_available, ()))
+            else:
+                self._try_apply_delete(current)
 
     def has_pending(self) -> bool:
         """True if this replica is holding ops that are still waiting on
@@ -107,34 +126,27 @@ class RGA:
 
     # -- internals --------------------------------------------------------
 
-    def _apply_insert(self, op: InsertOp) -> None:
+    def _try_apply_insert(self, op: InsertOp) -> Optional[CharId]:
+        """Returns op.id if this call newly created that node (so the
+        caller should replay anything pending on it), or None if it was
+        a duplicate (already present) or had to be buffered."""
         if op.id in self._nodes:
-            return  # duplicate delivery — idempotent no-op
+            return None  # duplicate delivery — idempotent no-op
         parent_children = self._children_of(op.origin)
         if parent_children is None:
             self._pending.setdefault(op.origin, []).append(op)
-            return
+            return None
         node = _Node(id=op.id, char=op.char, origin=op.origin)
         self._nodes[op.id] = node
         _sorted_insert_desc(parent_children, op.id)
-        self._replay_pending(op.id)
+        return op.id
 
-    def _apply_delete(self, op: DeleteOp) -> None:
+    def _try_apply_delete(self, op: DeleteOp) -> None:
         node = self._nodes.get(op.id)
         if node is None:
             self._pending.setdefault(op.id, []).append(op)
             return
         node.tombstone = True  # idempotent — fine if already tombstoned
-
-    def _replay_pending(self, newly_available: CharId) -> None:
-        waiting = self._pending.pop(newly_available, None)
-        if not waiting:
-            return
-        for op in waiting:
-            if isinstance(op, InsertOp):
-                self._apply_insert(op)
-            else:
-                self._apply_delete(op)
 
     def _children_of(self, origin: Optional[CharId]) -> Optional[List[CharId]]:
         if origin is None:

@@ -7,8 +7,11 @@ simulated unreliable network, a multi-site concurrent-edit simulator, a
 randomized convergence-proof harness, and (coming) an interactive
 playground.
 
-**Status: Phase 2 (core build) complete.** All 4 required features work
-end-to-end:
+**Status: Phase 3 (adversarial review) complete.** All 4 required
+features work end-to-end, and [REVIEW.md](./REVIEW.md) documents 3 real
+bugs found and fixed (including a `RecursionError` that a straight-typed
+document delivered in reverse order would reliably trigger, and a
+network-partition isolation leak):
 
 ```
 python3 -m skein.cli demo            # narrated walkthrough of every core feature
