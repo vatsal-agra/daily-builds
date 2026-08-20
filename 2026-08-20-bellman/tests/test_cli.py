@@ -64,6 +64,18 @@ class TestInputValidation(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("invalid int value", result.stderr)
 
+    def test_dqn_name_with_path_separator_rejected_cleanly(self):
+        """Regression: `--name` funnels into
+        os.path.join(RESULTS_DIR, name) — an absolute or `..`-containing
+        name could otherwise escape the results/ directory entirely
+        (os.path.join's documented behavior discards the first argument
+        when the second is absolute) and write anywhere on disk."""
+        for bad_name in ("/tmp/evil", "../escape", "sub/dir"):
+            result = run_cli(["dqn", "--episodes", "5", "--name", bad_name])
+            self.assertNotEqual(result.returncode, 0, f"name={bad_name!r} should have been rejected")
+            self.assertIn("invalid result name", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+
 
 class TestRealRunEndToEnd(unittest.TestCase):
     """Runs the actual CLI end to end at a tiny scale — real training,

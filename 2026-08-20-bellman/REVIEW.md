@@ -91,6 +91,23 @@ have reported success. Fixed with an explicit non-negative check in
 flag across all six subcommands, surfaced via `parser.error()` (clean
 usage message, exit code 2) rather than deep inside training code.
 
+### 8. `dqn --name` could escape the results/ directory entirely (found during Phase 4 polish)
+
+`_save(name, payload)` builds its output path with
+`os.path.join(RESULTS_DIR, f"{name}.json")`. `os.path.join` has a sharp
+documented edge: if the second argument is an absolute path, the first is
+discarded entirely. So `--name /tmp/evil` silently wrote to
+`/tmp/evil.json`, completely outside the project's `results/` directory —
+and `--name ../escape` would climb out of it with a relative path just as
+easily. Found by deliberately probing `--name` (the one CLI flag that
+flows user input into a filesystem path) the same way a hostile input
+would, not by any test failing on its own. Fixed with a single validation
+check at `_save()`'s entry point — reject any name that isn't its own
+`os.path.basename` (blocks separators) or is `""`/`"."`/`".."` — and
+`main()` now catches `ValueError` from any command and prints a clean
+`error: ...` message (exit 1) instead of surfacing whatever raw exception
+a command happens to raise.
+
 ## Design decisions made honest, not hidden
 
 ### 6. Cliff Walking "hugs the edge" detection needed a real metric, not `any()`

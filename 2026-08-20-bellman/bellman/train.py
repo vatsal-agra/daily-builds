@@ -29,6 +29,14 @@ RESULTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 
 
 def _save(name, payload):
+    # `name` ultimately comes from user input (`dqn --name ...`). Reject
+    # path separators/parent-refs here, at the one place every save() call
+    # funnels through — os.path.join(RESULTS_DIR, name) would otherwise
+    # silently escape RESULTS_DIR entirely for an absolute `name` (that's
+    # os.path.join's documented behavior: an absolute second component
+    # discards the first), letting a bad --name write anywhere on disk.
+    if os.path.basename(name) != name or name in ("", ".", ".."):
+        raise ValueError(f"invalid result name {name!r} (must be a plain filename, no path separators)")
     os.makedirs(RESULTS_DIR, exist_ok=True)
     path = os.path.join(RESULTS_DIR, f"{name}.json")
     with open(path, "w") as f:
@@ -385,7 +393,11 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     _validate_args(parser, args)
-    COMMANDS[args.command](args)
+    try:
+        COMMANDS[args.command](args)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
     return 0
 
 
