@@ -5,13 +5,15 @@ no `stable-baselines3`, no `torch`/`tensorflow`. Tabular Q-learning, SARSA,
 a Deep Q-Network, and REINFORCE, all training inside from-scratch
 environments (GridWorld/Cliff Walking, CartPole).
 
-**Status: Phase 4 (stretch + polish) complete.** All 4 required features
-plus both planned stretch features (the interactive HTML report and the
-DQN ablation study) are implemented, verified, and polished. A hostile
-review pass across Phases 3–4 found and fixed 5 real bugs (including a
-convention mismatch in the gradient-checking test scaffolding itself and
-a path-traversal gap in `--name`) — see [REVIEW.md](REVIEW.md) for the
-full writeup. 102/102 tests green.
+**Status: Phase 5 (verification) complete.** All 4 required features plus
+both planned stretch features (the interactive HTML report and the DQN
+ablation study) are implemented, verified, and polished. A hostile review
+pass found and fixed 5 real bugs (see [REVIEW.md](REVIEW.md)). `demo.sh`
+runs the full 102-test suite, a real end-to-end training run of every
+agent, builds the HTML report, and exercises 7 CLI-robustness checks —
+run twice back to back, every RL number came back byte-identical (only
+wall-clock timing differed), confirming the whole pipeline is genuinely
+deterministic given a seed, not just "usually reproducible".
 
 ## Quickstart
 

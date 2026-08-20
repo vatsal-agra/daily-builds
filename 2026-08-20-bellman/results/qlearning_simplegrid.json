@@ -106,7 +106,7 @@
     -24.2,
     -26.6
   ],
-  "elapsed_sec": 0.004774808883666992,
+  "elapsed_sec": 0.0055942535400390625,
   "optimal_rollout": true,
   "achieved_return": -6.793465209300999,
   "optimal_return": -6.793465209301,
