@@ -47,9 +47,12 @@ class MLP:
         self.bs = [b.copy() for b in other.bs]
 
     def forward(self, x):
-        """x: (batch, in_dim) or (in_dim,). Returns (output, cache)."""
+        """x: (batch, in_dim) or (in_dim,) — a numpy array OR any array-like
+        (plain Python list/tuple is coerced automatically). Returns
+        (output, cache)."""
+        x = np.asarray(x, dtype=np.float64)
         squeeze = x.ndim == 1
-        a = np.atleast_2d(x).astype(np.float64)
+        a = np.atleast_2d(x)
         zs = []
         activations = [a]
         n_layers = len(self.Ws)
@@ -70,7 +73,7 @@ class MLP:
         shape (batch, out_dim). Returns grads as {"W0":.., "b0":.., ...},
         averaged over the batch (so the caller's learning rate is
         batch-size independent)."""
-        d_out = np.atleast_2d(d_out)
+        d_out = np.atleast_2d(np.asarray(d_out, dtype=np.float64))
         activations = cache["activations"]
         zs = cache["zs"]
         n_layers = len(self.Ws)

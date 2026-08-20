@@ -65,6 +65,11 @@ class ReinforceAgent:
         """states: list of state vectors, actions: list of ints,
         rewards: list of floats, all length T (one full episode).
         Returns (policy_loss, value_loss) for logging."""
+        if len(states) == 0:
+            raise ValueError(
+                "update() called with an empty episode (0 timesteps) — "
+                "nothing to compute a policy gradient from"
+            )
         states = np.asarray(states, dtype=np.float64)
         actions = np.asarray(actions, dtype=np.int64)
         returns = self._discounted_returns(rewards)

@@ -71,6 +71,22 @@ class TestForwardShapes(unittest.TestCase):
         with self.assertRaises(ValueError):
             MLP([5])
 
+    def test_forward_accepts_plain_python_lists(self):
+        """Regression: forward() used to call x.ndim before coercing x to
+        an array, so a plain Python list/list-of-lists (a completely
+        reasonable, undocumented-as-forbidden input) crashed with a raw
+        AttributeError instead of just working."""
+        mlp = MLP([3, 4, 2], seed=0)
+        out_list, _ = mlp.forward([1.0, 2.0, 3.0])
+        out_arr, _ = mlp.forward(np.array([1.0, 2.0, 3.0]))
+        np.testing.assert_allclose(out_list, out_arr)
+
+        out_batch_list, cache = mlp.forward([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        self.assertEqual(out_batch_list.shape, (2, 2))
+        # and backward() should likewise accept a plain-list d_out
+        grads = mlp.backward(cache, [[1.0, 1.0], [1.0, 1.0]])
+        self.assertEqual(grads["W0"].shape, (3, 4))
+
 
 class TestAdamOptimizer(unittest.TestCase):
     def test_adam_drives_toy_regression_loss_down(self):

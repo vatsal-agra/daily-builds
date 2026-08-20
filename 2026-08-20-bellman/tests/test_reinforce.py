@@ -72,6 +72,30 @@ class TestUpdateMovesTowardHigherReturnActions(unittest.TestCase):
         self.assertLess(abs(v_after.item() - 10.0), abs(v_before.item() - 10.0))
 
 
+class TestEmptyEpisodeGuard(unittest.TestCase):
+    def test_update_on_empty_episode_raises_clear_error(self):
+        """Regression: agent.update([], [], []) used to fall through to a
+        raw numpy matmul dimension-mismatch error deep inside forward();
+        run_episode() already guards against calling update() this way,
+        but the public method itself should fail clearly too."""
+        agent = ReinforceAgent(state_dim=2, n_actions=2, seed=0)
+        with self.assertRaises(ValueError):
+            agent.update([], [], [])
+
+    def test_run_episode_never_calls_update_on_empty_episode(self):
+        # An env whose very first step is always terminal
+        class ImmediatelyDoneEnv:
+            def reset(self):
+                return (0.0, 0.0, 0.0, 0.0)
+
+            def step(self, action):
+                return (0.0, 0.0, 0.0, 0.0), 1.0, True, {}
+
+        agent = ReinforceAgent(state_dim=4, n_actions=2, seed=0)
+        r, steps = run_episode(ImmediatelyDoneEnv(), agent, learn=True, max_steps=10)
+        self.assertEqual(steps, 1)  # one real (non-empty) step, not zero
+
+
 class TestEpisodeAndTrainingLoop(unittest.TestCase):
     def test_run_episode_returns_positive_reward_and_steps(self):
         env = CartPole(max_steps=50, seed=0)

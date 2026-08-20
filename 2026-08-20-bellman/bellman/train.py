@@ -365,9 +365,26 @@ COMMANDS = {
 }
 
 
+def _validate_args(parser, args):
+    """Rejects nonsensical numeric input early with a clear message,
+    instead of e.g. silently training on `range(-5)` (0 real episodes)
+    while still printing "-5 episodes" and writing a confusing "training
+    failed to converge" result to disk."""
+    for attr, label in (
+        ("episodes", "--episodes"),
+        ("cartpole_episodes", "--cartpole-episodes"),
+        ("ablation_episodes", "--ablation-episodes"),
+        ("n_seeds", "--n-seeds"),
+        ("ablation_seeds", "--ablation-seeds"),
+    ):
+        if hasattr(args, attr) and getattr(args, attr) < 0:
+            parser.error(f"{label} must be >= 0, got {getattr(args, attr)}")
+
+
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
+    _validate_args(parser, args)
     COMMANDS[args.command](args)
     return 0
 
