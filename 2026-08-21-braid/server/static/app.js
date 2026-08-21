@@ -29,6 +29,7 @@ class BraidClient {
     this.room = room;
     this.peerId = peerId;
     this.doc = new RGA(peerId);
+    this.undoManager = new UndoManager(this.doc);
     this.buffer = new CausalDeliveryBuffer((id) => this.doc.hasId(id));
     this.onTextChanged = onTextChanged;
     this.onPresence = onPresence;
@@ -70,7 +71,7 @@ class BraidClient {
       this.onCursor(msg.peer, msg.after);
       return;
     }
-    if (msg.type === "insert" || msg.type === "delete") {
+    if (msg.type === "insert" || msg.type === "delete" || msg.type === "undelete") {
       this.buffer.submit(msg, (o) => this.doc.applyRemote(o));
       this.onTextChanged(this.doc.text());
       return;
@@ -97,12 +98,26 @@ class BraidClient {
 
   localInsert(index, value) {
     const op = this.doc.localInsert(index, value);
+    this.undoManager.recordLocalOp(op);
     this._send(op);
   }
 
   localDelete(index) {
     const op = this.doc.localDelete(index);
+    this.undoManager.recordLocalOp(op);
     this._send(op);
+  }
+
+  undo() {
+    const op = this.undoManager.undo();
+    if (op) this._send(op);
+    return op;
+  }
+
+  redo() {
+    const op = this.undoManager.redo();
+    if (op) this._send(op);
+    return op;
   }
 
   sendCursor(index) {
@@ -219,6 +234,49 @@ document.addEventListener("DOMContentLoaded", () => {
 
   client.connect();
 
+  const undoStatus = document.getElementById("undo-status");
+  function refreshUndoStatus() {
+    if (!undoStatus) return;
+    undoStatus.textContent = `undo: ${client.undoManager.canUndo() ? "available" : "empty"} · redo: ${client.undoManager.canRedo() ? "available" : "empty"}`;
+  }
+
+  function applyLocalDocChangeToTextarea() {
+    // same anchored-caret preservation as onTextChanged, reused for
+    // undo/redo since those mutate the doc without going through the
+    // normal input-event diff path
+    applyingRemote = true;
+    const selStart = textarea.selectionStart;
+    const anchor = client.doc._visibleIdBefore(selStart);
+    textarea.value = client.text();
+    const newPos = client.cursorIndexForNode(anchor);
+    textarea.setSelectionRange(newPos, newPos);
+    lastKnownValue = client.text();
+    applyingRemote = false;
+    refreshUndoStatus();
+  }
+
+  textarea.addEventListener("keydown", (e) => {
+    const mod = e.metaKey || e.ctrlKey;
+    if (!mod || e.key.toLowerCase() !== "z") return;
+    e.preventDefault();
+    if (e.shiftKey) {
+      client.redo();
+    } else {
+      client.undo();
+    }
+    applyLocalDocChangeToTextarea();
+    client.sendCursor(textarea.selectionStart);
+  });
+  textarea.addEventListener("keydown", (e) => {
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key.toLowerCase() === "y") {
+      e.preventDefault();
+      client.redo();
+      applyLocalDocChangeToTextarea();
+      client.sendCursor(textarea.selectionStart);
+    }
+  });
+
   textarea.addEventListener("input", () => {
     if (applyingRemote) return;
     const newValue = textarea.value;
@@ -232,7 +290,9 @@ document.addEventListener("DOMContentLoaded", () => {
       textarea.value = lastKnownValue;
     }
     client.sendCursor(textarea.selectionStart);
+    refreshUndoStatus();
   });
+  refreshUndoStatus();
 
   let cursorSendTimer = null;
   textarea.addEventListener("keyup", () => scheduleCursorSend());

@@ -56,11 +56,15 @@ class Room:
     def set_chaos(self, latency_range=None, loss_p=None, dup_p=None):
         with self.lock:
             if latency_range is not None:
-                self.net.latency_range = tuple(latency_range)
+                lo, hi = latency_range
+                lo, hi = max(0, int(lo)), max(0, int(hi))
+                if lo > hi:
+                    lo, hi = hi, lo  # tolerate a swapped min/max rather than crash
+                self.net.latency_range = (lo, hi)
             if loss_p is not None:
-                self.net.loss_p = loss_p
+                self.net.loss_p = min(1.0, max(0.0, loss_p))
             if dup_p is not None:
-                self.net.dup_p = dup_p
+                self.net.dup_p = min(1.0, max(0.0, dup_p))
 
     def add_client(self, peer_id: str, conn: "ClientConn"):
         with self.lock:
@@ -157,6 +161,8 @@ def _wire_to_op(msg: dict) -> dict:
         out["id"] = tuple(out["id"])
     if "parent" in out and out["parent"] is not None:
         out["parent"] = tuple(out["parent"])
+    if "op_id" in out and out["op_id"] is not None:
+        out["op_id"] = tuple(out["op_id"])
     if "deps" in out:
         out["deps"] = tuple(tuple(d) if d is not None else None for d in out["deps"])
     return out
@@ -197,17 +203,27 @@ class BraidServer:
             return self.rooms[name]
 
     def _ticker_loop(self):
+        # One shared thread ticks every room. A bug or bad input isolated
+        # to a single room (e.g. malformed chaos params slipping past
+        # set_chaos's own clamping) must never kill delivery for every
+        # OTHER room too — each room's tick is its own blast radius.
         ANTI_ENTROPY_EVERY_N_TICKS = 100  # ~4s at TICK_SECONDS=0.04
         tick_count = 0
         while self._running:
             with self.rooms_lock:
                 rooms = list(self.rooms.values())
             for room in rooms:
-                room.tick()
+                try:
+                    room.tick()
+                except Exception as e:
+                    print(f"[braid] room {room.name!r} tick() failed, isolated: {e!r}")
             tick_count += 1
             if tick_count % ANTI_ENTROPY_EVERY_N_TICKS == 0:
                 for room in rooms:
-                    room.anti_entropy_pass()
+                    try:
+                        room.anti_entropy_pass()
+                    except Exception as e:
+                        print(f"[braid] room {room.name!r} anti_entropy_pass() failed, isolated: {e!r}")
             time.sleep(TICK_SECONDS)
 
     def start(self):
@@ -338,7 +354,7 @@ class BraidServer:
                 except json.JSONDecodeError:
                     continue
                 try:
-                    if msg.get("type") in ("insert", "delete"):
+                    if msg.get("type") in ("insert", "delete", "undelete"):
                         room.handle_op(peer_id, _wire_to_op(msg))
                     elif msg.get("type") == "cursor":
                         after = msg.get("after")

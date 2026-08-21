@@ -40,10 +40,10 @@ class RGA {
   constructor(peerId) {
     this.peerId = peerId;
     this.clock = new LamportClock(peerId);
-    this.nodes = new Map(); // idKey -> {id, value, parent, tombstone}
+    this.nodes = new Map(); // idKey -> {id, value, parent, tombstone, tombstoneOpId}
     this.order = []; // array of idKey, left-to-right
     this.pos = new Map(); // idKey -> index
-    this.pendingDeletes = new Set();
+    this.pendingTombstones = new Map(); // idKey -> [opId, value]
     this.opLog = [];
     this._logged = new Set();
   }
@@ -68,10 +68,39 @@ class RGA {
   localDelete(index) {
     const targetId = this._visibleIdAt(index);
     if (targetId === null) throw new RangeError("delete index out of range");
-    this.nodes.get(idKey(targetId)).tombstone = true;
-    const op = { type: "delete", id: targetId, deps: [targetId] };
+    return this.localDeleteById(targetId);
+  }
+
+  localDeleteById(targetId) {
+    if (!this.nodes.has(idKey(targetId))) throw new Error("unknown node id");
+    return this._localTombstoneOp(targetId, true);
+  }
+
+  localUndeleteById(targetId) {
+    if (!this.nodes.has(idKey(targetId))) throw new Error("unknown node id");
+    return this._localTombstoneOp(targetId, false);
+  }
+
+  _localTombstoneOp(targetId, value) {
+    const opId = [this.clock.tick(), this.peerId];
+    this._applyTombstone(targetId, opId, value);
+    const op = { type: value ? "delete" : "undelete", id: targetId, op_id: opId, deps: [targetId] };
     this._log(op);
     return op;
+  }
+
+  _applyTombstone(targetId, opId, value) {
+    const k = idKey(targetId);
+    const node = this.nodes.get(k);
+    if (!node) {
+      const current = this.pendingTombstones.get(k);
+      if (!current || idGreater(opId, current[0])) this.pendingTombstones.set(k, [opId, value]);
+      return;
+    }
+    if (!node.tombstoneOpId || idGreater(opId, node.tombstoneOpId)) {
+      node.tombstoneOpId = opId;
+      node.tombstone = value;
+    }
   }
 
   text() {
@@ -98,30 +127,26 @@ class RGA {
       const nodeId = op.id;
       this.clock.observe(nodeId[0]);
       if (this.nodes.has(idKey(nodeId))) return; // idempotent duplicate
-      const node = { id: nodeId, value: op.value, parent: op.parent, tombstone: false };
+      const node = { id: nodeId, value: op.value, parent: op.parent, tombstone: false, tombstoneOpId: null };
       this._integrate(node);
       this._log(op);
-      if (this.pendingDeletes.has(idKey(nodeId))) {
-        node.tombstone = true;
-        this.pendingDeletes.delete(idKey(nodeId));
+      const pending = this.pendingTombstones.get(idKey(nodeId));
+      if (pending) {
+        node.tombstoneOpId = pending[0];
+        node.tombstone = pending[1];
+        this.pendingTombstones.delete(idKey(nodeId));
       }
-    } else if (op.type === "delete") {
-      const k = idKey(op.id);
-      const existing = this.nodes.get(k);
-      if (existing) {
-        existing.tombstone = true;
-        this._log(op);
-      } else {
-        this.pendingDeletes.add(k);
-        this._log(op);
-      }
+    } else if (op.type === "delete" || op.type === "undelete") {
+      this.clock.observe(op.op_id[0]);
+      this._applyTombstone(op.id, op.op_id, op.type === "delete");
+      this._log(op);
     } else {
       throw new Error("unknown op type " + op.type);
     }
   }
 
   _log(op) {
-    const key = op.type + ":" + idKey(op.id);
+    const key = "op_id" in op ? op.type + ":" + idKey(op.op_id) : op.type + ":" + idKey(op.id);
     if (this._logged.has(key)) return false;
     this._logged.add(key);
     this.opLog.push(op);
@@ -218,7 +243,69 @@ class CausalDeliveryBuffer {
   }
 }
 
+// CRDT-aware undo/redo -- a faithful port of crdt/undo.py. "insert" and
+// "undelete" are both make-visible actions (inverse hides); "delete" is
+// the one make-hidden action (inverse shows). Every step is skipped as a
+// no-op if the doc has already concurrently reached that state, rather
+// than forcing it and clobbering someone else's concurrent edit.
+class UndoManager {
+  constructor(doc) {
+    this.doc = doc;
+    this._undoStack = [];
+    this._redoStack = [];
+  }
+
+  recordLocalOp(op) {
+    if (op.type === "insert") this._undoStack.push({ kind: "insert", target: op.id });
+    else if (op.type === "delete" || op.type === "undelete") this._undoStack.push({ kind: op.type, target: op.id });
+    else return;
+    this._redoStack = [];
+  }
+
+  canUndo() {
+    return this._undoStack.length > 0;
+  }
+  canRedo() {
+    return this._redoStack.length > 0;
+  }
+
+  undo() {
+    if (!this._undoStack.length) return null;
+    const entry = this._undoStack.pop();
+    const op = this._applyInverse(entry);
+    this._redoStack.push(entry);
+    return op;
+  }
+
+  redo() {
+    if (!this._redoStack.length) return null;
+    const entry = this._redoStack.pop();
+    const op = this._applyForward(entry);
+    this._undoStack.push(entry);
+    return op;
+  }
+
+  _show(target) {
+    const node = this.doc.nodes.get(idKey(target));
+    if (!node || !node.tombstone) return null;
+    return this.doc.localUndeleteById(target);
+  }
+  _hide(target) {
+    const node = this.doc.nodes.get(idKey(target));
+    if (!node || node.tombstone) return null;
+    return this.doc.localDeleteById(target);
+  }
+  _applyInverse(entry) {
+    const makesVisible = entry.kind === "insert" || entry.kind === "undelete";
+    return makesVisible ? this._hide(entry.target) : this._show(entry.target);
+  }
+  _applyForward(entry) {
+    const makesVisible = entry.kind === "insert" || entry.kind === "undelete";
+    return makesVisible ? this._show(entry.target) : this._hide(entry.target);
+  }
+}
+
 // exposed for both <script> global use and, if ever needed, module use
 if (typeof module !== "undefined") {
-  module.exports = { RGA, CausalDeliveryBuffer, idGreater, idEqual, idKey };
+  module.exports = { RGA, CausalDeliveryBuffer, UndoManager, idGreater, idEqual, idKey };
 }

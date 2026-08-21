@@ -119,7 +119,11 @@ def _anti_entropy_round(peers, buffers, peer_ids, rng):
         b = order[(i + 1) % len(order)]
         missing_in_b = peers[a].known_op_keys() - peers[b].known_op_keys()
         for op in peers[a].op_log:
-            if (op["type"], op["id"]) in missing_in_b:
+            # must match RGA._log's own key scheme exactly (op_id for
+            # delete/undelete, id for insert) or this silently never
+            # finds anything to resend for whichever type it gets wrong
+            key = (op["type"], op["op_id"]) if "op_id" in op else (op["type"], op["id"])
+            if key in missing_in_b:
                 buffers[b].submit(op, peers[b].apply_remote)
 
 

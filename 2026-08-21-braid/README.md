@@ -3,16 +3,34 @@
 A CRDT-based real-time collaborative editing engine, built entirely from
 scratch — no `websockets`, no `automerge`/`yjs`, no consensus library.
 
-**Status: Phase 3 (adversarial review) complete.** All 4 required
-features are implemented and demonstrably working end-to-end; 7 real
-issues found by attacking the build as a hostile reviewer are fixed —
-see [`REVIEW.md`](./REVIEW.md), including one *self-correction* (an
-originally-documented CRDT limitation that turned out to be false for
-this implementation's algorithm, verified experimentally in both
-directions) and one *self-caught regression* (a fix for issue #3 that
-broke the partition demo, caught by re-running the existing test suite
-before moving on). See [`PLAN.md`](./PLAN.md) for the full concept and
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features
+plus both planned stretch features are implemented and demonstrably
+working end-to-end. 9 real issues found by attacking the build as a
+hostile reviewer are fixed — see [`REVIEW.md`](./REVIEW.md), including
+two *self-caught regressions* introduced mid-review by earlier fixes
+(caught only by re-running the existing suite, not just testing what was
+new) and one *self-correction* of an originally-documented CRDT
+limitation that turned out to be false for this implementation's
+algorithm — verified experimentally in both directions rather than left
+as an assumption. See [`PLAN.md`](./PLAN.md) for the full concept and
 architecture.
+
+**Stretch features shipped:**
+- **Multi-type nested document CRDT** (`crdt/document.py`) — an OR-Map
+  container mixing `RGA` text fields, `PNCounter`, `ORSet`, and a new
+  `LWWRegister`, each a genuinely different CRDT strategy (op-based vs.
+  state-based) composed behind one `state()`/`merge()` interface. 150/150
+  randomized convergence trials across all four field types at once; the
+  OR-Set's "add-wins" claim is verified with an actual concurrent
+  add-vs-remove race, not just asserted.
+- **CRDT-aware undo/redo** (`crdt/undo.py` + JS port in
+  `server/static/rga.js`) — undo generates and applies the *inverse* of
+  your own most recent local op against the *current* document state
+  (never a snapshot revert), so undoing your own edit after a
+  concurrent remote edit landed never touches the other peer's work.
+  Real `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z` in the live editor, verified in
+  a real browser including the exact "undo composes with concurrent
+  remote edit" case.
 
 ## What's built so far
 

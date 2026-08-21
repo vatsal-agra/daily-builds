@@ -42,13 +42,22 @@ HEAD = None
 
 
 class Node:
-    __slots__ = ("id", "value", "parent", "tombstone")
+    __slots__ = ("id", "value", "parent", "tombstone", "tombstone_op_id")
 
-    def __init__(self, id_, value, parent, tombstone=False):
+    def __init__(self, id_, value, parent, tombstone=False, tombstone_op_id=None):
         self.id = id_
         self.value = value
         self.parent = parent
+        # `tombstone` is a genuine LWW-register, not a one-way flag: every
+        # delete/undelete carries its own fresh `tombstone_op_id`, and
+        # whichever op has the higher id wins — deterministically, on
+        # every peer, regardless of delivery order. This is what makes
+        # `crdt/undo.py`'s "undo my delete" safe under concurrency: if
+        # someone else deletes the same character *after* your undelete
+        # would have applied, their delete (a fresher id) wins the race
+        # instead of a naive last-applied-wins mutation.
         self.tombstone = tombstone
+        self.tombstone_op_id = tombstone_op_id
 
     def __repr__(self):
         t = "†" if self.tombstone else ""
@@ -62,11 +71,12 @@ class RGA:
         self.nodes: dict = {}       # id -> Node
         self.order: list = []       # ids, left-to-right document order (incl. tombstones)
         self.pos: dict = {}         # id -> index into self.order (kept in sync)
-        # Defensive robustness: if a delete somehow arrives before the
-        # insert it targets (should never happen when routed through
+        # Defensive robustness: if a delete/undelete somehow arrives before
+        # the insert it targets (should never happen when routed through
         # CausalDeliveryBuffer, but RGA stays correct standalone too),
-        # remember it and apply the tombstone the moment the node shows up.
-        self.pending_deletes: set = set()
+        # remember the highest-id one seen and apply it once the node
+        # shows up — target_id -> (op_id, tombstone_value).
+        self.pending_tombstones: dict = {}
         # Full history of every op this peer has actually applied (local or
         # remote), deduped by (type, id) — the record anti-entropy resync
         # and the causal-history/undo features replay against.
@@ -97,14 +107,54 @@ class RGA:
         target_id = self._visible_id_at(index)
         if target_id is None:
             raise IndexError(f"delete index {index} out of range")
-        self.nodes[target_id].tombstone = True
-        op = {"type": "delete", "id": target_id, "deps": (target_id,)}
+        return self.local_delete_by_id(target_id)
+
+    def local_delete_by_id(self, target_id) -> dict:
+        if target_id not in self.nodes:
+            raise KeyError(f"unknown node id {target_id!r}")
+        return self._local_tombstone_op(target_id, True)
+
+    def local_undelete_by_id(self, target_id) -> dict:
+        """Restore a deleted character — the building block `crdt/undo.py`
+        uses to undo a delete. Not just flipping the flag back: this
+        mints a fresh LWW op so the restoration composes correctly with
+        anything concurrent (see Node.tombstone_op_id)."""
+        if target_id not in self.nodes:
+            raise KeyError(f"unknown node id {target_id!r}")
+        return self._local_tombstone_op(target_id, False)
+
+    def _local_tombstone_op(self, target_id, value: bool) -> dict:
+        op_id = (self.clock.tick(), self.peer_id)
+        self._apply_tombstone(target_id, op_id, value)
+        op_type = "delete" if value else "undelete"
+        op = {"type": op_type, "id": target_id, "op_id": op_id, "deps": (target_id,)}
         self._log(op)
         return op
 
+    def _apply_tombstone(self, target_id, op_id, value: bool) -> None:
+        """LWW-apply: only takes effect if `op_id` beats whatever
+        delete/undelete this node has already seen. Idempotent and
+        order-independent by construction."""
+        node = self.nodes.get(target_id)
+        if node is None:
+            self._defer_tombstone(target_id, op_id, value)
+            return
+        if node.tombstone_op_id is None or op_id > node.tombstone_op_id:
+            node.tombstone_op_id = op_id
+            node.tombstone = value
+
+    def _defer_tombstone(self, target_id, op_id, value: bool) -> None:
+        current = self.pending_tombstones.get(target_id)
+        if current is None or op_id > current[0]:
+            self.pending_tombstones[target_id] = (op_id, value)
+
     def _log(self, op: dict) -> bool:
-        """Append to op_log iff not already recorded; returns True if new."""
-        key = (op["type"], op["id"])
+        """Append to op_log iff not already recorded; returns True if new.
+        Delete/undelete are keyed by their own fresh `op_id` (not the
+        target's id) since the same target can be toggled multiple times
+        — keying on target would make the second toggle look like a
+        duplicate of the first and silently drop it."""
+        key = (op["type"], op["op_id"]) if "op_id" in op else (op["type"], op["id"])
         if key in self._logged:
             return False
         self._logged.add(key)
@@ -138,18 +188,15 @@ class RGA:
             node = Node(node_id, op["value"], op["parent"])
             self._integrate(node)
             self._log(op)
-            if node_id in self.pending_deletes:
-                node.tombstone = True
-                self.pending_deletes.discard(node_id)
-        elif op["type"] == "delete":
-            target_id = op["id"]
-            existing = self.nodes.get(target_id)
-            if existing is not None:
-                existing.tombstone = True
-                self._log(op)
-            else:
-                self.pending_deletes.add(target_id)
-                self._log(op)
+            pending = self.pending_tombstones.pop(node_id, None)
+            if pending is not None:
+                op_id, value = pending
+                node.tombstone_op_id = op_id
+                node.tombstone = value
+        elif op["type"] in ("delete", "undelete"):
+            self.clock.observe(op["op_id"][0])
+            self._apply_tombstone(op["id"], op["op_id"], op["type"] == "delete")
+            self._log(op)
         else:
             raise ValueError(f"unknown op type {op['type']!r}")
 

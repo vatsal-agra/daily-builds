@@ -145,6 +145,56 @@ rendered forever in every other open tab, with no signal it was stale.
 **Fix:** the `presence` handler now prunes `remoteCursors` for any peer
 no longer in the live peer list, and re-renders immediately.
 
+## 8. Second self-caught regression: anti-entropy silently stopped resending deletes
+
+Adding CRDT-aware undo/redo (Phase 4) required turning `tombstone` from
+a one-way flag into a genuine LWW-register (`Node.tombstone_op_id`, so
+"undelete" composes correctly with a concurrent delete — see
+`crdt/undo.py`), which meant `RGA._log`'s dedup key for delete/undelete
+ops had to switch from `(type, target_id)` to `(type, op_id)` (the same
+target can now be toggled more than once, so keying on the target alone
+would treat the second toggle as a duplicate of the first and drop it).
+
+Re-running the full test suite after that change caught a follow-on
+bug it introduced: `verify/convergence.py`'s `_anti_entropy_round` still
+computed its "what does peer B not have yet" membership check as
+`(op["type"], op["id"])` — the *old* key shape — while `known_op_keys()`
+now correctly returns the *new* `(type, op_id)` shape for deletes. The
+two never matched, so anti-entropy silently stopped resending any
+delete/undelete at all: Tier 3 (which had been 40/40 before this change)
+dropped to 1/40. Fixed by making the membership check use the exact
+same key derivation as `RGA._log`.
+
+This is the second regression this build caught by re-running the
+existing suite immediately after a change, rather than only testing the
+new feature in isolation — both are left in this document rather than
+quietly folded into the "final" code, because how a bug was found is
+as informative as the fix itself.
+
+## 9. `lat_min > lat_max` crashed the shared ticker thread for every room, not just the offending one
+
+Found during Phase 4 polish while thinking through what a hostile or
+just fat-fingered chaos-panel input could do: `_handle_chaos_api`'s
+try/except only guarded the `float()`/`int()` *parsing* calls, not the
+values themselves. A request like `?lat_min=10&lat_max=5` parses fine,
+sets `latency_range = (10, 5)`, and only actually blows up later, inside
+`random.randint(10, 5)` — which Python raises as `ValueError: empty
+range for randrange()` — the next time *any* room's `SimNetwork.send()`
+runs. Since one shared background thread ticks every room in a loop
+with no exception isolation between them, this silently killed live
+delivery for the *entire server*, not just the room that received the
+bad input — confirmed by reproducing the exact `randint(10, 5)` crash
+directly.
+
+**Fix, two layers (defense in depth, not either-or):** `Room.set_chaos`
+now clamps `loss_p`/`dup_p` to `[0, 1]` and swaps a reversed
+`latency_range` back into order instead of accepting nonsense silently
+propagating downstream; and `_ticker_loop` now wraps each room's
+`tick()`/`anti_entropy_pass()` in its own try/except, so a bug specific
+to one room (this one or a future one) can never again take down every
+other room's delivery — a malformed or malicious input's blast radius
+is the one room it targeted, not the whole process.
+
 ## Also considered, deliberately not "fixed"
 
 - **A malformed op from one client can raise inside that client's own
