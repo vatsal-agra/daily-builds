@@ -15,12 +15,13 @@ function randomPeerId() {
 }
 
 function getOrMakePeerId() {
-  let id = sessionStorage.getItem("braid-peer-id");
-  if (!id) {
-    id = randomPeerId();
-    sessionStorage.setItem("braid-peer-id", id);
-  }
-  return id;
+  // Deliberately NOT persisted to sessionStorage: Chrome's "Duplicate Tab"
+  // copies sessionStorage verbatim, which would hand two open tabs the
+  // SAME peer id while each has its own independently-zeroed Lamport
+  // clock -- both tabs' first insert would then mint the identical
+  // (1, peerId) node id, and apply_remote's duplicate-delivery check
+  // would silently drop the second character. See REVIEW.md #4.
+  return randomPeerId();
 }
 
 class BraidClient {
@@ -71,6 +72,14 @@ class BraidClient {
     }
     if (msg.type === "insert" || msg.type === "delete") {
       this.buffer.submit(msg, (o) => this.doc.applyRemote(o));
+      this.onTextChanged(this.doc.text());
+      return;
+    }
+    if (msg.type === "resync") {
+      // Periodic anti-entropy push (REVIEW.md #3): re-applying an
+      // already-known op is a no-op (applyRemote/_log are idempotent),
+      // so this only ever adds whatever this client is actually missing.
+      for (const op of msg.ops) this.buffer.submit(op, (o) => this.doc.applyRemote(o));
       this.onTextChanged(this.doc.text());
       return;
     }
@@ -176,6 +185,14 @@ document.addEventListener("DOMContentLoaded", () => {
         chip.style.background = peerColor(p);
         peersEl.appendChild(chip);
       }
+      // prune ghost carets for peers who are no longer in the room
+      // (REVIEW.md #7) -- otherwise a disconnected peer's last-known
+      // cursor position renders forever in every other open tab
+      const live = new Set(peers);
+      for (const p of Array.from(remoteCursors.keys())) {
+        if (!live.has(p)) remoteCursors.delete(p);
+      }
+      renderCursors();
     },
     onCursor: (peer, after) => {
       remoteCursors.set(peer, after);

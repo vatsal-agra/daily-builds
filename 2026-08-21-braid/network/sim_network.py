@@ -63,6 +63,17 @@ class SimNetwork:
         self._partitions.clear()
         self.events.append({"tick": self.time, "kind": "heal_all"})
 
+    def is_currently_partitioned(self, peer_id: str) -> bool:
+        """True if `peer_id` is on either side of any active partition —
+        i.e. cut off from *someone*. Used to keep any side-channel (e.g.
+        anti-entropy resync) honest: a peer that deliberately partitioned
+        itself shouldn't get healed by a "reliable" backup path a real
+        network split would also have severed."""
+        return any(
+            p["until"] > self.time and (peer_id in p["a"] or peer_id in p["b"])
+            for p in self._partitions
+        )
+
     def _is_partitioned(self, src: str, dst: str) -> bool:
         for p in self._partitions:
             if p["until"] <= self.time:

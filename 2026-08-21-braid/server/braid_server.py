@@ -102,13 +102,46 @@ class Room:
                                 dsts=others)
 
     def tick(self):
+        # Collect due deliveries while holding the lock, but send after
+        # releasing it — a blocking socket write inside the lock (the
+        # original bug: see REVIEW.md #2) would stall delivery to every
+        # other peer in the room behind one slow/stalled connection.
+        to_send = []
         with self.lock:
             def deliver(dst_peer, wire_op):
                 client = self.clients.get(dst_peer)
                 if client is not None:
-                    client.send_json(wire_op)
+                    to_send.append((client, wire_op))
 
             self.net.step(deliver)
+            if len(self.net.events) > 500:
+                del self.net.events[: len(self.net.events) - 500]
+        for client, wire_op in to_send:
+            client.send_json(wire_op)
+
+    def anti_entropy_pass(self):
+        """Push any op in the reliable mirror a connected client hasn't
+        logged yet, straight over the wire (bypassing the chaos network —
+        this models an assumed-reliable reconnect/resync channel, exactly
+        like verify/convergence.py's offline anti-entropy proof). Fixes
+        REVIEW.md #3: permanent loss on the live chaos-affected fan-out
+        no longer requires a manual reconnect to heal.
+
+        Skips any peer currently on either side of an active partition —
+        first-cut version of this fix bypassed partitions entirely, which
+        silently "healed" a deliberately-partitioned peer within one
+        anti-entropy interval and broke the partition demo outright
+        (caught by re-running the Playwright partition/heal regression
+        test after adding this method — see REVIEW.md #3)."""
+        with self.lock:
+            full_log = list(self.mirror.op_log)
+            targets = [
+                (peer_id, client)
+                for peer_id, client in self.clients.items()
+                if not self.net.is_currently_partitioned(peer_id)
+            ]
+        for peer_id, client in targets:
+            client.send_json({"type": "resync", "ops": [_op_to_wire(o) for o in full_log]})
 
 
 def _op_to_wire(op: dict) -> dict:
@@ -164,11 +197,17 @@ class BraidServer:
             return self.rooms[name]
 
     def _ticker_loop(self):
+        ANTI_ENTROPY_EVERY_N_TICKS = 100  # ~4s at TICK_SECONDS=0.04
+        tick_count = 0
         while self._running:
             with self.rooms_lock:
                 rooms = list(self.rooms.values())
             for room in rooms:
                 room.tick()
+            tick_count += 1
+            if tick_count % ANTI_ENTROPY_EVERY_N_TICKS == 0:
+                for room in rooms:
+                    room.anti_entropy_pass()
             time.sleep(TICK_SECONDS)
 
     def start(self):
@@ -235,28 +274,32 @@ class BraidServer:
         qs = parse_qs(urlparse(path).query)
         room_name = qs.get("room", ["default"])[0]
         room = self.get_room(room_name)
-        kwargs = {}
-        if "loss" in qs:
-            kwargs["loss_p"] = float(qs["loss"][0])
-        if "dup" in qs:
-            kwargs["dup_p"] = float(qs["dup"][0])
-        if "lat_min" in qs and "lat_max" in qs:
-            kwargs["latency_range"] = (int(qs["lat_min"][0]), int(qs["lat_max"][0]))
-        room.set_chaos(**kwargs)
-        if "partition" in qs:
-            groups = qs["partition"][0].split("|")
-            if len(groups) == 2:
-                a = [p for p in groups[0].split(",") if p]
-                if groups[1] == "__others__":
-                    with room.lock:
-                        b = [p for p in room.clients if p not in a]
-                else:
-                    b = [p for p in groups[1].split(",") if p]
-                ticks = int(qs.get("ticks", [50])[0])
-                if a and b:
-                    room.net.partition(a, b, ticks)
-        if "heal" in qs:
-            room.net.heal_all()
+        try:
+            kwargs = {}
+            if "loss" in qs:
+                kwargs["loss_p"] = float(qs["loss"][0])
+            if "dup" in qs:
+                kwargs["dup_p"] = float(qs["dup"][0])
+            if "lat_min" in qs and "lat_max" in qs:
+                kwargs["latency_range"] = (int(qs["lat_min"][0]), int(qs["lat_max"][0]))
+            room.set_chaos(**kwargs)
+            if "partition" in qs:
+                groups = qs["partition"][0].split("|")
+                if len(groups) == 2:
+                    a = [p for p in groups[0].split(",") if p]
+                    if groups[1] == "__others__":
+                        with room.lock:
+                            b = [p for p in room.clients if p not in a]
+                    else:
+                        b = [p for p in groups[1].split(",") if p]
+                    ticks = int(qs.get("ticks", [50])[0])
+                    if a and b:
+                        room.net.partition(a, b, ticks)
+            if "heal" in qs:
+                room.net.heal_all()
+        except (ValueError, TypeError) as e:
+            self._send_http(conn, 400, "text/plain", f"bad chaos parameter: {e}".encode())
+            return
         body = json.dumps({
             "loss_p": room.net.loss_p, "dup_p": room.net.dup_p,
             "latency_range": list(room.net.latency_range),
@@ -294,11 +337,18 @@ class BraidServer:
                     msg = json.loads(text)
                 except json.JSONDecodeError:
                     continue
-                if msg.get("type") in ("insert", "delete"):
-                    room.handle_op(peer_id, _wire_to_op(msg))
-                elif msg.get("type") == "cursor":
-                    after = msg.get("after")
-                    room.handle_cursor(peer_id, tuple(after) if after is not None else None)
+                try:
+                    if msg.get("type") in ("insert", "delete"):
+                        room.handle_op(peer_id, _wire_to_op(msg))
+                    elif msg.get("type") == "cursor":
+                        after = msg.get("after")
+                        room.handle_cursor(peer_id, tuple(after) if after is not None else None)
+                except (KeyError, TypeError, ValueError, IndexError) as e:
+                    # a malformed op only ever affects its own sender (see
+                    # REVIEW.md's "also considered" note) -- log and keep
+                    # this connection alive rather than tearing it down
+                    # over what's usually a transient client-side bug.
+                    print(f"[braid] malformed op from {peer_id!r} ignored: {e!r}")
         except ws.WebSocketClosed:
             pass
         except OSError:

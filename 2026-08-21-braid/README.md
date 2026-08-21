@@ -3,9 +3,16 @@
 A CRDT-based real-time collaborative editing engine, built entirely from
 scratch — no `websockets`, no `automerge`/`yjs`, no consensus library.
 
-**Status: Phase 2 (core build) complete.** All 4 required features are
-implemented and demonstrably working end-to-end (see verification notes
-below). See [`PLAN.md`](./PLAN.md) for the full concept and architecture.
+**Status: Phase 3 (adversarial review) complete.** All 4 required
+features are implemented and demonstrably working end-to-end; 7 real
+issues found by attacking the build as a hostile reviewer are fixed —
+see [`REVIEW.md`](./REVIEW.md), including one *self-correction* (an
+originally-documented CRDT limitation that turned out to be false for
+this implementation's algorithm, verified experimentally in both
+directions) and one *self-caught regression* (a fix for issue #3 that
+broke the partition demo, caught by re-running the existing test suite
+before moving on). See [`PLAN.md`](./PLAN.md) for the full concept and
+architecture.
 
 ## What's built so far
 

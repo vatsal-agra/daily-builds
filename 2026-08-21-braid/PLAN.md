@@ -34,12 +34,15 @@ in the demo," the same spirit as Quorum's safety-invariant monitor.
   text document — order and grouping of concurrent edits genuinely
   cannot matter, or the data type is broken.
 - Text CRDTs have a famous, subtle failure mode (the "interleaving
-  anomaly": two peers each concurrently typing multi-character insertions
-  at the same position can converge to a mathematically valid but
-  human-nonsensical *interleaved* result). Building RGA honestly means
-  hitting this, documenting it, and deciding whether to accept it as a
-  known property (as real production CRDTs like Yjics/Automerge's early
-  algorithms did) — real engineering, not hand-waved away.
+  anomaly": concurrent insertions at the same position can converge to a
+  mathematically valid but human-nonsensical *interleaved* result).
+  Building RGA honestly means actually checking where it does and
+  doesn't apply, rather than reciting the textbook caveat — see
+  REVIEW.md #1: with correct subtree-skip integration, two peers each
+  typing their own contiguous run converge as clean, unsplit blocks
+  (verified, not assumed); a narrower real case (several independent
+  peers each anchoring inside an existing run) still fragments it, also
+  verified rather than hand-waved.
 - It's a rare domain where the "boring correct" implementation and the
   "cool live demo" are the same artifact: a real-time multiplayer text
   editor *is* the natural way to see and feel the algorithm working, in a

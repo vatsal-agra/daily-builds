@@ -17,14 +17,19 @@ tuple always ends up to the left — which is exactly what gives RGA its
 core guarantee: apply the same set of insert/delete ops in *any* order,
 on any peer, and the resulting visible text is byte-identical.
 
-Known, accepted limitation (a real, published property of RGA, not a
-Braid-specific bug — see REVIEW.md): if two peers are offline and each
-types a multi-character run at the *same* position, the runs can
-converge *interleaved* character-by-character rather than as two clean
-blocks. It's a real tradeoff every character-level sequence CRDT without
-extra move-detection machinery makes, well known from CRDT literature,
-and it does not violate convergence (every peer still converges to the
-same interleaving) — it's a text-quality property, not a correctness one.
+On the "interleaving anomaly," precisely (see REVIEW.md #1 for how this
+claim was verified, not just asserted): two peers who are offline and
+each type a genuine contiguous run at the same position — each keystroke
+chained to the one that peer just typed, the way a real editor works —
+converge as two clean, unsplit blocks, *not* interleaved. That's because
+losing a tie against a sibling means losing against that sibling's
+*entire* subtree in one jump (`_subtree_end`), so a whole run is skipped
+atomically. A narrower, real version of the anomaly still exists: several
+*independent* peers each anchoring a single character at a *different*
+node strictly inside an already-formed run (not extending their own
+chain) can fragment it — inherent to any position-based sequence CRDT
+without extra move-tracking machinery, and not something normal
+"two people typing at once" triggers.
 """
 
 from __future__ import annotations
