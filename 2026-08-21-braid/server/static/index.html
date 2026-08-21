@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Braid — collaborative editor</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Braid <span class="tag">CRDT collaborative editor — no server-side merge conflicts, ever</span></h1>
+    <div class="identity">
+      room <code id="room-name"></code> &middot; you are
+      <code id="peer-id"></code> &middot; <span id="status">connecting…</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="editor-pane">
+      <div class="editor-wrap">
+        <textarea id="editor" spellcheck="false" placeholder="Start typing — open this same URL in another tab (or share the link below) to see it converge live."></textarea>
+        <div id="cursor-layer"></div>
+      </div>
+      <div class="peers-row">
+        <span class="label">in this room:</span>
+        <div id="peers"></div>
+      </div>
+    </section>
+
+    <aside class="chaos-panel">
+      <h2>Network chaos control</h2>
+      <p class="hint">These knobs affect delivery to <em>other</em> peers — your own edits always
+      apply instantly. Watch the room converge again after you heal a partition.</p>
+      <form id="chaos-form">
+        <label>Loss probability
+          <input type="range" id="chaos-loss" min="0" max="1" step="0.05" value="0" />
+        </label>
+        <label>Duplicate probability
+          <input type="range" id="chaos-dup" min="0" max="1" step="0.05" value="0" />
+        </label>
+        <label>Latency min (ticks, 40ms each)
+          <input type="number" id="chaos-lat-min" min="0" max="200" value="1" />
+        </label>
+        <label>Latency max (ticks)
+          <input type="number" id="chaos-lat-max" min="1" max="500" value="4" />
+        </label>
+        <button type="submit">Apply</button>
+      </form>
+      <div class="partition-controls">
+        <button id="partition-btn" type="button">Partition me from everyone</button>
+        <button id="heal-btn" type="button" class="heal">Heal network</button>
+      </div>
+      <pre id="chaos-status"></pre>
+
+      <h2>Share this room</h2>
+      <input id="room-link" readonly onclick="this.select()" />
+    </aside>
+  </main>
+
+  <script src="/rga.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
