@@ -41,19 +41,40 @@ verified, narrower claim instead of the inaccurate broad one. Both
 reproductions are preserved as `tests/test_interleaving.py` so the claim
 stays checked, not just asserted in prose.
 
-## 2. `Room.tick()` held the room lock across blocking socket sends
+## 2. `Room.tick()` held the room lock across blocking socket sends — and the first fix was itself incomplete
 
 `tick()` called `self.net.step(deliver)` **while holding `self.lock`**,
 and `deliver` calls `client.send_json`, a blocking `socket.sendall`. A
 single slow or half-open client (a dropped WiFi connection, a browser
 tab put to sleep) could stall delivery to every other peer in that room
-— and since one shared background thread ticks *every* room in turn,
-a bad enough stall could delay other rooms too.
+— and since one shared background thread ticks *every* room in turn, a
+bad enough stall could delay other rooms too.
 
-**Fix:** collect the due `(peer, op)` deliveries while holding the lock,
-release it, then send. `tests/test_server.py::test_slow_client_does_not_block_room`
-reproduces this with a deliberately-stalled socket and asserts a second,
-healthy client still receives its op promptly.
+The first fix (collect due `(peer, op)` deliveries while holding the
+lock, release it, *then* send) was real — it frees the room's lock for
+other operations like `add_client`/`handle_op` while a send is in
+flight — but incomplete: those collected sends still happened as a
+plain sequential `for` loop in the **same shared ticker thread**. A
+socket write that genuinely blocks (a frozen peer, not merely a closed
+one) would still stall delivery to every other peer in that room, and
+every other room queued behind it in the ticker's loop, exactly as
+before — just with the lock now free while it happened. Writing
+`tests/test_server.py::test_slow_client_does_not_block_room` against
+the literal claim in this document (not just "does the fixed code look
+more correct") is what caught that the claim wasn't actually true yet.
+
+**Real fix:** `ClientConn` now queues every outbound message
+(`queue.Queue`, bounded so a permanently wedged client backs up and
+drops overflow instead of leaking memory, rather than blocking the
+producer) and drains it on its **own dedicated writer thread**. Every
+caller's `send_json`/`send_raw` — the ticker, a `handle_op` broadcast, a
+presence update, anti-entropy — is now an O(1) enqueue; only that one
+connection's own writer thread ever blocks on its own socket, for
+however long that takes, with zero effect on any other peer or room.
+`test_slow_client_does_not_block_room` reproduces this with a
+deliberately-stalled socket (one that accepts the TCP connection but
+never reads) and asserts a second, healthy client in the same room still
+receives its op promptly regardless.
 
 ## 3. Live server had no anti-entropy — `loss_p > 0` could permanently drop an op
 
@@ -80,7 +101,7 @@ everything is safe only because `apply_remote`/`RGA._log` are already
 idempotent (an already-known op is a genuine no-op), so a healthy
 client pays a periodic no-op scan, not corruption — acceptable at demo
 scale, called out here rather than silently claimed as more efficient
-than it is. `tests/test_server.py::test_loss_recovers_via_anti_entropy`
+than it is. `tests/test_server.py::test_loss_recovers_via_anti_entropy_without_reconnect`
 reproduces permanent loss live over real sockets and confirms both
 peers converge without either one reconnecting.
 
@@ -194,6 +215,24 @@ propagating downstream; and `_ticker_loop` now wraps each room's
 to one room (this one or a future one) can never again take down every
 other room's delivery — a malformed or malicious input's blast radius
 is the one room it targeted, not the whole process.
+
+## 10. `SimNetwork` crashed on any payload without a `"type"` key
+
+Found while writing Phase 5's `tests/test_network.py`: exercising
+`SimNetwork` directly with a plain payload (`{"n": 1}`, to test the
+network layer in isolation from any CRDT op shape) crashed with
+`KeyError: 'type'` — `send()`/`step()`'s own event-logging code assumed
+every payload carries a `"type"` field, true of every real Braid op but
+never actually part of `SimNetwork`'s documented contract (it's written
+up as a generic "seeded, adversarial network," not "a network that only
+accepts Braid ops"). Every *production* call path happens to pass
+op-shaped dicts, so this never fired outside a test — exactly why a
+test written against the module's stated contract, not just its actual
+callers, is what caught it.
+
+**Fix:** `op.get("type", "?")` everywhere the event log records an op's
+type, so logging is best-effort metadata rather than a hard requirement
+on the caller's payload shape.
 
 ## Also considered, deliberately not "fixed"
 

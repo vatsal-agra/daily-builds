@@ -90,7 +90,7 @@ class SimNetwork:
         if src == dst:
             return
         if self.rng.random() < self.loss_p:
-            self.events.append({"tick": self.time, "kind": "lost", "src": src, "dst": dst, "op": op["type"]})
+            self.events.append({"tick": self.time, "kind": "lost", "src": src, "dst": dst, "op": op.get("type", "?")})
             return
         n_copies = 2 if self.rng.random() < self.dup_p else 1
         for copy_i in range(n_copies):
@@ -99,8 +99,8 @@ class SimNetwork:
                 {"deliver_at": self.time + delay, "src": src, "dst": dst, "op": op}
             )
         if n_copies > 1:
-            self.events.append({"tick": self.time, "kind": "duplicated", "src": src, "dst": dst, "op": op["type"]})
-        self.events.append({"tick": self.time, "kind": "sent", "src": src, "dst": dst, "op": op["type"]})
+            self.events.append({"tick": self.time, "kind": "duplicated", "src": src, "dst": dst, "op": op.get("type", "?")})
+        self.events.append({"tick": self.time, "kind": "sent", "src": src, "dst": dst, "op": op.get("type", "?")})
 
     def broadcast(self, src: str, op: dict, dsts=None) -> None:
         for dst in (dsts if dsts is not None else self.peer_ids):
@@ -129,7 +129,8 @@ class SimNetwork:
                 continue
             deliver_fn(msg["dst"], msg["op"])
             self.events.append(
-                {"tick": self.time, "kind": "delivered", "src": msg["src"], "dst": msg["dst"], "op": msg["op"]["type"]}
+                {"tick": self.time, "kind": "delivered", "src": msg["src"], "dst": msg["dst"],
+                 "op": msg["op"].get("type", "?")}
             )
             delivered += 1
         self._in_flight = still_in_flight

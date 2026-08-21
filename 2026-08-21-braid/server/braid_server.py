@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import queue
 import socket
 import sys
 import threading
@@ -169,28 +170,78 @@ def _wire_to_op(msg: dict) -> dict:
 
 
 class ClientConn:
+    """Every outbound message goes through a per-connection queue drained
+    by this connection's own dedicated writer thread — not written
+    directly by whichever thread calls send_json/send_raw (the shared
+    ticker thread, a handle_op broadcast, a presence update, ...).
+
+    This is the real fix for REVIEW.md #2: moving sends outside the room
+    lock (the original fix) stops a stalled client from blocking *other
+    room operations*, but tick() was still sending to every due
+    recipient sequentially in the one shared ticker thread — a socket
+    write that genuinely blocks (a stalled/frozen peer, not just a
+    closed one) would still stall delivery to every other peer in the
+    room, and every other room behind it in the ticker's loop. Queueing
+    means the ticker thread's send call is just an O(1) enqueue; only
+    this connection's own writer thread ever blocks on its socket,
+    however long that takes, with zero effect on anyone else. Found
+    while writing Phase 5's `test_slow_client_does_not_block_room` —
+    the original fix was real but incomplete, caught by testing the
+    literal claim instead of trusting the first fix looked plausible."""
+
     def __init__(self, conn, peer_id, room):
         self.conn = conn
         self.peer_id = peer_id
         self.room = room
-        self._send_lock = threading.Lock()
+        # Bounded: a truly wedged client backs up instead of growing
+        # without limit; it just drops the overflow (self-heals via the
+        # next periodic anti-entropy resync once it's reachable again,
+        # or on reconnect) rather than leaking memory forever.
+        self._outbox = queue.Queue(maxsize=200)
+        self._closed = threading.Event()
+        self._writer = threading.Thread(target=self._writer_loop, daemon=True)
+        self._writer.start()
 
     def send_json(self, obj):
         self.send_raw(json.dumps(obj))
 
     def send_raw(self, text):
-        with self._send_lock:
+        if self._closed.is_set():
+            return
+        try:
+            self._outbox.put_nowait(text)
+        except queue.Full:
+            pass  # backed-up client: drop rather than block or grow unbounded
+
+    def _writer_loop(self):
+        # Polls with a timeout (rather than a blocking get() + sentinel)
+        # so close() always terminates this thread promptly even if the
+        # outbox happens to be full when shutdown is requested and the
+        # sentinel itself can't be enqueued.
+        while not self._closed.is_set():
+            try:
+                text = self._outbox.get(timeout=0.5)
+            except queue.Empty:
+                continue
             try:
                 ws.send_text(self.conn, text)
             except OSError:
-                pass
+                self._closed.set()
+                return
+
+    def close(self):
+        self._closed.set()
 
 
 class BraidServer:
-    def __init__(self, host="127.0.0.1", port=8765, seed=1):
+    def __init__(self, host="127.0.0.1", port=8765, seed=1, anti_entropy_every_n_ticks=100):
         self.host = host
         self.port = port
         self.seed = seed
+        # ~4s at TICK_SECONDS=0.04 by default; tests override this to a
+        # small number so they don't have to wait several real seconds
+        # for a periodic pass to fire.
+        self.anti_entropy_every_n_ticks = anti_entropy_every_n_ticks
         self.rooms: dict[str, Room] = {}
         self.rooms_lock = threading.Lock()
         self._sock = None
@@ -207,7 +258,6 @@ class BraidServer:
         # to a single room (e.g. malformed chaos params slipping past
         # set_chaos's own clamping) must never kill delivery for every
         # OTHER room too — each room's tick is its own blast radius.
-        ANTI_ENTROPY_EVERY_N_TICKS = 100  # ~4s at TICK_SECONDS=0.04
         tick_count = 0
         while self._running:
             with self.rooms_lock:
@@ -218,7 +268,7 @@ class BraidServer:
                 except Exception as e:
                     print(f"[braid] room {room.name!r} tick() failed, isolated: {e!r}")
             tick_count += 1
-            if tick_count % ANTI_ENTROPY_EVERY_N_TICKS == 0:
+            if tick_count % self.anti_entropy_every_n_ticks == 0:
                 for room in rooms:
                     try:
                         room.anti_entropy_pass()
@@ -371,6 +421,7 @@ class BraidServer:
             pass
         finally:
             room.remove_client(peer_id)
+            client.close()
             try:
                 conn.close()
             except OSError:
