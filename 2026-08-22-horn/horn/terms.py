@@ -184,7 +184,12 @@ def format_term(t, depth=0):
         return "..."
     t = deref(t)
     if isinstance(t, Var):
-        return f"_{t.name}" if t.name != "_" else f"_G{t.id}"
+        # Always include the unique id, even for a named variable: two
+        # distinct fresh Vars that both trace back to a clause's "Y" (e.g.
+        # two solutions collected by findall/3 that never bound their
+        # shared free template variable) would otherwise both print as the
+        # bare "_Y" and look like the same variable when they are not.
+        return f"_{t.name}{t.id}" if t.name != "_" else f"_G{t.id}"
     if isinstance(t, Number):
         return str(t.value)
     if isinstance(t, Atom):

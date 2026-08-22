@@ -25,7 +25,16 @@ work end-to-end and have survived a hostile-reviewer pass -- see
   visible prompt, a fixed memory leak on abandoned queries, and a rejected
   rather than silently-mangled malformed query).
 
-The test suite (Phase 5) and final packaging (Phase 6) are still to come.
+**Status: Phase 5 (verification) complete.** 95 pytest tests, an
+assertion-checked `horn demo` walkthrough of every feature, and
+`./demo.sh` -- an end-to-end script driving the real CLI (not the Python
+API) through every example, the REPL, and the visualizer -- all green.
+Fixing `demo.sh` to actually catch its own real failure (it initially
+grepped for text the page doesn't contain, so it silently "passed" a step
+that hadn't actually been checked) is itself documented as part of getting
+this phase to a genuine, not just superficial, green.
+
+Final packaging (Phase 6) is still to come.
 
 ## Quick start
 
