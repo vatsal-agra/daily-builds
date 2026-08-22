@@ -198,7 +198,7 @@ class Parser:
             if isinstance(term, Compound) and term.functor == ":-" and term.arity == 2:
                 items.append(("clause", term.args[0], term.args[1]))
             elif isinstance(term, Compound) and term.functor == ":-" and term.arity == 1:
-                items.append(("directive", term.args[0]))
+                items.append(("directive", term.args[0], None))
             else:
                 items.append(("clause", term, None))
         return items

@@ -6,9 +6,14 @@ occurs check and trail-based backtracking, an SLD-resolution engine with cut
 and negation-as-failure, and a standard library of list/logic predicates
 written in Horn itself.
 
-**Status: Phase 2 (core build) complete.** All 4 required features work
-end-to-end (see below). Adversarial review, stretch features, and the test
-suite are still to come.
+**Status: Phase 3 (adversarial review) complete.** All 4 required features
+work end-to-end and have survived a hostile-reviewer pass: 6 real bugs found
+and fixed (a stack-overflow crash on long-list queries, a stdlib predicate
+that couldn't search backwards, a cyclic-term print crash, a directive
+parsing crash, silently-truncated malformed queries, and an unbounded
+per-query memory leak in long-lived sessions) -- see [REVIEW.md](REVIEW.md)
+for the full write-up, including what was checked and found correct. Stretch
+features and the test suite are still to come.
 
 ## Quick start
 

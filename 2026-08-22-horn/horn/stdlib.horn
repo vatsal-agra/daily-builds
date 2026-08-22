@@ -22,10 +22,17 @@ reverse_([H|T], Acc, R) :- reverse_(T, [H|Acc], R).
 last([X], X) :- !.
 last([_|T], X) :- last(T, X).
 
-nth0(0, [X|_], X) :- !.
-nth0(N, [_|T], X) :- N > 0, N1 is N - 1, nth0(N1, T, X).
+% Index computed *after* recursing (N is N0 + 1), not checked against an
+% upfront `N > 0` guard: the guard version is a little faster in the usual
+% "index given, find the element" direction, but raises an instantiation
+% error instead of searching when N is unbound and X is given instead (e.g.
+% "what index is `b` at in this list?") -- an eager arithmetic guard can't
+% evaluate against an unbound variable. This formulation works both ways.
+nth0(0, [X|_], X).
+nth0(N, [_|T], X) :- nth0(N0, T, X), N is N0 + 1.
 
-nth1(N, L, X) :- N0 is N - 1, nth0(N0, L, X).
+nth1(1, [X|_], X).
+nth1(N, [_|T], X) :- nth1(N0, T, X), N is N0 + 1.
 
 select(X, [X|T], T).
 select(X, [H|T], [H|R]) :- select(X, T, R).

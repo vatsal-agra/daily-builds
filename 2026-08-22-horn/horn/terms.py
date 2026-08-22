@@ -170,12 +170,17 @@ def _atom_needs_quote(name):
 def format_term(t, depth=0):
     """Render a term the way a Prolog top-level would: lists as [a,b,c],
     quoted atoms only when they'd otherwise be ambiguous to re-read."""
-    if depth > 900:
-        # Guard against formatting a cyclic or absurdly deep non-list term:
-        # unlike list nesting (unrolled iteratively below via list_to_python),
-        # general compound nesting recurses one Python frame per level, so
-        # this needs to give up comfortably before Python's own default
-        # recursion limit (1000) would turn it into a raw RecursionError.
+    if depth > 200:
+        # Guard against formatting a cyclic term (possible whenever the
+        # occurs check is off, e.g. `X = f(X)`) or an absurdly deep
+        # non-list one: unlike list nesting (unrolled iteratively below via
+        # list_to_python), general compound nesting recurses through a
+        # generator expression per level -- roughly 2 Python stack frames
+        # per term-depth level, not 1 -- so this needs real margin below
+        # Python's own default recursion limit (1000), not just a hair
+        # under it. Measured: without this guard, `write(X)` on a cyclic
+        # `X = f(X)` term crashes with a raw RecursionError instead of
+        # printing anything.
         return "..."
     t = deref(t)
     if isinstance(t, Var):

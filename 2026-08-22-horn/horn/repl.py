@@ -8,6 +8,7 @@ from .errors import HaltSignal, HornError
 from .parser import parse_term
 from .runstack import run_with_stack
 from .terms import Var, format_term
+from .unify import undo_to
 
 
 def query_vars(term):
@@ -42,7 +43,6 @@ def format_solution(vars_):
 def run_repl(files, occurs_check=False, trace=False, input_stream=None, output=None):
     out = output or sys.stdout
     inp = input_stream or sys.stdin
-    events = []
 
     def notify(event, key):
         if trace:
@@ -57,8 +57,9 @@ def run_repl(files, occurs_check=False, trace=False, input_stream=None, output=N
     print("Horn REPL. Enter a query ending in '.'; ';' for the next solution, any other line to stop. 'halt.' to quit.", file=out)
     buffer = ""
     while True:
+        print("|  " if buffer else "?- ", end="", file=out)
+        out.flush()
         try:
-            prompt = "?- " if not buffer else "|  "
             line = inp.readline()
         except (EOFError, KeyboardInterrupt):
             print(file=out)
@@ -89,6 +90,13 @@ def run_repl(files, occurs_check=False, trace=False, input_stream=None, output=N
                 if cont != ";":
                     break
 
+        # See the matching comment in cli.py's _run_query: a query
+        # abandoned before its solve() generator is exhausted (stopping
+        # early on anything other than ';') never runs its own trail
+        # cleanup, so the REPL -- which, unlike the CLI, keeps one Engine
+        # alive across many queries in a session -- must undo back to this
+        # mark itself or leak a little more of the trail on every query.
+        mark = len(engine.trail)
         try:
             run_with_stack(work)
             if not found_any[0]:
@@ -100,3 +108,5 @@ def run_repl(files, occurs_check=False, trace=False, input_stream=None, output=N
             print(f"error: {e}", file=out)
         except RecursionError:
             print("error: recursion depth exceeded (query too deep)", file=out)
+        finally:
+            undo_to(engine.trail, mark)

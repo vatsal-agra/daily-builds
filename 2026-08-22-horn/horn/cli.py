@@ -8,6 +8,7 @@ from .errors import HaltSignal, HornError
 from .parser import parse_term
 from .repl import format_solution, query_vars
 from .runstack import run_with_stack
+from .unify import undo_to
 
 
 def cmd_run(args):
@@ -44,6 +45,17 @@ def _run_query(engine, goal_text, show_all):
             if not show_all:
                 break
 
+    # A query that stops early (the common `not show_all` case) abandons
+    # its solve() generator without exhausting it, which means the trail
+    # entries it made are never popped by the generator's own post-yield
+    # undo code (nothing runs it -- Python doesn't unwind a generator's
+    # ordinary code on GC, only its `finally` blocks, and there isn't one
+    # here). Left alone, every query run against a long-lived Engine (the
+    # REPL; any future caller that keeps one Engine around) would leak a
+    # few trail entries and their bound Var objects forever. Since this is
+    # a genuine top-level query boundary, it's always safe to unwind
+    # everything the query bound once we're done with it.
+    mark = len(engine.trail)
     try:
         run_with_stack(work)
     except HaltSignal as h:
@@ -54,6 +66,8 @@ def _run_query(engine, goal_text, show_all):
     except RecursionError:
         print("error: recursion depth exceeded (query too deep)", file=sys.stderr)
         return 1
+    finally:
+        undo_to(engine.trail, mark)
     if found[0] == 0:
         print("false.")
         return 1
