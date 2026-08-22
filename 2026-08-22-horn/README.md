@@ -6,14 +6,26 @@ occurs check and trail-based backtracking, an SLD-resolution engine with cut
 and negation-as-failure, and a standard library of list/logic predicates
 written in Horn itself.
 
-**Status: Phase 3 (adversarial review) complete.** All 4 required features
-work end-to-end and have survived a hostile-reviewer pass: 6 real bugs found
-and fixed (a stack-overflow crash on long-list queries, a stdlib predicate
-that couldn't search backwards, a cyclic-term print crash, a directive
-parsing crash, silently-truncated malformed queries, and an unbounded
-per-query memory leak in long-lived sessions) -- see [REVIEW.md](REVIEW.md)
-for the full write-up, including what was checked and found correct. Stretch
-features and the test suite are still to come.
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features
+work end-to-end and have survived a hostile-reviewer pass -- see
+[REVIEW.md](REVIEW.md). **Both** planned stretch features are shipped:
+
+- **An interactive HTML SLD-resolution-tree visualizer** (`horn viz`) --
+  click-to-expand/collapse search tree, color-coded success/fail/cut,
+  dark/light-theme-aware, screenshot-verified in real headless Chromium. Its
+  own tracing evaluator is checked to find the *exact same* solutions, in
+  the same order, as the real engine (a differential test, not just "it
+  produces a picture") -- and that check caught two real bugs during
+  development: an unenforced solution cap and stale variable bindings
+  leaking into the page's own title. See REVIEW.md for the writeup and
+  `tests/test_viz.py` for the differential check itself.
+- **A REPL** (`horn repl`) with `consult`, `;`-to-retry / `.`-to-stop
+  multi-solution stepping, a `trace` toggle, and a persistent session
+  database -- built during core development and hardened further here (a
+  visible prompt, a fixed memory leak on abandoned queries, and a rejected
+  rather than silently-mangled malformed query).
+
+The test suite (Phase 5) and final packaging (Phase 6) are still to come.
 
 ## Quick start
 

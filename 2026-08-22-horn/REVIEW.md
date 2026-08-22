@@ -85,6 +85,50 @@ unbounded over a long session. Fix: both `cli.py` and `repl.py` now record
 `undo_to()` back to it in a `finally` block once the query is done with,
 regardless of how it ended.
 
+## Found and fixed during Phase 4 (the HTML visualizer)
+
+The visualizer runs its own compact tracing evaluator (`horn/viz.py`) rather
+than instrumenting `engine.py`'s reviewed hot path directly, so it needed
+its own scrutiny -- a differential test (`tests/test_viz.py`) checking it
+finds the exact same solutions as the real engine, and an actual headless
+Chromium render, both caught real bugs:
+
+### 7. The solution cap was checked but never actually enforced
+`horn/viz.py`. `Budget.stop()` compares `self.solutions` against
+`max_solutions`, but nothing ever incremented `self.solutions` -- so the cap
+silently did nothing until the *much* larger node-count cap eventually
+kicked in instead. Caught immediately by the differential test: asking both
+the real engine and the tracer for 3 solutions to `queens(5, Qs)`, the real
+engine correctly returned 3 and the tracer returned 5. Fix: increment
+`budget.solutions` in `build_trace`'s collection loop, before the next
+`budget.stop()` check.
+
+### 8. The page's own title/header showed the *last* solution's bindings, not the query
+`horn/viz.py`. Same underlying cause as finding #6 (an abandoned generator
+never runs its own post-yield `undo_to`), in a new location: stopping the
+trace early after collecting enough solutions left the query's variables
+bound to whichever branch was last explored. `render_trace_html` formatted
+the goal for the page's `<h1>` and `<title>` *after* calling `build_trace`,
+so a query for `ancestor(tom, X).` rendered its own header as
+`ancestor(tom, jim)` -- the final answer found, presented as if it had been
+the literal question asked. Fix: capture the goal's text before exploration
+runs (belt), and also have `build_trace` itself `undo_to` its own trail mark
+in a `finally` block before returning (suspenders).
+
+### 9. A real headless-Chromium render threw and silently produced an empty page
+`horn/viz.py`. `li.classList.add(node.status === 'fail' ? 'collapsed' : '')`
+-- when the ternary's false branch (empty string) is taken, `DOMTokenList
+.add('')` throws `DOMException` in a real browser (not a Node.js
+sandbox or JSDOM, which don't all enforce this). The uncaught exception
+aborted `buildNode` partway through building the very first node, leaving
+`#tree` completely empty with no on-page indication anything had gone
+wrong -- the exact "looks plausible in isolation, breaks the moment you
+actually load it" failure mode that's why this project screenshots every
+visualizer in real headless Chromium rather than trusting the generated
+HTML/JS by inspection. Fix: `if (hasChildren && node.status === 'fail')
+li.classList.add('collapsed');` -- only call `.add()` when there is
+actually a token to add.
+
 ## Also found and fixed during Phase 2 itself (documented here for completeness)
 
 `stdlib.horn`'s first draft of `max_list/2` and `min_list/2` recursed to the
