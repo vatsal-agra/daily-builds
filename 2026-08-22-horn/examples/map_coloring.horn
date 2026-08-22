@@ -1,0 +1,14 @@
+% Map coloring: the classic Australia CSP -- seven regions, three colors,
+% no two adjacent regions share a color.
+
+color(red).
+color(green).
+color(blue).
+
+different(X, Y) :- X \= Y.
+
+australia(WA, NT, SA, Q, NSW, V, T) :-
+    color(WA), color(NT), color(SA), color(Q), color(NSW), color(V), color(T),
+    different(WA, NT), different(WA, SA), different(NT, SA),
+    different(NT, Q), different(SA, Q), different(SA, NSW),
+    different(SA, V), different(Q, NSW), different(NSW, V).

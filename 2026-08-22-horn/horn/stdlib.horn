@@ -1,0 +1,69 @@
+% Horn standard library -- ordinary list/logic predicates, written as
+% ordinary Horn clauses. Nothing in this file reaches into the Python
+% engine; it is proof that the four required features (parser, unifier,
+% resolution engine, builtins) are enough to build a real predicate library
+% on top of them. Every predicate here runs "backwards" too, for free:
+% append(X, Y, [1,2,3]) finds every way to split the list, not just the
+% forwards direction most languages would hardcode.
+
+append([], L, L).
+append([H|T], L, [H|R]) :- append(T, L, R).
+
+member(X, [X|_]).
+member(X, [_|T]) :- member(X, T).
+
+length([], 0).
+length([_|T], N) :- length(T, N0), N is N0 + 1.
+
+reverse(L, R) :- reverse_(L, [], R).
+reverse_([], Acc, Acc).
+reverse_([H|T], Acc, R) :- reverse_(T, [H|Acc], R).
+
+last([X], X) :- !.
+last([_|T], X) :- last(T, X).
+
+nth0(0, [X|_], X) :- !.
+nth0(N, [_|T], X) :- N > 0, N1 is N - 1, nth0(N1, T, X).
+
+nth1(N, L, X) :- N0 is N - 1, nth0(N0, L, X).
+
+select(X, [X|T], T).
+select(X, [H|T], [H|R]) :- select(X, T, R).
+
+permutation([], []).
+permutation(L, [H|T]) :- select(H, L, R), permutation(R, T).
+
+sum_list([], 0).
+sum_list([H|T], S) :- sum_list(T, S0), S is S0 + H.
+
+% Accumulator style, so the running best is threaded forward instead of
+% being recomputed from the tail on every "no, the head wasn't better"
+% step -- a naive "recurse first, then compare" formulation re-solves the
+% same sub-list again on every non-improving element, which is exponential
+% in the worst case.
+max_list([H|T], M) :- max_list_(T, H, M).
+max_list_([], M, M).
+max_list_([H|T], Acc, M) :- H > Acc, !, max_list_(T, H, M).
+max_list_([_|T], Acc, M) :- max_list_(T, Acc, M).
+
+min_list([H|T], M) :- min_list_(T, H, M).
+min_list_([], M, M).
+min_list_([H|T], Acc, M) :- H < Acc, !, min_list_(T, H, M).
+min_list_([_|T], Acc, M) :- min_list_(T, Acc, M).
+
+% numlist(Low, High, List): List = [Low, Low+1, ..., High]. Exercises cut:
+% without the '!' in the base case, backtracking into numlist would also
+% try the second clause on an already-exhausted range and fail messily
+% instead of cleanly reporting "no more solutions".
+numlist(L, H, []) :- L > H, !.
+numlist(L, H, [L|T]) :- L =< H, L1 is L + 1, numlist(L1, H, T).
+
+not_equal(X, Y) :- \+ (X == Y).
+
+% nextto(X, Y, List): X is immediately followed by Y somewhere in List.
+nextto(X, Y, [X, Y|_]).
+nextto(X, Y, [_|T]) :- nextto(X, Y, T).
+
+% adjacent(X, Y, List): X and Y are next to each other, in either order.
+adjacent(X, Y, L) :- nextto(X, Y, L).
+adjacent(X, Y, L) :- nextto(Y, X, L).

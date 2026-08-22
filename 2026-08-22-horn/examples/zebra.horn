@@ -1,0 +1,30 @@
+% Einstein's "Zebra Puzzle": five houses in a row, each with a distinct
+% color/nationality/drink/cigarette/pet, constrained by fifteen clues.
+% Exactly one arrangement satisfies all fifteen -- the puzzle's famous
+% questions ("who drinks water?", "who owns the zebra?") have unique
+% answers. Houses are represented as a single list of 5 partially-bound
+% house(Color, Nation, Drink, Smoke, Pet) terms; member/nextto pin
+% attributes directly onto that shared list, so unification propagates
+% constraints between clues immediately instead of generating five
+% independent permutations and cross-checking them after the fact.
+
+houses(Houses) :-
+    Houses = [house(_,_,_,_,_), house(_,_,_,_,_), house(_,_,_,_,_),
+              house(_,_,_,_,_), house(_,_,_,_,_)],
+    member(house(red, englishman, _, _, _), Houses),               % 1
+    member(house(_, spaniard, _, _, dog), Houses),                 % 2
+    member(house(green, _, coffee, _, _), Houses),                 % 3
+    member(house(_, ukrainian, tea, _, _), Houses),                % 4
+    nextto(house(ivory,_,_,_,_), house(green,_,_,_,_), Houses),     % 5
+    member(house(_, _, _, oldgold, snails), Houses),                % 6
+    member(house(yellow, _, _, kools, _), Houses),                  % 7
+    nth0(2, Houses, house(_,_,milk,_,_)),                           % 8
+    nth0(0, Houses, house(_,norwegian,_,_,_)),                      % 9
+    adjacent(house(_,_,_,chesterfields,_), house(_,_,_,_,fox), Houses),   % 10
+    adjacent(house(_,_,_,kools,_), house(_,_,_,_,horse), Houses),         % 11
+    member(house(_, _, orangejuice, luckystrike, _), Houses),       % 12
+    member(house(_, japanese, _, parliaments, _), Houses),          % 13
+    adjacent(house(_,norwegian,_,_,_), house(blue,_,_,_,_), Houses).      % 14
+
+water_drinker(Nation) :- houses(Houses), member(house(_, Nation, water, _, _), Houses).
+zebra_owner(Nation) :- houses(Houses), member(house(_, Nation, _, _, zebra), Houses).

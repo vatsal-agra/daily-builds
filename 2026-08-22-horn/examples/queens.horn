@@ -1,0 +1,18 @@
+% The N-Queens problem, generate-and-test: propose a permutation of column
+% positions (one queen per row, by construction no two queens ever share a
+% row or column), then reject any permutation with a diagonal attack.
+
+queens(N, Qs) :-
+    numlist(1, N, Ns),
+    permutation(Ns, Qs),
+    safe(Qs).
+
+safe([]).
+safe([Q|Qs]) :- safe_(Qs, Q, 1), safe(Qs).
+
+safe_([], _, _).
+safe_([Q|Qs], Q0, D) :-
+    Q0 =\= Q + D,
+    Q0 =\= Q - D,
+    D1 is D + 1,
+    safe_(Qs, Q0, D1).

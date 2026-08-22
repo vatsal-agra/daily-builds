@@ -1,0 +1,28 @@
+% A small family tree, demonstrating facts, rules built from facts, and
+% recursive rules (ancestor/2) over them.
+
+parent(tom, bob).
+parent(tom, liz).
+parent(bob, ann).
+parent(bob, pat).
+parent(pat, jim).
+parent(marge, bob).
+parent(marge, liz).
+
+male(tom).
+male(bob).
+male(jim).
+male(pat).
+female(liz).
+female(ann).
+female(marge).
+
+father(F, C) :- parent(F, C), male(F).
+mother(M, C) :- parent(M, C), female(M).
+
+grandparent(G, C) :- parent(G, P), parent(P, C).
+
+sibling(X, Y) :- parent(P, X), parent(P, Y), X \= Y.
+
+ancestor(A, C) :- parent(A, C).
+ancestor(A, C) :- parent(A, P), ancestor(P, C).
