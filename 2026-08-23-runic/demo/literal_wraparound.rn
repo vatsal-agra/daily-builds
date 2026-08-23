@@ -1,0 +1,14 @@
+// Regression test: an unsigned-looking i32 literal (0xFFFFFFFF's decimal
+// form) must encode to the exact same bits as -1, not a non-canonical
+// oversized varint. This was a real encoder bug caught by verify.py.
+fn big() {
+    return 4294967295;
+}
+
+fn neg_one() {
+    return -1;
+}
+
+fn max_i32() {
+    return 2147483647;
+}

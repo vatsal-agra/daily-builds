@@ -1,7 +1,10 @@
 # Runic
 
-> Status: **Phase 2 — core build complete.** All 4 required features work
-> end-to-end and are cross-checked against a real, independent WASM engine.
+> Status: **Phase 3 — adversarial review complete.** 2 real bugs found and
+> fixed (see [`REVIEW.md`](./REVIEW.md)) — one of them a genuine encoder
+> bug Node's engine outright rejected, the other a silent wrong-answer bug
+> invisible to single-loop programs. Both were caught by the dual-oracle
+> verifier itself, not by inspection.
 
 A from-scratch WebAssembly toolchain: a small i32 C-like language
 ("Runic"), compiled by a hand-written front end into genuine WASM binary
@@ -83,19 +86,28 @@ keeps codegen's branch-depth arithmetic fully static.
 7. ✅ Interactive single-file HTML step-through visualizer
    (`compiler/viz.py` + `cli.py trace`)
 
-## The dual-oracle actually caught a real bug
+## The dual-oracle actually caught real bugs
 
 Building this against a second, independent implementation wasn't
-theoretical: `verify.py` caught a genuine control-flow bug in the
-interpreter during development — an `if` construct with no `else` branch
-leaked its control-flow frame when skipped (never reaching the `end`
-opcode that would normally pop it), silently corrupting `br`/`br_if`
-depth math for every *subsequent* branch in the same call. It was
-invisible on single-loop programs (`fib`, `factorial`, `gcd`, `is_prime`
-all passed) and only surfaced once a program nested a conditional inside
-two levels of `while` (`bubble_sort.rn`) — exactly the kind of bug that
-would have shipped silently if the interpreter were only ever checked
-against its own compiler's output. See `REVIEW.md` for the full writeup.
+theoretical — `verify.py` caught two genuine bugs during development:
+
+1. A control-flow frame leak in the interpreter: an `if` with no `else`
+   branch skipped straight past its `end` opcode when the condition was
+   false, never popping the frame it had pushed, silently corrupting
+   `br`/`br_if` depth math for every later branch in the same call. It
+   was invisible on every single-loop program (`fib`, `factorial`, `gcd`,
+   `is_prime` all passed) and only surfaced once a program nested a
+   conditional two `while` levels deep (`bubble_sort.rn`).
+2. A non-canonical LEB128 encoding bug: an unsigned-looking literal like
+   `4294967295` (meant to be `-1`'s bit pattern) compiled and even *ran*
+   correctly under our own lenient decoder — but Node's real, spec-strict
+   engine **rejected the module outright** on load.
+
+Both are exactly the kind of bug that ships silently when a compiler and
+its interpreter are only ever checked against each other. See
+[`REVIEW.md`](./REVIEW.md) for the full writeup, plus two more findings
+(unhandled CLI error paths, and unbounded recursion crashing instead of
+trapping) that were UX bugs rather than correctness bugs.
 
 ## Layout
 

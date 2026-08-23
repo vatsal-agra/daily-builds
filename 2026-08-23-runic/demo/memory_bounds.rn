@@ -1,0 +1,8 @@
+// Linear memory is page-granular (64KiB minimum): reading past a small
+// declared array but still inside the allocated page returns zero (legal,
+// not a trap); reading past the whole page traps in both engines.
+array buf[4];
+
+fn read_at(i) {
+    return buf[i];
+}

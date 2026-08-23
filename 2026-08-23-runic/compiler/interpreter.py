@@ -304,7 +304,18 @@ class Instance:
         kind, idx = self.exports[name]
         if kind != EXPORT_KIND_FUNC:
             raise RuntimeError(f"export '{name}' is not a function")
-        return self.call(idx, args)
+        # This interpreter implements WASM `call` with a real Python call,
+        # so unbounded Runic-level recursion eventually hits Python's own
+        # recursion limit. A real engine has the same kind of bound (a
+        # native stack, not an infinite one) and traps on exhaustion rather
+        # than crashing the host — so we do the same, at this outermost
+        # entry point only (checking on every recursive call would cost
+        # real overhead for no benefit, since the trap either way only
+        # needs to happen once, on the way back out).
+        try:
+            return self.call(idx, args)
+        except RecursionError:
+            raise WasmTrap("call stack exhausted")
 
     def call(self, funcidx, args):
         nparams, _nresults = self.mod["types"][self.mod["func_typeidx"][funcidx]]

@@ -11,7 +11,7 @@ and no separate label-resolution pass is needed.
 """
 
 from . import ast_nodes as A
-from .wasm import VALTYPE_I32, BLOCKTYPE_VOID
+from .wasm import VALTYPE_I32, BLOCKTYPE_VOID, i32_wrap
 
 BINOP_OPCODE = {
     "+": "i32.add",
@@ -111,7 +111,13 @@ def _gen_truthy(out):
 
 def _gen_expr(expr, info, checked, out):
     if isinstance(expr, A.IntLit):
-        out.append(("i32.const", expr.value))
+        # Runic source allows the literal to be written in either signed or
+        # unsigned i32 range (e.g. both -1 and 4294967295 are legal and mean
+        # the same bit pattern) — normalize to canonical signed range before
+        # it ever reaches sleb128 encoding, since a raw unsigned value like
+        # 4294967295 would otherwise encode as an oversized, non-canonical
+        # varint that real WASM engines reject outright.
+        out.append(("i32.const", i32_wrap(expr.value)))
 
     elif isinstance(expr, A.Ident):
         out.append(("local.get", info.local_index[expr.name]))

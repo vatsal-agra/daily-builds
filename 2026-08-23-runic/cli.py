@@ -21,27 +21,45 @@ from compiler.disasm import disassemble
 from compiler.viz import generate_html
 
 
+class CliError(Exception):
+    """A clean, user-facing CLI error — printed without a traceback."""
+
+
 def _load_wasm_bytes(path):
-    if path.endswith(".wasm"):
-        with open(path, "rb") as f:
-            return f.read()
-    with open(path) as f:
-        src = f.read()
+    try:
+        if path.endswith(".wasm"):
+            with open(path, "rb") as f:
+                return f.read()
+        with open(path) as f:
+            src = f.read()
+    except OSError as e:
+        raise CliError(f"can't read {path!r}: {e.strerror}")
     try:
         return compile_source(src).wasm_bytes
     except CompileError as e:
-        print(f"compile error: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise CliError(f"compile error: {e}")
+
+
+def _parse_int_args(raw_args):
+    parsed = []
+    for a in raw_args:
+        try:
+            parsed.append(int(a))
+        except ValueError:
+            raise CliError(f"argument {a!r} is not an integer (Runic values are all i32)")
+    return parsed
 
 
 def cmd_compile(args):
-    with open(args.source) as f:
-        src = f.read()
+    try:
+        with open(args.source) as f:
+            src = f.read()
+    except OSError as e:
+        raise CliError(f"can't read {args.source!r}: {e.strerror}")
     try:
         result = compile_source(src)
     except CompileError as e:
-        print(f"compile error: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise CliError(f"compile error: {e}")
     out = args.output or (os.path.splitext(args.source)[0] + ".wasm")
     with open(out, "wb") as f:
         f.write(result.wasm_bytes)
@@ -52,13 +70,14 @@ def cmd_compile(args):
 
 def cmd_run(args):
     wasm_bytes = _load_wasm_bytes(args.source)
-    parsed_args = [int(a) for a in args.args]
+    parsed_args = _parse_int_args(args.args)
     inst = Instance(wasm_bytes)
     try:
         result = inst.call_by_name(args.func, parsed_args)
     except WasmTrap as e:
-        print(f"trap: {e}")
-        sys.exit(1)
+        raise CliError(f"trap: {e}")
+    except RuntimeError as e:
+        raise CliError(str(e))
     print(result)
 
 
@@ -70,19 +89,24 @@ def cmd_disasm(args):
 def cmd_trace(args):
     mem_hint = None
     if args.source.endswith(".rn"):
-        with open(args.source) as f:
-            src = f.read()
+        try:
+            with open(args.source) as f:
+                src = f.read()
+        except OSError as e:
+            raise CliError(f"can't read {args.source!r}: {e.strerror}")
         try:
             compiled = compile_source(src)
         except CompileError as e:
-            print(f"compile error: {e}", file=sys.stderr)
-            sys.exit(1)
+            raise CliError(f"compile error: {e}")
         wasm_bytes = compiled.wasm_bytes
         mem_hint = compiled.checked.total_mem_bytes
     else:
         wasm_bytes = _load_wasm_bytes(args.source)
-    parsed_args = [int(a) for a in args.args]
-    html = generate_html(wasm_bytes, args.func, parsed_args, mem_hint_bytes=mem_hint)
+    parsed_args = _parse_int_args(args.args)
+    try:
+        html = generate_html(wasm_bytes, args.func, parsed_args, mem_hint_bytes=mem_hint)
+    except RuntimeError as e:
+        raise CliError(str(e))
     out = args.output or "trace.html"
     with open(out, "w") as f:
         f.write(html)
@@ -126,7 +150,11 @@ def main():
     pv.set_defaults(handler=cmd_verify)
 
     args = p.parse_args()
-    args.handler(args)
+    try:
+        args.handler(args)
+    except CliError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

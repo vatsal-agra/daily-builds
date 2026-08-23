@@ -11,7 +11,7 @@ import struct
 from .wasm import (
     MAGIC, VERSION, SEC_TYPE, SEC_FUNCTION, SEC_MEMORY, SEC_EXPORT, SEC_CODE, SEC_DATA,
     VALTYPE_I32, FUNCTYPE_TAG, EXPORT_KIND_FUNC, EXPORT_KIND_MEM, OPCODES,
-    WASM_PAGE_SIZE, uleb128_encode, sleb128_encode, vec, name_bytes,
+    WASM_PAGE_SIZE, uleb128_encode, sleb128_encode, vec, name_bytes, i32_wrap,
 )
 
 
@@ -35,7 +35,11 @@ def encode_instr(op, imm):
     if kind in ("labelidx", "funcidx", "localidx"):
         return head + uleb128_encode(imm)
     if kind == "i32const":
-        return head + sleb128_encode(imm)
+        # Defensive normalization: any i32.const immediate must be in
+        # canonical signed 32-bit range before sleb128 encoding, or the
+        # bytes produced are non-canonical and real engines reject them
+        # (see codegen.py's IntLit handling for where this actually matters).
+        return head + sleb128_encode(i32_wrap(imm))
     if kind == "memarg":
         align, offset = imm
         return head + uleb128_encode(align) + uleb128_encode(offset)

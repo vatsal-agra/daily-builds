@@ -90,10 +90,28 @@ CORPUS = {
         {"func": "div", "args": [-7, -2]},
         {"func": "rem", "args": [7, 2]},
         {"func": "rem", "args": [-7, 2]},
+        {"func": "rem", "args": [7, -2]},
+        {"func": "rem", "args": [-7, -2]},
         {"func": "div", "args": [-2147483648, -1]},  # traps: overflow
         {"func": "rem", "args": [-2147483648, -1]},  # does NOT trap, = 0
         {"func": "div", "args": [5, 0]},  # traps: divide by zero
+        {"func": "rem", "args": [5, 0]},  # traps: divide by zero
     ], 0),
+    # Regression: an unsigned-looking literal must encode to the same bits
+    # as its signed equivalent (caught by this exact check during Phase 3).
+    "literal_wraparound.rn": ([
+        {"func": "big", "args": []},
+        {"func": "neg_one", "args": []},
+        {"func": "max_i32", "args": []},
+    ], 0),
+    # Memory is page-granular: in-page-but-past-the-array reads are legal
+    # (zero), genuinely out-of-page reads trap — check both.
+    "memory_bounds.rn": ([
+        {"func": "read_at", "args": [0]},
+        {"func": "read_at", "args": [3]},
+        {"func": "read_at", "args": [10000]},   # in-page, past the array: legal, reads 0
+        {"func": "read_at", "args": [100000]},  # past the whole page: traps
+    ], 16),
 }
 
 
