@@ -1,0 +1,13 @@
+// assert(cond): a precondition/contract check compiled straight to WASM's
+// own 'unreachable' trap opcode when cond is false — so a failed assertion
+// is a real spec-level trap, verified against Node like any other trap.
+fn safe_div(a, b) {
+    assert(b != 0);
+    return a / b;
+}
+
+fn clamp_index(i, len) {
+    assert(i >= 0);
+    assert(i < len);
+    return i;
+}

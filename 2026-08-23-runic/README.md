@@ -85,6 +85,10 @@ keeps codegen's branch-depth arithmetic fully static.
    encoder-coupled)
 7. ✅ Interactive single-file HTML step-through visualizer
    (`compiler/viz.py` + `cli.py trace`)
+8. ✅ *(Phase 4 bonus, beyond the plan)* `assert(cond);` — a language-level
+   contract check compiled straight to WASM's own `unreachable` trap
+   opcode, so a failed assertion is a real spec-level trap verified
+   against Node exactly like divide-by-zero — see `demo/assertions.rn`
 
 ## The dual-oracle actually caught real bugs
 

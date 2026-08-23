@@ -108,9 +108,20 @@ class Parser:
             return self.parse_while()
         if t.kind == "return":
             return self.parse_return()
+        if t.kind == "assert":
+            return self.parse_assert()
         if t.kind == "{":
             return self.parse_block()
         return self.parse_assign_or_expr_stmt()
+
+    def parse_assert(self):
+        line = self.peek().line
+        self.expect("assert")
+        self.expect("(")
+        expr = self.parse_expr()
+        self.expect(")")
+        self.expect(";")
+        return A.AssertStmt(expr, line)
 
     def parse_let(self):
         line = self.peek().line

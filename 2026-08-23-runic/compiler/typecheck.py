@@ -173,6 +173,8 @@ def _check_stmt(stmt, info, funcs_by_name, arrays_by_name):
         _check_expr(stmt.expr, info, funcs_by_name, arrays_by_name)
     elif isinstance(stmt, A.ExprStmt):
         _check_expr(stmt.expr, info, funcs_by_name, arrays_by_name)
+    elif isinstance(stmt, A.AssertStmt):
+        _check_expr(stmt.expr, info, funcs_by_name, arrays_by_name)
     elif isinstance(stmt, A.Block):
         _check_block(stmt, info, funcs_by_name, arrays_by_name)
     else:

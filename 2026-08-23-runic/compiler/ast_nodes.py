@@ -80,6 +80,12 @@ class ExprStmt(Node):
         self.expr = expr
 
 
+class AssertStmt(Node):
+    def __init__(self, expr, line):
+        super().__init__(line)
+        self.expr = expr
+
+
 # --- expressions -------------------------------------------------------------
 
 class IntLit(Node):

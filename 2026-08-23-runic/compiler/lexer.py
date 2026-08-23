@@ -1,6 +1,6 @@
 """Hand-written lexer for the Runic language."""
 
-KEYWORDS = {"fn", "let", "if", "else", "while", "return", "array"}
+KEYWORDS = {"fn", "let", "if", "else", "while", "return", "array", "assert"}
 
 SYMBOLS3 = []
 SYMBOLS2 = ["==", "!=", "<=", ">=", "&&", "||"]

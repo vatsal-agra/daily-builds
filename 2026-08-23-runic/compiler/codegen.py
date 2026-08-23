@@ -87,6 +87,18 @@ def _gen_stmt(stmt, info, checked, out):
         _gen_expr(stmt.expr, info, checked, out)
         out.append(("drop", None))
 
+    elif isinstance(stmt, A.AssertStmt):
+        # assert(cond): trap via the spec's own 'unreachable' opcode when
+        # the condition is false. This reuses machinery (traps, dual-oracle
+        # trap-parity checking) that already exists for div-by-zero, so a
+        # failed assertion is verified against Node exactly like any other
+        # trap — not a bolted-on, differently-tested code path.
+        _gen_expr(stmt.expr, info, checked, out)
+        out.append(("i32.eqz", None))
+        out.append(("if", BLOCKTYPE_VOID))
+        out.append(("unreachable", None))
+        out.append(("end", None))
+
     elif isinstance(stmt, A.Block):
         _gen_block(stmt, info, checked, out)
 

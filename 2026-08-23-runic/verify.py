@@ -112,6 +112,13 @@ CORPUS = {
         {"func": "read_at", "args": [10000]},   # in-page, past the array: legal, reads 0
         {"func": "read_at", "args": [100000]},  # past the whole page: traps
     ], 16),
+    "assertions.rn": ([
+        {"func": "safe_div", "args": [10, 2]},
+        {"func": "safe_div", "args": [10, 0]},        # traps: assertion fails
+        {"func": "clamp_index", "args": [3, 10]},
+        {"func": "clamp_index", "args": [-1, 10]},     # traps: assertion fails
+        {"func": "clamp_index", "args": [15, 10]},     # traps: assertion fails
+    ], 0),
 }
 
 
