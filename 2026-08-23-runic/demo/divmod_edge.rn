@@ -1,0 +1,9 @@
+// Signed division/remainder edge cases: truncation toward zero, and the
+// classic INT_MIN / -1 overflow trap.
+fn div(a, b) {
+    return a / b;
+}
+
+fn rem(a, b) {
+    return a % b;
+}
