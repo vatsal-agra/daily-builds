@@ -1,10 +1,14 @@
 # Runic
 
-> Status: **Phase 3 — adversarial review complete.** 2 real bugs found and
-> fixed (see [`REVIEW.md`](./REVIEW.md)) — one of them a genuine encoder
-> bug Node's engine outright rejected, the other a silent wrong-answer bug
-> invisible to single-loop programs. Both were caught by the dual-oracle
-> verifier itself, not by inspection.
+> Status: **Phase 5 — verification complete.** 73 unit tests (lexer,
+> parser, typechecker, interpreter, disassembler, CLI, and the full
+> dual-oracle corpus, wired into `unittest`) plus `demo.sh`, an end-to-end
+> script exercising every feature, all green. Two real bugs were found and
+> fixed during Phase 3's adversarial review (see
+> [`REVIEW.md`](./REVIEW.md)) — one a genuine encoder bug Node's engine
+> outright rejected, the other a silent wrong-answer bug invisible to
+> single-loop programs. Both were caught by the dual-oracle verifier
+> itself, not by inspection, and are now permanent regression tests.
 
 A from-scratch WebAssembly toolchain: a small i32 C-like language
 ("Runic"), compiled by a hand-written front end into genuine WASM binary
@@ -33,6 +37,12 @@ python3 cli.py trace demo/bubble_sort.rn sort 10 -o trace.html
 
 # run the dual-oracle differential verifier over the whole demo corpus
 python3 cli.py verify        # or: python3 verify.py
+
+# run the full unit test suite (lexer/parser/typecheck/interpreter/disasm/CLI/dual-oracle)
+python3 -m unittest discover -s tests -v
+
+# or exercise every feature end to end in one shot
+./demo.sh
 ```
 
 ## The Runic language
@@ -131,5 +141,7 @@ demo/               example Runic programs used by verify.py and the CLI
 oracle.mjs          Node script: loads .wasm into V8's real WebAssembly engine
 verify.py           dual-oracle differential test harness (the CLI's `verify`)
 cli.py              compile / run / disasm / trace / verify
-tests/              unit test suite (Phase 5)
+demo.sh             end-to-end script exercising every feature (Phase 5)
+tests/              73 unit tests: lexer, parser, typecheck, interpreter,
+                    disassembler, CLI (subprocess), dual-oracle corpus
 ```
