@@ -18,3 +18,9 @@ with a measured misprediction-rate difference). 5 example programs
 that exactly matches the sequential golden model's final register file and
 memory image, across 7 different predictor/cache/latency configurations
 each (35/35 combinations verified with zero mismatches).
+
+**Phase 3 (adversarial review) complete.** 5 real bugs found and fixed
+(3 pipeline-timing correctness bugs, 2 assembler/encoding bugs) — see
+`REVIEW.md` for full root-cause writeups. A 99-test automated suite
+(`tests/`) now guards every one of them plus broad ISA/assembler/cache/
+functional-simulator coverage; all 99 tests pass.

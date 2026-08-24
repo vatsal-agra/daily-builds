@@ -137,12 +137,34 @@ def to_s32(value: int) -> int:
 # Encoding
 # ---------------------------------------------------------------------------
 
-def _field(value: int, bits: int, name: str) -> int:
-    lo, hi = 0, (1 << bits) - 1
-    # allow the natural signed range for immediates encoded in `bits` bits
-    if not (-(1 << (bits - 1)) <= value < (1 << bits)):
-        raise ValueError(f"{name}={value} does not fit in {bits} bits")
+def _signed_field(value: int, bits: int, name: str) -> int:
+    """Validate `value` fits a *signed* `bits`-bit immediate, i.e. the real
+    range RISC-V's sign-extending decoder will reconstruct -- NOT twice
+    that. (An earlier version of this checked `value < (1 << bits)`, which
+    for a 12-bit field wrongly accepted 2048..4095: those decode back as
+    negative numbers, silently corrupting any offset in that band -- caught
+    by feeding the assembler out-of-range store offsets directly.)"""
+    lo, hi = -(1 << (bits - 1)), (1 << (bits - 1))
+    if not (lo <= value < hi):
+        raise ValueError(f"{name}={value} does not fit in a signed {bits}-bit field ({lo}..{hi - 1})")
     return value & ((1 << bits) - 1)
+
+
+def _unsigned_field(value: int, bits: int, name: str) -> int:
+    if not (0 <= value < (1 << bits)):
+        raise ValueError(f"{name}={value} does not fit in an unsigned {bits}-bit field (0..{(1 << bits) - 1})")
+    return value
+
+
+def _upper20_field(value: int, name: str) -> int:
+    # lui/auipc's immediate is the raw upper-20-bits pattern of a 32-bit
+    # word -- callers reasonably pass either an already-unsigned 20-bit
+    # pattern (0..0xFFFFF, e.g. from the `li` pseudo-op) or a signed value
+    # in the equivalent 20-bit two's-complement range; both are accepted
+    # and reduced to the same raw 20-bit field.
+    if not (-(1 << 19) <= value < (1 << 20)):
+        raise ValueError(f"{name}={value} does not fit in a 20-bit field (-{1 << 19}..{(1 << 20) - 1})")
+    return value & 0xFFFFF
 
 
 def encode_r(mnemonic: str, rd: int, rs1: int, rs2: int) -> int:
@@ -153,22 +175,22 @@ def encode_r(mnemonic: str, rd: int, rs1: int, rs2: int) -> int:
 def encode_i_alu(mnemonic: str, rd: int, rs1: int, imm: int) -> int:
     opcode, funct3, funct7 = I_ALU_TYPE[mnemonic]
     if mnemonic in SHIFT_IMM_OPS:
-        shamt = _field(imm, 5, "shamt")
+        shamt = _unsigned_field(imm, 5, "shamt")
         imm12 = (funct7 << 5) | shamt
     else:
-        imm12 = _field(imm, 12, "imm") & 0xFFF
+        imm12 = _signed_field(imm, 12, "imm")
     return (imm12 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
 
 
 def encode_load(mnemonic: str, rd: int, rs1: int, imm: int) -> int:
     opcode, funct3 = LOAD_TYPE[mnemonic]
-    imm12 = _field(imm, 12, "imm") & 0xFFF
+    imm12 = _signed_field(imm, 12, "imm")
     return (imm12 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
 
 
 def encode_store(mnemonic: str, rs1: int, rs2: int, imm: int) -> int:
     opcode, funct3 = STORE_TYPE[mnemonic]
-    imm12 = _field(imm, 12, "imm") & 0xFFF
+    imm12 = _signed_field(imm, 12, "imm")
     imm_hi = (imm12 >> 5) & 0x7F
     imm_lo = imm12 & 0x1F
     return (imm_hi << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm_lo << 7) | opcode
@@ -178,7 +200,7 @@ def encode_branch(mnemonic: str, rs1: int, rs2: int, imm: int) -> int:
     opcode, funct3 = BRANCH_TYPE[mnemonic]
     if imm % 2 != 0:
         raise ValueError("branch offset must be even")
-    imm13 = _field(imm, 13, "imm")
+    imm13 = _signed_field(imm, 13, "imm")
     bit12 = (imm13 >> 12) & 1
     bit11 = (imm13 >> 11) & 1
     bits10_5 = (imm13 >> 5) & 0x3F
@@ -192,7 +214,7 @@ def encode_branch(mnemonic: str, rs1: int, rs2: int, imm: int) -> int:
 def encode_jal(rd: int, imm: int) -> int:
     if imm % 2 != 0:
         raise ValueError("jal offset must be even")
-    imm21 = _field(imm, 21, "imm")
+    imm21 = _signed_field(imm, 21, "imm")
     bit20 = (imm21 >> 20) & 1
     bits10_1 = (imm21 >> 1) & 0x3FF
     bit11 = (imm21 >> 11) & 1
@@ -204,14 +226,14 @@ def encode_jal(rd: int, imm: int) -> int:
 
 
 def encode_jalr(rd: int, rs1: int, imm: int) -> int:
-    imm12 = _field(imm, 12, "imm") & 0xFFF
+    imm12 = _signed_field(imm, 12, "imm")
     return (imm12 << 20) | (rs1 << 15) | (0b000 << 12) | (rd << 7) | OP_JALR
 
 
 def encode_u(opcode: int, rd: int, imm20: int) -> int:
     # imm20 is the *already-shifted* upper-20-bits value (imm20 << 12), given
     # as the raw 20-bit field (i.e. caller passes bits[31:12]).
-    val = _field(imm20, 20, "imm") & 0xFFFFF
+    val = _upper20_field(imm20, "imm")
     return (val << 12) | (rd << 7) | opcode
 
 

@@ -19,6 +19,7 @@ _MEM_OPERAND_RE = re.compile(r"^(-?(?:0[xX][0-9a-fA-F]+|\d+))\((\w+)\)$")
 class AssemblerError(Exception):
     def __init__(self, message: str, line_no: Optional[int] = None, text: str = ""):
         self.line_no = line_no
+        self.raw_message = message  # kept so a line-less error can be re-raised *with* a line later
         self.text = text
         loc = f"line {line_no}: " if line_no is not None else ""
         super().__init__(f"{loc}{message}" + (f" ({text!r})" if text else ""))
@@ -153,7 +154,12 @@ def assemble(source: str, base_address: int = 0) -> AssembledProgram:
         ops = _split_operands(operand_text)
         try:
             _encode_one(mnemonic, ops, instr_addr, labels, emit, line_no, operand_text)
-        except AssemblerError:
+        except AssemblerError as exc:
+            # Errors raised deep inside operand parsing (e.g. an unresolved
+            # branch-target label) don't know their own line number -- fill
+            # it in here rather than surface a location-less message.
+            if exc.line_no is None:
+                raise AssemblerError(exc.raw_message, line_no, exc.text or operand_text) from exc
             raise
         except (KeyError, IndexError, ValueError) as exc:
             raise AssemblerError(str(exc), line_no, operand_text) from exc
