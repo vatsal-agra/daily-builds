@@ -35,3 +35,11 @@ measured cycles/CPI/hit-rate/speedup numbers. Polish pass found and fixed
 with a raw traceback on an illegal/off-the-end instruction instead of a
 clean trap, and the `demo` subcommand's hand-built argparse Namespaces
 drifting out of sync with real subcommand flags. 101/101 tests green.
+
+**Phase 5 (verification) complete.** `demo.sh` exercises every feature
+end-to-end through the real CLI (assembler, golden-model run, pipelined
+run with hazards/forwarding/branch-prediction/caches cross-checked against
+the golden model, full benchmark suite, dynamic-beats-static predictor
+comparison, HTML visualizer rendered and screenshot-verified in headless
+Chromium with zero console errors, and CLI error-handling paths) plus the
+101-test suite. All 8 sections pass.
