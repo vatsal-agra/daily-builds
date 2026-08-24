@@ -24,3 +24,14 @@ each (35/35 combinations verified with zero mismatches).
 `REVIEW.md` for full root-cause writeups. A 99-test automated suite
 (`tests/`) now guards every one of them plus broad ISA/assembler/cache/
 functional-simulator coverage; all 99 tests pass.
+
+**Phase 4 (stretch + polish) complete.** Both planned stretch features are
+shipped: a configurable L1 instruction/data cache hierarchy wired into
+real pipeline stall timing, and an interactive HTML pipeline visualizer
+(`silicon viz`, screenshot-verified in headless Chromium with zero console
+errors) plus a 5-program benchmark suite (`silicon bench`) reporting real
+measured cycles/CPI/hit-rate/speedup numbers. Polish pass found and fixed
+2 more real bugs (see REVIEW.md #6-7): the sequential simulator crashing
+with a raw traceback on an illegal/off-the-end instruction instead of a
+clean trap, and the `demo` subcommand's hand-built argparse Namespaces
+drifting out of sync with real subcommand flags. 101/101 tests green.

@@ -157,26 +157,30 @@ def cmd_viz(args) -> None:
     print(f"wrote {args.out} ({sim.stats.cycles} cycles, {sim.stats.instret} instructions)")
 
 
+def _run_cli(argv) -> None:
+    # Re-enter through the real parser rather than hand-building Namespace
+    # objects: that way `demo` can never drift out of sync with a
+    # subcommand's actual flags/defaults again (a hand-built Namespace
+    # missing a newly-added required attribute is exactly the bug this
+    # caught -- see REVIEW.md).
+    ns = build_parser().parse_args(argv)
+    ns.func(ns)
+
+
 def cmd_demo(args) -> None:
     from .bench import run_benchmark_suite
     print("=== Silicon demo ===\n")
     print("-- assemble + disassemble fibonacci.s --")
-    cmd_assemble(argparse.Namespace(file="fibonacci"))
+    _run_cli(["assemble", "fibonacci"])
     print("\n-- sequential golden-model run --")
-    cmd_run(argparse.Namespace(file="fibonacci", max_steps=2_000_000, dump_mem=None))
+    _run_cli(["run", "fibonacci"])
     print("\n-- pipelined run, cross-checked against golden model --")
-    cmd_pipeline(argparse.Namespace(
-        file="fibonacci", predictor="dynamic", icache=None, dcache=None,
-        mem_latency=10, max_cycles=2_000_000, check=True, viz=None,
-    ))
+    _run_cli(["pipeline", "fibonacci", "--predictor", "dynamic", "--check"])
     print("\n-- static vs dynamic branch prediction, with caches, full bench suite --")
     run_benchmark_suite(BENCH_PROGRAMS, predictor="both", use_cache=True, mem_latency=10)
     out = str(Path(__file__).resolve().parent.parent / "demo_pipeline.html")
     print(f"\n-- rendering pipeline visualizer to {out} --")
-    cmd_viz(argparse.Namespace(
-        file="gcd", predictor="dynamic", icache=None, dcache=None,
-        mem_latency=10, max_cycles=2_000_000, out=out,
-    ))
+    _run_cli(["viz", "gcd", "-o", out, "--predictor", "dynamic"])
 
 
 def build_parser() -> argparse.ArgumentParser:

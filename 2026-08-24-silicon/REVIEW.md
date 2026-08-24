@@ -126,6 +126,34 @@ separately; the pass-2 driver fills in `line_no` on a line-less error
 before re-raising it, so every assembler error is now consistently
 located.
 
+### 6. Minor — illegal instructions crashed the sequential golden model with a raw traceback
+
+**Symptom:** running any program that falls off its own end (no `ecall`,
+or a truly empty file) crashed with an uncaught `ValueError` and a full
+Python traceback instead of a clean CLI error.
+
+**Fix:** `FunctionalSimulator.step()` now catches the decode failure and
+re-raises it as `SimulatorTrap`, exactly like the pipeline simulator
+already did — the CLI's existing `except SimulatorTrap` handler now
+catches this case too.
+
+### 7. Minor — the `demo` subcommand hand-built stale argparse `Namespace` objects
+
+**Symptom:** `silicon demo` crashed with `AttributeError: 'Namespace'
+object has no attribute 'max_steps'` partway through, from `cmd_pipeline`
+internally needing `args.max_steps` for its `--check` golden-model run.
+
+**Root cause:** `cmd_demo` constructed `argparse.Namespace(...)` objects
+by hand for each subcommand it drives, duplicating each subcommand's
+argument list outside the real parser — exactly the kind of drift that
+was bound to happen the moment a subcommand gained a new attribute
+(`--check`'s `max_steps` dependency) that `cmd_demo`'s hand-built copy
+didn't know to include.
+
+**Fix:** `cmd_demo` now re-enters through the real `build_parser()` +
+`parse_args()` for every step, so it can never again drift out of sync
+with a subcommand's actual flags and defaults.
+
 ## What was checked and found already correct
 
 - ISA encode → decode round-trips: 470+ randomized cases across every R/I/S/B/U/J

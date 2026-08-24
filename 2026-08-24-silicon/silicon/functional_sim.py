@@ -47,7 +47,10 @@ class FunctionalSimulator:
         if self.pc % 4 != 0:
             raise SimulatorTrap(f"misaligned PC 0x{self.pc:x}")
         word = self.mem.load_word(self.pc)
-        d = isa.decode(word)
+        try:
+            d = isa.decode(word)
+        except ValueError as exc:
+            raise SimulatorTrap(f"illegal instruction @0x{self.pc:x}: {exc}") from exc
         next_pc = self.pc + 4
 
         if d.mnemonic == "ecall":

@@ -35,6 +35,13 @@ def _build_instances(cycle_log):
             if seq not in instances:
                 instances[seq] = {"seq": seq, "pc": val["pc"], "text": val["text"], "cells": {}}
                 order.append(seq)
+            elif val["text"] != "?":
+                # The IF-stage latch doesn't carry decoded text yet (that's
+                # only known from ID onward), so the instance's text starts
+                # as the "?" placeholder recorded on first sight and needs
+                # to be refreshed once a later stage actually has it --
+                # otherwise every row in the diagram reads "?" forever.
+                instances[seq]["text"] = val["text"]
             instances[seq]["cells"][cyc] = stage
     return [instances[s] for s in order]
 

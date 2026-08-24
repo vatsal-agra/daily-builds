@@ -1,0 +1,129 @@
+<title>Silicon pipeline trace: gcd</title>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #131a2e; --border: #263252; --text: #e2e8f0;
+    --muted: #93a3c2; --accent: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+    margin: 0; padding: 24px; font-size: 13px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin-bottom: 20px; }
+  .panels { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 18px; min-width: 200px;
+  }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin: 0 0 8px; }
+  .stat { font-size: 22px; font-weight: 600; }
+  .stat small { font-size: 12px; color: var(--muted); font-weight: 400; }
+  .legend { display: flex; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  #gridwrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--panel); }
+  table.grid { border-collapse: collapse; font-size: 11px; }
+  table.grid th, table.grid td { padding: 0; text-align: center; }
+  .rowlabel {
+    position: sticky; left: 0; background: var(--panel); z-index: 2;
+    padding: 3px 10px !important; text-align: left !important; white-space: nowrap;
+    border-right: 1px solid var(--border); color: var(--text);
+  }
+  .colhead { color: var(--muted); font-weight: 400; padding: 4px 2px !important;
+    position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  .cell { width: 20px; height: 20px; border: 1px solid #0b1020; }
+  .cell.flushed { opacity: 0.55; box-shadow: inset 0 0 0 1px #ef4444; }
+  .cell.stallcol { box-shadow: inset 0 0 0 1px #eab308; }
+  #tooltip {
+    position: fixed; display: none; background: #000c; border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; font-size: 12px; pointer-events: none; z-index: 10;
+  }
+  table.regs { border-collapse: collapse; font-size: 11px; }
+  table.regs td { padding: 2px 8px; border-bottom: 1px solid var(--border); }
+  footer { margin-top: 24px; color: var(--muted); font-size: 11px; }
+</style>
+<h1>Silicon &mdash; pipeline trace: gcd</h1>
+<div class="sub">49 instructions retired in 65 cycles &middot; CPI 1.327 &middot;
+predictor: dynamic-2bit</div>
+
+<div class="panels">
+  <div class="panel"><h2>Cycles</h2><div class="stat">65</div></div>
+  <div class="panel"><h2>Instructions</h2><div class="stat">49</div></div>
+  <div class="panel"><h2>CPI</h2><div class="stat">1.33</div></div>
+  <div class="panel"><h2>Load-use stalls</h2><div class="stat">0<small> cycles</small></div></div>
+  <div class="panel"><h2>Mem-stall cycles</h2><div class="stat">0</div></div>
+  <div class="panel"><h2>Branch mispredictions</h2>
+    <div class="stat">7<small> / 34 (20.6%)</small></div></div>
+  
+  
+</div>
+
+<div class="legend">
+  <span><span class="swatch" style="background:#3b82f6"></span>IF</span>
+  <span><span class="swatch" style="background:#a855f7"></span>ID</span>
+  <span><span class="swatch" style="background:#f59e0b"></span>EX</span>
+  <span><span class="swatch" style="background:#10b981"></span>MEM</span>
+  <span><span class="swatch" style="background:#64748b"></span>WB</span>
+  <span><span class="swatch" style="box-shadow: inset 0 0 0 1px #ef4444; background:#111"></span>flushed (misprediction)</span>
+  <span><span class="swatch" style="box-shadow: inset 0 0 0 1px #eab308; background:#111"></span>stall cycle</span>
+</div>
+
+<div id="gridwrap"><table class="grid" id="grid"></table></div>
+<div id="tooltip"></div>
+
+<h2 style="margin-top:28px;">Final register file</h2>
+<table class="regs"><tr><td>x0 (zero)</td><td style='text-align:right'>0</td><td>x1 (ra)</td><td style='text-align:right'>0</td><td>x2 (sp)</td><td style='text-align:right'>0</td><td>x3 (gp)</td><td style='text-align:right'>0</td></tr><tr><td>x4 (tp)</td><td style='text-align:right'>0</td><td>x5 (t0)</td><td style='text-align:right'>0</td><td>x6 (t1)</td><td style='text-align:right'>0</td><td>x7 (t2)</td><td style='text-align:right'>0</td></tr><tr><td>x8 (s0)</td><td style='text-align:right'>0</td><td>x9 (s1)</td><td style='text-align:right'>0</td><td>x10 (a0)</td><td style='text-align:right'>21</td><td>x11 (a1)</td><td style='text-align:right'>21</td></tr><tr><td>x12 (a2)</td><td style='text-align:right'>0</td><td>x13 (a3)</td><td style='text-align:right'>0</td><td>x14 (a4)</td><td style='text-align:right'>0</td><td>x15 (a5)</td><td style='text-align:right'>0</td></tr><tr><td>x16 (a6)</td><td style='text-align:right'>0</td><td>x17 (a7)</td><td style='text-align:right'>0</td><td>x18 (s2)</td><td style='text-align:right'>0</td><td>x19 (s3)</td><td style='text-align:right'>0</td></tr><tr><td>x20 (s4)</td><td style='text-align:right'>0</td><td>x21 (s5)</td><td style='text-align:right'>0</td><td>x22 (s6)</td><td style='text-align:right'>0</td><td>x23 (s7)</td><td style='text-align:right'>0</td></tr><tr><td>x24 (s8)</td><td style='text-align:right'>0</td><td>x25 (s9)</td><td style='text-align:right'>0</td><td>x26 (s10)</td><td style='text-align:right'>0</td><td>x27 (s11)</td><td style='text-align:right'>0</td></tr><tr><td>x28 (t3)</td><td style='text-align:right'>0</td><td>x29 (t4)</td><td style='text-align:right'>0</td><td>x30 (t5)</td><td style='text-align:right'>0</td><td>x31 (t6)</td><td style='text-align:right'>0</td></tr></table>
+
+<footer>Generated by Silicon from a real captured execution trace of gcd.s
+(54 dynamic instruction instances across 65 cycles).</footer>
+
+<script>
+const DATA = {"instances": [{"seq": 0, "pc": 0, "text": "li a0, 1071", "cells": {"0": "IF", "1": "ID", "2": "EX", "3": "MEM", "4": "WB"}}, {"seq": 1, "pc": 4, "text": "li a1, 462", "cells": {"1": "IF", "2": "ID", "3": "EX", "4": "MEM", "5": "WB"}}, {"seq": 2, "pc": 8, "text": "beq a0, a1, done", "cells": {"2": "IF", "3": "ID", "4": "EX", "5": "MEM", "6": "WB"}}, {"seq": 3, "pc": 12, "text": "blt a0, a1, a_smaller", "cells": {"3": "IF", "4": "ID", "5": "EX", "6": "MEM", "7": "WB"}}, {"seq": 4, "pc": 16, "text": "sub a0, a0, a1", "cells": {"4": "IF", "5": "ID", "6": "EX", "7": "MEM", "8": "WB"}}, {"seq": 5, "pc": 20, "text": "j loop", "cells": {"5": "IF", "6": "ID", "7": "EX", "8": "MEM", "9": "WB"}}, {"seq": 7, "pc": 8, "text": "beq a0, a1, done", "cells": {"7": "IF", "8": "ID", "9": "EX", "10": "MEM", "11": "WB"}}, {"seq": 8, "pc": 12, "text": "blt a0, a1, a_smaller", "cells": {"8": "IF", "9": "ID", "10": "EX", "11": "MEM", "12": "WB"}}, {"seq": 9, "pc": 16, "text": "sub a0, a0, a1", "cells": {"9": "IF", "10": "ID", "11": "EX", "12": "MEM", "13": "WB"}}, {"seq": 10, "pc": 20, "text": "j loop", "cells": {"10": "IF", "11": "ID", "12": "EX", "13": "MEM", "14": "WB"}}, {"seq": 11, "pc": 8, "text": "beq a0, a1, done", "cells": {"11": "IF", "12": "ID", "13": "EX", "14": "MEM", "15": "WB"}}, {"seq": 12, "pc": 12, "text": "blt a0, a1, a_smaller", "cells": {"12": "IF", "13": "ID", "14": "EX", "15": "MEM", "16": "WB"}}, {"seq": 13, "pc": 16, "text": "?", "cells": {"13": "IF"}}, {"seq": 15, "pc": 24, "text": "sub a1, a1, a0", "cells": {"15": "IF", "16": "ID", "17": "EX", "18": "MEM", "19": "WB"}}, {"seq": 16, "pc": 28, "text": "j loop", "cells": {"16": "IF", "17": "ID", "18": "EX", "19": "MEM", "20": "WB"}}, {"seq": 18, "pc": 8, "text": "beq a0, a1, done", "cells": {"18": "IF", "19": "ID", "20": "EX", "21": "MEM", "22": "WB"}}, {"seq": 19, "pc": 12, "text": "blt a0, a1, a_smaller", "cells": {"19": "IF", "20": "ID", "21": "EX", "22": "MEM", "23": "WB"}}, {"seq": 20, "pc": 16, "text": "?", "cells": {"20": "IF"}}, {"seq": 22, "pc": 24, "text": "sub a1, a1, a0", "cells": {"22": "IF", "23": "ID", "24": "EX", "25": "MEM", "26": "WB"}}, {"seq": 23, "pc": 28, "text": "j loop", "cells": {"23": "IF", "24": "ID", "25": "EX", "26": "MEM", "27": "WB"}}, {"seq": 24, "pc": 8, "text": "beq a0, a1, done", "cells": {"24": "IF", "25": "ID", "26": "EX", "27": "MEM", "28": "WB"}}, {"seq": 25, "pc": 12, "text": "blt a0, a1, a_smaller", "cells": {"25": "IF", "26": "ID", "27": "EX", "28": "MEM", "29": "WB"}}, {"seq": 26, "pc": 24, "text": "sub a1, a1, a0", "cells": {"26": "IF", "27": "ID", "28": "EX", "29": "MEM", "30": "WB"}}, {"seq": 27, "pc": 28, "text": "j loop", "cells": {"27": "IF", "28": "ID", "29": "EX", "30": "MEM", "31": "WB"}}, {"seq": 28, "pc": 8, "text": "beq a0, a1, done", "cells": {"28": "IF", "29": "ID", "30": "EX", "31": "MEM", "32": "WB"}}, {"seq": 29, "pc": 12, "text": "blt a0, a1, a_smaller", "cells": {"29": "IF", "30": "ID", "31": "EX", "32": "MEM", "33": "WB"}}, {"seq": 30, "pc": 24, "text": "?", "cells": {"30": "IF"}}, {"seq": 32, "pc": 16, "text": "sub a0, a0, a1", "cells": {"32": "IF", "33": "ID", "34": "EX", "35": "MEM", "36": "WB"}}, {"seq": 33, "pc": 20, "text": "j loop", "cells": {"33": "IF", "34": "ID", "35": "EX", "36": "MEM", "37": "WB"}}, {"seq": 34, "pc": 8, "text": "beq a0, a1, done", "cells": {"34": "IF", "35": "ID", "36": "EX", "37": "MEM", "38": "WB"}}, {"seq": 35, "pc": 12, "text": "blt a0, a1, a_smaller", "cells": {"35": "IF", "36": "ID", "37": "EX", "38": "MEM", "39": "WB"}}, {"seq": 36, "pc": 24, "text": "?", "cells": {"36": "IF"}}, {"seq": 38, "pc": 16, "text": "sub a0, a0, a1", "cells": {"38": "IF", "39": "ID", "40": "EX", "41": "MEM", "42": "WB"}}, {"seq": 39, "pc": 20, "text": "j loop", "cells": {"39": "IF", "40": "ID", "41": "EX", "42": "MEM", "43": "WB"}}, {"seq": 40, "pc": 8, "text": "beq a0, a1, done", "cells": {"40": "IF", "41": "ID", "42": "EX", "43": "MEM", "44": "WB"}}, {"seq": 41, "pc": 12, "text": "blt a0, a1, a_smaller", "cells": {"41": "IF", "42": "ID", "43": "EX", "44": "MEM", "45": "WB"}}, {"seq": 42, "pc": 16, "text": "sub a0, a0, a1", "cells": {"42": "IF", "43": "ID", "44": "EX", "45": "MEM", "46": "WB"}}, {"seq": 43, "pc": 20, "text": "j loop", "cells": {"43": "IF", "44": "ID", "45": "EX", "46": "MEM", "47": "WB"}}, {"seq": 44, "pc": 8, "text": "beq a0, a1, done", "cells": {"44": "IF", "45": "ID", "46": "EX", "47": "MEM", "48": "WB"}}, {"seq": 45, "pc": 12, "text": "blt a0, a1, a_smaller", "cells": {"45": "IF", "46": "ID", "47": "EX", "48": "MEM", "49": "WB"}}, {"seq": 46, "pc": 16, "text": "sub a0, a0, a1", "cells": {"46": "IF", "47": "ID", "48": "EX", "49": "MEM", "50": "WB"}}, {"seq": 47, "pc": 20, "text": "j loop", "cells": {"47": "IF", "48": "ID", "49": "EX", "50": "MEM", "51": "WB"}}, {"seq": 48, "pc": 8, "text": "beq a0, a1, done", "cells": {"48": "IF", "49": "ID", "50": "EX", "51": "MEM", "52": "WB"}}, {"seq": 49, "pc": 12, "text": "blt a0, a1, a_smaller", "cells": {"49": "IF", "50": "ID", "51": "EX", "52": "MEM", "53": "WB"}}, {"seq": 50, "pc": 16, "text": "sub a0, a0, a1", "cells": {"50": "IF", "51": "ID", "52": "EX", "53": "MEM", "54": "WB"}}, {"seq": 51, "pc": 20, "text": "j loop", "cells": {"51": "IF", "52": "ID", "53": "EX", "54": "MEM", "55": "WB"}}, {"seq": 52, "pc": 8, "text": "beq a0, a1, done", "cells": {"52": "IF", "53": "ID", "54": "EX", "55": "MEM", "56": "WB"}}, {"seq": 53, "pc": 12, "text": "blt a0, a1, a_smaller", "cells": {"53": "IF", "54": "ID", "55": "EX", "56": "MEM", "57": "WB"}}, {"seq": 54, "pc": 16, "text": "sub a0, a0, a1", "cells": {"54": "IF", "55": "ID", "56": "EX", "57": "MEM", "58": "WB"}}, {"seq": 55, "pc": 20, "text": "j loop", "cells": {"55": "IF", "56": "ID", "57": "EX", "58": "MEM", "59": "WB"}}, {"seq": 56, "pc": 8, "text": "beq a0, a1, done", "cells": {"56": "IF", "57": "ID", "58": "EX", "59": "MEM", "60": "WB"}}, {"seq": 57, "pc": 12, "text": "?", "cells": {"57": "IF"}}, {"seq": 59, "pc": 32, "text": "sw a0, 0(x0)", "cells": {"59": "IF", "60": "ID", "61": "EX", "62": "MEM", "63": "WB"}}, {"seq": 60, "pc": 36, "text": "ecall", "cells": {"60": "IF", "61": "ID", "62": "EX", "63": "MEM", "64": "WB"}}], "maxCycle": 65, "stalledCycles": {}, "flushedCycles": {"6": "ID", "14": "EX", "17": "ID", "21": "EX", "31": "EX", "37": "EX", "58": "EX"}};
+const STAGE_COLOR = {"IF": "#3b82f6", "ID": "#a855f7", "EX": "#f59e0b", "MEM": "#10b981", "WB": "#64748b"};
+
+function build() {
+  const table = document.getElementById('grid');
+  const thead = document.createElement('tr');
+  thead.innerHTML = '<th class="rowlabel">instruction</th>' +
+    Array.from({length: DATA.maxCycle}, (_, c) =>
+      '<th class="colhead">' + (c % 5 === 0 ? c : '') + '</th>').join('');
+  table.appendChild(thead);
+
+  const tooltip = document.getElementById('tooltip');
+
+  for (const inst of DATA.instances) {
+    const tr = document.createElement('tr');
+    const label = document.createElement('td');
+    label.className = 'rowlabel';
+    label.textContent = '0x' + inst.pc.toString(16).padStart(4,'0') + '  ' + inst.text;
+    tr.appendChild(label);
+
+    const reachedWB = Object.values(inst.cells).includes('WB');
+    for (let c = 0; c < DATA.maxCycle; c++) {
+      const td = document.createElement('td');
+      const stage = inst.cells[c];
+      let cls = 'cell';
+      if (DATA.flushedCycles[c] && !reachedWB) cls += ' flushed';
+      if (DATA.stalledCycles[c]) cls += ' stallcol';
+      td.className = cls;
+      if (stage) {
+        td.style.background = STAGE_COLOR[stage];
+        td.addEventListener('mousemove', (e) => {
+          tooltip.style.display = 'block';
+          tooltip.style.left = (e.clientX + 12) + 'px';
+          tooltip.style.top = (e.clientY + 12) + 'px';
+          tooltip.textContent = 'cycle ' + c + ': ' + stage + '  ' + inst.text;
+        });
+        td.addEventListener('mouseleave', () => tooltip.style.display = 'none');
+      }
+      tr.appendChild(td);
+    }
+    table.appendChild(tr);
+  }
+}
+build();
+</script>

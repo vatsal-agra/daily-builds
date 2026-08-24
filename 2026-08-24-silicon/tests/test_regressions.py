@@ -100,6 +100,32 @@ class TestRegressions(unittest.TestCase):
             assemble("nop\nnop\nj nosuchlabel\n")
         self.assertEqual(ctx.exception.line_no, 3)
 
+    def test_illegal_instruction_in_functional_sim_raises_clean_trap(self):
+        # bug #6 (phase 4 polish): decode failures inside the sequential
+        # golden-model simulator used to propagate as a raw ValueError
+        # instead of the SimulatorTrap every caller (the CLI included)
+        # expects and catches.
+        prog = assemble("nop\n")  # no ecall -> falls off the end into zeroed memory
+        sim = FunctionalSimulator(prog)
+        with self.assertRaises(SimulatorTrap):
+            sim.run(max_steps=10)
+
+    def test_cli_demo_subcommand_runs_end_to_end(self):
+        # bug #7 (phase 4 polish): `cmd_demo` hand-built argparse Namespace
+        # objects for the subcommands it drives, which silently drifted out
+        # of sync with a subcommand's real required attributes (missing
+        # `max_steps` on the `pipeline --check` call) and crashed with a
+        # raw AttributeError. Now it re-enters through the real parser.
+        from silicon.cli import build_parser
+        import io
+        import contextlib
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ns = build_parser().parse_args(["demo"])
+            ns.func(ns)  # must not raise
+        self.assertIn("MATCHES sequential golden model", buf.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
