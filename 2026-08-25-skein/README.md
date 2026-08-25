@@ -1,9 +1,8 @@
 # Skein
 
-*Status: Phase 5 (verification) complete — `demo.sh` exercises every
-required, stretch, and extra feature end-to-end against real
-multi-process runs and passes 12/12 checks, on top of the 97-test
-suite. Shipped.*
+*Status: Shipped. All 6 build phases complete — `demo.sh` exercises
+every required, stretch, and extra feature end-to-end against real
+multi-process runs and passes 12/12 checks, on top of a 97-test suite.*
 
 A from-scratch peer-to-peer file distribution system — real bencode, a
 real HTTP tracker, and the real BitTorrent peer wire protocol over TCP
