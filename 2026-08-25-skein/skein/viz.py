@@ -144,7 +144,12 @@ function computeStateAt(t) {{
   for (const ev of allEvents) {{
     if (ev.t > t) break;
     const owner = ev.owner;
-    if (ev.kind === 'piece_complete') {{
+    if (ev.kind === 'start' && ev.have_all) {{
+      // A seed starts already holding every piece — it never emits
+      // 'piece_complete' events for pieces it never had to download, so
+      // without this its row would misleadingly show as all-missing.
+      for (let i = 0; i < torrent.num_pieces; i++) have[owner].add(i);
+    }} else if (ev.kind === 'piece_complete') {{
       have[owner].add(ev.index);
       inflight[owner].delete(ev.index);
     }} else if (ev.kind === 'block_received') {{

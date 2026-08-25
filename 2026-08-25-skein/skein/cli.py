@@ -108,7 +108,8 @@ def cmd_leech(args):
     t = torrentmod.load_torrent_file(args.torrent)
     node = Node(t, args.dest_file, args.tracker or t.announce,
                 listen_host=args.host, listen_port=args.port, have_all=False, name="leech",
-                choke_interval=args.choke_interval, announce_interval=args.announce_interval)
+                choke_interval=args.choke_interval, announce_interval=args.announce_interval,
+                resume=not args.no_resume)
 
     def _on_sigterm(signum, frame):
         raise KeyboardInterrupt
@@ -117,6 +118,10 @@ def cmd_leech(args):
 
     node.start()
     print(f"leech: listening on {node.listen_host}:{node.listen_port}", flush=True)
+    if node.pm.recovered_on_resume:
+        done, total = node.pm.progress()
+        print(f"leech: resumed from disk — {node.pm.recovered_on_resume} piece(s) already "
+              f"verified ({done}/{total} done)", flush=True)
     try:
         ok = node.wait_until_complete(timeout=args.timeout)
     except KeyboardInterrupt:
@@ -335,6 +340,8 @@ def build_parser():
     lc.add_argument("--events-out", help="write a JSON dump of this node's event log here on shutdown")
     lc.add_argument("--choke-interval", type=float, default=3.0)
     lc.add_argument("--announce-interval", type=float, default=2.0)
+    lc.add_argument("--no-resume", action="store_true",
+                     help="ignore any existing dest_file content and start the download from scratch")
     lc.set_defaults(func=cmd_leech)
 
     sw = sub.add_parser("swarm", help="run a full local tracker+seed+leechers demo")
@@ -367,7 +374,9 @@ def main(argv=None):
         # Covers "file not found", "address already in use", permission
         # errors, etc. — anything a user is expected to hit by pointing
         # the CLI at a bad path or a busy port, not an internal bug.
-        print(f"error: {e.strerror or e}", file=sys.stderr)
+        # str(e) (not e.strerror) so a FileNotFoundError-style message
+        # still names the actual path that was missing.
+        print(f"error: {e}", file=sys.stderr)
         return 1
 
 

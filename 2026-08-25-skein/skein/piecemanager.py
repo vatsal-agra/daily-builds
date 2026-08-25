@@ -58,7 +58,7 @@ class PieceManager:
     piece-selection logic can call this concurrently.
     """
 
-    def __init__(self, torrent, dest_path: str, have_all: bool = False):
+    def __init__(self, torrent, dest_path: str, have_all: bool = False, resume: bool = True):
         self.torrent = torrent
         self.dest_path = dest_path
         self._lock = threading.RLock()
@@ -66,11 +66,19 @@ class PieceManager:
         self._have = bytearray(torrent.num_pieces)  # 1 byte per piece, 0/1
         # peer_availability[piece_index] = number of known peers with that piece
         self._availability = [0] * torrent.num_pieces
+        self.recovered_on_resume = 0
 
-        # Preallocate a full-size sparse file so every piece's byte range
-        # is always a valid seek/write target, even before we own that
-        # piece's data.
-        if not os.path.exists(dest_path):
+        # A file already sitting at dest_path (right size or bigger) is
+        # either a from-scratch seed's real source file or a previous
+        # leecher run's partial download that got killed — either way,
+        # resume support means re-checking it instead of blindly
+        # truncating it back to zero and re-downloading everything.
+        pre_existing = os.path.exists(dest_path) and os.path.getsize(dest_path) >= torrent.total_length
+
+        if not pre_existing:
+            # Preallocate a full-size sparse file so every piece's byte
+            # range is always a valid seek/write target, even before we
+            # own that piece's data.
             with open(dest_path, "wb") as f:
                 if torrent.total_length > 0:
                     f.seek(torrent.total_length - 1)
@@ -79,6 +87,24 @@ class PieceManager:
         if have_all:
             for i in range(torrent.num_pieces):
                 self._have[i] = 1
+        elif pre_existing and resume:
+            self._recheck_existing_file()
+
+    def _recheck_existing_file(self) -> None:
+        """Hash-verify every piece already sitting in dest_path and mark
+        whichever ones match the torrent's recorded hash as already-have —
+        the same "recheck" a real BitTorrent client does when you point it
+        at a file that's already partially (or fully) there.
+        """
+        recovered = 0
+        with open(self.dest_path, "rb") as f:
+            for i in range(self.torrent.num_pieces):
+                f.seek(i * self.torrent.piece_length)
+                chunk = f.read(self.torrent.piece_size(i))
+                if hashlib.sha1(chunk).digest() == self.torrent.pieces[i]:
+                    self._have[i] = 1
+                    recovered += 1
+        self.recovered_on_resume = recovered
 
     # -- bitfield -----------------------------------------------------
 

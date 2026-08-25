@@ -106,7 +106,9 @@ without every leecher ever touching the original seeder.
    choke/unchoke state, driven by actual recorded events (no synthetic
    data).
 
-**Extra (if time allows beyond the 2 stretch minimum):**
+**Extra (implemented beyond the 2 stretch minimum):**
 
-7. Resume support — a leecher that's killed mid-download and restarted
-   picks up from its on-disk partial state instead of starting over.
+7. **Resume support** — a leecher that's killed mid-download and
+   restarted against the same dest_file re-hash-checks whatever is
+   already on disk and picks up from there instead of starting over.
+   Verified with a real kill-and-restart of a real leecher process.

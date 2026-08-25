@@ -90,12 +90,13 @@ class Node:
         name: str = "node",
         choke_interval: float = 3.0,
         announce_interval: float = 2.0,
+        resume: bool = True,
     ):
         self.torrent = torrent
         self.name = name
         self.peer_id = make_peer_id()
         self.tracker_url = tracker_url
-        self.pm = PieceManager(torrent, dest_path, have_all=have_all)
+        self.pm = PieceManager(torrent, dest_path, have_all=have_all, resume=resume)
         self.choke_mgr = ChokeManager(is_seed=have_all)
         self.events = EventLog()
         self.choke_interval = choke_interval
@@ -116,7 +117,8 @@ class Node:
         self._downloaded_total = 0
 
         self.events.log("start", name=name, listen_port=self.listen_port,
-                         have_all=have_all, num_pieces=torrent.num_pieces)
+                         have_all=have_all, num_pieces=torrent.num_pieces,
+                         recovered_on_resume=self.pm.recovered_on_resume)
 
     # -- lifecycle --------------------------------------------------
 
