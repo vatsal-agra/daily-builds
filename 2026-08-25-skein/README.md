@@ -1,12 +1,55 @@
 # Skein
 
-*Status: Phase 1 (plan) complete. Build in progress.*
+*Status: Phase 2 (core build) complete — all 4 required features work
+end-to-end. Adversarial review and polish still to come.*
 
-A from-scratch peer-to-peer file distribution system — real bencode,
-a real HTTP tracker, and the real BitTorrent peer wire protocol over
-TCP sockets — implemented in pure Python with no third-party
-networking or torrent libraries.
+A from-scratch peer-to-peer file distribution system — real bencode, a
+real HTTP tracker, and the real BitTorrent peer wire protocol over TCP
+sockets — implemented in pure Python 3 stdlib, no third-party
+networking or torrent libraries. See [`PLAN.md`](PLAN.md) for the full
+concept, architecture, and feature list.
 
-See [`PLAN.md`](PLAN.md) for the full concept, architecture, and
-feature list. This README will be filled in with usage instructions,
-the complete feature list, and results as each build phase lands.
+## Quick start
+
+```bash
+cd 2026-08-25-skein
+
+# The all-in-one demo: spins up a real tracker, a seeder, and 3
+# leechers as SEPARATE OS PROCESSES, transfers a file purely over
+# TCP peer connections, and verifies every leecher's output is
+# byte-identical to the source.
+python3 -m skein.cli swarm /path/to/some/file --leechers 3
+
+# Render an interactive HTML replay of that run from its real event log:
+python3 -m skein.cli viz ./skein-swarm-run/events.json
+```
+
+Or drive it by hand:
+
+```bash
+python3 -m skein.cli create-torrent myfile.bin --tracker http://127.0.0.1:8000 -o myfile.torrent
+python3 -m skein.cli tracker --port 8000 &
+python3 -m skein.cli seed myfile.torrent myfile.bin &
+python3 -m skein.cli leech myfile.torrent downloaded.bin
+```
+
+## Running the tests
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+## Feature list (see PLAN.md for full detail)
+
+**Required — all working end-to-end:**
+1. Bencode codec (BEP 3 exact, incl. sorted-key dict encoding)
+2. Torrent creation & parsing (SHA-1 piece hashing, real info-hash)
+3. HTTP tracker (`/announce` compact peer lists, `/scrape`, peer expiry)
+4. Real peer wire protocol swarm transfer (handshake + framed messages
+   over TCP, seed + 3 leecher OS processes, per-piece SHA-1 verification)
+
+**Stretch:**
+5. Rarest-first piece selection + tit-for-tat choking with optimistic unchoke
+6. Interactive HTML swarm visualizer replaying a real captured event log
+
+Phase 3 (adversarial review) and Phase 4 (stretch + polish) are next.
