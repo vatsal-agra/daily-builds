@@ -1,8 +1,9 @@
 # Skein
 
-*Status: Phase 4 (stretch + polish) complete — 3/2 stretch features
-shipped, adversarial-review fixes verified, empty/invalid-input paths
-hardened, visualizer polished. Verification (tests + demo) next.*
+*Status: Phase 5 (verification) complete — `demo.sh` exercises every
+required, stretch, and extra feature end-to-end against real
+multi-process runs and passes 12/12 checks, on top of the 97-test
+suite. Shipped.*
 
 A from-scratch peer-to-peer file distribution system — real bencode, a
 real HTTP tracker, and the real BitTorrent peer wire protocol over TCP
@@ -47,9 +48,17 @@ python3 -m skein.cli leech myfile.torrent downloaded.bin   # picks up where it l
 
 ```bash
 python3 -m unittest discover -s tests -v
+./demo.sh
 ```
 
-97 tests: bencode (BEP 3 worked examples + fuzz round-trips + malformed
+`demo.sh` is the full end-to-end verification: it runs the test suite,
+then separately exercises every required/stretch/extra feature against
+real processes (standalone tracker+seed+leech, a 5-process swarm demo,
+the visualizer under headless Chromium, a real kill-and-restart resume,
+and spot-checks of the adversarial-review fixes) and reports a
+PASS/FAIL checklist — currently 12/12 green.
+
+97 unit/integration tests: bencode (BEP 3 worked examples + fuzz round-trips + malformed
 input rejection), torrent creation/parsing, the real HTTP tracker, the
 wire protocol over real sockets, piece manager bookkeeping/rarest-first,
 tit-for-tat choking, resume-from-partial-file (including a real
