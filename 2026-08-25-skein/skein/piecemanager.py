@@ -92,7 +92,12 @@ class PieceManager:
                     out[i // 8] |= 0x80 >> (i % 8)
         return bytes(out)
 
+    def _check_index(self, index: int) -> None:
+        if not (0 <= index < self.torrent.num_pieces):
+            raise PieceError(f"piece index {index} out of range [0, {self.torrent.num_pieces})")
+
     def has_piece(self, index: int) -> bool:
+        self._check_index(index)
         with self._lock:
             return bool(self._have[index])
 
@@ -118,18 +123,26 @@ class PieceManager:
     # -- availability tracking (for rarest-first) ----------------------
 
     def note_peer_bitfield(self, indices):
+        for i in indices:
+            self._check_index(i)  # an oversized bitfield is a protocol violation
         with self._lock:
             for i in indices:
                 self._availability[i] += 1
 
     def note_peer_have(self, index: int):
+        self._check_index(index)
         with self._lock:
             self._availability[index] += 1
 
     def forget_peer(self, indices):
+        # Teardown/cleanup code: must never raise, even if `indices`
+        # somehow contains a bogus index (e.g. a connection that was
+        # dropped mid-handshake for sending an out-of-range HAVE before
+        # ever getting validated) — silently skip anything invalid.
         with self._lock:
             for i in indices:
-                self._availability[i] = max(0, self._availability[i] - 1)
+                if 0 <= i < len(self._availability):
+                    self._availability[i] = max(0, self._availability[i] - 1)
 
     def next_piece_rarest_first(self, peer_has: set):
         """Pick the rarest piece (by known swarm availability) that we're

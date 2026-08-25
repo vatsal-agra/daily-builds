@@ -1,7 +1,10 @@
 # Skein
 
-*Status: Phase 2 (core build) complete — all 4 required features work
-end-to-end. Adversarial review and polish still to come.*
+*Status: Phase 3 (adversarial review) complete — 3 real bugs found and
+fixed (see [`REVIEW.md`](REVIEW.md)), including a security-relevant one:
+a malicious/buggy peer could crash a connection thread with an
+unhandled traceback via an out-of-range or malformed wire message.
+Stretch features + final polish still to come.*
 
 A from-scratch peer-to-peer file distribution system — real bencode, a
 real HTTP tracker, and the real BitTorrent peer wire protocol over TCP
@@ -38,6 +41,12 @@ python3 -m skein.cli leech myfile.torrent downloaded.bin
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+93 tests: bencode (BEP 3 worked examples + fuzz round-trips + malformed
+input rejection), torrent creation/parsing, the real HTTP tracker, the
+wire protocol over real sockets, piece manager bookkeeping/rarest-first,
+tit-for-tat choking, a full in-process multi-leecher swarm integration
+test, and regression tests for every bug in `REVIEW.md`.
 
 ## Feature list (see PLAN.md for full detail)
 

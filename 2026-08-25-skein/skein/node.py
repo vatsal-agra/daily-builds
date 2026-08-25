@@ -271,7 +271,13 @@ class Node:
                     # by Node.stop() running concurrently on another thread.
                     break
                 if msg_id is not None:
-                    self._handle_message(conn, msg_id, payload)
+                    try:
+                        self._handle_message(conn, msg_id, payload)
+                    except wire.WireError:
+                        # A malformed/out-of-range message from this peer —
+                        # drop the connection cleanly instead of crashing
+                        # the thread with an unhandled traceback.
+                        break
                 self._maybe_request_more(conn)
                 self._maybe_retry_timeouts(conn)
                 if self.pm.is_complete() and conn.am_interested:
@@ -302,6 +308,22 @@ class Node:
     # -- message handling -------------------------------------------------
 
     def _handle_message(self, conn: PeerConn, msg_id: int, payload: bytes):
+        """Dispatch one parsed message, treating any parse/bounds failure
+        as a protocol violation from an untrusted peer rather than letting
+        it crash this connection's thread with an unhandled traceback.
+        `struct.error` covers a too-short/malformed payload (e.g. a HAVE
+        with a truncated 4-byte index); `IndexError`/`ValueError` cover an
+        out-of-range piece index reaching the piece manager (both
+        TorrentError and PieceError are ValueError subclasses).
+        """
+        try:
+            self._dispatch_message(conn, msg_id, payload)
+        except (struct.error, IndexError, ValueError) as e:
+            self.events.log("protocol_violation", peer=conn.peer_key[:8],
+                             msg=wire.message_name(msg_id), error=str(e))
+            raise wire.WireError(f"protocol violation from peer: {e}") from e
+
+    def _dispatch_message(self, conn: PeerConn, msg_id: int, payload: bytes):
         if msg_id == wire.CHOKE:
             conn.peer_choking = True
         elif msg_id == wire.UNCHOKE:
@@ -314,12 +336,15 @@ class Node:
             self.choke_mgr.set_interested(conn.peer_key, False)
         elif msg_id == wire.HAVE:
             index = wire.unpack_have(payload)
-            conn.peer_has.add(index)
+            # Validate with the piece manager *before* recording it in
+            # conn.peer_has — an out-of-range index must not get added to
+            # peer state that teardown code will later iterate over.
             self.pm.note_peer_have(index)
+            conn.peer_has.add(index)
         elif msg_id == wire.BITFIELD:
             indices = wire.bitfield_indices(payload, self.torrent.num_pieces)
-            conn.peer_has |= indices
             self.pm.note_peer_bitfield(indices)
+            conn.peer_has |= indices
         elif msg_id == wire.REQUEST:
             self._handle_request(conn, payload)
         elif msg_id == wire.PIECE:

@@ -21,6 +21,7 @@ import sys
 import threading
 import time
 
+from . import bencode
 from . import torrent as torrentmod
 from .node import Node
 from .tracker import TrackerServer
@@ -168,6 +169,10 @@ def cmd_swarm(args):
     talk to each other over real TCP sockets and one real HTTP tracker —
     nothing here is in-process simulation.
     """
+    if args.leechers < 1:
+        print(f"error: --leechers must be at least 1 (got {args.leechers})", file=sys.stderr)
+        return 1
+
     out_dir = os.path.abspath(args.out_dir)
     os.makedirs(out_dir, exist_ok=True)
     print(f"[swarm] source: {args.source} ({os.path.getsize(args.source)} bytes)")
@@ -353,7 +358,17 @@ def build_parser():
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (torrentmod.TorrentError, bencode.BencodeError, json.JSONDecodeError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    except OSError as e:
+        # Covers "file not found", "address already in use", permission
+        # errors, etc. — anything a user is expected to hit by pointing
+        # the CLI at a bad path or a busy port, not an internal bug.
+        print(f"error: {e.strerror or e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
