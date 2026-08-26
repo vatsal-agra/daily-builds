@@ -67,7 +67,14 @@ def main():
         sp.set_defaults(func=fn)
 
     args = p.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except FileNotFoundError as e:
+        print(f"cascade: {e.strerror}: {e.filename}", file=sys.stderr)
+        sys.exit(1)
+    except IsADirectoryError as e:
+        print(f"cascade: {args.file} is a directory, not an HTML file", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

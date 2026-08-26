@@ -256,4 +256,38 @@ def parse(html):
                     break
             # else: stray end tag with no open match -> ignore
             continue
+    _ensure_body(doc)
     return doc
+
+
+def _ensure_body(doc):
+    """Real HTML5 parsing always yields an implicit <html><head>...<body>
+    structure regardless of what the author wrote — a bare text document,
+    or top-level tags with no <body> wrapper at all, still render as if
+    wrapped. Mirror that with a simple post-process: if there's no <body>
+    anywhere in the tree, gather the document's actual content (skipping
+    any <head>, which stays outside body like it does in a real browser)
+    into a synthetic one."""
+    if doc.find("body") is not None:
+        return
+    html_el = doc.find("html")
+    container = html_el if html_el is not None else doc
+    head = None
+    rest = []
+    for child in list(container.children):
+        if isinstance(child, Element) and child.tag == "head":
+            head = child
+        else:
+            rest.append(child)
+    body = Element("body")
+    for child in rest:
+        body.append(child)
+    if html_el is None:
+        html_el = Element("html")
+        doc.children = [html_el]
+        html_el.parent = doc
+    else:
+        html_el.children = []
+    if head is not None:
+        html_el.append(head)
+    html_el.append(body)

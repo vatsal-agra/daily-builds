@@ -379,12 +379,22 @@ def _layout_children(parent_box, el, styles, cb, bfc):
             max_y = max(max_y, mbox.y + mbox.height)
         else:  # inline run -> anonymous block establishing an IFC
             nodes = payload
-            cursor_y += prev_margin_bottom
-            have_prev = True
-            prev_margin_bottom = 0.0
+            tentative_y = cursor_y + prev_margin_bottom
             anon = LayoutBox(None, parent_box.style, "anon-inline")
             used_h = layout_inline_run(nodes, parent_box.style, styles,
-                                        Rect(cb.x, cursor_y, cb.width, None), bfc, anon)
+                                        Rect(cb.x, tentative_y, cb.width, None), bfc, anon)
+            if not anon.lines:
+                # Purely whitespace text between block siblings (e.g. the
+                # indentation between two <div>s in hand-formatted HTML)
+                # collapses away to nothing and generates no box at all in
+                # a real browser — it must NOT act as a barrier that
+                # blocks margin collapsing between those siblings. Leave
+                # cursor_y/prev_margin_bottom untouched, as if this run
+                # were absent from the tree.
+                continue
+            cursor_y = tentative_y
+            have_prev = True
+            prev_margin_bottom = 0.0
             anon.dims.content = Rect(cb.x, cursor_y, cb.width, used_h)
             parent_box.children.append(anon)
             cursor_y += used_h
@@ -432,17 +442,31 @@ _WS_RUN_RE = re.compile(r"\S+|\s+")
 
 def _tokenize_inline(nodes, container_style, styles):
     """Flattens a run of sibling nodes (text + inline elements) into a flat
-    token stream, collapsing whitespace per CSS's normal `white-space`
-    rules (runs of whitespace -> single space, leading whitespace at the
-    very start of the run dropped)."""
+    token stream. Normally this collapses whitespace per CSS's normal
+    `white-space` rules (runs of whitespace -> single space, leading
+    whitespace at the very start of the run dropped); when the container
+    has `white-space: pre` (e.g. <pre>), every line is instead preserved
+    verbatim — including runs of spaces — and never wraps, matching what
+    that property actually does."""
     tokens = []
     state = {"last_was_space": True}
+    preserve = container_style.get("white-space") == "pre"
 
     def walk(node, owners):
         for child in node.children:
             if isinstance(child, Comment):
                 continue
             if isinstance(child, Text):
+                if preserve:
+                    lines = child.data.split("\n")
+                    for li, line_text in enumerate(lines):
+                        if line_text:
+                            tokens.append(("word", line_text, owners))
+                            state["last_was_space"] = False
+                        if li < len(lines) - 1:
+                            tokens.append(("break", None, owners))
+                            state["last_was_space"] = True
+                    continue
                 for m in _WS_RUN_RE.finditer(child.data):
                     seg = m.group()
                     if seg.isspace():

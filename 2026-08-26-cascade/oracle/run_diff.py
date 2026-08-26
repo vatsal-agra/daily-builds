@@ -55,8 +55,13 @@ def run_chromium(html_path, width):
     return json.loads(proc.stdout)
 
 
-def tol(box):
-    return max(TOL_FLOOR, TOL_RATIO * max(box["width"], box["height"], 10))
+def tol(box, field):
+    # Scale tolerance to the dimension the field actually varies along —
+    # a wide-but-short element must not get a huge tolerance on its Y
+    # position just because it's wide (that masked a real bug once; see
+    # REVIEW.md).
+    ref = box["width"] if field in ("x", "width") else box["height"]
+    return max(TOL_FLOOR, TOL_RATIO * max(ref, 10))
 
 
 def diff_page(html_path, width=800):
@@ -82,8 +87,8 @@ def diff_page(html_path, width=800):
         if o["tag"] != c["tag"]:
             mismatches.append({"kind": "tag-mismatch", "index": i, "ours": o["tag"], "chromium": c["tag"]})
             continue
-        t = tol(c)
         for field in ("x", "y", "width", "height"):
+            t = tol(c, field)
             delta = abs(o[field] - c[field])
             if delta > t:
                 mismatches.append({

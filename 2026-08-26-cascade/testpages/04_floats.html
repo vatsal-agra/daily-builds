@@ -5,14 +5,18 @@ body { font-family: sans-serif; }
 .container { width: 500px; }
 .float-left { width: 120px; height: 80px; float: left; background: red; }
 .float-right { width: 100px; height: 60px; float: right; background: blue; }
-p { font-family: monospace; }
+/* Explicit font-size: Chromium applies its own separate "fixed-width
+   font size" preference (default 13px) to the monospace generic family
+   instead of the standard 16px default — a browser UI preference, not a
+   CSS-spec behavior, so it's pinned explicitly here rather than chased. */
+p { font-family: monospace; font-size: 16px; }
 .clear { clear: both; height: 10px; background: green; }
 </style></head>
 <body>
 <div class="container" id="container">
   <div class="float-left" id="fl"></div>
   <div class="float-right" id="fr"></div>
-  <p id="wraptext">Text flows in the remaining space between the two floated boxes and should wrap accordingly around both of them as it goes down the page here.</p>
+  <p id="wraptext">Text flows in the remaining space between the floated boxes and wraps around them nicely.</p>
   <div class="clear" id="clearer"></div>
   <div id="after-clear" style="height: 20px; background: purple;"></div>
 </div>

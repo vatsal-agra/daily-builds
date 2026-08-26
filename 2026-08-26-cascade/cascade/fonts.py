@@ -38,12 +38,15 @@ _TABLE[" "] = SPACE_ADVANCE
 _TABLE["\t"] = SPACE_ADVANCE * 4
 
 # Monospace advance is uniform, used when font-family requests it. Measured
-# directly against real Chromium's default `monospace` generic family via
-# the oracle (oracle/run_diff.py, testpages/05_inline_block.html): actual
-# advance came out ~0.49em, so 0.56 keeps a safety margin against SVG
-# glyph overlap (see DEFAULT_ADVANCE above) while tracking much closer
-# than an assumed "Courier-like ~0.6em" would.
-MONOSPACE_ADVANCE = 0.56
+# directly against real Chromium's default `monospace` generic family at
+# an explicit font-size (oracle/run_diff.py, testpages/05_inline_block.html)
+# came out ~0.602em — note this must be measured at an *explicit*
+# font-size: Chromium applies its own "fixed-width font size" UI
+# preference (default 13px, not the standard 16px) to unset-size
+# monospace text, which corrupted an earlier version of this measurement.
+# 0.62 keeps a slight safety margin above the real ~0.602 so our own SVG
+# text (rendered by a real browser too) never overlaps.
+MONOSPACE_ADVANCE = 0.62
 
 
 def char_advance(ch, monospace=False):

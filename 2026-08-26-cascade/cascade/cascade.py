@@ -299,17 +299,17 @@ def parse_color(value, current_color=(0, 0, 0)):
         return (*current_color, 1.0)
     if v.startswith("#"):
         h = v[1:]
-        if len(h) == 3:
-            r, g, b = (int(c * 2, 16) for c in h)
-            return (r, g, b, 1.0)
-        if len(h) == 6:
-            try:
+        try:
+            if len(h) == 3:
+                r, g, b = (int(c * 2, 16) for c in h)
+                return (r, g, b, 1.0)
+            if len(h) == 6:
                 r = int(h[0:2], 16)
                 g = int(h[2:4], 16)
                 b = int(h[4:6], 16)
                 return (r, g, b, 1.0)
-            except ValueError:
-                return (0, 0, 0, 1.0)
+        except ValueError:
+            return (0, 0, 0, 1.0)
     m = re.match(r"rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)", v)
     if m:
         r, g, b = float(m.group(1)), float(m.group(2)), float(m.group(3))

@@ -382,7 +382,10 @@ def _parse_with_whitespace(tokens):
         if k == "ident" or v == "*":
             if have_any and saw_ws_since_compound:
                 flush(" ")
-            cur.type = v
+            # Type selectors match HTML tag names case-insensitively (our
+            # HTML parser already lowercases every tag); classes/IDs stay
+            # case-sensitive, which is correct per spec.
+            cur.type = v if v == "*" else v.lower()
             have_any = True
             saw_ws_since_compound = False
             i += 1

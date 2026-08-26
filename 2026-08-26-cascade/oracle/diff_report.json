@@ -1,0 +1,37 @@
+[
+  {
+    "page": "01_box_model.html",
+    "elements": 5,
+    "mismatches": []
+  },
+  {
+    "page": "02_margin_collapsing.html",
+    "elements": 8,
+    "mismatches": []
+  },
+  {
+    "page": "03_text_wrap.html",
+    "elements": 9,
+    "mismatches": []
+  },
+  {
+    "page": "04_floats.html",
+    "elements": 7,
+    "mismatches": []
+  },
+  {
+    "page": "05_inline_block.html",
+    "elements": 8,
+    "mismatches": []
+  },
+  {
+    "page": "06_cascade_specificity.html",
+    "elements": 11,
+    "mismatches": []
+  },
+  {
+    "page": "07_centering.html",
+    "elements": 4,
+    "mismatches": []
+  }
+]

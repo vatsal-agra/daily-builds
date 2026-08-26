@@ -39,5 +39,17 @@ Current result: **7/7 test pages, 0 mismatches** against real Chromium
 inline-block shrink-to-fit, cascade/specificity, and margin:auto
 centering).
 
-Next: adversarial review (Phase 3), stretch features + polish (Phase 4),
-full verification pass (Phase 5), ship (Phase 6).
+**Status: Phase 3 (adversarial review) complete.** Hunted for bugs as a
+hostile reviewer — found and fixed 8 real issues, including one
+consequential one: whitespace-only text between block siblings (i.e.
+completely normal indented HTML) was silently blocking margin
+collapsing. Full findings, fixes, and the deliberate scope cuts that are
+*not* bugs: [REVIEW.md](REVIEW.md).
+
+```
+python3 -m unittest discover -s tests   # 60/60 pass
+python3 oracle/run_diff.py testpages    # 7/7 pages, 0 mismatches vs. Chromium
+```
+
+Next: stretch features + polish (Phase 4), full verification pass
+(Phase 5), ship (Phase 6).
