@@ -68,4 +68,15 @@ python3 oracle/run_diff.py testpages    # 7/7 pages, 0 mismatches vs. Chromium
 python3 server.py                       # interactive playground on :8420
 ```
 
-Next: full verification pass (Phase 5), ship (Phase 6).
+**Status: Phase 5 (verification) complete.** `demo.sh` exercises every
+feature end-to-end in one run: the 60-test unit suite, CLI-rendering
+every test page to real SVG, the 7-page Chromium differential oracle, a
+direct float-narrowing check, the playground server's `/render` and
+`/default` endpoints, and 6 adversarial edge cases from REVIEW.md — all
+green.
+
+```
+./demo.sh
+```
+
+Next: ship (Phase 6).
