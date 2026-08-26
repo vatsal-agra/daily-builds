@@ -72,9 +72,15 @@ def main():
     except FileNotFoundError as e:
         print(f"cascade: {e.strerror}: {e.filename}", file=sys.stderr)
         sys.exit(1)
-    except IsADirectoryError as e:
+    except IsADirectoryError:
         print(f"cascade: {args.file} is a directory, not an HTML file", file=sys.stderr)
         sys.exit(1)
+    except BrokenPipeError:
+        # e.g. piping into `head` — not an error, exit quietly rather than
+        # dumping a traceback over a closed stdout.
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        sys.exit(0)
 
 
 if __name__ == "__main__":

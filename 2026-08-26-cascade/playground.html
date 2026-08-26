@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cascade Playground</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e6e8ee;
+    --muted: #8891a3;
+    --accent: #5b8cff;
+    --accent-2: #7fd1ae;
+    --mono: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); }
+  body { display: flex; flex-direction: column; }
+
+  header {
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 10px; flex-shrink: 0;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: 0.2px; }
+  header h1 span { color: var(--accent); }
+  header p { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+  main { flex: 1; display: grid; grid-template-columns: 380px 1fr; min-height: 0; }
+
+  .editors { display: flex; flex-direction: column; border-right: 1px solid var(--border); min-height: 0; }
+  .editor-block { flex: 1; display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--border); }
+  .editor-block:last-of-type { border-bottom: none; }
+  .editor-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+    padding: 8px 12px; background: var(--panel-2); flex-shrink: 0;
+  }
+  textarea {
+    flex: 1; resize: none; border: none; outline: none; background: var(--panel);
+    color: var(--text); font-family: var(--mono); font-size: 12.5px; line-height: 1.5;
+    padding: 10px 12px; min-height: 0;
+  }
+
+  .actions { padding: 10px 12px; background: var(--panel-2); display: flex; gap: 8px; flex-shrink: 0; }
+  button {
+    font-family: var(--sans); font-size: 12.5px; font-weight: 600; border: none; border-radius: 6px;
+    padding: 8px 14px; cursor: pointer; transition: transform 0.05s, filter 0.15s;
+  }
+  button:active { transform: translateY(1px); }
+  #render-btn { background: var(--accent); color: #0a0d14; }
+  #render-btn:hover { filter: brightness(1.1); }
+  #render-btn:disabled { opacity: 0.6; cursor: default; }
+
+  .preview-wrap { position: relative; overflow: auto; background:
+    repeating-conic-gradient(#161922 0% 25%, #14161d 0% 50%) 50% / 18px 18px; }
+  .preview-inner { position: relative; margin: 24px; width: fit-content; }
+  .canvas { position: relative; background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,0.45); }
+  .canvas svg { display: block; }
+  .hit-layer { position: absolute; inset: 0; cursor: crosshair; }
+
+  .hl-box { position: absolute; pointer-events: none; box-sizing: border-box; }
+  .hl-margin  { background: rgba(246, 178, 107, 0.35); }
+  .hl-border  { background: rgba(255, 229, 143, 0.45); }
+  .hl-padding { background: rgba(147, 196, 125, 0.45); }
+  .hl-content { background: rgba(111, 168, 220, 0.55); }
+
+  .tooltip {
+    position: absolute; pointer-events: none; background: #0a0d14; color: #e6e8ee;
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 11.5px;
+    font-family: var(--mono); white-space: nowrap; box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 20;
+    line-height: 1.5;
+  }
+  .tooltip .tag { color: var(--accent); font-weight: 700; }
+  .tooltip .dim { color: var(--muted); }
+  .tooltip .dim b { color: var(--accent-2); }
+
+  .legend {
+    position: sticky; top: 0; display: flex; gap: 14px; padding: 8px 14px; background: var(--panel-2);
+    border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); z-index: 5; align-items: center;
+  }
+  .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .legend .status { margin-left: auto; }
+  .legend .status.ok { color: var(--accent-2); }
+  .legend .status.err { color: #ff8080; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Cascade<span>.</span>Playground</h1>
+  <p>edit HTML/CSS on the left, real box-model layout renders on the right — hover any box to inspect margin/border/padding/content</p>
+</header>
+<main>
+  <div class="editors">
+    <div class="editor-block">
+      <div class="editor-label">HTML</div>
+      <textarea id="html-src" spellcheck="false"></textarea>
+    </div>
+    <div class="editor-block">
+      <div class="editor-label">CSS</div>
+      <textarea id="css-src" spellcheck="false"></textarea>
+    </div>
+    <div class="actions">
+      <button id="render-btn">Render ▶</button>
+      <span id="timing" style="align-self:center;color:var(--muted);font-size:11.5px;"></span>
+    </div>
+  </div>
+  <div class="preview-wrap">
+    <div class="legend">
+      <span><span class="swatch" style="background:#f6b26b"></span>margin</span>
+      <span><span class="swatch" style="background:#ffe58f"></span>border</span>
+      <span><span class="swatch" style="background:#93c47d"></span>padding</span>
+      <span><span class="swatch" style="background:#6fa8dc"></span>content</span>
+      <span class="status" id="status"></span>
+    </div>
+    <div class="preview-inner">
+      <div class="canvas" id="canvas"></div>
+    </div>
+  </div>
+</main>
+<script>
+(function () {
+  const htmlSrc = document.getElementById('html-src');
+  const cssSrc = document.getElementById('css-src');
+  const canvas = document.getElementById('canvas');
+  const status = document.getElementById('status');
+  const timing = document.getElementById('timing');
+  const btn = document.getElementById('render-btn');
+  let boxes = [];
+  let tooltip = null;
+
+  function debounce(fn, ms) {
+    let t;
+    return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+  }
+
+  async function render() {
+    btn.disabled = true;
+    const t0 = performance.now();
+    try {
+      const res = await fetch('/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html: htmlSrc.value, css: cssSrc.value, width: 640 }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        status.textContent = 'error: ' + data.error;
+        status.className = 'status err';
+        return;
+      }
+      canvas.innerHTML = data.svg + '<div class="hit-layer" id="hit-layer"></div>';
+      boxes = data.boxes;
+      wireHover();
+      status.textContent = boxes.length + ' boxes rendered';
+      status.className = 'status ok';
+      timing.textContent = Math.round(performance.now() - t0) + 'ms';
+    } catch (e) {
+      status.textContent = 'request failed: ' + e;
+      status.className = 'status err';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function rectContains(r, x, y) {
+    return x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height;
+  }
+
+  function wireHover() {
+    const hitLayer = document.getElementById('hit-layer');
+    if (!hitLayer) return;
+    hitLayer.addEventListener('mousemove', (ev) => {
+      const rect = hitLayer.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const y = ev.clientY - rect.top;
+      let best = null;
+      let bestArea = Infinity;
+      for (const b of boxes) {
+        if (rectContains(b.border, x, y)) {
+          const area = b.border.width * b.border.height;
+          if (area < bestArea) { bestArea = area; best = b; }
+        }
+      }
+      clearHighlight();
+      if (best) drawHighlight(best, ev.clientX, ev.clientY);
+    });
+    hitLayer.addEventListener('mouseleave', clearHighlight);
+  }
+
+  function clearHighlight() {
+    canvas.querySelectorAll('.hl-box').forEach((n) => n.remove());
+    if (tooltip) { tooltip.remove(); tooltip = null; }
+  }
+
+  function box(cls, r) {
+    const d = document.createElement('div');
+    d.className = 'hl-box ' + cls;
+    d.style.left = r.x + 'px'; d.style.top = r.y + 'px';
+    d.style.width = r.width + 'px'; d.style.height = r.height + 'px';
+    return d;
+  }
+
+  function drawHighlight(b, clientX, clientY) {
+    canvas.appendChild(box('hl-margin', b.margin));
+    canvas.appendChild(box('hl-border', b.border));
+    canvas.appendChild(box('hl-padding', b.padding));
+    canvas.appendChild(box('hl-content', b.content));
+
+    tooltip = document.createElement('div');
+    tooltip.className = 'tooltip';
+    const label = b.tag + (b.id ? '#' + b.id : '');
+    tooltip.innerHTML =
+      '<div class="tag">&lt;' + label + '&gt;</div>' +
+      '<div class="dim">content <b>' + b.content.width + '×' + b.content.height + '</b></div>' +
+      '<div class="dim">padding box <b>' + b.padding.width + '×' + b.padding.height + '</b></div>' +
+      '<div class="dim">border box <b>' + b.border.width + '×' + b.border.height + '</b></div>' +
+      '<div class="dim">margin box <b>' + b.margin.width + '×' + b.margin.height + '</b></div>';
+    document.body.appendChild(tooltip);
+    const wrapRect = document.querySelector('.preview-wrap').getBoundingClientRect();
+    let left = clientX + 16, top = clientY + 16;
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+    if (left + tooltip.offsetWidth > wrapRect.right) tooltip.style.left = (clientX - tooltip.offsetWidth - 16) + 'px';
+  }
+
+  btn.addEventListener('click', render);
+  htmlSrc.addEventListener('input', debounce(render, 700));
+  cssSrc.addEventListener('input', debounce(render, 700));
+
+  fetch('/default').then((r) => r.json()).then((d) => {
+    htmlSrc.value = d.html;
+    cssSrc.value = d.css;
+    render();
+  }).catch(() => { status.textContent = 'could not load defaults'; status.className = 'status err'; });
+})();
+</script>
+</body>
+</html>

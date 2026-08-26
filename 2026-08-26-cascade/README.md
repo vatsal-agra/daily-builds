@@ -39,8 +39,24 @@ Current result: **7/7 test pages, 0 mismatches** against real Chromium
 inline-block shrink-to-fit, cascade/specificity, and margin:auto
 centering).
 
-**Status: Phase 3 (adversarial review) complete.** Hunted for bugs as a
-hostile reviewer — found and fixed 8 real issues, including one
+**Status: Phase 4 (stretch + polish) complete.** All three planned
+stretch features are implemented (not just the required one):
+
+- **Float layout** — `float: left/right`, `clear`, real "shelf" placement.
+- **Chromium differential oracle** — `oracle/run_diff.py`, 7/7 test pages
+  match real headless Chromium.
+- **Interactive server-backed playground** — `python3 server.py`, then
+  open http://127.0.0.1:8420/. Edit HTML/CSS live, hover any rendered box
+  to see its real margin/border/padding/content edges and exact pixel
+  dimensions (a Chrome-DevTools-style box-model inspector), all computed
+  by the real engine server-side — the browser client holds zero layout
+  logic, same pattern as this repo's Gambit/Formulate/Trove.
+
+Polish this phase: fixed a `#zzz`-style malformed-color crash, a raw
+Python traceback on a missing CLI file, and quiet `BrokenPipeError`
+handling when piped into e.g. `head`.
+
+Adversarial review found and fixed 8 real bugs, including one
 consequential one: whitespace-only text between block siblings (i.e.
 completely normal indented HTML) was silently blocking margin
 collapsing. Full findings, fixes, and the deliberate scope cuts that are
@@ -49,7 +65,7 @@ collapsing. Full findings, fixes, and the deliberate scope cuts that are
 ```
 python3 -m unittest discover -s tests   # 60/60 pass
 python3 oracle/run_diff.py testpages    # 7/7 pages, 0 mismatches vs. Chromium
+python3 server.py                       # interactive playground on :8420
 ```
 
-Next: stretch features + polish (Phase 4), full verification pass
-(Phase 5), ship (Phase 6).
+Next: full verification pass (Phase 5), ship (Phase 6).
