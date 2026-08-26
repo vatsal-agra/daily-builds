@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html><head><style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: sans-serif; }
+p { width: 200px; height: 20px; background: yellow; }
+.hi { width: 250px; }
+#special { width: 300px; }
+p.hi.override { width: 220px !important; }
+div.wrapper p { width: 260px; }
+</style></head>
+<body>
+<div id="w1"><p id="p1">type only</p></div>
+<div id="w2"><p class="hi" id="p2">class beats type</p></div>
+<div id="w3"><p id="special" class="hi">id beats class</p></div>
+<div id="w4"><p id="p4" class="hi override">important beats id</p></div>
+<div class="wrapper" id="w5"><p id="p5">descendant selector</p></div>
+</body></html>

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html><head><style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: sans-serif; }
+.container { width: 500px; }
+.float-left { width: 120px; height: 80px; float: left; background: red; }
+.float-right { width: 100px; height: 60px; float: right; background: blue; }
+p { font-family: monospace; }
+.clear { clear: both; height: 10px; background: green; }
+</style></head>
+<body>
+<div class="container" id="container">
+  <div class="float-left" id="fl"></div>
+  <div class="float-right" id="fr"></div>
+  <p id="wraptext">Text flows in the remaining space between the two floated boxes and should wrap accordingly around both of them as it goes down the page here.</p>
+  <div class="clear" id="clearer"></div>
+  <div id="after-clear" style="height: 20px; background: purple;"></div>
+</div>
+</body></html>

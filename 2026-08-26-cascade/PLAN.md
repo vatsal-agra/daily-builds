@@ -62,7 +62,7 @@ render.svg
 cascade/engine.py         render_html(html, extra_css) -> (dom, styles, box tree, svg)
 cli.py                    `cascade render page.html -o out.svg`, `cascade dump-boxes`
 
-oracle/diff.mjs           Node+Playwright: loads a test page in real headless
+oracle/diff.cjs           Node+Playwright: loads a test page in real headless
                            Chromium, reads getBoundingClientRect() for every
                            element, and diffs it against Cascade's own layout
                            for the same page (oracle/run_diff.py drives both

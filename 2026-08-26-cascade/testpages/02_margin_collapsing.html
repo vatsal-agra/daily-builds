@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html><head><style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: sans-serif; }
+/* A 1px border on the wrapper means neither the first nor the last
+   child's margin can collapse THROUGH it (that's a separate CSS rule —
+   parent/first-child collapsing — that Cascade deliberately doesn't
+   implement, see cascade/layout.py's docstring), so this isolates
+   testing to plain sibling-sibling collapsing, which it does implement. */
+.wrap { border: 1px solid #333; }
+div.box { height: 40px; background: #cde; }
+.m16 { margin-top: 16px; margin-bottom: 16px; }
+.m24 { margin-top: 24px; margin-bottom: 24px; }
+.neg { margin-top: -10px; margin-bottom: 20px; }
+.after-neg { margin-top: 10px; }
+</style></head>
+<body>
+<div class="wrap" id="wrap">
+<div class="box m16" id="d1"></div>
+<div class="box m16" id="d2"></div>
+<div class="box m24" id="d3"></div>
+<div class="box m16" id="d4"></div>
+<div class="box neg" id="d5"></div>
+<div class="box after-neg" id="d6"></div>
+</div>
+</body></html>
