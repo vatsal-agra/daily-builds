@@ -5,17 +5,16 @@ A from-scratch Prolog implementation that compiles clauses to real
 (WAM) instructions and executes them on a tagged-heap register machine —
 the same execution model behind SWI-Prolog, GNU Prolog, and SICStus.
 
-**Status: Phase 3 (adversarial review) complete.** All 4 required
-features work end-to-end: the parser, the WAM compiler + abstract
-machine, the built-in predicate library, and the golden-model
-differential oracle. 75 tests green, including a full
-solution-for-solution cross-check between the compiled WAM and the
-independent tree-walking interpreter across N-Queens, the Zebra puzzle,
-cut, if-then-else, negation, catch/throw, assert/retract, and DCG
-grammars. See `PLAN.md` for the architecture/feature list and
-`REVIEW.md` for the adversarial review (10 real bugs found and fixed,
-most of them genuine WAM choice-point/register-lifetime bugs caught
-only by the golden-model oracle disagreeing with the compiled answer).
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features
+plus both stretch features are done: the parser, the WAM compiler +
+abstract machine, the built-in predicate library, the golden-model
+differential oracle, an interactive HTML WAM execution-trace visualizer
+(`warren viz`), and DCG (`-->`) support with a real arithmetic-expression
+grammar example. 82 tests green. See `PLAN.md` for the
+architecture/feature list and `REVIEW.md` for the adversarial review (10
+real bugs found and fixed, most of them genuine WAM choice-point/
+register-lifetime bugs caught only by the golden-model oracle
+disagreeing with the compiled answer).
 
 ## Quick start
 

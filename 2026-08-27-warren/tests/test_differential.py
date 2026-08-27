@@ -102,6 +102,7 @@ def test_wam_matches_golden(engines, q):
 @pytest.mark.parametrize("filename,query", [
     ("queens.pl", "count_solutions(6,C)."),
     ("zebra.pl", "zebra(Owner,WaterDrinker,Street)."),
+    ("expr_dcg.pl", "calc(['(',3,+,4,')',*,2],V)."),
 ])
 def test_example_programs_agree(filename, query):
     wam = Engine(backend="wam")
