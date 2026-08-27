@@ -21,8 +21,15 @@ def compare_terms(a, b):
     if ra == 0:
         return -1 if a.id < b.id else (1 if a.id > b.id else 0)
     if ra == 1:
+        # Standard order compares Nums by value, but -- crucially for
+        # ==/2 and compare/3 -- 1 and 1.0 are never the SAME term
+        # despite being arithmetically equal (=:=), so equal-valued
+        # int/float must not collapse to 0. ISO's tie-break: the float
+        # sorts before the int of the same value.
         if a.value == b.value:
-            return 0
+            if isinstance(a.value, int) == isinstance(b.value, int):
+                return 0
+            return -1 if isinstance(a.value, float) else 1
         return -1 if a.value < b.value else 1
     if ra == 2:
         if a.name == b.name:

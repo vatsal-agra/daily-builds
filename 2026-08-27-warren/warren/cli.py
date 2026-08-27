@@ -1,18 +1,34 @@
 """Warren's command-line interface."""
 import argparse
 import sys
+import threading
 
 from .engine import Engine
 from .pretty import term_to_str
 from .errors import PrologError
+from .lexer import LexError
+from .parser import ParseError
+
+
+class CliError(Exception):
+    """A clean, user-facing error message (no Python traceback)."""
 
 
 def cmd_run(args):
     eng = Engine(backend=args.backend)
-    eng.consult_file(args.file)
+    _consult_file_or_die(eng, args.file)
     if args.goal:
-        _run_goal(eng, args.goal, all_solutions=args.all)
+        return _run_goal(eng, args.goal, all_solutions=args.all)
     return 0
+
+
+def _consult_file_or_die(eng, path):
+    try:
+        eng.consult_file(path)
+    except FileNotFoundError:
+        raise CliError(f"no such file: {path}")
+    except (ParseError, LexError) as e:
+        raise CliError(f"syntax error in {path}: {e}")
 
 
 def _run_goal(eng, goal_text, all_solutions=False):
@@ -28,8 +44,14 @@ def _run_goal(eng, goal_text, all_solutions=False):
                 break
         if not found:
             print("false.")
+    except (ParseError, LexError) as e:
+        print(f"warren: syntax error in goal: {e}", file=sys.stderr)
+        return 1
     except PrologError as e:
-        print(f"error: {term_to_str(e.term, quoted=True)}", file=sys.stderr)
+        print(f"warren: unhandled exception: {term_to_str(e.term, quoted=True)}", file=sys.stderr)
+        return 1
+    except RecursionError:
+        print("warren: recursion limit exceeded (very deep term or infinite recursion)", file=sys.stderr)
         return 1
     return 0
 
@@ -37,7 +59,7 @@ def _run_goal(eng, goal_text, all_solutions=False):
 def cmd_repl(args):
     eng = Engine(backend=args.backend)
     if args.file:
-        eng.consult_file(args.file)
+        _consult_file_or_die(eng, args.file)
     print("Warren -- a Prolog on a real WAM. ':- halt.' or Ctrl-D to exit.")
     while True:
         try:
@@ -100,7 +122,7 @@ def cmd_test(args):
 def cmd_viz(args):
     from .viz import run_and_export_trace
     eng = Engine(backend="wam")
-    eng.consult_file(args.file)
+    _consult_file_or_die(eng, args.file)
     out_path = run_and_export_trace(eng, args.goal, args.out)
     print(f"wrote {out_path}")
     return 0
@@ -132,7 +154,56 @@ def main(argv=None):
     p_viz.set_defaults(func=cmd_viz)
 
     ns = parser.parse_args(argv)
-    return ns.func(ns)
+    return _run_with_big_stack(lambda: _dispatch(ns))
+
+
+def _dispatch(ns):
+    try:
+        return ns.func(ns)
+    except CliError as e:
+        print(f"warren: {e}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print()
+        return 130
+
+
+def _run_with_big_stack(fn):
+    """Run fn() on a worker thread with a much larger C stack than the
+    default (~8MB), so warren.setrecursionlimit's raised Python-level
+    limit (see warren/__init__.py) fails as a clean RecursionError on
+    pathological input rather than a hard segfault on merely large
+    input (e.g. a several-thousand-element list)."""
+    result = {}
+
+    def target():
+        try:
+            result["value"] = fn()
+        except BaseException as e:
+            result["exc"] = e
+
+    old_stack_size = threading.stack_size()
+    try:
+        threading.stack_size(512 * 1024 * 1024)
+    except (ValueError, RuntimeError):
+        pass  # platform doesn't support a custom stack size; proceed with the default
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    try:
+        t.join()
+    except KeyboardInterrupt:
+        # Ctrl-C only ever lands on the main thread; let the process
+        # exit immediately (the worker is a daemon thread) rather than
+        # hanging on a join() that will never see the interrupt.
+        print()
+        return 130
+    try:
+        threading.stack_size(old_stack_size)
+    except (ValueError, RuntimeError):
+        pass
+    if "exc" in result:
+        raise result["exc"]
+    return result.get("value", 0)
 
 
 if __name__ == "__main__":
