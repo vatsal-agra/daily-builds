@@ -5,8 +5,24 @@ A from-scratch Prolog implementation that compiles clauses to real
 (WAM) instructions and executes them on a tagged-heap register machine —
 the same execution model behind SWI-Prolog, GNU Prolog, and SICStus.
 
-**Status: Phase 1 (plan) complete.** See `PLAN.md` for the full
-architecture and feature list. Implementation starts in Phase 2.
+**Status: Phase 2 (core build) complete.** All 4 required features work
+end-to-end: the parser, the WAM compiler + abstract machine, the built-in
+predicate library, and the golden-model differential oracle (65
+tests, including a full solution-for-solution cross-check between the
+compiled WAM and the independent tree-walking interpreter across N-Queens,
+the Zebra puzzle, cut, if-then-else, negation, catch/throw, assert/retract,
+and DCG grammars). See `PLAN.md` for the full architecture and feature
+list.
+
+## Quick start
+
+```
+python3 -m warren run examples/family.pl "ancestor(tom, X)." --all
+python3 -m warren run examples/queens.pl "count_solutions(6, C)."
+python3 -m warren run examples/zebra.pl "zebra(Owner, WaterDrinker, Street)."
+python3 -m warren repl examples/family.pl
+python3 -m warren test
+```
 
 ## Why this, today
 
