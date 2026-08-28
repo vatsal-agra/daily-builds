@@ -1,8 +1,8 @@
 # LedgerLine
 
-> **Status: Phase 4 — Stretch features + polish complete.** Both stretch
-> features shipped; 7 real bugs found across Phases 3-4 (3 critical), all
-> fixed — see [`REVIEW.md`](./REVIEW.md). Verification next.
+> **Status: Phase 5 — Verification complete.** `demo.sh` runs the full
+> unit suite, the scripted feature walkthrough, and a headless-Chromium
+> check of the live explorer — all green, twice in a row. Shipping next.
 
 A from-scratch proof-of-work blockchain and cryptocurrency network — real
 secp256k1 ECDSA wallets, a UTXO ledger, proof-of-work mining, and a genuine
@@ -56,5 +56,17 @@ and 3 medium issues (unvalidated recipient addresses, and the same
 receiver-is-an-active-miner equality race caught twice in two different
 demo sections) — all fixed, all covered by regression tests.
 
-Remaining phases (verification, ship) still to come — this README will be
-filled in fully at the end.
+## Verification
+
+```bash
+./demo.sh
+```
+
+Runs, in order: the full unit test suite (98 tests), the scripted CLI
+walkthrough of every required + stretch feature (`ledgerline demo`), and
+a headless-Chromium check of the live web explorer (real node data
+renders, zero console errors, a send-coins round trip through the actual
+UI form succeeds) — 5 checks, exits non-zero on the first failure.
+
+Remaining phase (ship) still to come — this README will be filled in
+fully at the end.
