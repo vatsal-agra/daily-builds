@@ -25,7 +25,13 @@ async function main() {
 
   const failures = [];
 
-  await page.goto(url, { waitUntil: "networkidle", timeout: 20000 });
+  // NOT "networkidle": the explorer polls /api/status etc. every 1.5s
+  // forever by design (live-updating UI), so the page never has a truly
+  // quiet network window — "networkidle" intermittently times out
+  // waiting for a condition that will never actually hold, nothing to do
+  // with whether the page loaded correctly. "load" plus explicitly
+  // waiting for real rendered data (below) is what actually proves this.
+  await page.goto(url, { waitUntil: "load", timeout: 20000 });
 
   const title = await page.title();
   if (title !== "LedgerLine Explorer") failures.push(`unexpected title: ${JSON.stringify(title)}`);
@@ -58,7 +64,21 @@ async function main() {
     await page.fill("#toAddress", recipient);
     await page.fill("#amount", "5");
     await page.click("#sendForm button[type=submit]");
-    await page.waitForTimeout(1500);
+    // a fixed sleep here raced the server: with real mining threads
+    // competing for the GIL under load, /api/send can legitimately take
+    // longer than a short fixed wait — poll for the actual result
+    // instead of gambling on one fixed delay being long enough.
+    try {
+      await page.waitForFunction(
+        () => {
+          const el = document.querySelector("#sendMsg");
+          return el && el.textContent && el.textContent.trim().length > 0;
+        },
+        { timeout: 10000 },
+      );
+    } catch {
+      // fall through — the empty/timeout case is reported below
+    }
     const sendMsg = await page.locator("#sendMsg").textContent();
     if (!sendMsg || !sendMsg.toLowerCase().includes("sent")) {
       failures.push(`send form did not report success: ${JSON.stringify(sendMsg)}`);

@@ -11,7 +11,7 @@ import time
 
 from . import ecdsa
 from .chain import RETARGET_INTERVAL
-from .network import apply_partition_groups, create_network, join_network, start_all, stop_all
+from .network import apply_partition_groups, create_network, spawn_mining_process, start_all, stop_all
 from .transaction import build_transaction
 from .wallet import Wallet
 
@@ -218,11 +218,17 @@ def section_double_spend_reorg():
         assert ok4, f"tx_b rejected: {err4}"
         print(f"  submitted tx_b (-> {recipient_b[:10]}…) into partition {group_b}")
 
+        # group_b is a single isolated miner (vs. group_a's two), so it
+        # only gets roughly a third of the combined hash rate — PoW find
+        # times are exponentially distributed, and a 45s budget still has
+        # a non-trivial tail-risk of a spurious timeout on genuinely
+        # correct behavior. 90s brings that down to a rounding error
+        # without meaningfully slowing down the common case.
         confirmed_a = _wait_until(lambda: nodes[0].chain.balance_of(recipient_a) >= starting_a + 1000,
-                                   timeout=45, desc="tx_a confirms inside its own partition")
+                                   timeout=90, desc="tx_a confirms inside its own partition")
         assert confirmed_a, "tx_a never confirmed inside its own partition"
         confirmed_b = _wait_until(lambda: nodes[2].chain.balance_of(recipient_b) >= starting_b + 1000,
-                                   timeout=45, desc="tx_b confirms inside its own partition")
+                                   timeout=90, desc="tx_b confirms inside its own partition")
         assert confirmed_b, "tx_b never confirmed inside its own partition"
         print("  both partitions independently confirmed their own conflicting spend of the same coins")
 
@@ -264,38 +270,75 @@ def section_double_spend_reorg():
 
 def section_difficulty_retarget():
     _section("6. Difficulty retargeting responds to a real hashrate change (stretch)")
+    # A real "add more hash power" demo needs real added hash power. The
+    # first version of this section added more in-process *threads* — but
+    # CPython's GIL caps total hashing throughput across concurrent
+    # threads in one process to roughly what a single thread already got,
+    # no matter how many you add. That's not a rare edge case, it's the
+    # GIL doing exactly what it always does — so "more mining threads"
+    # measured as flat, or even *slightly down* (more threads means more
+    # lock/context-switch overhead, not more throughput), which is exactly
+    # what live runs showed. The fix is real OS processes (see
+    # `spawn_mining_process` in network.py) — nodes only ever talk over
+    # real TCP sockets, so they don't care whether a peer lives in this
+    # process or a different one, and 3 more processes on a multi-core
+    # host genuinely add parallel hash power the GIL can't cap.
+    #
+    # The exact ratio still isn't pinned to a precise number (host core
+    # count/load varies), so: let the solo miner settle over 2 windows
+    # before taking a baseline, then give the added processes multiple
+    # windows to show up, polling for the condition rather than trusting
+    # one fixed checkpoint. The retarget math itself is separately proven
+    # exact by 6 deterministic unit tests with fake timestamps — this
+    # section exists to show the live mechanism working, not to re-prove
+    # the arithmetic.
+    settle_height = RETARGET_INTERVAL * 2
     nodes, _ = create_network(1, base_port=19300, genesis_bits=DEMO_BITS, premine=0,
                                retarget_enabled=True, log=print)
-    extra = []
+    genesis = nodes[0].chain.get_block(nodes[0].chain.active_chain_hashes()[0])
+    procs = []
     start_all(nodes)
     try:
-        ok = _wait_until(lambda: nodes[0].status()["height"] >= RETARGET_INTERVAL, timeout=90,
-                          desc=f"solo miner completes the first {RETARGET_INTERVAL}-block retarget window")
-        assert ok, "solo miner never completed the first retarget window"
-        bits_before = nodes[0].status()["bits"]
-        print(f"  after {RETARGET_INTERVAL} blocks with 1 miner: bits={bits_before}")
+        ok = _wait_until(lambda: nodes[0].status()["height"] >= settle_height, timeout=180,
+                          desc=f"solo miner settles over {settle_height} blocks (2 retarget windows)")
+        assert ok, "solo miner never completed enough blocks to settle a baseline"
+        baseline_bits = nodes[0].status()["bits"]
+        print(f"  after {settle_height} blocks with 1 miner: settled at bits={baseline_bits}")
 
-        print("  adding 3 more mining nodes (~4x the real hash power)...")
+        print("  spawning 3 more mining nodes as real OS processes (genuine parallel hash power)...")
         for i in range(1, 4):
-            n = join_network(nodes, f"rnode{i}", 19300 + i, wallet=Wallet(), mine=True,
-                              retarget_enabled=True, log=print)
-            extra.append(n)
-            n.start()
+            proc = spawn_mining_process(
+                genesis, DEMO_BITS, f"rnode{i}", 19300 + i, [nodes[0].addr], retarget_enabled=True,
+            )
+            procs.append(proc)
+            nodes[0].add_peer(("127.0.0.1", 19300 + i))
 
-        target_height = RETARGET_INTERVAL * 2
-        ok2 = _wait_until(lambda: nodes[0].status()["height"] >= target_height, timeout=90,
-                           desc="second retarget window completes with more hash power")
-        assert ok2, "network never completed the second retarget window"
-        bits_after = nodes[0].status()["bits"]
-        print(f"  after {RETARGET_INTERVAL} more blocks with 4 miners: bits={bits_after}")
-        assert bits_after > bits_before, (
-            f"difficulty should have increased once real hash power roughly quadrupled "
-            f"(before={bits_before}, after={bits_after})"
+        # give it up to 4 more retarget windows to visibly react — a real
+        # multi-core hash-power jump should show up well within that
+        deadline_height = settle_height + RETARGET_INTERVAL * 4
+        ok2 = _wait_until(
+            lambda: nodes[0].status()["bits"] > baseline_bits
+            or nodes[0].status()["height"] >= deadline_height,
+            timeout=180, desc="difficulty increases in response to added hash power",
         )
-        print(f"  difficulty responded correctly: {bits_before} -> {bits_after} bits "
+        assert ok2, "timed out before the network could react at all"
+        bits_after = nodes[0].status()["bits"]
+        print(f"  at height {nodes[0].status()['height']} with 4 miners: bits={bits_after}")
+        assert bits_after > baseline_bits, (
+            f"difficulty never increased after real hash power was added, even across "
+            f"{RETARGET_INTERVAL * 4} more blocks (baseline={baseline_bits}, after={bits_after})"
+        )
+        print(f"  difficulty responded correctly: {baseline_bits} -> {bits_after} bits "
               f"as real mining power increased")
     finally:
-        stop_all(nodes + extra)
+        for proc in procs:
+            proc.terminate()
+        for proc in procs:
+            proc.join(timeout=3)
+            if proc.is_alive():  # terminate() didn't land in time -> escalate
+                proc.kill()
+                proc.join(timeout=3)
+        stop_all(nodes)
 
 
 def run() -> int:

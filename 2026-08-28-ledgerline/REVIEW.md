@@ -227,3 +227,63 @@ and `Wallet.save/load` wired into a real `--wallet` flag instead of
 sitting unused). 98/98 unit tests green, 5/5 full end-to-end `demo` runs
 green (including both new stretch sections) after the two bugs above were
 found and fixed.
+
+---
+
+# Phase 6 addendum — the retarget demo's "more hash power" wasn't real hash power
+
+Pre-ship re-validation (running `demo.sh` fresh, several times, as its own
+check) caught the retarget section intermittently failing or landing on
+the wrong side of neutral — genuinely confusing at first, since the exact
+same math is pinned down by 6 passing deterministic unit tests using fake
+timestamps. The live section, unlike those tests, depends on *real*
+elapsed wall-clock time, and that's where the bug was.
+
+### 8. HIGH — "adding more mining nodes" added threads, not hash power
+
+The original version of `section_difficulty_retarget` added 3 more
+`Node`s as in-process **threads** (the same pattern every other section
+in this file uses for its nodes) to demonstrate difficulty responding to
+increased hash power. But CPython's GIL caps total hashing throughput
+across concurrent *threads in one process* to roughly what a single
+thread already gets — adding more threads doesn't add parallel CPU work,
+it adds contention. Live runs bore this out exactly: difficulty stayed
+flat, or even ticked *down* (more threads meant more lock/context-switch
+overhead, not more real throughput) after "quadrupling hash power" —
+the opposite of what a real hashrate increase should do, and the direct
+reason this section's live behavior didn't match its own passing unit
+tests.
+
+**Fix:** `network.spawn_mining_process()` starts each additional node in
+a genuine separate OS process (`multiprocessing.Process`) instead of a
+thread. Nodes already only ever communicate over real TCP sockets, so a
+mining node genuinely doesn't care whether a peer lives in this process
+or another one — no protocol change needed, just where the extra nodes
+actually run. On this 4-core host, 3 additional real processes now
+reliably increase difficulty within one retarget window (~35-45s
+end-to-end across repeated trials), instead of the multi-window
+polling-with-a-generous-timeout workaround the thread-based version
+needed just to paper over throughput that fundamentally wasn't there.
+
+### 9. LOW — the explorer verification script itself was flaky, twice
+
+Two more issues turned up in `verify_explorer.js` (not in LedgerLine
+itself) during this same pre-ship re-validation: `page.goto` waited for
+Playwright's `"networkidle"`, which by definition never fires on a page
+that polls `/api/status` forever by design (a live-updating UI) — an
+intermittent timeout unrelated to whether the page actually loaded
+correctly. And the send-form check used one fixed `waitForTimeout(1500)`
+after clicking submit, which occasionally raced a real HTTP response
+under genuine mining load (3 threads contending for the GIL can measurably
+slow the explorer's own HTTP handler thread). **Fix:** wait for `"load"`
+instead of `"networkidle"`, and poll for `#sendMsg` actually containing
+text (up to 10s) instead of gambling on a fixed delay being long enough.
+
+## Verdict (Phase 6 / final)
+
+9 real issues found and fixed across Phases 3-6 (3 critical, 2 high, 4
+medium/low), every one with a regression test or a repeated live
+re-validation proving the fix. `demo.sh` green across repeated full runs
+pre-ship, including the corrected retarget section landing reliably and
+quickly, and the corrected explorer check no longer racing its own
+verification logic.

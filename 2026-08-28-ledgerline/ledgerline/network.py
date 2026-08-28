@@ -2,6 +2,8 @@
 plus N independent `Node`s wired into a full-mesh topology on localhost."""
 from __future__ import annotations
 
+import multiprocessing
+import time
 from typing import List, Optional, Tuple
 
 from .block import Block, make_genesis_block
@@ -82,6 +84,54 @@ def join_network(
         node.add_peer(other.addr)
         other.add_peer(node.addr)
     return node
+
+
+def _mining_process_main(
+    genesis_dict: dict, genesis_bits: int, name: str, host: str, port: int,
+    peer_addrs: List[Tuple[str, int]], retarget_enabled: bool,
+) -> None:
+    """Entry point run inside a real separate OS process by
+    `spawn_mining_process`. Deliberately NOT an in-process thread: CPython's
+    GIL caps total hashing throughput across concurrent threads in one
+    process to roughly what a single thread gets, no matter how many
+    threads you add — a fresh OS process gets its own interpreter and its
+    own GIL, so this is what actually adds parallel hash power rather than
+    just adding contention. Nodes only ever talk over real TCP sockets, so
+    a mining node genuinely doesn't care whether its peers live in this
+    process or a different one."""
+    node = Node(
+        name=name, host=host, port=port,
+        genesis=Block.from_dict(genesis_dict), genesis_bits=genesis_bits,
+        wallet=Wallet(), mine=True, retarget_enabled=retarget_enabled, log=None,
+    )
+    for addr in peer_addrs:
+        node.add_peer(tuple(addr))
+    node.start()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    node.stop()
+
+
+def spawn_mining_process(
+    genesis_block: Block, genesis_bits: int, name: str, port: int,
+    peer_addrs: List[Tuple[str, int]], host: str = "127.0.0.1", retarget_enabled: bool = False,
+) -> multiprocessing.Process:
+    """Start a mining node in a real separate OS process — see
+    `_mining_process_main`. Returns the live `multiprocessing.Process`;
+    call `.terminate()` (then `.join()`) to stop it. The caller is
+    responsible for wiring the *other* side of the peer relationship too
+    (e.g. `existing_node.add_peer((host, port))`) since this process's
+    node only learns about the peers it's told about here."""
+    proc = multiprocessing.Process(
+        target=_mining_process_main,
+        args=(genesis_block.to_dict(), genesis_bits, name, host, port, list(peer_addrs), retarget_enabled),
+        daemon=True,
+    )
+    proc.start()
+    return proc
 
 
 def start_all(nodes: List[Node]) -> None:
