@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LedgerLine Explorer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0e14;
+    --panel: #131722;
+    --panel-2: #1a1f2e;
+    --border: #262c3d;
+    --text: #e7ebf3;
+    --muted: #8892a6;
+    --accent: #4fd1c5;
+    --accent-2: #f6ad55;
+    --danger: #f56565;
+    --ok: #68d391;
+    --mono: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    padding: 18px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 12px;
+    background: linear-gradient(180deg, var(--panel), var(--bg));
+  }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: 0.02em; }
+  header .tag {
+    font-family: var(--mono); font-size: 12px; color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 999px; padding: 2px 10px;
+  }
+  header .sub { color: var(--muted); font-size: 12.5px; }
+  main {
+    display: grid; grid-template-columns: 300px 1fr 320px; gap: 16px;
+    padding: 16px; align-items: start;
+  }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; overflow: hidden;
+  }
+  .panel h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted); margin: 0 0 10px;
+  }
+  .node-card {
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;
+    cursor: pointer; background: var(--panel-2); transition: border-color 0.15s;
+  }
+  .node-card:hover { border-color: var(--accent); }
+  .node-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .node-card .name { font-weight: 600; display: flex; justify-content: space-between; }
+  .node-card .addr { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .node-card .stats { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 6px; font-size: 12px; }
+  .node-card .stats span b { color: var(--text); font-family: var(--mono); }
+  .pill { border-radius: 999px; padding: 1px 8px; font-size: 11px; font-family: var(--mono); }
+  .pill.mining { background: rgba(79,209,197,0.15); color: var(--accent); }
+  .pill.partitioned { background: rgba(245,101,101,0.15); color: var(--danger); }
+  .block-row {
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+    background: var(--panel-2);
+  }
+  .block-row .top { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; }
+  .block-row .hash { color: var(--accent); }
+  .block-row .txs { margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .tx-item { font-family: var(--mono); font-size: 11.5px; padding: 3px 0; border-top: 1px dashed var(--border); }
+  .tx-item:first-child { border-top: none; }
+  .coinbase { color: var(--accent-2); }
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+  th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  form label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  input, select {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 7px 9px; font: inherit; font-family: var(--mono); font-size: 12.5px;
+  }
+  button {
+    margin-top: 12px; width: 100%; background: var(--accent); color: #06231f; border: none;
+    border-radius: 6px; padding: 9px; font-weight: 700; cursor: pointer; font-size: 13px;
+  }
+  button:hover { filter: brightness(1.08); }
+  button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  .msg { margin-top: 8px; font-size: 12.5px; }
+  .msg.ok { color: var(--ok); }
+  .msg.err { color: var(--danger); }
+  .group-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+  .chip {
+    font-family: var(--mono); font-size: 11px; padding: 3px 8px; border-radius: 999px;
+    border: 1px solid var(--border); cursor: pointer; user-select: none;
+  }
+  .chip.active { background: var(--accent); color: #06231f; border-color: var(--accent); }
+  .empty { color: var(--muted); font-style: italic; padding: 12px 0; }
+  #chainList, #mempoolWrap { max-height: 70vh; overflow-y: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>LedgerLine</h1>
+  <span class="tag">block explorer</span>
+  <span class="sub" id="headerSub">connecting…</span>
+</header>
+<main>
+  <section class="panel">
+    <h2>Nodes</h2>
+    <div id="nodeList"><div class="empty">loading…</div></div>
+  </section>
+
+  <section class="panel">
+    <h2 id="chainTitle">Chain</h2>
+    <div id="chainList"><div class="empty">select a node</div></div>
+  </section>
+
+  <div style="display:flex; flex-direction:column; gap:16px;">
+    <section class="panel">
+      <h2>Mempool</h2>
+      <div id="mempoolWrap"><div class="empty">select a node</div></div>
+    </section>
+
+    <section class="panel">
+      <h2>Send Coins</h2>
+      <form id="sendForm">
+        <label>From (selected node's wallet)</label>
+        <input id="fromLabel" disabled value="—">
+        <label>To address</label>
+        <input id="toAddress" placeholder="paste an address from another node" required>
+        <label>Amount</label>
+        <input id="amount" type="number" min="1" value="10" required>
+        <label>Fee</label>
+        <input id="fee" type="number" min="0" value="1" required>
+        <button type="submit">Send Transaction</button>
+        <div class="msg" id="sendMsg"></div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>Network Partition</h2>
+      <div id="partitionCtl"></div>
+      <button class="secondary" id="healBtn">Heal network (one group)</button>
+      <div class="msg" id="partitionMsg"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+let selectedNode = null;
+let lastNodes = [];
+
+function fmtAddr(a) { return a ? a.slice(0, 10) + "…" + a.slice(-6) : ""; }
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+async function fetchJSON(url, opts) {
+  const res = await fetch(url, opts);
+  return res.json();
+}
+
+function renderNodes(nodes) {
+  lastNodes = nodes;
+  const list = document.getElementById("nodeList");
+  list.innerHTML = "";
+  if (!nodes.length) { list.appendChild(el("div", "empty", "no nodes")); return; }
+  if (!selectedNode || !nodes.find(n => n.name === selectedNode)) selectedNode = nodes[0].name;
+
+  nodes.forEach(n => {
+    const card = el("div", "node-card" + (n.name === selectedNode ? " selected" : ""));
+    const nameRow = el("div", "name");
+    nameRow.appendChild(document.createTextNode(n.name));
+    const pills = el("span");
+    if (n.blocked.length) pills.appendChild(el("span", "pill partitioned", "partitioned"));
+    nameRow.appendChild(pills);
+    card.appendChild(nameRow);
+    card.appendChild(el("div", "addr", n.addr));
+    const stats = el("div", "stats");
+    stats.appendChild(mkStat("height", n.height));
+    stats.appendChild(mkStat("balance", n.balance));
+    stats.appendChild(mkStat("peers", n.peers.length));
+    stats.appendChild(mkStat("mempool", n.mempool_size));
+    stats.appendChild(mkStat("mined", n.blocks_mined));
+    stats.appendChild(mkStat("reorgs", n.reorg_count));
+    card.appendChild(stats);
+    card.addEventListener("click", () => { selectedNode = n.name; refreshAll(); });
+    list.appendChild(card);
+  });
+
+  document.getElementById("headerSub").textContent =
+    `${nodes.length} node(s) · tallest chain height ${Math.max(...nodes.map(n => n.height))}`;
+}
+
+function mkStat(label, value) {
+  const s = el("span");
+  const b = el("b", null, String(value));
+  s.appendChild(document.createTextNode(label + ": "));
+  s.appendChild(b);
+  return s;
+}
+
+async function renderChain() {
+  const title = document.getElementById("chainTitle");
+  const wrap = document.getElementById("chainList");
+  if (!selectedNode) { wrap.innerHTML = ""; wrap.appendChild(el("div", "empty", "select a node")); return; }
+  title.textContent = `Chain — ${selectedNode}`;
+  const data = await fetchJSON(`/api/chain?node=${encodeURIComponent(selectedNode)}`);
+  wrap.innerHTML = "";
+  if (!data.blocks || !data.blocks.length) { wrap.appendChild(el("div", "empty", "empty chain")); return; }
+  data.blocks.slice().reverse().forEach(b => {
+    const row = el("div", "block-row");
+    const top = el("div", "top");
+    const label = `#${b.header.height} ${b.hash.slice(0, 12)}…` + (b.header.height === 0 ? " (genesis)" : "");
+    top.appendChild(el("span", "hash", label));
+    top.appendChild(el("span", null, new Date(b.header.timestamp * 1000).toLocaleTimeString()));
+    row.appendChild(top);
+    row.appendChild(el("div", "top", `bits=${b.header.bits} nonce=${b.header.nonce} txs=${b.transactions.length}`));
+    const txs = el("div", "txs");
+    b.transactions.forEach(tx => {
+      const isCoinbase = tx.inputs.length === 1 && tx.inputs[0].prev_index === -1;
+      const item = el("div", "tx-item" + (isCoinbase ? " coinbase" : ""));
+      const outSummary = tx.outputs.map(o => `${fmtAddr(o.address)}:${o.amount}`).join(", ");
+      item.textContent = (isCoinbase ? "[coinbase] -> " : `[${tx.inputs.length} in] -> `) + outSummary;
+      txs.appendChild(item);
+    });
+    row.appendChild(txs);
+    wrap.appendChild(row);
+  });
+}
+
+async function renderMempool() {
+  const wrap = document.getElementById("mempoolWrap");
+  if (!selectedNode) { wrap.innerHTML = ""; wrap.appendChild(el("div", "empty", "select a node")); return; }
+  const data = await fetchJSON(`/api/mempool?node=${encodeURIComponent(selectedNode)}`);
+  wrap.innerHTML = "";
+  if (!data.txs || !data.txs.length) { wrap.appendChild(el("div", "empty", "mempool empty")); return; }
+  const table = el("table");
+  const thead = el("tr");
+  ["txid", "fee", "outs"].forEach(h => thead.appendChild(el("th", null, h)));
+  table.appendChild(thead);
+  data.txs.forEach(([txid, fee, outs]) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", null, txid.slice(0, 12) + "…"));
+    tr.appendChild(el("td", null, String(fee)));
+    tr.appendChild(el("td", null, String(outs)));
+    table.appendChild(tr);
+  });
+  wrap.appendChild(table);
+}
+
+function renderSendForm() {
+  const node = lastNodes.find(n => n.name === selectedNode);
+  document.getElementById("fromLabel").value = node ? `${node.name}  (${fmtAddr(node.address)})` : "—";
+}
+
+document.getElementById("sendForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("sendMsg");
+  msg.textContent = "";
+  msg.className = "msg";
+  const body = {
+    from: selectedNode,
+    to: document.getElementById("toAddress").value.trim(),
+    amount: parseInt(document.getElementById("amount").value, 10),
+    fee: parseInt(document.getElementById("fee").value, 10),
+  };
+  const res = await fetchJSON("/api/send", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    msg.textContent = `sent! txid ${res.txid.slice(0, 16)}…`;
+    msg.classList.add("ok");
+    renderMempool();
+  } else {
+    msg.textContent = res.error || "send failed";
+    msg.classList.add("err");
+  }
+});
+
+let partitionSelection = new Set();
+function renderPartitionCtl() {
+  const ctl = document.getElementById("partitionCtl");
+  ctl.innerHTML = "";
+  const row = el("div", "group-row");
+  row.appendChild(el("div", null, "Click nodes to form a partition group, then apply:"));
+  ctl.appendChild(row);
+  const chipRow = el("div", "group-row");
+  lastNodes.forEach(n => {
+    const chip = el("span", "chip" + (partitionSelection.has(n.name) ? " active" : ""), n.name);
+    chip.addEventListener("click", () => {
+      partitionSelection.has(n.name) ? partitionSelection.delete(n.name) : partitionSelection.add(n.name);
+      renderPartitionCtl();
+    });
+    chipRow.appendChild(chip);
+  });
+  ctl.appendChild(chipRow);
+  const applyBtn = el("button", null, "Isolate selected group");
+  applyBtn.type = "button";
+  applyBtn.addEventListener("click", async () => {
+    const selected = [...partitionSelection];
+    const rest = lastNodes.map(n => n.name).filter(n => !selected.includes(n));
+    const groups = selected.length ? [selected, rest.length ? rest : []] : [lastNodes.map(n => n.name)];
+    const res = await fetchJSON("/api/partition", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ groups }),
+    });
+    const pm = document.getElementById("partitionMsg");
+    pm.textContent = res.ok ? "partition applied" : (res.error || "failed");
+    pm.className = "msg " + (res.ok ? "ok" : "err");
+  });
+  ctl.appendChild(applyBtn);
+}
+
+document.getElementById("healBtn").addEventListener("click", async () => {
+  const groups = [lastNodes.map(n => n.name)];
+  const res = await fetchJSON("/api/partition", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ groups }),
+  });
+  const pm = document.getElementById("partitionMsg");
+  pm.textContent = res.ok ? "network healed" : (res.error || "failed");
+  pm.className = "msg " + (res.ok ? "ok" : "err");
+});
+
+async function refreshAll() {
+  try {
+    const data = await fetchJSON("/api/status");
+    renderNodes(data.nodes || []);
+    renderSendForm();
+    renderPartitionCtl();
+    await renderChain();
+    await renderMempool();
+  } catch (e) {
+    document.getElementById("headerSub").textContent = "connection lost — retrying…";
+  }
+}
+
+refreshAll();
+setInterval(refreshAll, 1500);
+</script>
+</body>
+</html>
