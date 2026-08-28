@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from . import ecdsa
-from .crypto import hash160, pubkey_to_address, sha256d
+from .crypto import b58check_decode, pubkey_to_address, sha256d
 
 COINBASE_PREV_TXID = "0" * 64
 COINBASE_PREV_INDEX = -1
@@ -54,6 +54,19 @@ class TxIn:
 class TxOut:
     address: str
     amount: int  # integer "coin" units — never float, to keep sums exact
+
+    def __post_init__(self) -> None:
+        # A negative amount here isn't a display quirk — it's real money
+        # creation: sum(outputs) is what the input-sufficiency check in
+        # chain.py compares against, so one huge positive output paired
+        # with a compensating negative "output" credits the huge amount
+        # to a real UTXO while total_output() stays small enough to pass
+        # with next to no real input. Rejecting negative amounts at
+        # construction (covering every TxOut, including ones deserialized
+        # off the wire) closes that off at the one place all of them pass
+        # through, rather than trying to catch it at every call site.
+        if not isinstance(self.amount, int) or isinstance(self.amount, bool) or self.amount < 0:
+            raise ValueError(f"TxOut amount must be a non-negative integer, got {self.amount!r}")
 
     def to_dict(self) -> dict:
         return {"address": self.address, "amount": self.amount}
@@ -167,6 +180,18 @@ def build_transaction(
     change_address: str,
 ) -> Transaction:
     """Construct + sign a simple single-key transaction spending `utxos`."""
+    # Base58Check's whole point is catching exactly this — a mistyped or
+    # corrupted address — before money moves. Building the tx anyway would
+    # still "work": it'd produce a perfectly valid, perfectly unspendable
+    # UTXO nobody controls, silently burning the funds with no error at
+    # any point in the pipeline. Check it here, once, before any of that
+    # can happen.
+    for addr, label in ((to_address, "recipient"), (change_address, "change")):
+        try:
+            b58check_decode(addr)
+        except ValueError as exc:
+            raise ValueError(f"{label} address {addr!r} is not a valid address: {exc}") from exc
+
     total_in = sum(u[2] for u in utxos)
     if total_in < amount + fee:
         raise ValueError(f"insufficient funds: have {total_in}, need {amount + fee}")

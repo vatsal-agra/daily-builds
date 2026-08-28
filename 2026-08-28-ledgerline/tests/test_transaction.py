@@ -4,6 +4,34 @@ from ledgerline.transaction import Transaction, TxIn, TxOut, build_transaction, 
 from ledgerline.wallet import Wallet
 
 
+class TestTxOutValidation(unittest.TestCase):
+    """Regression coverage for a real money-creation bug found in the
+    Phase 3 adversarial review: a negative TxOut amount lets total_output()
+    (what chain.py compares against total input) read arbitrarily low
+    while the UTXO actually created still carries the real, huge, positive
+    amount — minting coins from nothing. See REVIEW.md."""
+
+    def test_negative_amount_rejected(self):
+        with self.assertRaises(ValueError):
+            TxOut("Labc", -1)
+
+    def test_zero_amount_allowed(self):
+        TxOut("Labc", 0)  # must not raise — a zero-value output is unusual but not unsafe
+
+    def test_non_integer_amount_rejected(self):
+        with self.assertRaises(ValueError):
+            TxOut("Labc", 1.5)
+
+    def test_bool_amount_rejected(self):
+        # isinstance(True, int) is True in Python — must be explicitly excluded
+        with self.assertRaises(ValueError):
+            TxOut("Labc", True)
+
+    def test_from_dict_rejects_negative_amount(self):
+        with self.assertRaises(ValueError):
+            TxOut.from_dict({"address": "Labc", "amount": -1000000})
+
+
 class TestTransactionSigning(unittest.TestCase):
     def setUp(self):
         self.alice = Wallet()
@@ -21,6 +49,15 @@ class TestTransactionSigning(unittest.TestCase):
         utxos = [("f" * 64, 0, 101)]
         tx = build_transaction(utxos, self.alice.privkey, self.bob.address, 100, 1, self.alice.address)
         self.assertEqual(len(tx.outputs), 1)
+
+    def test_mistyped_recipient_address_rejected(self):
+        # Base58Check exists specifically to catch a typo/corrupted address
+        # before funds move into a UTXO nobody can ever spend from — a
+        # real gap found in the Phase 3 review (see REVIEW.md), since
+        # nothing validated the checksum before this fix.
+        utxos = [("f" * 64, 0, 1000)]
+        with self.assertRaises(ValueError):
+            build_transaction(utxos, self.alice.privkey, "not a real address", 100, 1, self.alice.address)
 
     def test_insufficient_funds_raises(self):
         utxos = [("f" * 64, 0, 50)]

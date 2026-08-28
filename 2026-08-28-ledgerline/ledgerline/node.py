@@ -187,11 +187,27 @@ class Node:
             # identifies itself in its first message instead.
             self._spawn(lambda s=sock: self._inbound_handler(s))
 
+    def _dispatch_message(self, msg: dict, sock: socket.socket) -> None:
+        """`_handle_message`, but a malformed/malicious message's content
+        (bad hex, a missing field, an out-of-range value deep in some
+        transaction) must never be allowed to propagate out of here: that
+        would kill this whole reader thread — and the connection with it —
+        over a single bad message, rather than just rejecting that one
+        message and moving on to the next line, which is what a real node
+        does with a peer sending it garbage."""
+        try:
+            self._handle_message(msg, sock)
+        except (ValueError, KeyError, TypeError, IndexError) as exc:
+            self.log(f"[{self.name}] dropped malformed message ({msg.get('type', '?')}): {exc}")
+
     def _inbound_handler(self, sock: socket.socket) -> None:
         remote_addr: Optional[Addr] = None
         try:
             for line in _recvlines(sock):
-                msg = json.loads(line.decode("utf-8"))
+                try:
+                    msg = json.loads(line.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
                 if remote_addr is None:
                     hello = msg.get("from")
                     remote_addr = tuple(hello) if hello else None
@@ -201,8 +217,8 @@ class Node:
                             return
                         self._register_conn(remote_addr, sock)
                         self._sync_mempool_to(remote_addr)
-                self._handle_message(msg, sock)
-        except (ConnectionError, OSError, json.JSONDecodeError):
+                self._dispatch_message(msg, sock)
+        except (ConnectionError, OSError):
             pass
         finally:
             if remote_addr:
@@ -217,9 +233,12 @@ class Node:
     def _reader_loop(self, addr: Addr, sock: socket.socket) -> None:
         try:
             for line in _recvlines(sock):
-                msg = json.loads(line.decode("utf-8"))
-                self._handle_message(msg, sock)
-        except (ConnectionError, OSError, json.JSONDecodeError):
+                try:
+                    msg = json.loads(line.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                self._dispatch_message(msg, sock)
+        except (ConnectionError, OSError):
             pass
         finally:
             with self.lock:
@@ -300,6 +319,18 @@ class Node:
             if not accepted:
                 if message.startswith("orphan") and source:
                     self._send_to(source, {"type": "get_chain"})
+                else:
+                    # A block we (or a peer) built got rejected for a
+                    # transaction-level reason — most commonly, one of its
+                    # transactions double-spent an input someone else's
+                    # block already confirmed. Whatever tx caused that is
+                    # still sitting in our mempool right now, unrejected:
+                    # left alone, our own next mining attempt would just
+                    # re-select it, mine another whole block around it,
+                    # and have that rejected too — every future block this
+                    # node finds wasted forever on a transaction that can
+                    # never validate again. Sweep it out now.
+                    self._prune_invalid_mempool_locked()
                 return False
             self.blocks_received += 1
             if message == "already known":
@@ -312,6 +343,13 @@ class Node:
                     self.mempool.remove(txid)
                 for tx in reorg_info["disconnected_txs"]:
                     self._readd_to_mempool_locked(tx)
+                # A confirmed block can also invalidate OTHER mempool
+                # transactions it never mentions at all — e.g. a losing
+                # double-spend of the same input, still sitting there from
+                # before, that this exact block just settled in favor of
+                # someone else. Catch those too, not just the ones this
+                # block's own disconnect/connect sets named.
+                self._prune_invalid_mempool_locked()
             if tip_changed:
                 self._new_tip_event.set()
         if rebroadcast:
@@ -325,6 +363,19 @@ class Node:
         ok, fee, _ = self._check_tx_against_utxo(tx)
         if ok:
             self.mempool.add(tx, fee)
+
+    def _prune_invalid_mempool_locked(self) -> None:
+        """Drop every mempool transaction that no longer validates against
+        the current confirmed UTXO set. Call this any time the active
+        chain changes (or a self-built block gets rejected) — see the two
+        call sites in `_accept_block` for exactly which situations leave
+        mempool entries invalid without any of the normal per-tx cleanup
+        paths (reorg disconnect/connect, block confirmation) ever touching
+        them."""
+        for txid, tx in list(self.mempool.txs.items()):
+            ok, _fee, _err = self._check_tx_against_utxo(tx)
+            if not ok:
+                self.mempool.remove(txid)
 
     def _check_tx_against_utxo(self, tx: Transaction) -> Tuple[bool, int, str]:
         ok, err = tx.verify_signatures()

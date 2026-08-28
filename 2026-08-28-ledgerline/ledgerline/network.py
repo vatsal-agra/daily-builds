@@ -22,9 +22,10 @@ def create_network(
     premine: int = DEFAULT_PREMINE,
     mine: bool = True,
     premine_to_node0: bool = True,
+    premine_wallet: Optional[Wallet] = None,
     log=None,
 ) -> Tuple[List[Node], Wallet]:
-    premine_wallet = Wallet()
+    premine_wallet = premine_wallet or Wallet()
     coinbase = make_coinbase(premine_wallet.address, premine, height=0)
     genesis = make_genesis_block(coinbase, genesis_bits)
 

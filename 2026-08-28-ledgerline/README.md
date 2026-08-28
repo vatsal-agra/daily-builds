@@ -1,7 +1,8 @@
 # LedgerLine
 
-> **Status: Phase 2 — Core build complete.** All 4 required features work
-> end-to-end. Adversarial review next.
+> **Status: Phase 3 — Adversarial review complete.** 5 real bugs found and
+> fixed (2 critical — see [`REVIEW.md`](./REVIEW.md)). Stretch features +
+> polish next.
 
 A from-scratch proof-of-work blockchain and cryptocurrency network — real
 secp256k1 ECDSA wallets, a UTXO ledger, proof-of-work mining, and a genuine
@@ -33,6 +34,13 @@ python3 -m ledgerline.cli test                            # unit test suite
 4. **Mempool + live web block explorer** — fee-prioritized tx selection,
    a real-time browser UI backed by the actual running nodes.
 
-Remaining phases (adversarial review, stretch features, polish,
-verification, ship) still to come — this README will be filled in fully at
-the end.
+See [`REVIEW.md`](./REVIEW.md) for the full adversarial review: 2 critical
+bugs (a negative-output money-creation exploit, and a mempool-poisoning
+bug that could permanently cripple a node's own mining), 1 high-severity
+DoS (a malformed peer message could kill a connection's reader thread),
+and 2 medium issues (unvalidated recipient addresses, and racy test
+assertions that made Phase 2's demo intermittently flaky) — all fixed,
+all covered by regression tests.
+
+Remaining phases (stretch features, polish, verification, ship) still to
+come — this README will be filled in fully at the end.

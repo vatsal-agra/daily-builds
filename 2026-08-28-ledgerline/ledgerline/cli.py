@@ -33,12 +33,30 @@ def _print_status_table(nodes) -> None:
         )
 
 
+def _load_or_create_wallet(path_str: str) -> Wallet:
+    path = Path(path_str)
+    if path.exists():
+        try:
+            wallet = Wallet.load(path)
+        except (ValueError, KeyError, OSError) as exc:
+            print(f"error: {path} doesn't look like a valid wallet file ({exc})", file=sys.stderr)
+            raise SystemExit(1)
+        print(f"loaded existing wallet from {path}: {wallet.address}")
+    else:
+        wallet = Wallet()
+        wallet.save(path)
+        print(f"created new wallet, saved to {path}: {wallet.address}")
+    return wallet
+
+
 def cmd_network(args: argparse.Namespace) -> int:
     def log(msg):
         print(msg)
 
+    premine_wallet = _load_or_create_wallet(args.wallet) if args.wallet else None
     nodes, premine_wallet = create_network(
-        args.nodes, base_port=args.port, genesis_bits=args.bits, mine=True, log=log
+        args.nodes, base_port=args.port, genesis_bits=args.bits, mine=True,
+        premine_wallet=premine_wallet, log=log,
     )
     print(f"premine wallet: {premine_wallet.address} (funded with {1_000_000})")
     start_all(nodes)
@@ -59,8 +77,10 @@ def cmd_explorer(args: argparse.Namespace) -> int:
     def log(msg):
         print(msg)
 
+    premine_wallet = _load_or_create_wallet(args.wallet) if args.wallet else None
     nodes, premine_wallet = create_network(
-        args.nodes, base_port=args.port, genesis_bits=args.bits, mine=True, log=log
+        args.nodes, base_port=args.port, genesis_bits=args.bits, mine=True,
+        premine_wallet=premine_wallet, log=log,
     )
     print(f"premine wallet: {premine_wallet.address}")
     start_all(nodes)
@@ -101,6 +121,8 @@ def build_parser() -> argparse.ArgumentParser:
     net.add_argument("--port", type=int, default=18500)
     net.add_argument("--bits", type=int, default=18, help="PoW difficulty (leading zero bits)")
     net.add_argument("--seconds", type=int, default=30)
+    net.add_argument("--wallet", help="load/save node0's (premine) wallet from this JSON file, "
+                                       "so its address stays the same across runs")
     net.set_defaults(func=cmd_network)
 
     exp = sub.add_parser("explorer", help="run a multi-node network + the live web explorer")
@@ -108,6 +130,8 @@ def build_parser() -> argparse.ArgumentParser:
     exp.add_argument("--port", type=int, default=18500)
     exp.add_argument("--bits", type=int, default=18)
     exp.add_argument("--http-port", type=int, default=8765)
+    exp.add_argument("--wallet", help="load/save node0's (premine) wallet from this JSON file, "
+                                       "so its address stays the same across runs")
     exp.set_defaults(func=cmd_explorer)
 
     demo = sub.add_parser("demo", help="scripted end-to-end walkthrough of every feature")
