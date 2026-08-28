@@ -156,10 +156,74 @@ since deviating from the Bitcoin-matching construction would be a
 regression against the project's own stated design goal, not an
 improvement.
 
-## Verdict
+## Verdict (Phase 3)
 
 5 real issues found (2 critical, 1 high, 2 medium), all fixed, all with
 regression tests. 84/84 unit tests green, 6/6 and then a further 6/6
 full end-to-end `demo` runs green after the fixes landed (up from
 roughly 50% intermittent failures beforehand). A fresh run-through hits
 zero of the issues listed above.
+
+---
+
+# Phase 4 addendum — 2 more real bugs, found building the stretch features
+
+Building the double-spend/reorg and difficulty-retargeting stretch demos
+immediately exercised two code paths nothing before them had ever
+touched — multi-input transactions, and a receiver-owned-by-a-miner
+double-spend target — and both broke on first real use.
+
+### 6. CRITICAL — multi-input transactions were fundamentally broken
+
+`Transaction._signing_payload()` included every input's `pubkey` in the
+signed payload. `sign_input()` sets `txin.pubkey` *before* computing that
+payload — so for a transaction with more than one input, signing input 1
+changes what input 0's signing payload now contains (input 0's own
+pubkey was already set by the time input 1 gets signed), silently
+invalidating input 0's already-computed signature the moment a second
+input is signed. Every unit test up to this point happened to only ever
+build single-input transactions (one large UTXO always covered the
+amount), so this was invisible until `section_double_spend_reorg`
+(Phase 4) called `build_transaction()` directly with every UTXO a node
+held — multiple inputs — and hit `"input 0 signature does not verify"`
+on the very first submission.
+
+**Fix:** pubkeys are no longer part of the signed payload at all — they
+don't need to be. A signature already cryptographically binds to the
+specific pubkey it's checked against (that's what `ecdsa.verify` does),
+and UTXO ownership is verified separately elsewhere
+(`pubkey_to_address(pubkey) == utxo.address`, in chain.py/node.py). What
+actually has to stay in the signed payload is `prev_txid`/`prev_index`
+— those never change during signing, and are what stops the input list
+itself from being tampered with post-signature. Covered by
+`test_multi_input_transaction_signatures_all_verify`, which independently
+re-verifies every input's signature against the shared digest, not just
+the aggregate `verify_signatures()` result.
+
+### 7. MEDIUM — the same receiver-is-an-active-miner equality race from finding #5, again, in new code
+
+`section_double_spend_reorg` used `nodes[1].wallet.address` /
+`nodes[2].wallet.address` as the two conflicting recipients — but those
+nodes are themselves actively mining the whole section, earning their
+own block rewards to those same addresses independent of which side of
+the double-spend wins. The final `== loser_starting` check intermittently
+failed exactly the way finding #5 already diagnosed, in the one place
+that lesson didn't get applied to new code.
+
+**Fix:** the double-spend demo now sends to two dedicated `Wallet()`
+instances that never mine — a merchant wallet that receives *only* the
+disputed transfer is the only way an exact-equality check against it is
+ever safe. General lesson for anyone extending this demo further: never
+use a mining node's own address as a balance-equality check target.
+
+## Verdict (Phase 4)
+
+Both stretch features shipped (difficulty retargeting responding to a
+real ~4x hashrate change; a live double-spend across a partition
+resolved by reorg) plus polish (CLI input validation with clean error
+messages instead of tracebacks or silent hangs, an edge case in
+`Mempool.select_for_block(max_count<=0)`, help text on every CLI flag,
+and `Wallet.save/load` wired into a real `--wallet` flag instead of
+sitting unused). 98/98 unit tests green, 5/5 full end-to-end `demo` runs
+green (including both new stretch sections) after the two bugs above were
+found and fixed.

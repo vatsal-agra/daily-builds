@@ -10,7 +10,9 @@ import sys
 import time
 
 from . import ecdsa
-from .network import apply_partition_groups, create_network, start_all, stop_all
+from .chain import RETARGET_INTERVAL
+from .network import apply_partition_groups, create_network, join_network, start_all, stop_all
+from .transaction import build_transaction
 from .wallet import Wallet
 
 DEMO_BITS = 18  # ~262144 hashes/block average: at ~120k hashes/sec combined
@@ -170,6 +172,132 @@ def section_fork_resolution(nodes):
           f"a real reorg happened on whichever side lost")
 
 
+def section_double_spend_reorg():
+    _section("5. Double-spend across a partition -> reorg resolves it (stretch)")
+    nodes, premine_wallet = create_network(3, base_port=19200, genesis_bits=DEMO_BITS, log=print)
+    start_all(nodes)
+    try:
+        ok = _wait_until(lambda: all(n.status()["height"] >= 2 for n in nodes), timeout=60,
+                          desc="network mines a couple of blocks")
+        assert ok, "network failed to get off the ground"
+        ok2 = _wait_until(lambda: len({n.chain.tip for n in nodes}) == 1, timeout=15,
+                           desc="converge before partitioning")
+        assert ok2, "network failed to converge before the partition"
+
+        sender = nodes[0]
+        assert sender.wallet.address == premine_wallet.address
+        # dedicated, never-mining wallets — REVIEW.md's finding #5 is the
+        # reason: nodes[1]/nodes[2] are themselves active miners earning
+        # their own block rewards the entire time this section runs, so
+        # their balance keeps climbing regardless of the double-spend
+        # outcome. A merchant wallet that receives *only* the disputed
+        # transfer is the only way an exact-equality check here is safe.
+        merchant_a, merchant_b = Wallet(), Wallet()
+        recipient_a, recipient_b = merchant_a.address, merchant_b.address
+        starting_a = sender.chain.balance_of(recipient_a)
+        starting_b = sender.chain.balance_of(recipient_b)
+
+        # the exact same UTXO, spent two conflicting ways — a real
+        # double-spend attempt, not a simulated one
+        utxos = sender.chain.utxos_for(sender.wallet.address)
+        tx_a = build_transaction(utxos, sender.wallet.privkey, recipient_a, 1000, 2, sender.wallet.address)
+        tx_b = build_transaction(utxos, sender.wallet.privkey, recipient_b, 1000, 2, sender.wallet.address)
+        assert tx_a.txid() != tx_b.txid()
+        assert {i.prev_txid for i in tx_a.inputs} & {i.prev_txid for i in tx_b.inputs}, \
+            "tx_a and tx_b must conflict on at least one input for this to be a real double-spend"
+
+        names = [n.name for n in nodes]
+        group_a, group_b = names[:2], names[2:]
+        print(f"  partitioning network: {group_a} | {group_b}")
+        apply_partition_groups(nodes, [group_a, group_b])
+
+        ok3, err3 = nodes[0].submit_transaction(tx_a)
+        assert ok3, f"tx_a rejected: {err3}"
+        print(f"  submitted tx_a (-> {recipient_a[:10]}…) into partition {group_a}")
+        ok4, err4 = nodes[2].submit_transaction(tx_b)
+        assert ok4, f"tx_b rejected: {err4}"
+        print(f"  submitted tx_b (-> {recipient_b[:10]}…) into partition {group_b}")
+
+        confirmed_a = _wait_until(lambda: nodes[0].chain.balance_of(recipient_a) >= starting_a + 1000,
+                                   timeout=45, desc="tx_a confirms inside its own partition")
+        assert confirmed_a, "tx_a never confirmed inside its own partition"
+        confirmed_b = _wait_until(lambda: nodes[2].chain.balance_of(recipient_b) >= starting_b + 1000,
+                                   timeout=45, desc="tx_b confirms inside its own partition")
+        assert confirmed_b, "tx_b never confirmed inside its own partition"
+        print("  both partitions independently confirmed their own conflicting spend of the same coins")
+
+        print("  healing the network...")
+        apply_partition_groups(nodes, [names])
+        converged = _wait_until(lambda: len({n.chain.tip for n in nodes}) == 1, timeout=45,
+                                 desc="network reconverges on one winner")
+        assert converged, "network never reconverged after healing"
+        settled = _wait_until(
+            lambda: len({n.chain.balance_of(recipient_a) for n in nodes}) == 1
+            and len({n.chain.balance_of(recipient_b) for n in nodes}) == 1,
+            timeout=15, desc="every node agrees on both recipients' final balances",
+        )
+        assert settled, "nodes disagree on the outcome after reconvergence"
+
+        final_a = nodes[0].chain.balance_of(recipient_a)
+        final_b = nodes[0].chain.balance_of(recipient_b)
+        a_won = final_a >= starting_a + 1000
+        b_won = final_b >= starting_b + 1000
+        assert a_won != b_won, (
+            f"exactly one side of a double-spend must win, got a_won={a_won} b_won={b_won} "
+            f"(final_a={final_a}, final_b={final_b})"
+        )
+        loser_recipient = recipient_b if a_won else recipient_a
+        loser_starting = starting_b if a_won else starting_a
+        loser_tx = tx_b if a_won else tx_a
+        print(f"  reorg resolved the double-spend: {'tx_a' if a_won else 'tx_b'} won; the loser's "
+              f"recipient balance reverted to {loser_starting} on every node")
+        for n in nodes:
+            assert n.chain.balance_of(loser_recipient) == loser_starting, \
+                f"{n.name} still shows the losing transfer as applied"
+            assert not n.mempool.contains(loser_tx.txid()), \
+                f"{n.name} still has the permanently-invalid losing tx sitting in its mempool"
+        print("  the losing transaction correctly evaporated — never confirmed, never stuck "
+              "pending forever — exactly why a merchant should wait for confirmations")
+    finally:
+        stop_all(nodes)
+
+
+def section_difficulty_retarget():
+    _section("6. Difficulty retargeting responds to a real hashrate change (stretch)")
+    nodes, _ = create_network(1, base_port=19300, genesis_bits=DEMO_BITS, premine=0,
+                               retarget_enabled=True, log=print)
+    extra = []
+    start_all(nodes)
+    try:
+        ok = _wait_until(lambda: nodes[0].status()["height"] >= RETARGET_INTERVAL, timeout=90,
+                          desc=f"solo miner completes the first {RETARGET_INTERVAL}-block retarget window")
+        assert ok, "solo miner never completed the first retarget window"
+        bits_before = nodes[0].status()["bits"]
+        print(f"  after {RETARGET_INTERVAL} blocks with 1 miner: bits={bits_before}")
+
+        print("  adding 3 more mining nodes (~4x the real hash power)...")
+        for i in range(1, 4):
+            n = join_network(nodes, f"rnode{i}", 19300 + i, wallet=Wallet(), mine=True,
+                              retarget_enabled=True, log=print)
+            extra.append(n)
+            n.start()
+
+        target_height = RETARGET_INTERVAL * 2
+        ok2 = _wait_until(lambda: nodes[0].status()["height"] >= target_height, timeout=90,
+                           desc="second retarget window completes with more hash power")
+        assert ok2, "network never completed the second retarget window"
+        bits_after = nodes[0].status()["bits"]
+        print(f"  after {RETARGET_INTERVAL} more blocks with 4 miners: bits={bits_after}")
+        assert bits_after > bits_before, (
+            f"difficulty should have increased once real hash power roughly quadrupled "
+            f"(before={bits_before}, after={bits_after})"
+        )
+        print(f"  difficulty responded correctly: {bits_before} -> {bits_after} bits "
+              f"as real mining power increased")
+    finally:
+        stop_all(nodes + extra)
+
+
 def run() -> int:
     try:
         section_wallets()
@@ -179,6 +307,8 @@ def run() -> int:
             section_fork_resolution(nodes)
         finally:
             stop_all(nodes)
+        section_double_spend_reorg()
+        section_difficulty_retarget()
     except AssertionError as exc:
         print(f"\nDEMO FAILED: {exc}")
         return 1

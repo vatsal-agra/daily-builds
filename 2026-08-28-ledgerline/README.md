@@ -1,8 +1,8 @@
 # LedgerLine
 
-> **Status: Phase 3 — Adversarial review complete.** 5 real bugs found and
-> fixed (2 critical — see [`REVIEW.md`](./REVIEW.md)). Stretch features +
-> polish next.
+> **Status: Phase 4 — Stretch features + polish complete.** Both stretch
+> features shipped; 7 real bugs found across Phases 3-4 (3 critical), all
+> fixed — see [`REVIEW.md`](./REVIEW.md). Verification next.
 
 A from-scratch proof-of-work blockchain and cryptocurrency network — real
 secp256k1 ECDSA wallets, a UTXO ledger, proof-of-work mining, and a genuine
@@ -25,6 +25,8 @@ python3 -m ledgerline.cli test                            # unit test suite
 
 ## What's implemented so far
 
+**Required (4/4):**
+
 1. **Blockchain core + proof-of-work mining** — real Merkle trees, PoW
    nonce search against a target, full block validation.
 2. **secp256k1 ECDSA wallets + UTXO transactions** — from-scratch elliptic
@@ -34,13 +36,25 @@ python3 -m ledgerline.cli test                            # unit test suite
 4. **Mempool + live web block explorer** — fee-prioritized tx selection,
    a real-time browser UI backed by the actual running nodes.
 
-See [`REVIEW.md`](./REVIEW.md) for the full adversarial review: 2 critical
-bugs (a negative-output money-creation exploit, and a mempool-poisoning
-bug that could permanently cripple a node's own mining), 1 high-severity
-DoS (a malformed peer message could kill a connection's reader thread),
-and 2 medium issues (unvalidated recipient addresses, and racy test
-assertions that made Phase 2's demo intermittently flaky) — all fixed,
-all covered by regression tests.
+**Stretch (2/2):**
 
-Remaining phases (stretch features, polish, verification, ship) still to
-come — this README will be filled in fully at the end.
+5. **Live double-spend across a partition, resolved by reorg** — the
+   exact same UTXO spent two conflicting ways on either side of a real
+   network partition; reconnecting triggers a genuine reorg that settles
+   on one winner and evaporates the loser (`ledgerline demo`, section 5).
+6. **Bitcoin-style difficulty retargeting** — off by default (fixed
+   difficulty), opt in with `--retarget`; demonstrated responding to a
+   real ~4x hashrate increase (more nodes joining mid-run) in
+   `ledgerline demo`, section 6.
+
+See [`REVIEW.md`](./REVIEW.md) for the full adversarial review across
+Phases 3-4: 3 critical bugs (a negative-output money-creation exploit, a
+mempool-poisoning bug that could permanently cripple a node's own mining,
+and multi-input transactions being fundamentally broken), 1 high-severity
+DoS (a malformed peer message could kill a connection's reader thread),
+and 3 medium issues (unvalidated recipient addresses, and the same
+receiver-is-an-active-miner equality race caught twice in two different
+demo sections) — all fixed, all covered by regression tests.
+
+Remaining phases (verification, ship) still to come — this README will be
+filled in fully at the end.

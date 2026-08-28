@@ -49,14 +49,29 @@ def _load_or_create_wallet(path_str: str) -> Wallet:
     return wallet
 
 
+def _validate_network_args(args: argparse.Namespace) -> None:
+    """Fail with one clear message instead of a confusing hang (--nodes 0)
+    or a raw traceback (`negative shift count` from a negative --bits)."""
+    if args.nodes < 1:
+        raise SystemExit("error: --nodes must be at least 1")
+    if not (1 <= args.bits <= 63):
+        raise SystemExit("error: --bits must be between 1 and 63")
+    if args.port < 1 or args.port > 65535 - args.nodes:
+        raise SystemExit(f"error: --port must leave room for {args.nodes} consecutive ports below 65536")
+
+
 def cmd_network(args: argparse.Namespace) -> int:
+    _validate_network_args(args)
+    if args.seconds < 1:
+        raise SystemExit("error: --seconds must be at least 1")
+
     def log(msg):
         print(msg)
 
     premine_wallet = _load_or_create_wallet(args.wallet) if args.wallet else None
     nodes, premine_wallet = create_network(
         args.nodes, base_port=args.port, genesis_bits=args.bits, mine=True,
-        premine_wallet=premine_wallet, log=log,
+        premine_wallet=premine_wallet, retarget_enabled=args.retarget, log=log,
     )
     print(f"premine wallet: {premine_wallet.address} (funded with {1_000_000})")
     start_all(nodes)
@@ -74,13 +89,17 @@ def cmd_network(args: argparse.Namespace) -> int:
 
 
 def cmd_explorer(args: argparse.Namespace) -> int:
+    _validate_network_args(args)
+    if not (1 <= args.http_port <= 65535):
+        raise SystemExit("error: --http-port must be between 1 and 65535")
+
     def log(msg):
         print(msg)
 
     premine_wallet = _load_or_create_wallet(args.wallet) if args.wallet else None
     nodes, premine_wallet = create_network(
         args.nodes, base_port=args.port, genesis_bits=args.bits, mine=True,
-        premine_wallet=premine_wallet, log=log,
+        premine_wallet=premine_wallet, retarget_enabled=args.retarget, log=log,
     )
     print(f"premine wallet: {premine_wallet.address}")
     start_all(nodes)
@@ -117,21 +136,25 @@ def build_parser() -> argparse.ArgumentParser:
     kg.set_defaults(func=cmd_keygen)
 
     net = sub.add_parser("network", help="run a headless multi-node network in the terminal")
-    net.add_argument("--nodes", type=int, default=4)
-    net.add_argument("--port", type=int, default=18500)
-    net.add_argument("--bits", type=int, default=18, help="PoW difficulty (leading zero bits)")
-    net.add_argument("--seconds", type=int, default=30)
+    net.add_argument("--nodes", type=int, default=4, help="number of mining nodes to run (>=1)")
+    net.add_argument("--port", type=int, default=18500, help="base TCP port; node i listens on port+i")
+    net.add_argument("--bits", type=int, default=18, help="PoW difficulty (leading zero bits, 1-63)")
+    net.add_argument("--seconds", type=int, default=30, help="how long to run before stopping")
     net.add_argument("--wallet", help="load/save node0's (premine) wallet from this JSON file, "
                                        "so its address stays the same across runs")
+    net.add_argument("--retarget", action="store_true",
+                      help="enable Bitcoin-style difficulty retargeting (off by default: fixed difficulty)")
     net.set_defaults(func=cmd_network)
 
     exp = sub.add_parser("explorer", help="run a multi-node network + the live web explorer")
-    exp.add_argument("--nodes", type=int, default=4)
-    exp.add_argument("--port", type=int, default=18500)
-    exp.add_argument("--bits", type=int, default=18)
-    exp.add_argument("--http-port", type=int, default=8765)
+    exp.add_argument("--nodes", type=int, default=4, help="number of mining nodes to run (>=1)")
+    exp.add_argument("--port", type=int, default=18500, help="base TCP port; node i listens on port+i")
+    exp.add_argument("--bits", type=int, default=18, help="PoW difficulty (leading zero bits, 1-63)")
+    exp.add_argument("--http-port", type=int, default=8765, help="port to serve the web explorer on")
     exp.add_argument("--wallet", help="load/save node0's (premine) wallet from this JSON file, "
                                        "so its address stays the same across runs")
+    exp.add_argument("--retarget", action="store_true",
+                      help="enable Bitcoin-style difficulty retargeting (off by default: fixed difficulty)")
     exp.set_defaults(func=cmd_explorer)
 
     demo = sub.add_parser("demo", help="scripted end-to-end walkthrough of every feature")

@@ -2,11 +2,12 @@ import time
 import unittest
 
 from ledgerline.block import Block, BlockHeader, mine_block, make_genesis_block
-from ledgerline.chain import BLOCK_REWARD, Blockchain
+from ledgerline.chain import BLOCK_REWARD, MAX_RETARGET_FACTOR, RETARGET_INTERVAL, Blockchain
 from ledgerline.transaction import build_transaction, make_coinbase
 from ledgerline.wallet import Wallet
 
 BITS = 10
+RETARGET_BITS = 6  # cheap enough to mine RETARGET_INTERVAL+ real blocks fast in a test
 
 
 def mined(prev_hash, height, txs, bits=BITS):
@@ -180,6 +181,91 @@ class TestReorg(ChainTestBase):
         self.assertEqual(self.chain.balance_of(self.alice.address), 1000)
         self.assertEqual(len(reorg["disconnected_txs"]), 1)
         self.assertEqual(reorg["disconnected_txs"][0].txid(), spend_tx.txid())
+
+
+class TestDifficultyRetargeting(unittest.TestCase):
+    """Direct, deterministic coverage of calc_next_bits — real mined
+    blocks (so PoW validation is genuinely exercised), fake timestamps
+    (so the test doesn't depend on wall-clock timing or real hashrate)."""
+
+    def setUp(self):
+        self.alice = Wallet()
+        self.cb = make_coinbase(self.alice.address, 1000, height=0)
+        self.genesis = make_genesis_block(self.cb, bits=RETARGET_BITS)
+        self.chain = Blockchain(retarget_enabled=True)
+        ok, msg, _ = self.chain.add_block(self.genesis, RETARGET_BITS)
+        assert ok, msg
+
+    def _mine_one(self, ts) -> None:
+        parent = self.chain.tip
+        height = self.chain.height() + 1
+        bits = self.chain.calc_next_bits(parent, RETARGET_BITS)
+        cb = make_coinbase(self.alice.address, BLOCK_REWARD, height=height)
+        header = BlockHeader(1, parent, "", ts, bits, 0, height)
+        block = Block(header, [cb])
+        header.merkle_root_hex = block.compute_merkle_root()
+        found = mine_block(block, stop_flag=lambda: False)
+        assert found
+        ok, msg, _ = self.chain.add_block(block, RETARGET_BITS)
+        assert ok, msg
+
+    def _mine_period(self, timestamps) -> None:
+        assert len(timestamps) == RETARGET_INTERVAL
+        for ts in timestamps:
+            self._mine_one(ts)
+
+    def test_disabled_by_default_stays_fixed(self):
+        fresh = Blockchain(retarget_enabled=False)
+        fresh.add_block(self.genesis, RETARGET_BITS)
+        self.assertEqual(fresh.calc_next_bits(fresh.tip, RETARGET_BITS), RETARGET_BITS)
+
+    def test_no_change_before_a_full_interval(self):
+        # blocks 1..RETARGET_INTERVAL-1, even mined absurdly fast, must
+        # each still carry the fixed genesis bits — only the block at
+        # height RETARGET_INTERVAL, which completes a full window, is
+        # allowed to change it (checked separately by the "faster/slower"
+        # tests above).
+        for i in range(1, RETARGET_INTERVAL):
+            self._mine_one(i * 0.001)
+            self.assertEqual(self.chain.blocks[self.chain.tip].header.bits, RETARGET_BITS)
+
+    def test_faster_than_target_increases_difficulty(self):
+        # RETARGET_INTERVAL blocks packed into a tiny real timespan -> way
+        # faster than RETARGET_TIMESPAN_SECONDS -> bits must go UP (harder)
+        timestamps = [i * 0.01 for i in range(1, RETARGET_INTERVAL + 1)]
+        self._mine_period(timestamps)
+        new_bits = self.chain.calc_next_bits(self.chain.tip, RETARGET_BITS)
+        self.assertGreater(new_bits, RETARGET_BITS)
+
+    def test_slower_than_target_decreases_difficulty(self):
+        # RETARGET_INTERVAL blocks spread over a huge timespan -> way
+        # slower than target -> bits must go DOWN (easier)
+        timestamps = [i * 1000.0 for i in range(1, RETARGET_INTERVAL + 1)]
+        self._mine_period(timestamps)
+        new_bits = self.chain.calc_next_bits(self.chain.tip, RETARGET_BITS)
+        self.assertLess(new_bits, RETARGET_BITS)
+
+    def test_single_adjustment_clamped_to_max_factor(self):
+        # an absurdly fast period must not swing difficulty by more than
+        # log2(MAX_RETARGET_FACTOR) bits in one retarget
+        timestamps = [i * 0.0001 for i in range(1, RETARGET_INTERVAL + 1)]
+        self._mine_period(timestamps)
+        new_bits = self.chain.calc_next_bits(self.chain.tip, RETARGET_BITS)
+        import math
+        self.assertLessEqual(new_bits - RETARGET_BITS, round(math.log2(MAX_RETARGET_FACTOR)))
+
+    def test_more_hashrate_over_two_periods_ratchets_difficulty_up(self):
+        # two consecutive fast periods should each independently push
+        # difficulty higher, not just the first one
+        fast = [i * 0.01 for i in range(1, RETARGET_INTERVAL + 1)]
+        self._mine_period(fast)
+        bits_after_1 = self.chain.blocks[self.chain.tip].header.bits
+        base_ts = fast[-1]
+        fast2 = [base_ts + i * 0.01 for i in range(1, RETARGET_INTERVAL + 1)]
+        self._mine_period(fast2)
+        bits_after_2 = self.chain.blocks[self.chain.tip].header.bits
+        self.assertGreater(bits_after_1, RETARGET_BITS)
+        self.assertGreaterEqual(bits_after_2, bits_after_1)
 
 
 if __name__ == "__main__":

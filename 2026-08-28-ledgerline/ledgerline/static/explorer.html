@@ -186,6 +186,7 @@ function renderNodes(nodes) {
     stats.appendChild(mkStat("mempool", n.mempool_size));
     stats.appendChild(mkStat("mined", n.blocks_mined));
     stats.appendChild(mkStat("reorgs", n.reorg_count));
+    stats.appendChild(mkStat("bits", n.bits + (n.retarget_enabled ? " (auto)" : "")));
     card.appendChild(stats);
     card.addEventListener("click", () => { selectedNode = n.name; refreshAll(); });
     list.appendChild(card);

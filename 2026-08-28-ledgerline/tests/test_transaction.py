@@ -45,6 +45,27 @@ class TestTransactionSigning(unittest.TestCase):
         self.assertEqual(tx.total_output(), 999)  # 100 to bob + 899 change
         self.assertEqual(len(tx.outputs), 2)
 
+    def test_multi_input_transaction_signatures_all_verify(self):
+        # Regression test for a real bug found in Phase 4: sign_input()
+        # sets txin.pubkey *before* computing the sighash, so for >1
+        # input, signing input 1 changes what input 0's digest now looks
+        # like (since the signing payload used to include every input's
+        # pubkey) — silently invalidating input 0's already-computed
+        # signature. Single-input transactions never exercised this path.
+        utxos = [("a" * 64, 0, 100), ("b" * 64, 1, 200), ("c" * 64, 2, 300)]
+        tx = build_transaction(utxos, self.alice.privkey, self.bob.address, 500, 5, self.alice.address)
+        self.assertEqual(len(tx.inputs), 3)
+        ok, err = tx.verify_signatures()
+        self.assertTrue(ok, err)
+        # every individual input's signature must independently verify
+        # against the same digest, not just the aggregate check
+        digest = tx.sighash()
+        for i, txin in enumerate(tx.inputs):
+            from ledgerline import ecdsa
+            pub = ecdsa.decompress_pubkey(bytes.fromhex(txin.pubkey))
+            sig = ecdsa.Signature.from_der(bytes.fromhex(txin.signature))
+            self.assertTrue(ecdsa.verify(digest, sig, pub), f"input {i} signature invalid")
+
     def test_no_change_output_when_exact(self):
         utxos = [("f" * 64, 0, 101)]
         tx = build_transaction(utxos, self.alice.privkey, self.bob.address, 100, 1, self.alice.address)

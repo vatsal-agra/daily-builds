@@ -54,6 +54,7 @@ class Node:
         wallet: Optional[Wallet] = None,
         mine: bool = True,
         max_tx_per_block: int = 50,
+        retarget_enabled: bool = False,
         log=None,
     ):
         self.name = name
@@ -67,7 +68,7 @@ class Node:
         self.max_tx_per_block = max_tx_per_block
         self.log = log or (lambda *a, **k: None)
 
-        self.chain = Blockchain()
+        self.chain = Blockchain(retarget_enabled=retarget_enabled)
         ok, msg, _ = self.chain.add_block(genesis, genesis_bits)
         assert ok, f"genesis rejected: {msg}"
 
@@ -465,6 +466,7 @@ class Node:
     # ------------------------------------------------------------------
     def status(self) -> dict:
         with self.lock:
+            tip_block = self.chain.blocks.get(self.chain.tip) if self.chain.tip else None
             return {
                 "name": self.name,
                 "addr": f"{self.host}:{self.port}",
@@ -478,4 +480,6 @@ class Node:
                 "blocks_mined": self.blocks_mined,
                 "reorg_count": self.reorg_count,
                 "cum_work": self.chain.cum_work.get(self.chain.tip, 0) if self.chain.tip else 0,
+                "bits": tip_block.header.bits if tip_block else self.genesis_bits,
+                "retarget_enabled": self.chain.retarget_enabled,
             }

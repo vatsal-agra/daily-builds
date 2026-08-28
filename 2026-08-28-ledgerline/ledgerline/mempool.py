@@ -35,6 +35,8 @@ class Mempool:
         """Highest-fee-first selection, skipping any transaction whose
         inputs conflict with one already selected (can't spend the same
         coin twice in one block)."""
+        if max_count is not None and max_count <= 0:
+            return []
         ordered = sorted(self.txs.values(), key=lambda t: self.fees.get(t.txid(), 0), reverse=True)
         chosen: List[Transaction] = []
         used_inputs: set = set()

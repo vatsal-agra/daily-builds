@@ -23,6 +23,7 @@ def create_network(
     mine: bool = True,
     premine_to_node0: bool = True,
     premine_wallet: Optional[Wallet] = None,
+    retarget_enabled: bool = False,
     log=None,
 ) -> Tuple[List[Node], Wallet]:
     premine_wallet = premine_wallet or Wallet()
@@ -40,6 +41,7 @@ def create_network(
             genesis_bits=genesis_bits,
             wallet=wallet,
             mine=mine,
+            retarget_enabled=retarget_enabled,
             log=log,
         )
         nodes.append(node)
@@ -50,6 +52,36 @@ def create_network(
                 node.add_peer(other.addr)
 
     return nodes, premine_wallet
+
+
+def join_network(
+    existing: List[Node],
+    name: str,
+    port: int,
+    host: str = "127.0.0.1",
+    wallet: Optional[Wallet] = None,
+    mine: bool = True,
+    retarget_enabled: bool = False,
+    log=None,
+) -> Node:
+    """Add a brand-new node to an already-running network, mid-run —
+    used to demonstrate difficulty retargeting responding to a real
+    hashrate change (more nodes joining and mining). It bootstraps from
+    the exact same genesis block any existing node holds, so it validates
+    into the same chain from block zero, and is wired into a full mesh
+    with every node already in `existing` (and vice versa)."""
+    reference = existing[0]
+    genesis_hash = reference.chain.active_chain_hashes()[0]
+    genesis = reference.chain.get_block(genesis_hash)
+    node = Node(
+        name=name, host=host, port=port,
+        genesis=Block.from_dict(genesis.to_dict()), genesis_bits=reference.genesis_bits,
+        wallet=wallet, mine=mine, retarget_enabled=retarget_enabled, log=log,
+    )
+    for other in existing:
+        node.add_peer(other.addr)
+        other.add_peer(node.addr)
+    return node
 
 
 def start_all(nodes: List[Node]) -> None:

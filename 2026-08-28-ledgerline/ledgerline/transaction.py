@@ -105,9 +105,23 @@ class Transaction:
         )
 
     def _signing_payload(self) -> bytes:
-        """What every input signature covers: everything except signatures."""
+        """What every input signature covers: everything except signatures
+        AND pubkeys. Pubkeys are deliberately excluded, not just
+        signatures — a real bug found in Phase 4: `sign_input` sets
+        `txin.pubkey` before computing this digest, so for a multi-input
+        transaction, signing input 1 changes what input 0's digest would
+        now be (input 0's pubkey was already set by the time input 1 is
+        signed) — silently invalidating input 0's already-computed
+        signature the moment a second input gets signed. A pubkey doesn't
+        need to be part of what's signed anyway: `ecdsa.verify` already
+        binds a signature to the specific pubkey checked against it, and
+        UTXO ownership (pubkey hashes to the address that owns the coin)
+        is verified separately in chain.py/node.py. Leaving prev_txid/
+        prev_index in is what actually matters — those never change
+        during signing, and are what stops the inputs list itself from
+        being tampered with post-signature."""
         stripped_inputs = [
-            {"prev_txid": i.prev_txid, "prev_index": i.prev_index, "pubkey": i.pubkey}
+            {"prev_txid": i.prev_txid, "prev_index": i.prev_index}
             for i in self.inputs
         ]
         payload = {
