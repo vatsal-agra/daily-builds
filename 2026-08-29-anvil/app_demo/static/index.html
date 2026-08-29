@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anvil Chat</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark">⚒</span>
+        <div>
+          <h1>Anvil</h1>
+          <p class="tagline">a chat room served by a hand-rolled HTTP + WebSocket engine</p>
+        </div>
+      </div>
+      <div class="conn-status" id="conn-status" data-state="connecting">
+        <span class="dot"></span><span class="label">connecting…</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar">
+        <div class="field">
+          <label for="room-input">Room</label>
+          <input id="room-input" value="lobby" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="name-input">Your name</label>
+          <input id="name-input" placeholder="anon" autocomplete="off">
+        </div>
+        <button id="join-btn" class="primary">Join room</button>
+        <div class="meta-box">
+          <h2>Live status</h2>
+          <dl id="status-dl">
+            <dt>Room members</dt><dd id="stat-members">–</dd>
+            <dt>Uptime</dt><dd id="stat-uptime">–</dd>
+            <dt>Total messages</dt><dd id="stat-messages">–</dd>
+          </dl>
+        </div>
+      </aside>
+
+      <section class="chat-panel">
+        <div id="log" class="log" aria-live="polite"></div>
+        <form id="composer" class="composer">
+          <input id="msg-input" placeholder="Join a room to start chatting…" autocomplete="off" disabled>
+          <button type="submit" class="primary" disabled>Send</button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/chat.js"></script>
+</body>
+</html>
