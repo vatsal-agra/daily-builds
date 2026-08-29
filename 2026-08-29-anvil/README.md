@@ -6,11 +6,14 @@ router with real Range/conditional-GET support, and a real RFC 6455
 WebSocket implementation — no `http.server`, no `asyncio`, no third-party
 frameworks.
 
-**Status: Phase 2 (core build) complete.** All 4 required features are
-implemented and verified end-to-end against a real running server (not
-mocks): see [PLAN.md](PLAN.md) for architecture, `tests/` for the
-automated suite, and `app_demo/` for a live WebSocket chat app served
-entirely by Anvil.
+**Status: Phase 3 (adversarial review) complete.** All 4 required features
+are implemented and verified end-to-end against a real running server (not
+mocks), and 11 real bugs found by attacking Anvil's own protocol handling —
+including a genuine `Expect: 100-continue` deadlock and an HTTP
+response-splitting gap — are fixed with regression tests. See
+[PLAN.md](PLAN.md) for architecture, [REVIEW.md](REVIEW.md) for the full
+findings list, `tests/` for the automated suite (101 tests), and
+`app_demo/` for a live WebSocket chat app served entirely by Anvil.
 
 ## Quickstart
 
@@ -41,6 +44,5 @@ python3 -m unittest discover -s tests
    handshake, full frame codec (masking, extended lengths, fragmentation,
    ping/pong/close), running on the exact same sockets as the HTTP side.
 
-Still to come: adversarial review (Phase 3), the reverse-proxy/load-balancer
-and raw-socket HTTP client stretch features (Phase 4), and a full
-verification pass (Phase 5).
+Still to come: the reverse-proxy/load-balancer stretch feature and further
+polish (Phase 4), and a full verification pass (Phase 5).

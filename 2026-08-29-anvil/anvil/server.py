@@ -57,7 +57,10 @@ class Connection:
         self.sock = sock
         self.addr = addr
         self.server = server
-        self.parser = RequestParser(max_body_bytes=server.max_body_bytes)
+        self.parser = RequestParser(
+            max_body_bytes=server.max_body_bytes,
+            on_expect_continue=lambda: self.queue_out(b"HTTP/1.1 100 Continue\r\n\r\n"),
+        )
         self.outbuf = bytearray()
         self.closing_after_flush = False
         self.upgraded = False
@@ -281,6 +284,8 @@ class Server:
 
     def _do_ws_handshake(self, conn, req, factory, params):
         try:
+            if req.method != "GET":
+                raise ws.WSProtocolError("WebSocket handshake must be a GET request")
             key = ws.validate_handshake(req.headers)
         except ws.WSProtocolError as e:
             resp = Response.text(f"Bad Request: {e}", status=400)

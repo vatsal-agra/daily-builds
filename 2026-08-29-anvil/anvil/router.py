@@ -131,7 +131,8 @@ def parse_range(header: str, size: int):
 
 def serve_static(req, directory, rel_path, index="index.html"):
     rel_path = rel_path or index
-    # Path-traversal guard: resolve then require the result stay under `directory`.
+    # Path-traversal guard #1: reject ".." segments lexically before ever
+    # touching the filesystem.
     full = os.path.normpath(os.path.join(directory, rel_path))
     if full != directory and not full.startswith(directory + os.sep):
         return Response.text("Forbidden", status=403)
@@ -139,9 +140,17 @@ def serve_static(req, directory, rel_path, index="index.html"):
         full = os.path.join(full, index)
     if not os.path.isfile(full):
         return Response.text("Not Found", status=404)
+    # Path-traversal guard #2: a symlink *inside* the mount can point
+    # anywhere on disk and would sail straight past guard #1 (which only
+    # inspects the request path, not what it resolves to) -- resolve and
+    # re-check before ever opening the file.
+    real_directory = os.path.realpath(directory)
+    real_full = os.path.realpath(full)
+    if real_full != real_directory and not real_full.startswith(real_directory + os.sep):
+        return Response.text("Forbidden", status=403)
 
     stat = os.stat(full)
-    etag = f'"{int(stat.st_mtime):x}-{stat.st_size:x}"'
+    etag = f'"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
     last_modified = format_http_date(stat.st_mtime)
     mime = guess_mime(full)
 

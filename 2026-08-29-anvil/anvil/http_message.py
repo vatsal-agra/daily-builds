@@ -19,6 +19,17 @@ REASON_PHRASES = {
 }
 
 
+def _check_header_value(name, value):
+    """A handler that ever interpolates untrusted input into a header
+    value (a redirect Location built from a query param, say) must not be
+    able to smuggle a literal CR/LF into the response and inject extra
+    headers or a whole second response (classic HTTP response splitting)."""
+    if "\r" in name or "\n" in name:
+        raise ValueError(f"illegal control character in header name {name!r}")
+    if "\r" in value or "\n" in value:
+        raise ValueError(f"illegal control character in header value for {name!r}: {value!r}")
+
+
 class HeaderDict:
     """Case-insensitive, order-preserving, multi-value header container.
     Small header counts (a handful to a few dozen) mean linear scans are
@@ -27,7 +38,11 @@ class HeaderDict:
     __slots__ = ("_pairs",)
 
     def __init__(self, pairs=None):
-        self._pairs = [(k, v) for k, v in pairs] if pairs else []
+        self._pairs = []
+        for k, v in (pairs or []):
+            v = str(v)
+            _check_header_value(k, v)
+            self._pairs.append((k, v))
 
     def get(self, name, default=None):
         name_l = name.lower()
@@ -42,13 +57,17 @@ class HeaderDict:
 
     def set(self, name, value):
         """Replace all existing occurrences of `name` with a single value."""
+        value = str(value)
+        _check_header_value(name, value)
         name_l = name.lower()
         self._pairs = [(k, v) for k, v in self._pairs if k.lower() != name_l]
-        self._pairs.append((name, str(value)))
+        self._pairs.append((name, value))
 
     def add(self, name, value):
         """Append without removing existing occurrences (e.g. Set-Cookie)."""
-        self._pairs.append((name, str(value)))
+        value = str(value)
+        _check_header_value(name, value)
+        self._pairs.append((name, value))
 
     def remove(self, name):
         name_l = name.lower()

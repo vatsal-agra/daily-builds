@@ -79,7 +79,9 @@ class ChatRoom:
             if self.name is None:
                 conn.send_text(json.dumps({"type": "error", "error": "join first"}))
                 return
-            text = str(msg.get("text", ""))[:2000]
+            text = str(msg.get("text", ""))[:2000].strip()
+            if not text:
+                return  # nothing to broadcast; silently drop rather than send an empty bubble
             _stats["messages"] += 1
             self._broadcast({"type": "chat", "from": self.name, "text": text,
                               "ts": time.time()})

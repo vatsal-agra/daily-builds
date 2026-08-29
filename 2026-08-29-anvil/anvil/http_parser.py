@@ -33,8 +33,17 @@ class ParseError(Exception):
 
 
 class RequestParser:
-    def __init__(self, max_body_bytes=DEFAULT_MAX_BODY_BYTES):
+    def __init__(self, max_body_bytes=DEFAULT_MAX_BODY_BYTES, on_expect_continue=None):
         self.max_body_bytes = max_body_bytes
+        # Called synchronously the instant headers finish parsing, if the
+        # request carried `Expect: 100-continue` -- fires well before the
+        # (possibly large) body has arrived, so the caller can write a
+        # "100 Continue" interim response immediately. Without this, any
+        # RFC 7231-compliant client that waits for permission before
+        # sending a large body (curl included, past a size threshold)
+        # would stall forever waiting on us, and we'd stall forever
+        # waiting on its body: a real deadlock, not a hang under load.
+        self.on_expect_continue = on_expect_continue
         self._buf = b""
         self._state = "line"
         self._start_line = None
@@ -140,14 +149,20 @@ class RequestParser:
 
     def _finish_headers(self):
         headers = HeaderDict(self._headers)
+        expect = headers.get("Expect")
+        if expect is not None and expect.strip().lower() == "100-continue" and self.on_expect_continue:
+            self.on_expect_continue()
         te = headers.get("Transfer-Encoding")
         cl = headers.get("Content-Length")
         if te is not None:
-            # Any Transfer-Encoding present -> must be (or end in) chunked
-            # for a request body per RFC 7230 3.3.1; we only speak chunked.
+            # We only understand the "chunked" coding itself -- anything
+            # layered with it (gzip, deflate, ...) would leave us decoding
+            # the chunk *framing* correctly while silently handing the
+            # still-encoded bytes to the application as if they were the
+            # real body. Reject rather than silently corrupt.
             codings = [c.strip().lower() for c in te.split(",")]
-            if codings[-1] != "chunked":
-                raise ParseError("unsupported Transfer-Encoding")
+            if codings != ["chunked"]:
+                raise ParseError(f"unsupported Transfer-Encoding: {te!r}")
             if cl is not None:
                 # 7230 3.3.3: a message with both must be treated as
                 # invalid (classic request-smuggling vector) -- reject it.

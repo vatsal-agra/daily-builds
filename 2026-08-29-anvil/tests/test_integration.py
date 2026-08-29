@@ -354,6 +354,55 @@ class TestWebSocketEndToEnd(AnvilServerTestCase):
         self.assertTrue(closed)
         sock.close()
 
+    def test_non_get_handshake_rejected(self):
+        # RFC 6455 4.1: the handshake MUST be a GET request -- regression
+        # test for a Phase 3 review finding.
+        sock = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+        key = base64.b64encode(os.urandom(16)).decode()
+        req = (
+            f"POST /ws HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\n"
+            "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n"
+            "Content-Length: 0\r\n\r\n"
+        ).encode()
+        sock.sendall(req)
+        data = sock.recv(4096)
+        self.assertIn(b"400", data)
+        sock.close()
+
+    def test_expect_100_continue_answered_before_body_needed(self):
+        # Regression test for a Phase 3 review finding: curl (and any
+        # RFC 7231-compliant client) sends "Expect: 100-continue" before a
+        # large body and waits for permission -- without support for this,
+        # both sides would stall forever.
+        sock = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+        body = b"y" * 5000
+        req = (
+            f"POST /echo HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\n"
+            f"Content-Length: {len(body)}\r\nExpect: 100-continue\r\n"
+            "Connection: close\r\n\r\n"
+        ).encode()
+        sock.sendall(req)
+        interim = b""
+        deadline = time.time() + 5
+        while time.time() < deadline and b"\r\n\r\n" not in interim:
+            interim += sock.recv(4096)
+        self.assertTrue(interim.startswith(b"HTTP/1.1 100 Continue"))
+        # Body deliberately sent only *after* seeing the 100 -- if the
+        # server were blocked waiting on it before answering, this test
+        # would hang until the socket timeout instead of completing.
+        sock.sendall(body)
+        final = b""
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            final += chunk
+        self.assertIn(b"200 OK", final.split(b"\r\n\r\n", 1)[0])
+        self.assertTrue(final.endswith(body))
+        sock.close()
+
     def test_bad_handshake_missing_key_rejected(self):
         sock = socket.create_connection(("127.0.0.1", self.port), timeout=5)
         req = (

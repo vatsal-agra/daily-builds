@@ -176,6 +176,23 @@ class TestStaticServing(unittest.TestCase):
         self.assertEqual(resp.body, b"")
         self.assertEqual(resp.headers.get("Content-Length"), str(len(self.content)))
 
+    @unittest.skipUnless(hasattr(os, "symlink"), "platform has no symlink support")
+    def test_symlink_escape_blocked(self):
+        # a symlink *inside* the mount pointing outside it sails straight
+        # past the lexical ".." check -- regression test for a Phase 3
+        # review finding.
+        secret_dir = tempfile.mkdtemp()
+        try:
+            with open(os.path.join(secret_dir, "secret.txt"), "w") as f:
+                f.write("top secret")
+            link_path = os.path.join(self.dir, "escape.txt")
+            os.symlink(os.path.join(secret_dir, "secret.txt"), link_path)
+            req = make_request("GET", "/escape.txt")
+            resp = serve_static(req, self.dir, "escape.txt")
+            self.assertEqual(resp.status, 403)
+        finally:
+            shutil.rmtree(secret_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()

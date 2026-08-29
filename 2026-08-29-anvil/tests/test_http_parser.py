@@ -117,6 +117,17 @@ class TestContentLength(unittest.TestCase):
         with self.assertRaises(ParseError):
             p.feed(b"POST / HTTP/1.1\r\nHost: h\r\nContent-Length: 1000\r\n\r\n")
 
+    def test_layered_transfer_encoding_rejected(self):
+        # gzip-then-chunked would decode the chunk *framing* correctly
+        # while handing the caller still-gzipped bytes as if they were the
+        # real body -- regression test for a Phase 3 review finding.
+        p = RequestParser()
+        with self.assertRaises(ParseError):
+            p.feed(
+                b"POST / HTTP/1.1\r\nHost: h\r\nTransfer-Encoding: gzip, chunked\r\n\r\n"
+                b"3\r\nabc\r\n0\r\n\r\n"
+            )
+
     def test_smuggling_both_headers_rejected(self):
         p = RequestParser()
         with self.assertRaises(ParseError):
@@ -194,6 +205,27 @@ class TestHeaderEdgeCases(unittest.TestCase):
         p = RequestParser()
         reqs = p.feed(b"GET / HTTP/1.1\r\nhOsT: example\r\n\r\n")
         self.assertEqual(reqs[0].header("HOST"), "example")
+
+
+class TestExpectContinue(unittest.TestCase):
+    def test_callback_fires_before_body_arrives(self):
+        fired = []
+        p = RequestParser(on_expect_continue=lambda: fired.append(True))
+        head = (
+            b"POST / HTTP/1.1\r\nHost: h\r\nExpect: 100-continue\r\n"
+            b"Content-Length: 5\r\n\r\n"
+        )
+        reqs = p.feed(head)
+        self.assertEqual(reqs, [])
+        self.assertEqual(fired, [True])  # fired even though body hasn't arrived yet
+        reqs = p.feed(b"hello")
+        self.assertEqual(reqs[0].body, b"hello")
+
+    def test_no_callback_without_expect_header(self):
+        fired = []
+        p = RequestParser(on_expect_continue=lambda: fired.append(True))
+        p.feed(b"GET / HTTP/1.1\r\nHost: h\r\n\r\n")
+        self.assertEqual(fired, [])
 
 
 if __name__ == "__main__":

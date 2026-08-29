@@ -116,24 +116,33 @@ class HttpClient:
 
     def _read_response(self, method):
         bs = self._bs
-        status_line = bs.read_line().decode("latin-1")
-        parts = status_line.split(" ", 2)
-        if len(parts) < 2:
-            raise ClientError(f"malformed status line: {status_line!r}")
-        version, status_s = parts[0], parts[1]
-        reason = parts[2] if len(parts) > 2 else ""
-        status = int(status_s)
-
-        pairs = []
+        # RFC 7231 6.2: a server may send any number of 1xx interim
+        # responses (100 Continue among them) before the real, final one --
+        # a compliant client discards each and keeps reading for the
+        # response that actually answers the request.
         while True:
-            line = bs.read_line()
-            if not line:
-                break
-            name, _, value = line.partition(b":")
-            pairs.append((name.decode("latin-1").strip(), value.decode("latin-1").strip()))
-        headers = HeaderDict(pairs)
+            status_line = bs.read_line().decode("latin-1")
+            parts = status_line.split(" ", 2)
+            if len(parts) < 2:
+                raise ClientError(f"malformed status line: {status_line!r}")
+            version, status_s = parts[0], parts[1]
+            reason = parts[2] if len(parts) > 2 else ""
+            status = int(status_s)
 
-        if method == "HEAD" or status in (204, 304) or (100 <= status < 200):
+            pairs = []
+            while True:
+                line = bs.read_line()
+                if not line:
+                    break
+                name, _, value = line.partition(b":")
+                pairs.append((name.decode("latin-1").strip(), value.decode("latin-1").strip()))
+            headers = HeaderDict(pairs)
+
+            if 100 <= status < 200:
+                continue  # interim response -- no body, keep reading
+            break
+
+        if method == "HEAD" or status in (204, 304):
             return Response(status, headers, b"", reason=reason)
 
         te = (headers.get("Transfer-Encoding") or "").lower()
