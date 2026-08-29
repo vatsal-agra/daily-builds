@@ -112,8 +112,16 @@ def main():
     ap.add_argument("--port", type=int, default=8080)
     args = ap.parse_args()
 
+    if not (0 <= args.port <= 65535):
+        print(f"error: --port must be 0-65535, got {args.port}", file=sys.stderr)
+        raise SystemExit(1)
+
     server = Server(host=args.host, port=args.port, router=router)
-    server.bind()
+    try:
+        server.bind()
+    except OSError as e:
+        print(f"error: couldn't bind {args.host}:{args.port} -- {e}", file=sys.stderr)
+        raise SystemExit(1)
     print(f"Anvil chat demo listening on http://{args.host}:{server.port}/")
     print(f"  -> open http://{args.host}:{server.port}/ in a browser")
     print(f"  -> WebSocket endpoint: ws://{args.host}:{server.port}/ws/<room>")

@@ -52,9 +52,14 @@
 
     ws.onopen = () => setStatus("open", `connected · ${room}`);
     ws.onclose = () => {
+      const wasJoined = joined;
       setStatus("closed", "disconnected");
       msgInput.disabled = true;
       sendBtn.disabled = true;
+      joined = false;
+      if (wasJoined) {
+        appendMsg({ kind: "system", text: "Disconnected — click “Join room” to reconnect." });
+      }
     };
     ws.onerror = () => appendMsg({ kind: "error", text: "connection error" });
 

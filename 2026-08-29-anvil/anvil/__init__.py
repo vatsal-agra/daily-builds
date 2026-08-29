@@ -4,10 +4,11 @@ from .http_message import HeaderDict, Request, Response
 from .router import HttpError, Router
 from .server import Server
 from .client import HttpClient
+from .proxy import LoadBalancer
 
 __all__ = [
     "HeaderDict", "Request", "Response",
-    "HttpError", "Router", "Server", "HttpClient",
+    "HttpError", "Router", "Server", "HttpClient", "LoadBalancer",
 ]
 
 __version__ = "0.1.0"
