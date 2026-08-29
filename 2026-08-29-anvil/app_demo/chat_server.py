@@ -42,9 +42,16 @@ def status(req):
 
 
 @router.route("GET", "/api/echo/{word}")
-def echo(req):
+def echo_word(req):
     # a tiny required-route-param demo endpoint, also handy for curl tests
     return Response.json({"word": req.params["word"], "query": req.query})
+
+
+@router.route("POST", "/echo")
+def echo_body(req):
+    # raw body echo -- also doubles as the demo's Expect: 100-continue
+    # exercise, since a large enough body is exactly what triggers it
+    return Response(200, headers=[("Content-Type", "application/octet-stream")], body=req.body)
 
 
 class ChatRoom:

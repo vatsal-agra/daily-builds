@@ -6,7 +6,7 @@ router with real Range/conditional-GET support, and a real RFC 6455
 WebSocket implementation — no `http.server`, no `asyncio`, no third-party
 frameworks.
 
-**Status: Phase 4 (stretch + polish) complete.** All 4 required features
+**Status: Phase 5 (verification) complete — `./demo.sh` is green (14/14).** All 4 required features
 plus both stretch features are implemented and verified end-to-end against
 real running servers (not mocks). 11 real bugs found in adversarial review
 — including a genuine `Expect: 100-continue` deadlock and an HTTP
@@ -34,7 +34,8 @@ python3 loadtest.py --port 8080 --path / --workers 50 --requests 20
 ## Run the tests
 
 ```bash
-python3 -m unittest discover -s tests
+python3 -m unittest discover -s tests   # 104 unit + integration tests
+./demo.sh                                # full end-to-end verification (14 checks)
 ```
 
 ## Features
@@ -67,4 +68,5 @@ python3 -m unittest discover -s tests
    `loadtest.py`, a concurrency/throughput tool that proves the
    single-threaded event loop genuinely serves many clients at once.
 
-Still to come: a full verification pass with a runnable `demo.sh` (Phase 5).
+Still to come: the final ship-quality README pass and a LEDGER.md entry
+(Phase 6).
