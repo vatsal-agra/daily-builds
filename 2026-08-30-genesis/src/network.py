@@ -63,9 +63,10 @@ class SimNetwork:
         latency = self.rng.uniform(*self.latency_range)
         heapq.heappush(self._queue, _Event(self.now + latency, next(self._seq), sender, recipient, kind, payload))
 
-    def broadcast(self, sender: str, kind: str, payload: object) -> None:
+    def broadcast(self, sender: str, kind: str, payload: object, exclude: Optional[Set[str]] = None) -> None:
+        skip = exclude or set()
         for name in self.handlers:
-            if name != sender:
+            if name != sender and name not in skip:
                 self.send(sender, name, kind, payload)
 
     def advance_to(self, t: float) -> None:

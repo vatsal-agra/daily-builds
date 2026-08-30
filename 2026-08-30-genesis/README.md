@@ -21,8 +21,18 @@ implemented and covered by an automated test suite:
    nodes that mine independently, gossip, and reorg onto whichever chain
    has the most cumulative work.
 
-77 unit tests pass (`python3 -m unittest discover -s tests`), including a
+**Status: Phase 3 (adversarial review) complete.** Attacked the Phase 2
+build as a hostile reviewer and found 5 real issues — genesis block PoW/
+merkle-root going completely unvalidated, the simulated network passing
+live Python objects instead of real serialized bytes (making the wire
+format dead code), a directory-traversal hole in the explorer's static
+file handler plus an unnecessary `0.0.0.0` bind, gossip echoing every
+message straight back to its sender, and an unconditional full-chain
+replay on every accepted block instead of only competing branches — all
+fixed, with regression tests added. Full findings + fixes in `REVIEW.md`.
+
+81 unit tests pass (`python3 -m unittest discover -s tests`), including a
 genuine fork + reorg (a losing fork's transactions are undone, the winning
 fork's applied) and a partition-then-heal scenario. See `PLAN.md` for the
-full architecture. Next: adversarial review, then stretch features
-(wallet CLI, live block-explorer UI) and final polish.
+full architecture. Next: stretch features (wallet CLI, live block-explorer
+UI) and final polish.

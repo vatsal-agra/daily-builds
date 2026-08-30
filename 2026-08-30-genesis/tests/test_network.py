@@ -33,6 +33,26 @@ def run_rounds(net, nodes, names, rounds, nonce_budget, rng, start_ts=1_700_000_
     return t
 
 
+class TestWireSerialization(unittest.TestCase):
+    """Regression coverage for a Phase 3 finding: nodes used to pass live
+    Python objects to each other through SimNetwork, which meant the block/
+    transaction (de)serialization code was never actually exercised by the
+    "network" -- a receiving node got the literal same object the sender
+    built, not an independently-decoded copy. Blocks/transactions now cross
+    the network as real serialized bytes."""
+
+    def test_mined_block_reaches_peer_as_independent_object(self):
+        net, nodes, names = build_network(seed=2, n_nodes=2)
+        a, b = names
+        block = nodes[a].attempt_mine(200_000, 1_700_000_001)
+        self.assertIsNotNone(block)
+        net.drain()
+        self.assertEqual(nodes[b].chain.height(), 1)
+        peer_block = nodes[b].chain.tip_block()
+        self.assertEqual(peer_block.block_hash(), block.block_hash())
+        self.assertIsNot(peer_block, block)  # genuinely a different object, not a shared reference
+
+
 class TestMultiNodeConsensus(unittest.TestCase):
     def test_independent_nodes_start_identical(self):
         net, nodes, names = build_network(seed=1)

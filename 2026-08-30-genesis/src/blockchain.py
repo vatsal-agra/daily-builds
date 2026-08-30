@@ -76,6 +76,15 @@ class Blockchain:
         self.children: Dict[bytes, List[bytes]] = defaultdict(list)
         self.orphans: Dict[bytes, List[Block]] = defaultdict(list)
         self.tip = gh
+        # The genesis block gets no free pass: it must satisfy the same
+        # merkle-root and proof-of-work invariants as any other block, or
+        # the entire chain's security model is broken starting from block
+        # zero (a caller that "forgot" to actually mine it would otherwise
+        # go unnoticed until much later, if ever).
+        if genesis_block.compute_merkle_root() != genesis_block.header.merkle_root:
+            raise ChainError("invalid genesis block: merkle root mismatch")
+        if not genesis_block.header.meets_target():
+            raise ChainError("invalid genesis block: hash does not meet its declared target")
         genesis_utxo: Dict[Outpoint, TxOut] = {}
         ok, reason = self._apply_txs(genesis_block, genesis_utxo, 0)
         if not ok:
@@ -130,7 +139,15 @@ class Blockchain:
             return AcceptResult(False, reason)
 
         height = self.heights[prev] + 1
-        base_utxo, ok = self._utxo_snapshot_at(prev)
+        if prev == self.tip:
+            # Fast path: extending the current tip directly means the UTXO
+            # cache (if fresh) already *is* the base state — no need to
+            # replay the whole chain from genesis just to rediscover state
+            # we're already holding.
+            base_utxo = self.utxo_set()
+            ok = True
+        else:
+            base_utxo, ok = self._utxo_snapshot_at(prev)
         if not ok:
             return AcceptResult(False, "internal error reconstructing parent state")
         scratch = dict(base_utxo)

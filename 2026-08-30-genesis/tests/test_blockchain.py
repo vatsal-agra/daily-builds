@@ -32,6 +32,32 @@ class TestGenesisAndBasicChain(unittest.TestCase):
         self.assertIn((cb.txid(), 0), self.chain.utxo_set())
 
 
+class TestGenesisValidation(unittest.TestCase):
+    """Regression coverage for a Phase 3 finding: the genesis block used to
+    get no PoW/merkle-root validation at all -- an unmined or tampered
+    genesis would be silently accepted, breaking the chain's security model
+    from block zero."""
+
+    def test_unmined_genesis_rejected(self):
+        cb = tx.Transaction.coinbase(b"\x00" * 20, reward=bc.subsidy_at(0), height=0)
+        g = blk.Block.new(prev_hash=b"\x00" * 32, transactions=[cb], target=bc.GENESIS_TARGET_DEFAULT,
+                           timestamp=1_000_000)
+        # deliberately not mined -- nonce=0 essentially never meets a real target
+        with self.assertRaises(bc.ChainError):
+            bc.Blockchain(g)
+
+    def test_tampered_merkle_root_genesis_rejected(self):
+        g = make_genesis()
+        g.header.merkle_root = c.hash256(b"forged")
+        with self.assertRaises(bc.ChainError):
+            bc.Blockchain(g)
+
+    def test_properly_mined_genesis_accepted(self):
+        g = make_genesis()
+        chain = bc.Blockchain(g)
+        self.assertEqual(chain.height(), 0)
+
+
 class TestBlockRejection(unittest.TestCase):
     def setUp(self):
         self.genesis = make_genesis()

@@ -7,6 +7,12 @@ hashpower is modeled — see `network.py`'s docstring for why the network
 itself is a deterministic simulation rather than real sockets), and it
 reacts to gossiped blocks/transactions from peers by validating them
 against its own chain and re-broadcasting anything new.
+
+Messages actually cross the network as serialized bytes (`Block.serialize`/
+`Transaction.serialize`), not live Python objects — `SimNetwork` models
+latency and delivery order, not a shared-memory shortcut, so what a peer
+receives and deserializes is a completely independent object from what the
+sender built.
 """
 from __future__ import annotations
 
@@ -38,6 +44,7 @@ class Node:
         self.network = network
         self.stats = NodeStats()
         self.log: List[str] = []
+        self.log_cursor = 0  # scratch export cursor for consumers (e.g. server.py's SSE feed)
         network.register(name, self._on_message)
 
     # -- outbound: mining & submitting -------------------------------------
@@ -63,7 +70,7 @@ class Node:
         self.stats.blocks_mined += 1
         self.mempool.remove_confirmed(block.transactions)
         self.log.append(f"mined block {block.block_hash_hex()[:10]} at height {height}")
-        self.network.broadcast(self.name, "block", block)
+        self.network.broadcast(self.name, "block", block.serialize())
         return block
 
     def announce_chain(self) -> None:
@@ -77,22 +84,24 @@ class Node:
         a peer that already has a given block just reports "duplicate"
         and moves on."""
         for h in self.chain.main_chain_hashes():
-            self.network.broadcast(self.name, "block", self.chain.blocks[h])
+            self.network.broadcast(self.name, "block", self.chain.blocks[h].serialize())
 
     def submit_transaction(self, t: Transaction) -> tuple:
         utxo = self.chain.utxo_set()
         lookup = lambda txid, idx: utxo.get((txid, idx))
         ok, reason = self.mempool.add_transaction(t, lookup)
         if ok:
-            self.network.broadcast(self.name, "tx", t)
+            self.network.broadcast(self.name, "tx", t.serialize())
         return ok, reason
 
     # -- inbound: gossip handlers -------------------------------------------
     def _on_message(self, sender: str, kind: str, payload: object) -> None:
         if kind == "block":
-            self._on_block(sender, payload)
+            block, _ = Block.deserialize(payload)
+            self._on_block(sender, block)
         elif kind == "tx":
-            self._on_tx(sender, payload)
+            t, _ = Transaction.deserialize(payload)
+            self._on_tx(sender, t)
 
     def _on_block(self, sender: str, block: Block) -> None:
         bh = block.block_hash()
@@ -110,7 +119,8 @@ class Node:
             self.mempool.revalidate(lambda txid, idx: self.chain.utxo_set().get((txid, idx)))
         self.mempool.remove_confirmed(block.transactions)
         self.log.append(f"accepted block {bh.hex()[:10]} from {sender} (height {self.chain.heights[bh]})")
-        self.network.broadcast(self.name, "block", block)  # gossip onward
+        # gossip onward, but not back to whoever just told us (no point)
+        self.network.broadcast(self.name, "block", block.serialize(), exclude={sender})
 
     def _on_tx(self, sender: str, t: Transaction) -> None:
         txid = t.txid()
@@ -120,4 +130,4 @@ class Node:
         ok, reason = self.mempool.add_transaction(t, lambda a, b: utxo.get((a, b)))
         if ok:
             self.stats.txs_relayed += 1
-            self.network.broadcast(self.name, "tx", t)  # gossip onward
+            self.network.broadcast(self.name, "tx", t.serialize(), exclude={sender})

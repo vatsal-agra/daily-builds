@@ -79,9 +79,9 @@ class Network:
             self.net.advance_to(self.net.now)
             # surface any fresh per-node log entries into the shared feed
             for n2 in self.nodes.values():
-                while n2._exported_log_index < len(n2.log):
-                    self._add_log(f"[{n2.name}] {n2.log[n2._exported_log_index]}")
-                    n2._exported_log_index += 1
+                while n2.log_cursor < len(n2.log):
+                    self._add_log(f"[{n2.name}] {n2.log[n2.log_cursor]}")
+                    n2.log_cursor += 1
 
     def faucet(self, node_name: str, to_address: str) -> tuple:
         with self.lock:
@@ -192,21 +192,6 @@ class Network:
             return [e for e in self.log if e["seq"] > since_seq]
 
 
-# Node.log is a plain list; give each Node instance an export cursor without
-# touching node.py's public surface for something purely server-side.
-def _patch_node_export_cursor():
-    orig_init = Node.__init__
-
-    def new_init(self, *a, **kw):
-        orig_init(self, *a, **kw)
-        self._exported_log_index = 0
-
-    Node.__init__ = new_init
-
-
-_patch_node_export_cursor()
-
-
 def mining_loop(network: Network, stop_event: threading.Event) -> None:
     while not stop_event.is_set():
         network.tick()
@@ -291,7 +276,8 @@ class Handler(BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError):
                 pass
             return
-        return self._file(os.path.join(STATIC_DIR, path.lstrip("/")), "application/octet-stream")
+        self.send_response(404)
+        self.end_headers()
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -324,14 +310,14 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"error": "unknown endpoint"}, 404)
 
 
-def serve(port: int = 8765, seed: int = 1234) -> None:
+def serve(port: int = 8765, seed: int = 1234, host: str = "127.0.0.1") -> None:
     network = Network(seed=seed)
     Handler.network = network
     stop_event = threading.Event()
     miner_thread = threading.Thread(target=mining_loop, args=(network, stop_event), daemon=True)
     miner_thread.start()
-    httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
-    print(f"Genesis block explorer serving on http://0.0.0.0:{port}")
+    httpd = ThreadingHTTPServer((host, port), Handler)
+    print(f"Genesis block explorer serving on http://{host}:{port}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -344,4 +330,5 @@ def serve(port: int = 8765, seed: int = 1234) -> None:
 if __name__ == "__main__":
     import sys
     p = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
-    serve(port=p)
+    h = sys.argv[2] if len(sys.argv) > 2 else "127.0.0.1"
+    serve(port=p, host=h)
