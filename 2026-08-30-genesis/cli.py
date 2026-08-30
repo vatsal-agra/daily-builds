@@ -31,7 +31,10 @@ import crypto as c
 import persistence as ps
 import transaction as tx
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DATA_DIR = os.environ.get(
+    "GENESIS_DATA_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"),
+)
 COIN = 100_000_000  # 1 coin == 1e8 sats, same denomination convention as Bitcoin
 
 

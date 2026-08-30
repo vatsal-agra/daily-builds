@@ -52,5 +52,12 @@ both fixed and covered by new tests (`REVIEW.md`, findings #6-7).
 87 unit/integration tests pass (`python3 -m unittest discover -s tests`),
 including a genuine fork + reorg (a losing fork's transactions are undone,
 the winning fork's applied), a partition-then-heal scenario, and a live
-HTTP server spin-up. See `PLAN.md` for the full architecture. Next:
-verification (`demo.sh`) and final ship.
+HTTP server spin-up. See `PLAN.md` for the full architecture.
+
+**Status: Phase 5 (verification) complete.** `./demo.sh` runs everything
+end to end in one command — the full test suite, the narrated
+cross-feature demonstration, a real wallet-CLI session (init → mine →
+send → mine → balance, using a throwaway temp data directory), and a live
+spin-up of the block-explorer server (real HTTP requests against it,
+including the path-traversal regression check) — and exits non-zero on
+the first failure. All sections pass. Next: final ship.
