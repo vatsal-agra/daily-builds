@@ -31,8 +31,26 @@ message straight back to its sender, and an unconditional full-chain
 replay on every accepted block instead of only competing branches — all
 fixed, with regression tests added. Full findings + fixes in `REVIEW.md`.
 
-81 unit tests pass (`python3 -m unittest discover -s tests`), including a
-genuine fork + reorg (a losing fork's transactions are undone, the winning
-fork's applied) and a partition-then-heal scenario. See `PLAN.md` for the
-full architecture. Next: stretch features (wallet CLI, live block-explorer
-UI) and final polish.
+**Status: Phase 4 (stretch + polish) complete.** Both planned stretch
+features are implemented:
+
+5. **A genuinely usable wallet CLI** (`cli.py`) — on-disk persistence
+   (`src/persistence.py`) means `send` in one process invocation and
+   `mine` in the next actually see each other, the way a real wallet has
+   to work. `python3 cli.py init|address|balance|status|history|send|mine`.
+2. **A live, self-contained block-explorer web UI** (`src/server.py` +
+   `static/index.html`) — a real 3-node network mining, gossiping, forking,
+   and reconverging live behind a stdlib `http.server`, with zero
+   blockchain logic duplicated in the browser (every number on the page is
+   a JSON read from the real chain). `python3 cli.py serve`.
+
+Running the live explorer end to end (not just reading the code) surfaced
+two more real bugs beyond Phase 3's five — gossip silently never being
+delivered, and difficulty drifting easier forever instead of settling —
+both fixed and covered by new tests (`REVIEW.md`, findings #6-7).
+
+87 unit/integration tests pass (`python3 -m unittest discover -s tests`),
+including a genuine fork + reorg (a losing fork's transactions are undone,
+the winning fork's applied), a partition-then-heal scenario, and a live
+HTTP server spin-up. See `PLAN.md` for the full architecture. Next:
+verification (`demo.sh`) and final ship.

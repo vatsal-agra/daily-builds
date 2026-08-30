@@ -64,19 +64,42 @@ class Network:
         self.log.append({"seq": self._log_seq, "t": time.time(), "message": message})
 
     def _next_timestamp(self) -> int:
-        self._last_ts = max(int(time.time()), self._last_ts + 1)
+        """Block timestamps must strictly increase, but block headers only
+        carry whole seconds -- if several blocks get mined within the same
+        wall-clock second (easy for this demo's low difficulty), naively
+        forcing +1 each time makes the recorded clock run *faster* than
+        real time forever, which then makes every difficulty retarget think
+        blocks are arriving slower than they really are and eases off
+        indefinitely (a real bug this project's Phase 3 review would have
+        caught had this file existed at the time: silently makes "difficulty
+        retargeting" trend one direction forever instead of settling near
+        an equilibrium). So: once the recorded clock has gotten ahead of
+        real time, throttle to let real time catch back up, capping the
+        long-run rate at one timestamp-second per real second."""
+        now = int(time.time())
+        if self._last_ts >= now:
+            time.sleep(min(1.05, self._last_ts - now + 1))
+            now = int(time.time())
+        self._last_ts = max(now, self._last_ts + 1)
         return self._last_ts
 
     def tick(self) -> None:
+        name = self._round_robin[self._round_index % len(self._round_robin)]
+        ts = self._next_timestamp()  # may sleep briefly; deliberately outside the lock
         with self.lock:
-            name = self._round_robin[self._round_index]
             self._round_index = (self._round_index + 1) % len(self._round_robin)
             node = self.nodes[name]
-            ts = self._next_timestamp()
             block = node.attempt_mine(NONCE_BUDGET, ts)
             if block is not None:
                 self._add_log(f"{name} mined block #{node.chain.height()} {block.block_hash_hex()[:12]}")
-            self.net.advance_to(self.net.now)
+            # SimNetwork's own virtual clock is separate from block
+            # timestamps -- it exists purely to schedule gossip latency.
+            # It must be driven by real elapsed time here (unlike the test
+            # suite's round-counter clock), or scheduled deliveries (now +
+            # latency) never become due and no message is ever delivered:
+            # every node would silently mine its own isolated chain forever
+            # with zero gossip -- exactly the bug this fix closes.
+            self.net.advance_to(time.time())
             # surface any fresh per-node log entries into the shared feed
             for n2 in self.nodes.values():
                 while n2.log_cursor < len(n2.log):

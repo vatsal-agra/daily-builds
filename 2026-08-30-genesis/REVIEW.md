@@ -66,6 +66,52 @@ UTXO set *is* the exact state needed and no replay is required at all.
 when the new block's parent is the current tip, and only falls back to the
 full from-genesis replay for an actual competing branch.
 
+### 6. (Correctness, live server only) Gossip never actually delivered anything
+After building the explorer (`server.py`), running it end to end (not just
+reading the code) turned up a real functional bug that no unit test caught,
+because the unit tests drive `SimNetwork` with their own explicit,
+monotonically-advancing round counter (see `tests/test_network.py`), which
+happened to paper over the exact mistake this file made. `Network.tick()`
+called `self.net.advance_to(self.net.now)` right after scheduling a
+broadcast — but a broadcast is scheduled for `self.net.now + latency`
+(a small positive number), so advancing *to* `self.net.now` (unchanged)
+delivers nothing: every scheduled message stayed queued forever. Watching
+the live server confirmed it: `blocks_accepted_from_peers` stayed at 0 and
+`reorgs_seen` stayed at 0 for every node indefinitely, no matter how long
+it ran — three nodes were silently mining three completely disconnected
+private chains, the opposite of this project's core subject. **Fix:**
+`SimNetwork`'s virtual clock in the live server is now driven by real
+elapsed wall-clock time (`self.net.advance_to(time.time())`), so scheduled
+deliveries actually become due. Confirmed live after the fix: nodes now
+show real `blocks_accepted_from_peers` and `reorgs_seen` counts and the
+network visibly converges (`"converged": true` in `/api/status`).
+
+### 7. (Correctness, live server only) Difficulty drifted easier forever, never settled
+Also only visible by watching the live server run for a couple of minutes:
+`target` kept increasing (easier) block after block with no sign of
+reaching equilibrium. Root cause: block timestamps are whole seconds, but
+this demo's low mining difficulty means several blocks can legitimately be
+found within the same real wall-clock second — `_next_timestamp()` was
+unconditionally forcing `last_ts + 1` in that case, with no mechanism to
+let the recorded clock fall back in step with real time afterward. Once
+the recorded clock gets even slightly ahead of real time, every subsequent
+call keeps taking the `last_ts + 1` branch forever (since `last_ts` is now
+always ≥ real `now`), so the *recorded* clock runs at up to one full
+"second" per tick — faster than real elapsed time — making every
+difficulty retarget conclude blocks are arriving slower than they truly
+are, and ease off indefinitely. **Fix:** `_next_timestamp()` now throttles
+with a real `time.sleep()` whenever the recorded clock has gotten ahead of
+real time, capping its long-run rate at one timestamp-second per real
+second. Confirmed live: target rose once after the first retarget window
+then held steady (251 bits, unchanged across 4 checks 15s apart spanning
+height 17→32) instead of climbing every window.
+
+Both of these were only found by actually running the shipped server for
+several minutes and reading its own `/api/status` output adversarially,
+not by reading the code — a reminder that "the unit tests pass" and "the
+feature works" are different claims for anything involving real time or
+real concurrency.
+
 ## Findings, deliberately not "fixed" (documented scope choices)
 
 - **No coinbase maturity rule.** Real Bitcoin forbids spending a coinbase
@@ -98,19 +144,27 @@ full from-genesis replay for an actual competing branch.
 
 ## Verification after fixes
 
-Full suite re-run after every fix above (81 tests, including 4 new
-regression tests written specifically for findings #1 and #2):
+Full suite re-run after every fix above (87 tests, including regression
+tests for findings #1, #2, #3, #6, and #7 -- the last two only exist
+because actually *running* the shipped explorer server surfaced bugs no
+amount of reading the code, or running the pre-existing unit suite, had
+caught):
 
 ```
 $ python3 -m unittest discover -s tests
-...................................................................
+.......................................................................................
 ----------------------------------------------------------------------
-Ran 81 tests in ~3.5s
+Ran 87 tests in ~13s
 
 OK
 ```
 
-A fresh manual run-through (mining, retargeting, a real spend, an attempted
-double-spend, an attempted wrong-key spend, a fork + reorg, and a
-partition/heal) was repeated after the fixes and hits none of the issues
-listed above.
+A fresh manual run-through (`python3 cli.py demo`: mining, retargeting, a
+real spend, an attempted double-spend, an attempted wrong-key spend, a
+fork + reorg, and the wallet CLI's own persistence) was repeated after the
+fixes and hits none of the issues listed above. The live explorer server
+was also run for several minutes end to end after the fixes (not just
+imported) and observed to: gossip real blocks between nodes, produce real
+reorgs, converge to one chain, reject a live path-traversal attempt with a
+plain 404, and successfully process a real signed send from the UI down to
+a mined, balance-reflected confirmation.
