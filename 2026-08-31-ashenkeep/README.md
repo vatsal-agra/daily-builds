@@ -1,10 +1,12 @@
 # Ashenkeep
 
-> Status: **Feature-complete and polished.** All 4 required features, both
-> planned stretch features, and a bonus final-floor boss encounter are
-> implemented, adversarially reviewed, and verified. See
-> [`PLAN.md`](./PLAN.md) for the design and [`REVIEW.md`](./REVIEW.md) for
-> the review findings.
+> Status: **Shipped.** All 4 required features, both planned stretch
+> features, and a bonus final-floor boss encounter are implemented,
+> adversarially reviewed, and independently verified end-to-end — including
+> a real autonomous win against the final boss. See [`PLAN.md`](./PLAN.md)
+> for the design and [`REVIEW.md`](./REVIEW.md) for the full review
+> history, including a critical dungeon-generation bug found only during
+> Phase 5 verification.
 
 A browser-playable roguelike dungeon crawler built entirely from scratch in
 vanilla JavaScript — procedural dungeons, real recursive-shadowcasting
@@ -24,16 +26,24 @@ No build step, no `npm install` needed to play — it's plain `<script>` tags.
 ## Run the tests
 
 ```bash
-node --test tests/*.js     # 87 unit/integration tests (dungeon, fov, astar, entities, items, combat, game)
-node tests/ui_smoke.mjs    # headless-Chromium smoke test of the real page, light + dark
+./demo.sh                          # everything below, in order, one command
+node --test tests/test_*.js        # 87 unit/integration tests
+node tests/demo_playthrough.js     # narrated walkthrough of every feature + a real autonomous win
+node tests/ui_smoke.mjs            # headless-Chromium smoke test of the real page, light + dark
 ```
 
-`REVIEW.md` documents three independent stress harnesses run beyond the
-unit suite: a 1,400-generation dungeon-connectivity fuzz (0 failures), and
-two 60-seed full-playthrough bots (0 crashes either way) — a naive one and
-an equip-aware one that genuinely **wins the game** (defeats the floor-10
-boss and escapes) a meaningful fraction of the time, proof the win
-condition is reachable through play, not just asserted in a unit test.
+`REVIEW.md` documents the full adversarial-review history, including a
+**critical bug found only by writing the Phase 5 demo script**: dungeons
+were never actually carving their rooms as open rectangles (only the
+corridors connecting room centers were ever floor) — invisible to every
+earlier test and screenshot, and it silently suppressed real monster/item
+density for the whole project until a demo assertion caught a monster A*
+couldn't reach. Fixed, and the whole difficulty curve was honestly
+re-tuned against the corrected (and now much more populated) dungeons: a
+100–300-seed equip-aware bot harness wins roughly **8% of the time**,
+with deaths spread across floors 3–10 rather than walled at one floor —
+a genuinely hard, genuinely winnable roguelike, measured against the
+dungeon the game actually ships, not an accidentally-easier one.
 
 ## Full feature list
 

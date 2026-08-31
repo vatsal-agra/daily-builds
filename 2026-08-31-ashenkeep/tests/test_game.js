@@ -289,8 +289,17 @@ test('defeating the boss lets the player finally stand on the stairs and win', (
   const spot = findWalkableNeighbor(g, boss.x, boss.y);
   g.player.x = spot.x;
   g.player.y = spot.y;
-  g.movePlayer(spot.dx, spot.dy); // kill the boss
+  // Hit chance is intentionally capped below 100% (see MIN/MAX_HIT_CHANCE
+  // in combat.js), so even a guaranteed-kill hit can whiff — attack until
+  // it actually lands, bounded generously so a real regression still fails.
+  for (let i = 0; i < 20 && g.monsters.some((m) => m.isBoss); i++) {
+    g.player.x = spot.x;
+    g.player.y = spot.y;
+    g.movePlayer(spot.dx, spot.dy);
+  }
   assert.equal(g.monsters.some((m) => m.isBoss), false);
+  g.player.x = spot.x;
+  g.player.y = spot.y;
   g.movePlayer(spot.dx, spot.dy); // now step onto the (vacated) stairs tile
   assert.equal(g.player.x, g.dungeon.stairs.x);
   assert.equal(g.player.y, g.dungeon.stairs.y);

@@ -27,7 +27,7 @@ if (typeof module !== 'undefined' && module.exports) {
 const { RNG, TILE, generateDungeon, isWalkable, computeFOV, blockingFromGrid, findPath, Player, Monster, spawnMonster, spawnBoss, resolveAttack, generateLootDrop, addToInventory, removeFromInventory, equipItem, unequipSlot } = Mod;
 
 const VISION_RADIUS = 8;
-const MONSTER_SIGHT_RADIUS = 6;
+const MONSTER_SIGHT_RADIUS = 5;
 const MAX_FLOOR = 10;
 const MAX_MESSAGES = 80;
 
@@ -39,11 +39,11 @@ function floorDimensions(floorNumber) {
 }
 
 function monsterCountForFloor(floorNumber) {
-  return Math.min(18, 3 + floorNumber);
+  return Math.min(12, 2 + floorNumber);
 }
 
 function itemCountForFloor(floorNumber) {
-  return Math.min(12, 2 + Math.floor(floorNumber / 2) + 2);
+  return Math.min(16, 4 + floorNumber);
 }
 
 class Game {

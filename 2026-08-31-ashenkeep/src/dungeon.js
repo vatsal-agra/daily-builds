@@ -85,7 +85,7 @@ function buildTree(node, rng, minLeafSize, maxDepth, depth) {
   }
 }
 
-function carveRoomInLeaf(node, rng) {
+function carveRoomInLeaf(node, rng, grid) {
   const minRoomSize = 4;
   const maxW = Math.max(minRoomSize, node.w - 2);
   const maxH = Math.max(minRoomSize, node.h - 2);
@@ -95,6 +95,7 @@ function carveRoomInLeaf(node, rng) {
   const y = node.y + rng.int(1, Math.max(1, node.h - h - 1));
   node.room = new Room(x, y, w, h);
   node.rooms = [node.room];
+  carveRect(grid, node.room);
 }
 
 function carveRect(grid, room) {
@@ -128,7 +129,7 @@ function carveVLine(grid, y1, y2, x) {
 
 function connect(node, grid, rng) {
   if (node.isLeaf()) {
-    carveRoomInLeaf(node, rng);
+    carveRoomInLeaf(node, rng, grid);
     return node.rooms;
   }
   const leftRooms = connect(node.left, grid, rng);

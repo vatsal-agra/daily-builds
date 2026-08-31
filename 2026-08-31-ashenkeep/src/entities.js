@@ -15,10 +15,10 @@ class Player {
     this.name = name;
     this.level = 1;
     this.xp = 0;
-    this.baseMaxHp = 24;
+    this.baseMaxHp = 32;
     this.hp = this.baseMaxHp;
-    this.baseAtk = 4; // base damage before equipment
-    this.baseDef = 1; // base damage reduction before equipment
+    this.baseAtk = 5; // base damage before equipment
+    this.baseDef = 2; // base damage reduction before equipment
     this.baseAccuracy = 0.85; // base chance to hit
     this.baseEvasion = 0.05; // base chance to dodge an incoming hit
     this.baseCritChance = 0.05;
@@ -95,7 +95,7 @@ class Player {
       this.xp -= this.xpToNext;
       this.level += 1;
       levelUps += 1;
-      const hpGain = 6 + this.level * 2;
+      const hpGain = 8 + this.level * 3;
       this.baseMaxHp += hpGain;
       this.hp = Math.min(this.maxHp, this.hp + hpGain);
       this.baseAtk += 1;
@@ -190,7 +190,7 @@ function templatesForFloor(floor) {
 function spawnMonster(floor, x, y, rng) {
   const pool = templatesForFloor(floor);
   const template = rng.pick(pool);
-  const scale = 1 + (floor - 1) * 0.12;
+  const scale = 1 + (floor - 1) * 0.08;
   const scaled = {
     ...template,
     hp: Math.round(template.hp * scale),
