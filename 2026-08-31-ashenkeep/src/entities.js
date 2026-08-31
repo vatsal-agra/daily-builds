@@ -129,6 +129,24 @@ const MONSTER_TEMPLATES = [
   { key: 'lich', name: 'Lesser Lich', glyph: 'L', color: '#b23fd6', tier: 4, hp: 34, atk: 12, def: 3, accuracy: 0.78, evasion: 0.08, xp: 48 },
 ];
 
+// The final-floor guardian. Not part of MONSTER_TEMPLATES's random pool —
+// it is spawned exactly once, deliberately, standing on the floor-10
+// stairs tile (see spawnBoss/game.js), so the player must defeat it to
+// ever physically stand on that tile and descend to win.
+const BOSS_TEMPLATE = {
+  key: 'keeper',
+  name: 'The Keeper of Ashenkeep',
+  glyph: 'K',
+  color: '#ff4d4d',
+  tier: 5,
+  hp: 150,
+  atk: 19,
+  def: 8,
+  accuracy: 0.8,
+  evasion: 0.08,
+  xp: 200,
+};
+
 let monsterIdCounter = 0;
 
 class Monster {
@@ -149,6 +167,7 @@ class Monster {
     this.x = x;
     this.y = y;
     this.aggro = false;
+    this.isBoss = false;
   }
 
   isAlive() {
@@ -180,12 +199,18 @@ function spawnMonster(floor, x, y, rng) {
   return new Monster(scaled, x, y);
 }
 
+function spawnBoss(x, y) {
+  const boss = new Monster(BOSS_TEMPLATE, x, y);
+  boss.isBoss = true;
+  return boss;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { Player, Monster, MONSTER_TEMPLATES, spawnMonster, templatesForFloor, xpForLevel };
+  module.exports = { Player, Monster, MONSTER_TEMPLATES, BOSS_TEMPLATE, spawnMonster, spawnBoss, templatesForFloor, xpForLevel };
 }
 if (typeof window !== 'undefined') {
   window.Ashenkeep = window.Ashenkeep || {};
-  Object.assign(window.Ashenkeep, { Player, Monster, MONSTER_TEMPLATES, spawnMonster, templatesForFloor, xpForLevel });
+  Object.assign(window.Ashenkeep, { Player, Monster, MONSTER_TEMPLATES, BOSS_TEMPLATE, spawnMonster, spawnBoss, templatesForFloor, xpForLevel });
 }
 
 })();

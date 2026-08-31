@@ -215,6 +215,92 @@ test('dropping an item places it back on the ground at the player position', () 
   assert.ok(g.groundItems.get(key).some((i) => i.name === armor.name));
 });
 
+test('floor 10 spawns a boss standing exactly on the stairs tile, and only there', () => {
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const g = freshGame(seed);
+    g.floorNumber = MAX_FLOOR - 1;
+    g.player.x = g.dungeon.stairs.x;
+    g.player.y = g.dungeon.stairs.y;
+    g.descend();
+    assert.equal(g.floorNumber, MAX_FLOOR);
+    const bosses = g.monsters.filter((m) => m.isBoss);
+    assert.equal(bosses.length, 1, `seed ${seed}: expected exactly one boss on floor 10`);
+    assert.equal(bosses[0].x, g.dungeon.stairs.x);
+    assert.equal(bosses[0].y, g.dungeon.stairs.y);
+  }
+});
+
+function findWalkableNeighbor(g, x, y) {
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    if (g.isWalkableTile(x + dx, y + dy)) return { x: x + dx, y: y + dy, dx: -dx, dy: -dy };
+  }
+  throw new Error('no walkable neighbor found (should be impossible on a real generated room)');
+}
+
+test('the player cannot walk onto the boss-guarded stairs tile without fighting through it', () => {
+  const g = freshGame(1);
+  g.floorNumber = MAX_FLOOR - 1;
+  g.player.x = g.dungeon.stairs.x;
+  g.player.y = g.dungeon.stairs.y;
+  g.descend();
+  const boss = g.monsters.find((m) => m.isBoss);
+  // Stand adjacent to the boss and try to walk onto its (the stairs') tile.
+  const spot = findWalkableNeighbor(g, boss.x, boss.y);
+  g.player.x = spot.x;
+  g.player.y = spot.y;
+  const hpBefore = boss.hp;
+  const result = g.movePlayer(spot.dx, spot.dy);
+  assert.ok(result.ok);
+  assert.notEqual(`${g.player.x},${g.player.y}`, `${boss.x},${boss.y}`, 'player must not occupy the boss tile while it lives');
+  assert.ok(boss.hp <= hpBefore, 'walking into the boss should attack it');
+});
+
+test('a boss never wanders off its post while un-aggroed, unlike ordinary monsters', () => {
+  const g = freshGame(1);
+  g.floorNumber = MAX_FLOOR - 1;
+  g.player.x = g.dungeon.stairs.x;
+  g.player.y = g.dungeon.stairs.y;
+  g.descend();
+  const boss = g.monsters.find((m) => m.isBoss);
+  const startX = boss.x;
+  const startY = boss.y;
+  // Move the player far away so the boss never enters aggro range, then
+  // force many monster-turn ticks via waitTurn.
+  g.player.x = Math.max(0, boss.x - 15);
+  g.player.y = boss.y;
+  for (let i = 0; i < 30; i++) g.waitTurn();
+  assert.equal(boss.aggro, false, 'boss should not have spotted the player from this distance');
+  assert.equal(boss.x, startX);
+  assert.equal(boss.y, startY);
+});
+
+test('defeating the boss lets the player finally stand on the stairs and win', () => {
+  const g = freshGame(1);
+  g.floorNumber = MAX_FLOOR - 1;
+  g.player.x = g.dungeon.stairs.x;
+  g.player.y = g.dungeon.stairs.y;
+  g.descend();
+  const boss = g.monsters.find((m) => m.isBoss);
+  boss.hp = 1;
+  boss.def = 0;
+  boss.evasion = 0;
+  g.player.baseAccuracy = 1;
+  g.player.baseAtk = 999;
+  const spot = findWalkableNeighbor(g, boss.x, boss.y);
+  g.player.x = spot.x;
+  g.player.y = spot.y;
+  g.movePlayer(spot.dx, spot.dy); // kill the boss
+  assert.equal(g.monsters.some((m) => m.isBoss), false);
+  g.movePlayer(spot.dx, spot.dy); // now step onto the (vacated) stairs tile
+  assert.equal(g.player.x, g.dungeon.stairs.x);
+  assert.equal(g.player.y, g.dungeon.stairs.y);
+  const result = g.descend();
+  assert.ok(result.ok);
+  assert.equal(result.won, true);
+  assert.equal(g.gameOver, true);
+  assert.equal(g.won, true);
+});
+
 test('descend() refuses when not standing on the stairs tile', () => {
   const g = freshGame(11);
   if (g.dungeon.grid[g.player.y][g.player.x] === TILE.STAIRS_DOWN) {
@@ -247,6 +333,13 @@ test('descending from the final floor wins the game', () => {
   assert.ok(result.ok);
   assert.equal(g.gameOver, true);
   assert.equal(g.won, true);
+});
+
+test('Game.fromSaved rejects corrupt or incompatible save data with a clear error, not a crash deep in the reconstruction', () => {
+  assert.throws(() => Game.fromSaved(null), /Corrupt save data/);
+  assert.throws(() => Game.fromSaved({}), /Unsupported save version/);
+  assert.throws(() => Game.fromSaved({ version: 1 }), /Corrupt save data/);
+  assert.throws(() => Game.fromSaved({ version: 2, dungeon: { grid: [] }, player: {} }), /Unsupported save version/);
 });
 
 test('the player can die: repeated adjacency to a guaranteed-hit monster ends the game as a loss', () => {

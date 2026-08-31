@@ -8,34 +8,59 @@
 (function () {
   const TILE_SIZE = 20;
   const COLORS = {
-    bgVisibleFloor: '#2a2a35',
+    bgVisibleFloor: ['#2a2a35', '#2c2c38', '#282833'],
     bgExploredFloor: '#17171c',
-    bgVisibleWall: '#3c3c4a',
+    bgVisibleWall: ['#3c3c4a', '#3f3f4d', '#393947'],
     bgExploredWall: '#1c1c22',
+    wallHighlight: 'rgba(255,255,255,0.06)',
+    wallShadow: 'rgba(0,0,0,0.25)',
     stairs: '#f2d060',
     player: '#7fe0ff',
-    grid: 'transparent',
   };
 
-  function tileBackground(game, x, y) {
+  // Deterministic per-tile hash (not RNG — the same tile must always shade
+  // the same way across re-renders) used to break up otherwise-flat floor
+  // and wall fills into a subtle, natural-looking stone texture.
+  function tileHash(x, y) {
+    let h = (x * 374761393 + y * 668265263) ^ 0x9e3779b9;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) % 3;
+  }
+
+  function tileInfo(game, x, y) {
     const { TILE } = window.Ashenkeep;
     const key = `${x},${y}`;
     const visible = game.visible.has(key);
     const explored = game.explored[y] && game.explored[y][x];
     if (!visible && !explored) return null; // unexplored: draw nothing (pure black)
     const wall = game.dungeon.grid[y][x] === TILE.WALL;
-    if (wall) return visible ? COLORS.bgVisibleWall : COLORS.bgExploredWall;
-    return visible ? COLORS.bgVisibleFloor : COLORS.bgExploredFloor;
+    let color;
+    if (wall) color = visible ? COLORS.bgVisibleWall[tileHash(x, y)] : COLORS.bgExploredWall;
+    else color = visible ? COLORS.bgVisibleFloor[tileHash(x, y)] : COLORS.bgExploredFloor;
+    return { visible, wall, color };
   }
 
-  function drawGlyph(ctx, glyph, color, px, py, alpha) {
+  function drawGlyph(ctx, glyph, color, px, py, alpha, glow) {
     ctx.globalAlpha = alpha;
     ctx.fillStyle = color;
     ctx.font = `bold ${TILE_SIZE - 4}px "Courier New", monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    if (glow) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 8;
+    }
     ctx.fillText(glyph, px + TILE_SIZE / 2, py + TILE_SIZE / 2 + 1);
+    ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
+  }
+
+  function drawVignette(ctx, centerPx, centerPy, radiusPx) {
+    const grad = ctx.createRadialGradient(centerPx, centerPy, radiusPx * 0.3, centerPx, centerPy, radiusPx);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.6)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   }
 
   function render(ctx, game, viewport) {
@@ -59,17 +84,26 @@
         const gx = camX + tx;
         const gy = camY + ty;
         if (gx < 0 || gy < 0 || gx >= game.dungeon.width || gy >= game.dungeon.height) continue;
-        const bg = tileBackground(game, gx, gy);
-        if (!bg) continue;
+        const info = tileInfo(game, gx, gy);
+        if (!info) continue;
         const px = tx * TILE_SIZE;
         const py = ty * TILE_SIZE;
-        ctx.fillStyle = bg;
+        ctx.fillStyle = info.color;
         ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
 
-        const visible = game.visible.has(`${gx},${gy}`);
+        if (info.wall) {
+          // Cheap bevel so wall blocks read as blocks, not a flat wash.
+          ctx.fillStyle = COLORS.wallHighlight;
+          ctx.fillRect(px, py, TILE_SIZE, 2);
+          ctx.fillRect(px, py, 2, TILE_SIZE);
+          ctx.fillStyle = COLORS.wallShadow;
+          ctx.fillRect(px, py + TILE_SIZE - 2, TILE_SIZE, 2);
+          ctx.fillRect(px + TILE_SIZE - 2, py, 2, TILE_SIZE);
+        }
+
         const tile = game.dungeon.grid[gy][gx];
         if (tile === TILE.STAIRS_DOWN) {
-          drawGlyph(ctx, '>', COLORS.stairs, px, py, visible ? 1 : 0.45);
+          drawGlyph(ctx, '>', COLORS.stairs, px, py, info.visible ? 1 : 0.45, info.visible);
         }
       }
     }
@@ -82,7 +116,7 @@
       const ty = gy - camY;
       if (tx < 0 || ty < 0 || tx >= colsVisible || ty >= rowsVisible) continue;
       const top = stack[stack.length - 1];
-      drawGlyph(ctx, top.glyph, top.color, tx * TILE_SIZE, ty * TILE_SIZE, 1);
+      drawGlyph(ctx, top.glyph, top.color, tx * TILE_SIZE, ty * TILE_SIZE, 1, true);
     }
 
     // Monsters (only when currently visible).
@@ -93,7 +127,7 @@
       const tx = m.x - camX;
       const ty = m.y - camY;
       if (tx < 0 || ty < 0 || tx >= colsVisible || ty >= rowsVisible) continue;
-      drawGlyph(ctx, m.glyph, m.color, tx * TILE_SIZE, ty * TILE_SIZE, 1);
+      drawGlyph(ctx, m.glyph, m.color, tx * TILE_SIZE, ty * TILE_SIZE, 1, true);
       // HP sliver above the monster.
       const barW = TILE_SIZE - 6;
       const frac = Math.max(0, m.hp / m.maxHp);
@@ -101,14 +135,27 @@
       ctx.fillRect(tx * TILE_SIZE + 3, ty * TILE_SIZE + 1, barW, 3);
       ctx.fillStyle = frac > 0.5 ? '#5fd15f' : frac > 0.25 ? '#e0c04f' : '#e05c5c';
       ctx.fillRect(tx * TILE_SIZE + 3, ty * TILE_SIZE + 1, barW * frac, 3);
+      if (m.isBoss) {
+        ctx.strokeStyle = m.color;
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.7;
+        ctx.strokeRect(tx * TILE_SIZE + 1, ty * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+        ctx.globalAlpha = 1;
+      }
     }
 
     // Player.
+    let playerScreen = { x: 0, y: 0 };
     {
       const tx = game.player.x - camX;
       const ty = game.player.y - camY;
-      drawGlyph(ctx, '@', COLORS.player, tx * TILE_SIZE, ty * TILE_SIZE, 1);
+      drawGlyph(ctx, '@', COLORS.player, tx * TILE_SIZE, ty * TILE_SIZE, 1, true);
+      playerScreen = { x: tx * TILE_SIZE + TILE_SIZE / 2, y: ty * TILE_SIZE + TILE_SIZE / 2 };
     }
+
+    // Soft torchlight vignette centered on the player, purely atmospheric —
+    // it never hides or reveals anything the fog-of-war set already decided.
+    drawVignette(ctx, playerScreen.x, playerScreen.y, window.Ashenkeep.VISION_RADIUS * TILE_SIZE * 0.85);
 
     return { camX, camY, colsVisible, rowsVisible, tileSize: TILE_SIZE };
   }

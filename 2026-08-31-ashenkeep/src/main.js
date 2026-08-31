@@ -33,6 +33,7 @@
     gameOverBody: document.getElementById('gameover-body'),
     playAgainBtn: document.getElementById('play-again-btn'),
     hint: document.getElementById('hint-text'),
+    menuMessage: document.getElementById('menu-message'),
   };
 
   let game = null;
@@ -53,7 +54,8 @@
       return Game.fromSaved(JSON.parse(raw));
     } catch (e) {
       console.warn('Failed to load save:', e);
-      return null;
+      clearSave(); // don't keep offering a "Continue" that will only fail again
+      return { error: e.message };
     }
   }
 
@@ -86,12 +88,29 @@
     el.continueBtn.textContent = saved ? 'Continue Run' : 'No Saved Run';
   }
 
+  function setMenuMessage(text) {
+    el.menuMessage.textContent = text || '';
+  }
+
+  function hasSavedRun() {
+    try {
+      return !!localStorage.getItem(SAVE_KEY);
+    } catch (e) {
+      return false;
+    }
+  }
+
   function startNewGame(seedText) {
+    if (hasSavedRun()) {
+      const proceed = window.confirm('Starting a new descent will permanently discard your saved run. Continue?');
+      if (!proceed) return;
+    }
     let seed = parseInt(seedText, 10);
-    if (!Number.isFinite(seed) || seedText === '') {
+    if (!Number.isFinite(seed) || seedText.trim() === '') {
       seed = Math.floor(Math.random() * 0xffffffff);
     }
     clearSave();
+    setMenuMessage('');
     game = new Game(seed >>> 0);
     selectedItemId = null;
     showScreen('playing');
@@ -102,9 +121,16 @@
   function continueGame() {
     const restored = loadSavedGame();
     if (!restored) {
+      setMenuMessage('No saved run to continue.');
       refreshMenu();
       return;
     }
+    if (restored.error) {
+      setMenuMessage(`Your saved run could not be loaded (${restored.error}) and was discarded.`);
+      refreshMenu();
+      return;
+    }
+    setMenuMessage('');
     game = restored;
     selectedItemId = null;
     showScreen('playing');
@@ -288,10 +314,14 @@
     hintTimer = setTimeout(renderHUD, 2000);
   }
 
-  el.newRunBtn.addEventListener('click', () => startNewGame(el.seedInput.value.trim()));
+  el.newRunBtn.addEventListener('click', () => startNewGame(el.seedInput.value));
   el.continueBtn.addEventListener('click', continueGame);
+  el.seedInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') startNewGame(el.seedInput.value);
+  });
   el.playAgainBtn.addEventListener('click', () => {
     showScreen('menu');
+    setMenuMessage('');
     refreshMenu();
   });
   window.addEventListener('keydown', handleKey);

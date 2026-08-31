@@ -76,8 +76,30 @@ async function main() {
       await page.reload();
       await page.waitForSelector('#menu-screen');
       assert(!(await page.locator('#continue-btn').isDisabled()), 'continue should be enabled after a save was written');
+
+      // Starting a new run over an existing save must ask for confirmation
+      // (a destructive action) — dismiss it once to prove the save survives...
+      let dialogSeen = false;
+      page.once('dialog', async (dialog) => {
+        dialogSeen = true;
+        await dialog.dismiss();
+      });
+      await page.click('#new-run-btn');
+      await page.waitForTimeout(150);
+      assert(dialogSeen, 'starting a new run over an existing save should prompt for confirmation');
+      assert(!(await page.locator('#continue-btn').isDisabled()), 'dismissing the confirmation must leave the save intact');
+
+      // ...then accept it and confirm the old run is gone (fresh floor 1, level 1).
+      page.once('dialog', (dialog) => dialog.accept());
+      await page.click('#new-run-btn');
+      await page.waitForSelector('#game-screen:not([hidden])');
+      assert((await page.locator('#floor-text').innerText()) === 'Floor 1 / 10', 'accepting the confirmation should start a genuinely fresh run');
+
+      await page.reload();
+      await page.waitForSelector('#menu-screen');
       await page.click('#continue-btn');
       await page.waitForSelector('#game-screen:not([hidden])');
+      assert((await page.locator('#floor-text').innerText()) === 'Floor 1 / 10', 'the fresh run should persist and reload correctly');
 
       if (errors.length > 0) {
         throw new Error(`Console/page errors in ${colorScheme} mode:\n` + errors.join('\n'));

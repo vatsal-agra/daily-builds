@@ -109,6 +109,17 @@ tests.
    fog-of-war data the main view uses (no cheating — no unexplored tiles
    drawn on it).
 
+### Added during Phase 4 (beyond the original plan)
+
+7. **A named final-floor boss.** "The Keeper of Ashenkeep" spawns standing
+   directly on floor 10's stairs tile. Because the movement rule already
+   makes walking into an occupied tile attack it instead of stepping onto
+   it, the player is structurally incapable of reaching the winning tile
+   without killing the boss first — no separate "is the boss dead" check
+   needed anywhere. Unlike ordinary monsters, the boss never wanders off
+   its post while un-aggroed, so it reliably guards the stairs until it
+   spots the player.
+
 ## Non-goals
 
 - No multiplayer, no server, no network calls — a single self-contained

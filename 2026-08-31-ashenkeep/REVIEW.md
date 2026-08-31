@@ -97,7 +97,7 @@ unambiguously means "wait" only.
 ## Fixed and verified
 
 All four findings above are fixed. Full suite re-run after fixes:
-`node --test tests/*.js` → 81/81 green; `node tests/ui_smoke.mjs` → light
+`node --test tests/*.js` → 82/82 green; `node tests/ui_smoke.mjs` → light
 + dark mode both pass with zero console/page errors; the dungeon fuzz and
 both bot-playthrough harnesses were re-run post-fix with the same 0
 crashes / 14-win result (the teleport-scroll fix is behavior-invisible to
@@ -106,3 +106,37 @@ first place, which is exactly why a hand-written regression test — not
 just the stress harness — was added for it, see
 `tests/test_game.js`: "teleporting never lands the player on an occupied
 tile").
+
+## Phase 4 additions (found while adding the boss + polish)
+
+Adding the floor-10 boss and hardening save/load surfaced three more
+things worth fixing before shipping, applying the same adversarial
+standard to the new code as the review above applied to the original:
+
+- **Boss balance was first shipped too hard.** The equip-aware bot's win
+  rate (see above) collapsed from 14/60 to 2/60 the moment the first-draft
+  boss stats (220 HP / 26 ATK / 12 DEF) were added — the bot could usually
+  reach the stairs but essentially never survive the fight. Re-tuned to
+  150 HP / 19 ATK / 8 DEF and re-ran the same 60-seed harness: 7/60 wins,
+  0 crashes — still a genuinely hard capstone fight (down from the
+  unopposed-stairs 14/60 baseline, as a boss fight should be) but
+  demonstrably not a wall. This is exactly the kind of thing a hostile
+  stress harness catches that hand-written unit tests (which only assert
+  "the boss can be killed if you force its HP to 1") never would.
+- **`Game.fromSaved` trusted its input completely.** It read `data.player`,
+  `data.dungeon.grid`, etc. with no validation — a corrupted or
+  future-format save would throw a confusing error deep inside
+  reconstruction (or silently produce a broken game object) instead of
+  failing cleanly. Added an explicit version check and a shape check that
+  throw a clear, top-level error; `main.js` now catches that error,
+  discards the unusable save, and tells the player plainly instead of
+  Continue silently doing nothing.
+- **"Begin Descent" silently discarded an existing saved run with zero
+  confirmation** — a real, destructive foot-gun for anyone who meant to
+  click Continue. Added a `confirm()` guard that only fires when a save
+  actually exists, verified in the headless UI test both ways (dismiss
+  keeps the save; accept discards it and starts clean).
+
+Final state: 87/87 `node:test` green, UI smoke test green in light + dark
+(including the new confirmation-dialog flow), boss-inclusive stress
+harness re-verified with 0 crashes across 60 seeds.

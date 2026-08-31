@@ -92,6 +92,7 @@
   .btn-primary { background: linear-gradient(180deg, #8fe8ff, #4fb8d6); color: #06232b; width: 100%; margin-bottom: 10px; }
   .btn-secondary { background: #262632; color: var(--text); width: 100%; }
   .menu-hint { margin-top: 20px; font-size: 0.78rem; color: var(--text-dim); line-height: 1.6; }
+  .menu-message { min-height: 1.1em; font-size: 0.8rem; color: var(--danger); margin-top: -2px; }
   kbd { background: #23232e; border: 1px solid #35354a; border-radius: 4px; padding: 1px 6px; font-size: 0.75rem; }
 
   /* ---------- game screen ---------- */
@@ -239,6 +240,7 @@
       <input id="seed-input" type="text" inputmode="numeric" placeholder="e.g. 1337" />
       <button id="new-run-btn" class="btn-primary">Begin Descent</button>
       <button id="continue-btn" class="btn-secondary" disabled>No Saved Run</button>
+      <div id="menu-message" class="menu-message"></div>
       <div class="menu-hint">
         Move with <kbd>Arrows</kbd> / <kbd>WASD</kbd> · Wait <kbd>.</kbd> · Descend stairs <kbd>&gt;</kbd><br />
         Walk into a monster to attack it. Walk over an item to pick it up.<br />

@@ -24,7 +24,7 @@ if (typeof module !== 'undefined' && module.exports) {
 } else {
   Mod = window.Ashenkeep;
 }
-const { RNG, TILE, generateDungeon, isWalkable, computeFOV, blockingFromGrid, findPath, Player, Monster, spawnMonster, resolveAttack, generateLootDrop, addToInventory, removeFromInventory, equipItem, unequipSlot } = Mod;
+const { RNG, TILE, generateDungeon, isWalkable, computeFOV, blockingFromGrid, findPath, Player, Monster, spawnMonster, spawnBoss, resolveAttack, generateLootDrop, addToInventory, removeFromInventory, equipItem, unequipSlot } = Mod;
 
 const VISION_RADIUS = 8;
 const MONSTER_SIGHT_RADIUS = 6;
@@ -118,6 +118,17 @@ class Game {
       this.monsters.push(spawnMonster(this.floorNumber, spot.x, spot.y, this.rng));
     }
 
+    if (this.floorNumber === MAX_FLOOR) {
+      // The final guardian stands directly on the stairs tile: the player
+      // physically cannot walk onto that tile (movePlayer attacks an
+      // occupant instead of stepping onto it) until the boss is dead, so
+      // "reach the stairs" and "defeat the boss" are the same requirement
+      // by construction — no separate "is the boss still alive" check
+      // needed in descend().
+      const boss = spawnBoss(this.dungeon.stairs.x, this.dungeon.stairs.y);
+      this.monsters.push(boss);
+    }
+
     const itemCount = itemCountForFloor(this.floorNumber);
     for (let i = 0; i < itemCount; i++) {
       const spot = this._randomFloorTile(spawnRooms, occupied);
@@ -198,7 +209,7 @@ class Game {
     this._log(result.message);
     monster.aggro = true;
     if (result.defenderDied) {
-      this._log(`${monster.name} dies.`);
+      this._log(monster.isBoss ? `${monster.name} falls! The way down is finally clear.` : `${monster.name} dies.`);
       this.player.kills += 1;
       const levelUps = this.player.gainXp(monster.xpReward);
       if (levelUps > 0) this._log(`You feel stronger! You reached level ${this.player.level}.`);
@@ -296,6 +307,9 @@ class Game {
     }
     this._nextFloor();
     this._log(`You descend to floor ${this.floorNumber}.`);
+    if (this.floorNumber === MAX_FLOOR) {
+      this._log('A monstrous presence guards the stairs down. There is no way past it but through it.');
+    }
     return { ok: true };
   }
 
@@ -350,7 +364,9 @@ class Game {
             monster.y = next.y;
           }
         }
-      } else if (this.rng.chance(0.5)) {
+      } else if (!monster.isBoss && this.rng.chance(0.5)) {
+        // Bosses hold their post (the stairs tile) until they spot the
+        // player rather than wandering off it; ordinary monsters wander.
         const dirs = [
           [1, 0],
           [-1, 0],
@@ -395,6 +411,15 @@ class Game {
   }
 
   static fromSaved(data) {
+    if (!data || typeof data !== 'object') {
+      throw new Error('Corrupt save data: expected an object.');
+    }
+    if (data.version !== 1) {
+      throw new Error(`Unsupported save version: ${data.version}`);
+    }
+    if (!data.dungeon || !Array.isArray(data.dungeon.grid) || !data.player) {
+      throw new Error('Corrupt save data: missing dungeon or player state.');
+    }
     const game = new Game(0, { deferInit: true });
     game.seed = data.seed >>> 0;
     game.rng = new RNG(game.seed);
