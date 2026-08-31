@@ -191,6 +191,10 @@
         selectedItemId = null;
         persist();
         renderAll();
+        // Avoid a focused button silently double-activating on the next
+        // Space keypress, which the global keydown handler also binds to
+        // "wait a turn".
+        btn.blur();
       });
       return btn;
     };

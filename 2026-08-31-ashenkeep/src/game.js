@@ -227,7 +227,9 @@ class Game {
     }
     if (item.type === 'scroll') {
       if (item.effect === 'teleport') {
-        const spot = this._randomFloorTile(this.dungeon.rooms, new Set());
+        const occupied = new Set(this.monsters.filter((m) => m.isAlive()).map((m) => this._key(m.x, m.y)));
+        occupied.add(this._key(this.player.x, this.player.y));
+        const spot = this._randomFloorTile(this.dungeon.rooms, occupied);
         if (spot) {
           this.player.x = spot.x;
           this.player.y = spot.y;
@@ -387,7 +389,7 @@ class Game {
       },
       explored: this.explored,
       player: { ...this.player, inventory: this.player.inventory.map((i) => ({ ...i })), equipment: { ...this.player.equipment } },
-      monsters: this.monsters.map((m) => ({ ...m, path: undefined })),
+      monsters: this.monsters.map((m) => ({ ...m })),
       groundItems: Array.from(this.groundItems.entries()).map(([k, items]) => [k, items.map((i) => ({ ...i }))]),
     };
   }
@@ -419,7 +421,6 @@ class Game {
     game.monsters = data.monsters.map((m) => {
       const monster = Object.create(Monster.prototype);
       Object.assign(monster, m);
-      monster.path = [];
       return monster;
     });
 

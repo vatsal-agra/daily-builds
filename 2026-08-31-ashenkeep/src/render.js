@@ -18,11 +18,12 @@
   };
 
   function tileBackground(game, x, y) {
+    const { TILE } = window.Ashenkeep;
     const key = `${x},${y}`;
     const visible = game.visible.has(key);
     const explored = game.explored[y] && game.explored[y][x];
     if (!visible && !explored) return null; // unexplored: draw nothing (pure black)
-    const wall = game.dungeon.grid[y][x] === 0;
+    const wall = game.dungeon.grid[y][x] === TILE.WALL;
     if (wall) return visible ? COLORS.bgVisibleWall : COLORS.bgExploredWall;
     return visible ? COLORS.bgVisibleFloor : COLORS.bgExploredFloor;
   }
@@ -113,6 +114,7 @@
   }
 
   function renderMinimap(ctx, game) {
+    const { TILE } = window.Ashenkeep;
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
     ctx.fillStyle = '#0a0a0d';
@@ -126,7 +128,7 @@
     for (let y = 0; y < game.dungeon.height; y++) {
       for (let x = 0; x < game.dungeon.width; x++) {
         if (!game.explored[y][x]) continue;
-        const wall = game.dungeon.grid[y][x] === 0;
+        const wall = game.dungeon.grid[y][x] === TILE.WALL;
         ctx.fillStyle = wall ? '#2a2a33' : '#4a4a5a';
         ctx.fillRect(offX + x * scale, offY + y * scale, Math.max(1, scale), Math.max(1, scale));
       }

@@ -175,6 +175,23 @@ test('using a reveal scroll marks every non-wall tile explored', () => {
   }
 });
 
+test('teleporting never lands the player on an occupied tile (regression: REVIEW.md #1)', () => {
+  const g = freshGame(18);
+  const { rollScroll } = require('../src/items.js');
+  let scroll = rollScroll(1, g.rng);
+  while (scroll.effect !== 'teleport') scroll = rollScroll(1, g.rng);
+  for (let i = 0; i < 30; i++) {
+    g.player.inventory.push({ ...scroll, id: scroll.id + i });
+  }
+  for (const item of g.player.inventory.slice()) {
+    g.useItem(item.id);
+    for (const m of g.monsters) {
+      if (!m.isAlive()) continue;
+      assert.ok(m.x !== g.player.x || m.y !== g.player.y, 'teleport must never land the player on a live monster');
+    }
+  }
+});
+
 test('equip then unequip round-trips the item and its stat bonus', () => {
   const g = freshGame(9);
   const { rollWeapon } = require('../src/items.js');

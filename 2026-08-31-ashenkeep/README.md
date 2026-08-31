@@ -1,8 +1,11 @@
 # Ashenkeep
 
-> Status: **Phase 2 — Core build.** All 4 required features are implemented
-> and working end-to-end. See [`PLAN.md`](./PLAN.md) for the full design.
-> Adversarial review, stretch features, and final polish are still to come.
+> Status: **Phase 3 — Adversarial review complete.** All 4 required
+> features work end-to-end and have survived a hostile self-review; see
+> [`PLAN.md`](./PLAN.md) for the design and [`REVIEW.md`](./REVIEW.md) for
+> the findings (a teleport-scroll occupancy bug, dead code, a fragile magic
+> number, and a minor focus/keyboard UX bug — all fixed with regression
+> coverage). Stretch features and final polish are still to come.
 
 A browser-playable roguelike dungeon crawler built entirely from scratch in
 vanilla JavaScript — procedural dungeons, real recursive-shadowcasting
@@ -22,9 +25,16 @@ No build step, no `npm install` needed to play — it's plain `<script>` tags.
 ## Run the tests
 
 ```bash
-node --test tests/*.js     # 81 unit/integration tests (dungeon, fov, astar, entities, items, combat, game)
+node --test tests/*.js     # 82 unit/integration tests (dungeon, fov, astar, entities, items, combat, game)
 node tests/ui_smoke.mjs    # headless-Chromium smoke test of the real page
 ```
+
+`REVIEW.md` also documents three independent stress harnesses run beyond
+the unit suite: a 1,400-generation dungeon-connectivity fuzz, a 60-seed
+naive-bot full playthrough (0 crashes), and a 60-seed equip-aware bot
+playthrough that actually **wins 14/60 (23%) of the time** floor-1-to-10 —
+proof the win condition is genuinely reachable, not just asserted in a
+unit test.
 
 ## What's implemented so far (required features)
 

@@ -149,7 +149,6 @@ class Monster {
     this.x = x;
     this.y = y;
     this.aggro = false;
-    this.path = []; // cached A* path, recomputed when stale
   }
 
   isAlive() {
