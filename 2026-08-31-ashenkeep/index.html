@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ashenkeep</title>
+<link rel="icon" href="data:," />
+<style>
+  :root {
+    --bg: #0b0b0f;
+    --panel: #15151c;
+    --panel-border: #2a2a36;
+    --text: #e6e6ea;
+    --text-dim: #8f8fa0;
+    --accent: #7fe0ff;
+    --accent-dim: #3f6b78;
+    --hp: #e05c5c;
+    --xp: #f2d060;
+    --common: #c9c9c9;
+    --magic: #4f8fdc;
+    --rare: #d6c94f;
+    --epic: #c04fd6;
+    --danger: #ff5f5f;
+    --win: #5fe08a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100%;
+  }
+  #app {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+  }
+  h1.title {
+    font-family: Georgia, 'Times New Roman', serif;
+    letter-spacing: 3px;
+    text-align: center;
+    font-size: 2.6rem;
+    margin: 12px 0 4px;
+    color: var(--accent);
+    text-shadow: 0 0 18px rgba(127, 224, 255, 0.35);
+  }
+  .subtitle {
+    text-align: center;
+    color: var(--text-dim);
+    margin-bottom: 28px;
+    font-size: 0.95rem;
+  }
+
+  /* ---------- menu screen ---------- */
+  #menu-screen { display: flex; justify-content: center; }
+  .menu-card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 32px;
+    width: 380px;
+    text-align: center;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  .menu-card label { display: block; margin-bottom: 6px; color: var(--text-dim); font-size: 0.85rem; }
+  .menu-card input {
+    width: 100%;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid var(--panel-border);
+    background: #0e0e13;
+    color: var(--text);
+    margin-bottom: 18px;
+    font-size: 1rem;
+    text-align: center;
+  }
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    border-radius: 6px;
+    padding: 11px 18px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    transition: transform 0.08s ease, filter 0.15s ease;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.15); }
+  button:active:not(:disabled) { transform: scale(0.97); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary { background: linear-gradient(180deg, #8fe8ff, #4fb8d6); color: #06232b; width: 100%; margin-bottom: 10px; }
+  .btn-secondary { background: #262632; color: var(--text); width: 100%; }
+  .menu-hint { margin-top: 20px; font-size: 0.78rem; color: var(--text-dim); line-height: 1.6; }
+  kbd { background: #23232e; border: 1px solid #35354a; border-radius: 4px; padding: 1px 6px; font-size: 0.75rem; }
+
+  /* ---------- game screen ---------- */
+  #game-screen { display: flex; flex-direction: column; gap: 12px; }
+  .hud-row {
+    display: flex;
+    gap: 18px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 10px 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+  }
+  .hud-stat { color: var(--text-dim); white-space: nowrap; }
+  .bar-wrap {
+    flex: 1;
+    min-width: 130px;
+    background: #0e0e13;
+    border-radius: 5px;
+    height: 16px;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--panel-border);
+  }
+  .bar-fill { height: 100%; transition: width 0.2s ease; }
+  #hp-bar-fill { background: linear-gradient(90deg, #7a2323, var(--hp)); }
+  #xp-bar-fill { background: linear-gradient(90deg, #7a6a23, var(--xp)); }
+  .bar-label {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; text-shadow: 0 1px 2px #000;
+  }
+
+  .game-body { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  #game-canvas {
+    background: #000;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    image-rendering: pixelated;
+  }
+  .sidebar { flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 10px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .panel h2 {
+    margin: 0 0 8px;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+  }
+  #minimap-canvas { border-radius: 6px; width: 100%; display: block; }
+
+  .equip-slot {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    grid-template-rows: auto auto;
+    gap: 0 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    background: #0e0e13;
+    border: 1px solid var(--panel-border);
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+  .equip-slot.empty { opacity: 0.55; cursor: default; }
+  .slot-label { text-transform: capitalize; color: var(--text-dim); font-size: 0.7rem; grid-row: 1; }
+  .slot-item { grid-row: 1; font-weight: 600; text-align: right; }
+  .slot-affixes { grid-column: 1 / 3; grid-row: 2; color: var(--text-dim); font-size: 0.72rem; }
+  .empty-text { color: var(--text-dim); font-weight: 400; font-style: italic; }
+
+  #inventory-list { max-height: 220px; overflow-y: auto; }
+  .inv-item {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    grid-template-rows: auto auto;
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    border: 1px solid transparent;
+  }
+  .inv-item:hover { background: #1c1c26; }
+  .inv-item.selected { border-color: var(--accent); background: #14232a; }
+  .inv-glyph { grid-row: 1 / 3; font-weight: bold; text-align: center; }
+  .inv-name { font-weight: 600; }
+  .inv-detail { grid-column: 2; color: var(--text-dim); font-size: 0.7rem; }
+  .inv-empty { color: var(--text-dim); font-style: italic; font-size: 0.82rem; padding: 6px; }
+
+  .rarity-common .inv-name, .rarity-common .slot-item { color: var(--common); }
+  .rarity-magic .inv-name, .rarity-magic .slot-item { color: var(--magic); }
+  .rarity-rare .inv-name, .rarity-rare .slot-item { color: var(--rare); }
+  .rarity-epic .inv-name, .rarity-epic .slot-item { color: var(--epic); }
+
+  #action-bar { display: flex; gap: 8px; }
+  #action-bar button { flex: 1; background: #262632; color: var(--text); padding: 8px; }
+  #action-bar button:hover { background: #33334a; }
+
+  #message-log {
+    max-height: 110px;
+    overflow-y: auto;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-dim);
+  }
+  .log-line:last-child { color: var(--text); }
+
+  #hint-text { text-align: center; font-size: 0.78rem; color: var(--text-dim); min-height: 1.2em; }
+
+  /* ---------- game over screen ---------- */
+  #gameover-screen { display: flex; justify-content: center; }
+  .gameover-card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 36px;
+    width: 380px;
+    text-align: center;
+  }
+  #gameover-title { font-family: Georgia, serif; font-size: 1.8rem; margin-bottom: 16px; }
+  #gameover-title.win { color: var(--win); text-shadow: 0 0 16px rgba(95,224,138,0.4); }
+  #gameover-title.loss { color: var(--danger); text-shadow: 0 0 16px rgba(255,95,95,0.4); }
+  #gameover-body p { margin: 6px 0; color: var(--text-dim); }
+  #gameover-body strong { color: var(--text); }
+  #play-again-btn { margin-top: 20px; background: linear-gradient(180deg, #8fe8ff, #4fb8d6); color: #06232b; width: 100%; }
+
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1 class="title">ASHENKEEP</h1>
+  <p class="subtitle">a roguelike descent — ten floors, one life</p>
+
+  <div id="menu-screen">
+    <div class="menu-card">
+      <label for="seed-input">Run seed (leave blank for random)</label>
+      <input id="seed-input" type="text" inputmode="numeric" placeholder="e.g. 1337" />
+      <button id="new-run-btn" class="btn-primary">Begin Descent</button>
+      <button id="continue-btn" class="btn-secondary" disabled>No Saved Run</button>
+      <div class="menu-hint">
+        Move with <kbd>Arrows</kbd> / <kbd>WASD</kbd> · Wait <kbd>.</kbd> · Descend stairs <kbd>&gt;</kbd><br />
+        Walk into a monster to attack it. Walk over an item to pick it up.<br />
+        Death is permanent — reach floor 10 to win.
+      </div>
+    </div>
+  </div>
+
+  <div id="game-screen" hidden>
+    <div class="hud-row">
+      <span id="level-text" class="hud-stat">Level 1</span>
+      <span id="floor-text" class="hud-stat">Floor 1 / 10</span>
+      <div class="bar-wrap"><div id="hp-bar-fill" class="bar-fill"></div><div class="bar-label" id="hp-text">HP</div></div>
+      <div class="bar-wrap"><div id="xp-bar-fill" class="bar-fill"></div><div class="bar-label" id="xp-text">XP</div></div>
+      <span id="kills-text" class="hud-stat">0 kills</span>
+    </div>
+
+    <div class="game-body">
+      <canvas id="game-canvas" width="640" height="460"></canvas>
+      <div class="sidebar">
+        <div class="panel">
+          <h2>Map</h2>
+          <canvas id="minimap-canvas" width="220" height="130"></canvas>
+        </div>
+        <div class="panel">
+          <h2>Equipment</h2>
+          <div id="equip-slots"></div>
+        </div>
+        <div class="panel">
+          <h2>Inventory</h2>
+          <div id="inventory-list"></div>
+          <div id="action-bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Log</h2>
+      <div id="message-log"></div>
+    </div>
+    <div id="hint-text"></div>
+  </div>
+
+  <div id="gameover-screen" hidden>
+    <div class="gameover-card">
+      <div id="gameover-title"></div>
+      <div id="gameover-body"></div>
+      <button id="play-again-btn" class="btn-primary">Return to Menu</button>
+    </div>
+  </div>
+</div>
+
+<script src="src/rng.js"></script>
+<script src="src/dungeon.js"></script>
+<script src="src/fov.js"></script>
+<script src="src/astar.js"></script>
+<script src="src/entities.js"></script>
+<script src="src/combat.js"></script>
+<script src="src/items.js"></script>
+<script src="src/game.js"></script>
+<script src="src/render.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
