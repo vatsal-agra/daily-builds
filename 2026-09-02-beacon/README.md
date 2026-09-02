@@ -3,7 +3,11 @@
 A from-scratch 2D robot SLAM (Simultaneous Localization And Mapping)
 simulator in pure Python 3 stdlib — no numpy, no robotics libraries.
 
-**Status: Phase 4 (stretch + polish) complete.**
+**Status: Phase 5 (verification) complete.** 80 unit/integration/CLI tests
+(`tests/`, plain stdlib `unittest`, no test-framework dependency) plus
+`demo.sh` — which runs the full suite, exercises the CLI's `demo`,
+`waypoints`, and `viz` paths, and headless-browser-smokes the generated
+visualizer for JS console errors — all green. See "Verify it" below.
 
 All 4 required features are implemented and demonstrably work end-to-end:
 
@@ -51,5 +55,12 @@ python3 -m beacon.cli viz --world maze --max-steps 800 --out maze_run.html
 `--mode {explore,waypoints}` picks the control policy; in waypoints mode,
 pass one or more `--waypoint X,Y`.
 
-See `PLAN.md` for the full architecture and feature list. The test suite
-(`tests/`) and `demo.sh` are next.
+## Verify it
+
+```
+./demo.sh                          # full suite + CLI paths + browser smoke test
+python3 -m unittest discover -s tests -v   # just the test suite (~25s, 80 tests)
+```
+
+See `PLAN.md` for the full architecture and feature list, and `REVIEW.md`
+for the adversarial-review findings and fixes from Phase 3.
