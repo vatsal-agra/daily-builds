@@ -104,9 +104,12 @@ in a few seconds of pure-Python compute.
    truth — via the likelihood-field observation model (a precomputed
    distance-to-nearest-obstacle field, so per-beam weighting is O(1) rather
    than re-raycasting per particle), systematic resampling triggered by
-   effective sample size, and a circular-mean pose estimate. Must converge
-   from initial pose uncertainty to low error and *recover* after
-   deliberately injected extra drift.
+   effective sample size, and a circular-mean pose estimate. This is pose
+   *tracking* (the standard MCL setup: a roughly-known start pose, not the
+   much harder global/"kidnapped robot" problem) — must converge from
+   realistic initial uncertainty (tens of centimeters, tens of degrees) to
+   low error, and *recover* after a deliberately injected mid-run drift of
+   a similar magnitude.
 
 4. **[required] Closed-loop online SLAM.** Ties 2 and 3 together for real:
    the robot explores with *no* ground-truth pose ever touching the mapper

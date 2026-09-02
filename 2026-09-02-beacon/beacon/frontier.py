@@ -60,14 +60,21 @@ def select_frontier_goal(
     frontier_set = set(find_frontier_cells(grid))
     if avoid:
         frontier_set -= avoid
+    # The robot's own cell is never a valid destination, even if it
+    # currently qualifies as a frontier: a scan was already taken from
+    # right here, so if an adjacent cell is still unknown after that, it's
+    # in a shadow this pose can never resolve (behind an obstacle, most
+    # likely) -- driving "to" the cell it's already standing on would be a
+    # zero-length path that changes nothing and gets proposed again next
+    # step, forever. The unknown neighbor needs to be seen from somewhere
+    # else, so it must search past this cell for a genuinely different one.
+    frontier_set.discard(from_cell)
     if not frontier_set:
         return None
 
     blocked = planner.compute_blocked(
         grid, robot_radius_cells, allow_unknown=False, keep_clear=from_cell
     )
-    if from_cell in frontier_set:
-        return from_cell, [from_cell]
 
     came_from: Dict[Cell, Cell] = {}
     g_score: Dict[Cell, float] = {from_cell: 0.0}

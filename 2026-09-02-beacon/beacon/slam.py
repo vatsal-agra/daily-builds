@@ -148,31 +148,32 @@ class SlamRun:
 
     # -- planning --------------------------------------------------------------
     def _replan(self) -> None:
-        est = self.pf.estimate()
-        start_cell = self.grid.world_to_cell(est[0], est[1])
-
         if self.cfg.mode == "waypoints":
-            if not self.goal_queue:
+            # Drop unreachable goals one at a time until one plans or the
+            # queue empties -- a loop, not recursion, so a long list of
+            # bad waypoints can never blow the call stack.
+            while self.goal_queue:
+                est = self.pf.estimate()
+                start_cell = self.grid.world_to_cell(est[0], est[1])
+                gx, gy = self.goal_queue.pop(0)
+                goal_cell = self.grid.world_to_cell(gx, gy)
+                self.current_goal_cell = goal_cell
+                blocked = planner.compute_blocked(
+                    self.grid, self.robot_radius_cells, allow_unknown=True, keep_clear=start_cell
+                )
+                path = planner.astar(
+                    self.grid, start_cell, goal_cell, self.robot_radius_cells,
+                    allow_unknown=True, blocked=blocked,
+                )
+                if path is not None:
+                    break
+            else:
                 self.current_path_world = []
                 self.exploration_done = True
                 return
-            gx, gy = self.goal_queue.pop(0)
-            goal_cell = self.grid.world_to_cell(gx, gy)
-            self.current_goal_cell = goal_cell
-            blocked = planner.compute_blocked(
-                self.grid, self.robot_radius_cells, allow_unknown=True, keep_clear=start_cell
-            )
-            path = planner.astar(
-                self.grid, start_cell, goal_cell, self.robot_radius_cells,
-                allow_unknown=True, blocked=blocked,
-            )
-            if path is None:
-                # Try again allowing a slightly larger unknown allowance is
-                # moot here (allow_unknown already True); if truly
-                # unreachable, drop this goal and try the next one.
-                self._replan()
-                return
         else:  # frontier exploration
+            est = self.pf.estimate()
+            start_cell = self.grid.world_to_cell(est[0], est[1])
             avoid = {c for c, n in self.avoid_cells.items() if n >= 3}
             result = frontier.select_frontier_goal(
                 self.grid, start_cell, self.robot_radius_cells, avoid=avoid
@@ -257,7 +258,6 @@ class SlamRun:
         v_for_pf = 0.0 if self.robot.collided_last_step else v
         self.pf.predict(v_for_pf, w, cfg.dt)
 
-        t = len(self.frames)
         if not cfg.disable_pf_update:
             if self.dfield is None or t % cfg.df_every == 0:
                 self.dfield = DistanceField(self.grid)

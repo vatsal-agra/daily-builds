@@ -3,8 +3,15 @@
 A from-scratch 2D robot SLAM (Simultaneous Localization And Mapping)
 simulator in pure Python 3 stdlib — no numpy, no robotics libraries.
 
-**Status: Phase 2 (core build) complete.** All 4 required features are
-implemented and demonstrably work end-to-end:
+**Status: Phase 3 (adversarial review) complete.** See `REVIEW.md` for the
+full list of bugs found by actually watching multi-hundred-step runs step
+by step (a frontier-search bug that ended exploration at 26% coverage, a
+collision-triggered pose-estimate runaway that spiked error to 60-80m in a
+20x20 world, a planning deadlock, an infinite-stall bug, unbounded
+recursion, and an unverified claim) and the fixes for each, verified by
+re-running the exact scenario that exposed it.
+
+All 4 required features are implemented and demonstrably work end-to-end:
 
 1. Noisy differential-drive robot + ray-cast lidar (`robot.py`, `lidar.py`)
 2. Log-odds occupancy-grid mapping (`occupancy_grid.py`)
