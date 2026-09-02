@@ -36,6 +36,10 @@ class ObservationModel:
     z_rand: float = 0.15          # weight on the uniform "could be anything" component
     beam_stride: int = 4          # use every Nth beam (cost control)
 
+    def __post_init__(self) -> None:
+        if self.beam_stride < 1:
+            raise ValueError(f"beam_stride must be >= 1, got {self.beam_stride}")
+
 
 class ParticleFilter:
     def __init__(
@@ -48,6 +52,8 @@ class ParticleFilter:
         rng: Optional[random.Random] = None,
         neff_resample_frac: float = 0.5,
     ):
+        if num_particles < 1:
+            raise ValueError(f"num_particles must be >= 1, got {num_particles}")
         self.n = num_particles
         self.motion_noise = motion_noise
         self.obs_model = obs_model

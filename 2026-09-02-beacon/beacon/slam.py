@@ -51,11 +51,12 @@ class SlamConfig:
     reality_noise: MotionNoise = field(default_factory=lambda: MotionNoise(0.01, 0.01, 0.01, 0.01, 0.0, 0.0))
     belief_noise: MotionNoise = field(default_factory=lambda: MotionNoise(0.05, 0.05, 0.05, 0.05, 0.01, 0.01))
     obs_model: ObservationModel = field(default_factory=ObservationModel)
-    df_every: int = 4  # recompute the distance field every N steps
+    df_every: int = 1  # recompute the distance field every N steps
     seed: int = 42
     disable_pf_update: bool = False  # dead-reckoning baseline, for regression tests
     mode: str = "explore"  # "explore" (frontier) or "waypoints" (explicit goals)
     waypoints: Tuple[Tuple[float, float], ...] = ()
+    snapshot_every: int = 15  # occupancy-grid snapshot cadence for the visualizer, 0 disables
 
 
 @dataclass
@@ -68,6 +69,7 @@ class Frame:
     path_world: List[Tuple[float, float]]
     goal_reached_count: int
     collided: bool
+    particles: List[Tuple[float, float, float]] = field(default_factory=list)
 
 
 def follow_path(
@@ -145,6 +147,10 @@ class SlamRun:
         self.consecutive_collisions = 0
         self.avoid_cells: Dict[Tuple[int, int], int] = {}
         self.current_goal_cell: Optional[Tuple[int, int]] = None
+        # (t, prob_grid) snapshots for the visualizer, at a coarse cadence
+        # -- storing the full grid every single step would be enormous;
+        # the viewer just holds the most recent snapshot between them.
+        self.snapshots: List[Tuple[int, List[List[float]]]] = []
 
     # -- planning --------------------------------------------------------------
     def _replan(self) -> None:
@@ -276,6 +282,16 @@ class SlamRun:
 
         self.true_poses.append(self.robot.pose)
         self.est_poses.append(est_pose)
+        # A subsample of the particle cloud, for the visualizer -- logging
+        # all `num_particles` every single step would balloon the replay
+        # file for no visual benefit (a few dozen dots reads the same as a
+        # few hundred at this canvas scale).
+        stride = max(1, len(self.pf.particles) // 60)
+        particle_sample = [
+            (round(p[0], 3), round(p[1], 3), round(p[2], 3))
+            for p in self.pf.particles[::stride]
+        ]
+
         self.frames.append(
             Frame(
                 t=t,
@@ -286,12 +302,22 @@ class SlamRun:
                 path_world=list(self.current_path_world[self.path_index :]),
                 goal_reached_count=self.goals_reached,
                 collided=self.robot.collided_last_step,
+                particles=particle_sample,
             )
         )
+
+        if cfg.snapshot_every and (t % cfg.snapshot_every == 0):
+            rounded = [[round(p, 3) for p in row] for row in self.grid.to_prob_grid()]
+            self.snapshots.append((t, rounded))
+
         return True
 
     def run(self, max_steps: int = 500) -> "SlamRun":
         for _ in range(max_steps):
             if not self.step():
                 break
+        last_t = len(self.frames) - 1
+        if self.cfg.snapshot_every and (not self.snapshots or self.snapshots[-1][0] != last_t) and last_t >= 0:
+            rounded = [[round(p, 3) for p in row] for row in self.grid.to_prob_grid()]
+            self.snapshots.append((last_t, rounded))
         return self

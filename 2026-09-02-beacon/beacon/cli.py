@@ -16,7 +16,21 @@ from .slam import SlamConfig, SlamRun
 from .world import BUILTIN_WORLDS
 
 
+class CliError(Exception):
+    """A user-facing input problem -- reported as a clean one-line message,
+    not a Python traceback."""
+
+
 def _build_config(args) -> SlamConfig:
+    if args.particles < 4:
+        raise CliError(f"--particles must be at least 4 (got {args.particles})")
+    if args.resolution <= 0:
+        raise CliError(f"--resolution must be positive (got {args.resolution})")
+    if args.df_every < 1:
+        raise CliError(f"--df-every must be at least 1 (got {args.df_every})")
+    if getattr(args, "max_steps", 1) < 1:
+        raise CliError(f"--max-steps must be at least 1 (got {args.max_steps})")
+
     kwargs = dict(
         world_name=args.world,
         resolution=args.resolution,
@@ -28,8 +42,15 @@ def _build_config(args) -> SlamConfig:
     if args.mode == "waypoints":
         pts = []
         for pair in args.waypoints or []:
-            x, y = pair.split(",")
-            pts.append((float(x), float(y)))
+            parts = pair.split(",")
+            if len(parts) != 2:
+                raise CliError(f"--waypoint expects 'X,Y' (got {pair!r})")
+            try:
+                pts.append((float(parts[0]), float(parts[1])))
+            except ValueError:
+                raise CliError(f"--waypoint expects numeric X,Y (got {pair!r})") from None
+        if not pts:
+            raise CliError("--mode waypoints needs at least one --waypoint X,Y")
         kwargs["waypoints"] = tuple(pts)
     return SlamConfig(**kwargs)
 
@@ -138,7 +159,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except CliError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
