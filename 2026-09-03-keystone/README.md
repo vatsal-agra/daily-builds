@@ -5,12 +5,23 @@ UTXO transactions, Merkle-committed blocks, difficulty-retargeting mining,
 full chain validation, and a real gossiping P2P network of independent
 nodes over TCP sockets.
 
-**Status: Phase 3 (adversarial review) complete.** All 4 required features
-work end-to-end, and 8 real bugs found via hostile testing — including a
-critical difficulty-retarget cliff that was silently stalling the whole
-network at the first retarget boundary in ~40-60% of runs — are found,
-root-caused, and fixed. See [PLAN.md](PLAN.md) for architecture and
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features
+plus both stretch features (block explorer, m-of-n multisig scripting) work
+end-to-end. 9 real bugs found via hostile testing — including a critical
+difficulty-retarget cliff that was silently stalling the whole network at
+the first retarget boundary in ~40-60% of runs, and a `SyntaxError` in the
+explorer that meant it had never actually been run before Phase 4 — are
+found, root-caused, and fixed. See [PLAN.md](PLAN.md) for architecture and
 [REVIEW.md](REVIEW.md) for the full findings writeup.
+
+## Try it
+
+```
+python3 -m keystone keygen                                   # a wallet
+python3 -m keystone demo --nodes 4 --seconds 8                # the full network demo
+python3 -m keystone explorer --nodes 3 --seconds 20 --port 8080  # live block explorer UI
+python3 -m keystone script-demo                               # 2-of-3 multisig demo
+```
 
 ## Quick look
 

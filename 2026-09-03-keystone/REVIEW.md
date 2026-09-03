@@ -183,6 +183,23 @@ stopping once convergence is actually observed (or the window expires),
 matching how a real network — and this build's own successful
 partition/reconnect test — actually resolves a tie.
 
+### 9. `explorer.py` had a `SyntaxError` and had never actually been run (found in Phase 4)
+
+While polishing the stretch features, `keystone explorer` crashed on
+startup: `f-string expression part cannot include a backslash` — a
+`\"` inside an f-string's `{...}` expression, which is invalid before
+Python 3.12 (this box runs 3.11). This is worth calling out plainly rather
+than glossing over: the explorer module had been *written* and reviewed by
+eye in Phase 2, and PLAN.md's stretch feature #5 was mentally checked off,
+but it had never actually been **imported**, let alone run — a plain
+`import keystone.explorer` failed immediately. Writing code and reading it
+back is not the same as running it. Fixed by hoisting the conditional
+`<span>` markup out of the f-string expression into a plain variable;
+verified afterward by actually starting `keystone explorer` and curling
+every route, including the two error paths (`/address` with a malformed
+address, `/block` with an unknown hash) to confirm they render a clean
+message instead of the generic 500 handler.
+
 ## Verified, not found broken: the OpenSSL independent-oracle cross-check
 
 PLAN.md committed to cross-verifying the from-scratch secp256k1 ECDSA

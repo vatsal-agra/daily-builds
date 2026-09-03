@@ -80,12 +80,13 @@ class ExplorerHandler(BaseHTTPRequestHandler):
     def _render_index(self) -> str:
         chain = self.node.chain
         rows = []
+        tip_badge = ' <span class="badge tip">tip</span>'
         for block in reversed(chain.active_chain()[-30:]):
             is_tip = block.hash() == chain.tip_hash
             rows.append(
                 f"<tr><td>{block.height}</td>"
                 f"<td class='mono'><a href='/block?hash={block.hash()}'>{block.hash()[:18]}…</a>"
-                f"{' <span class=\"badge tip\">tip</span>' if is_tip else ''}</td>"
+                f"{tip_badge if is_tip else ''}</td>"
                 f"<td>{len(block.transactions)}</td>"
                 f"<td>{block.header.bits:#010x}</td>"
                 f"<td>{_e(f'{block.header.timestamp:.2f}')}</td></tr>"

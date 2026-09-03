@@ -32,7 +32,18 @@ def _build_network(n_nodes: int, base_port: int, bits: int, miner_wallets=None):
     for i in range(n_nodes):
         chain = Blockchain(genesis_block)
         node = FullNode("127.0.0.1", base_port + i, chain, miner_wallet=wallets[i], name=f"node{i}")
-        node.start()
+        try:
+            node.start()
+        except OSError as e:
+            # Clean up whatever already bound successfully instead of
+            # leaking listening sockets, then fail with a message that
+            # actually says what to do — not a raw traceback.
+            for started in nodes:
+                started.stop()
+            raise SystemExit(
+                f"error: couldn't start node{i} on 127.0.0.1:{base_port + i} ({e}). "
+                f"Try a different --base-port."
+            )
         nodes.append(node)
 
     # connect in a ring so gossip has to actually relay, not just direct-broadcast
@@ -43,6 +54,14 @@ def _build_network(n_nodes: int, base_port: int, bits: int, miner_wallets=None):
 
 
 def cmd_demo(args) -> int:
+    if args.nodes < 1:
+        print(f"error: --nodes must be at least 1 (got {args.nodes})", file=sys.stderr)
+        return 2
+    if args.nodes == 1:
+        print("note: a 1-node network has no peers to gossip with — it'll just mine on its own.")
+    if args.seconds <= 0:
+        print(f"error: --seconds must be positive (got {args.seconds})", file=sys.stderr)
+        return 2
     print(f"Starting a {args.nodes}-node Keystone network (ring topology, real TCP sockets)...")
     nodes, wallets = _build_network(args.nodes, args.base_port, DEMO_BITS)
 
@@ -203,6 +222,12 @@ def cmd_script_demo(args) -> int:
 def cmd_explorer(args) -> int:
     from . import explorer as explorer_module
 
+    if args.nodes < 1:
+        print(f"error: --nodes must be at least 1 (got {args.nodes})", file=sys.stderr)
+        return 2
+    if args.seconds <= 0:
+        print(f"error: --seconds must be positive (got {args.seconds})", file=sys.stderr)
+        return 2
     print(f"Starting a {args.nodes}-node network with a block explorer on http://127.0.0.1:{args.port}")
     nodes, wallets = _build_network(args.nodes, args.base_port, DEMO_BITS)
     for node in nodes:
