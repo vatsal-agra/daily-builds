@@ -48,6 +48,13 @@ class ExplorerHandler(BaseHTTPRequestHandler):
         path = parsed.path
         qs = parse_qs(parsed.query)
         try:
+            if path == "/favicon.ico":
+                # Browsers request this automatically; without an explicit
+                # response it 404s and shows up as a spurious console error
+                # in a headless-browser check. A 204 is enough to silence it.
+                self.send_response(204)
+                self.end_headers()
+                return
             if path == "/" or path == "":
                 body = self._render_index()
             elif path == "/block":
