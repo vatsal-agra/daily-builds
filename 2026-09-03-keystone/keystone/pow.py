@@ -12,7 +12,20 @@ import time
 
 from .crypto import sha256
 
-MAX_TARGET = (1 << 224) - 1  # genesis / easiest-allowed difficulty
+# Genesis / easiest-allowed difficulty. Deliberately calibrated against
+# *this* box's actual pure-Python hash rate and TARGET_BLOCK_TIME below —
+# not a scaled-down copy of Bitcoin's own constant, which assumes ASIC
+# hashrate against a 10-minute block time and would be catastrophically
+# wrong here. A real bug this build's own network testing caught: with a
+# too-strict MAX_TARGET, a starting difficulty easier than this ceiling
+# mines fine right up until the first retarget, whose `min(new_target,
+# MAX_TARGET)` clamp then silently snaps difficulty back down (harder) to
+# the ceiling regardless of the smooth 1x-4x retarget ratio — a difficulty
+# *cliff*, not a gradual adjustment. Measured concretely: with the old
+# MAX_TARGET = (1<<224)-1, a demo network's expected hashes-per-block
+# jumped from 65,537 to 4,295,032,833 (exactly 65536x) at height 10, and
+# the whole network audibly stalled. See REVIEW.md.
+MAX_TARGET = (1 << 250) - 1
 RETARGET_INTERVAL = 10  # blocks between difficulty retargets
 TARGET_BLOCK_TIME = 0.5  # seconds — compressed timescale for a runnable demo
 

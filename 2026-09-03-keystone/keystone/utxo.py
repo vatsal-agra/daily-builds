@@ -45,6 +45,15 @@ class UTXOSet:
         Mutates nothing; `spent_this_block` is only read from + written to
         by the caller so intra-block double-spends are caught before any
         real state changes."""
+        if not tx.inputs:
+            # A non-coinbase transaction with zero inputs would sail
+            # through the total_out > total_in check below whenever it also
+            # has zero outputs (0 > 0 is False) — a degenerate, useless-but-
+            # "valid" empty transaction that serves no purpose but to pad
+            # the chain with junk txids. Reject it outright instead. Found
+            # by adversarial review; see REVIEW.md.
+            raise ValidationError("non-coinbase transaction must have at least one input")
+
         sighash = tx.signing_hash()
         total_in = 0
         for txin in tx.inputs:
@@ -96,6 +105,13 @@ class UTXOSet:
             total_fees += self._validate_transaction(tx, spent_this_block, block.height)
 
         coinbase_tx = block.transactions[0]
+        if any(o.amount < 0 for o in coinbase_tx.outputs):
+            # A negative coinbase output was never actually rejected by the
+            # `coinbase_out > reward + fees` check below on its own — a
+            # negative total trivially satisfies "not greater than" a
+            # positive reward, so this needs its own explicit check. Found
+            # by adversarial review; see REVIEW.md.
+            raise ValidationError("coinbase output amount cannot be negative")
         coinbase_out = coinbase_tx.total_output()
         if coinbase_out > block_reward + total_fees:
             raise ValidationError(

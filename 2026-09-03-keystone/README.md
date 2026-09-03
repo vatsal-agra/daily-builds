@@ -5,8 +5,12 @@ UTXO transactions, Merkle-committed blocks, difficulty-retargeting mining,
 full chain validation, and a real gossiping P2P network of independent
 nodes over TCP sockets.
 
-**Status: Phase 2 (core build) complete.** All 4 required features work
-end-to-end. See [PLAN.md](PLAN.md) for the architecture and feature list.
+**Status: Phase 3 (adversarial review) complete.** All 4 required features
+work end-to-end, and 8 real bugs found via hostile testing — including a
+critical difficulty-retarget cliff that was silently stalling the whole
+network at the first retarget boundary in ~40-60% of runs — are found,
+root-caused, and fixed. See [PLAN.md](PLAN.md) for architecture and
+[REVIEW.md](REVIEW.md) for the full findings writeup.
 
 ## Quick look
 

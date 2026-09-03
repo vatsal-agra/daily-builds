@@ -77,17 +77,25 @@ def cmd_demo(args) -> int:
     while payment is not None and not payment_landed() and time.time() < grace_deadline:
         time.sleep(0.1)
 
-    for node in nodes:
-        node.stop_mining()
-
-    # Give the network a bounded settling window to finish gossiping the
-    # last few blocks/transactions before judging convergence — mining
-    # stopping doesn't mean in-flight relay traffic has landed yet.
-    settle_deadline = time.time() + 5.0
+    # Give the network a bounded settling window to converge on one tip
+    # *with mining still running*. Two equal-height chains can legitimately
+    # tie on cumulative work (this build's own adversarial-review testing
+    # hit exactly this: two competing tips, every node already aware of
+    # both, deadlocked at identical work) — that isn't a bug, it's how real
+    # Nakamoto consensus behaves, and a genuine tie only ever gets broken by
+    # someone finding the *next* block, never by waiting longer for
+    # messages that have already arrived. So mining keeps running through
+    # this window instead of stopping first and idly hoping propagation
+    # alone resolves it. See REVIEW.md.
+    settle_deadline = time.time() + 10.0
     while time.time() < settle_deadline:
         if len({n.chain.tip_hash for n in nodes}) == 1:
             break
         time.sleep(0.1)
+
+    for node in nodes:
+        node.stop_mining()
+    time.sleep(0.3)
 
     tips = {n.chain.tip_hash for n in nodes}
     total_mined = sum(n.blocks_mined for n in nodes)

@@ -119,10 +119,23 @@ class Node:
     def _peer_loop(self, sock: socket.socket, key) -> None:
         try:
             while self.running:
-                msg = wire.recv_msg(sock)
-                self._dispatch(msg, sock, key)
-        except (wire.ConnectionClosed, OSError, ValueError):
-            pass
+                try:
+                    msg = wire.recv_msg(sock)
+                except (wire.ConnectionClosed, OSError):
+                    break  # real transport failure — the connection is done
+                except ValueError:
+                    break  # malformed frame (bad length/JSON) — can't recover mid-stream
+                try:
+                    self._dispatch(msg, sock, key)
+                except (KeyError, TypeError, AttributeError, ValueError) as e:
+                    # A single structurally-broken message (missing field,
+                    # wrong type) from a misbehaving/malicious peer used to
+                    # crash this whole reader thread with an uncaught
+                    # exception — real Bitcoin-style hardening is to drop
+                    # just the bad message (or the peer) cleanly, not spew a
+                    # traceback. Found by adversarial review; see REVIEW.md.
+                    _ = e
+                    continue
         finally:
             self._unregister_peer(key)
             try:

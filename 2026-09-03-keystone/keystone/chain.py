@@ -4,7 +4,7 @@ arrive before their parent is known."""
 from __future__ import annotations
 
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from . import pow as pow_module
 from .block import Block
@@ -15,6 +15,7 @@ from .wallet import Wallet
 BASE_BLOCK_REWARD = 5_000_000_000  # in the smallest unit ("keystones")
 HALVING_INTERVAL = 64  # blocks — compressed a la Bitcoin's 210,000
 MAX_FUTURE_DRIFT = 300  # seconds a block's timestamp may be ahead of wall clock
+MAX_ORPHANS = 100  # bound on buffered parent-less blocks, see the eviction note in _add_single_block
 
 
 class ChainError(ValueError):
@@ -30,6 +31,15 @@ class Blockchain:
         genesis_hash = genesis_block.hash()
         if not pow_module.meets_target(bytes.fromhex(genesis_hash), genesis_block.header.bits):
             raise ChainError("genesis block does not satisfy its own proof-of-work target")
+        if pow_module.bits_to_target(genesis_block.header.bits) > pow_module.MAX_TARGET:
+            # Catch this at construction, loudly, instead of letting it mine
+            # fine for one whole retarget period and then hit the
+            # difficulty cliff described in pow.py's MAX_TARGET comment.
+            raise ChainError(
+                "genesis difficulty is easier than pow.MAX_TARGET allows — it would mine fine until the "
+                "first retarget, then the retarget's own min(new_target, MAX_TARGET) clamp would silently "
+                "snap difficulty back down to the ceiling, a difficulty cliff rather than a smooth adjustment"
+            )
 
         self.blocks = {genesis_hash: genesis_block}
         self.heights = {genesis_hash: 0}
@@ -137,8 +147,35 @@ class Blockchain:
         return fork_point, undo_chain, branch, branch_undo, temp
 
     def add_block(self, block: Block, mempool=None):
-        """Returns a dict {accepted, reason, reorged, orphan}. Fully
-        idempotent: re-adding a block already known is a harmless no-op."""
+        """Returns a dict {accepted, reason, reorged, orphan} for `block`
+        specifically. Fully idempotent: re-adding a block already known is
+        a harmless no-op. Any orphans this unblocks are processed
+        iteratively (a work queue, not recursion) — a long buffered chain
+        of orphans (e.g. a node that's fallen far behind and is catching up
+        one gossiped block at a time) would otherwise recurse one Python
+        stack frame per orphan and risk RecursionError. Found by
+        adversarial review; see REVIEW.md."""
+        first_result = self._add_single_block(block, mempool)
+
+        queue = deque(self._pop_orphans_of(block.hash()))
+        while queue:
+            orphan_block = queue.popleft()
+            result = self._add_single_block(orphan_block, mempool)
+            if result["accepted"]:
+                queue.extend(self._pop_orphans_of(orphan_block.hash()))
+
+        return first_result
+
+    def _pop_orphans_of(self, parent_hash: str) -> list:
+        pending = self.orphans_by_parent.pop(parent_hash, [])
+        unblocked = []
+        for orphan_hash in pending:
+            orphan_block = self.orphans.pop(orphan_hash, None)
+            if orphan_block is not None:
+                unblocked.append(orphan_block)
+        return unblocked
+
+    def _add_single_block(self, block: Block, mempool=None):
         block_hash = block.hash()
         if block_hash in self.blocks:
             return {"accepted": True, "reason": "already known", "reorged": False, "orphan": False}
@@ -151,6 +188,15 @@ class Blockchain:
 
         parent_hash = block.header.prev_hash
         if parent_hash not in self.blocks:
+            if len(self.orphans) >= MAX_ORPHANS:
+                # A block from a peer on a genuinely different chain (or a
+                # spam attempt) would otherwise sit in the orphan pool
+                # forever — its parent will never arrive — growing it
+                # without bound. Evict something arbitrary (dict insertion
+                # order = oldest first in CPython) to keep it capped.
+                oldest_hash, oldest_block = next(iter(self.orphans.items()))
+                del self.orphans[oldest_hash]
+                self.orphans_by_parent[oldest_block.header.prev_hash].remove(oldest_hash)
             self.orphans[block_hash] = block
             self.orphans_by_parent[parent_hash].append(block_hash)
             return {"accepted": False, "reason": "orphan: parent unknown", "reorged": False, "orphan": True}
@@ -209,15 +255,7 @@ class Blockchain:
                     mempool.remove_confirmed(self.blocks[bh])
             _ = old_tip  # kept for clarity/debuggability
 
-        self._process_orphans(block_hash, mempool)
         return {"accepted": True, "reason": "ok", "reorged": reorged, "orphan": False}
-
-    def _process_orphans(self, parent_hash: str, mempool) -> None:
-        pending = self.orphans_by_parent.pop(parent_hash, [])
-        for orphan_hash in pending:
-            orphan_block = self.orphans.pop(orphan_hash, None)
-            if orphan_block is not None:
-                self.add_block(orphan_block, mempool)
 
 
 def create_genesis_chain(miner_wallet: Wallet, bits: int, base_reward: int = BASE_BLOCK_REWARD,
