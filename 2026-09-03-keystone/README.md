@@ -5,5 +5,50 @@ UTXO transactions, Merkle-committed blocks, difficulty-retargeting mining,
 full chain validation, and a real gossiping P2P network of independent
 nodes over TCP sockets.
 
-**Status: Phase 1 (planning) complete.** See [PLAN.md](PLAN.md) for the full
-architecture and feature list. Implementation starts next.
+**Status: Phase 2 (core build) complete.** All 4 required features work
+end-to-end. See [PLAN.md](PLAN.md) for the architecture and feature list.
+
+## Quick look
+
+```
+$ python3 -m keystone demo --nodes 4 --seconds 8
+Starting a 4-node Keystone network (ring topology, real TCP sockets)...
+Mining for 8.0s across all 4 nodes...
+  [demo payment] node2 -> wallet3: 4999999000 keystones
+
+=== Demo report ===
+  node0: height=9 tip=0000e9ca17cd7fdf… blocks_mined=1 peers=2
+  ...
+  converged on one tip: True
+  wallet-to-wallet payment confirmed on-chain: True
+  wallet0 (...) balance per node: [15000000000, 15000000000, 15000000000, 15000000000]
+  ...
+RESULT: PASS
+```
+
+Every node above is an independent `Blockchain` + `Mempool` + `Node`
+talking to its neighbors over real `socket.socket` TCP connections — not
+one shared in-process object.
+
+## What's implemented so far
+
+- `keystone/crypto.py` — secp256k1 point arithmetic, RFC-6979 deterministic
+  ECDSA sign/verify, RIPEMD-160 from scratch, base58check.
+- `keystone/wallet.py`, `script.py` — keypairs/addresses, a small stack-based
+  scripting VM (P2PKH + m-of-n multisig).
+- `keystone/transaction.py`, `merkle.py`, `block.py` — UTXO transactions,
+  Merkle trees with inclusion proofs, blocks.
+- `keystone/pow.py`, `miner.py` — compact-bits PoW targets, a real mining
+  search, Bitcoin-style difficulty retargeting.
+- `keystone/utxo.py`, `mempool.py`, `chain.py` — full UTXO-set validation
+  (double-spend/script/coinbase-maturity checks), mempool, and a
+  `Blockchain` that resolves forks by cumulative work with real reorgs and
+  an orphan-block pool.
+- `keystone/wire.py`, `network.py`, `node.py` — an INV/GETDATA gossip
+  protocol over real TCP sockets, wired into a runnable `FullNode`.
+- `keystone/explorer.py` — a stdlib-`http.server` block explorer (stretch).
+- `keystone/cli.py` — the `keystone` CLI (`keygen`, `demo`, `explorer`,
+  `script-demo`).
+
+Next: adversarial review (Phase 3), stretch polish (Phase 4), full test
+suite (Phase 5), final writeup (Phase 6).
