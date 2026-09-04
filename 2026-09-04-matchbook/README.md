@@ -1,12 +1,13 @@
 # Matchbook
 
-> Status: **Phase 4 — Stretch + polish complete.** All 4 required features
-> plus both stretch features (risk engine, multi-symbol exchange) work
+> Status: **Phase 5 — Verification complete.** All 4 required features plus
+> both stretch features (risk engine, multi-symbol exchange) work
 > end-to-end. 8 real issues found by adversarial testing (including a
 > critical silent-order-loss bug and a CLI/config default drift that
 > silently ran every default session with only one market maker) are fixed
-> and regression-tested — see [`REVIEW.md`](./REVIEW.md). Final
-> verification and documentation still to come.
+> and regression-tested — see [`REVIEW.md`](./REVIEW.md). 101 unit/property
+> tests plus a 16-check `demo.sh` (including a real headless-browser smoke
+> test of the visualizer) are all green. Final documentation still to come.
 
 A from-scratch exchange matching engine: a real price-time-priority limit
 order book, an event-sourced journal with crash recovery, a multi-agent
@@ -49,5 +50,13 @@ Stretch features also live and demonstrated by `demo`:
 6. **Multi-symbol exchange** — `Exchange` runs several independent order
    books with cross-symbol per-agent P&L.
 
-Remaining work: a full verification pass (Phase 5), and final
-documentation (Phase 6).
+Remaining work: final documentation (Phase 6) — this README will get a
+proper feature list, "why this today," and "where a human could take this
+next" before the last commit.
+
+## Verification
+
+```bash
+./demo.sh          # 16-check end-to-end verification, all green
+python3 -m unittest discover -s tests   # 101 unit/property tests, all green
+```
