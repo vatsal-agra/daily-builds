@@ -1,62 +1,129 @@
 # Matchbook
 
-> Status: **Phase 5 — Verification complete.** All 4 required features plus
-> both stretch features (risk engine, multi-symbol exchange) work
-> end-to-end. 8 real issues found by adversarial testing (including a
-> critical silent-order-loss bug and a CLI/config default drift that
-> silently ran every default session with only one market maker) are fixed
-> and regression-tested — see [`REVIEW.md`](./REVIEW.md). 101 unit/property
-> tests plus a 16-check `demo.sh` (including a real headless-browser smoke
-> test of the visualizer) are all green. Final documentation still to come.
+A from-scratch exchange matching engine and market simulator: a real
+price-time-priority limit order book, a durable event-sourced journal with
+crash recovery, a population of independent trading agents that produce
+emergent price action with nothing scripted, and an interactive HTML
+replay of a finished session — no server required to view it.
 
-A from-scratch exchange matching engine: a real price-time-priority limit
-order book, an event-sourced journal with crash recovery, a multi-agent
-market simulator that produces emergent price action, and an interactive
-HTML visualizer of a finished trading session.
+## What it is
 
-See [`PLAN.md`](./PLAN.md) for the full architecture and feature list.
+Every stock/crypto/futures exchange runs on the same small, brutal core: a
+**limit order book** that matches buyers and sellers by price-time
+priority. Matchbook implements that core for real — not a simplified toy —
+and then wires it into a **living market**: a market maker quoting both
+sides for the spread, momentum traders chasing trends, noise traders
+providing random flow, and one informed trader secretly trading on a
+signal the rest of the market has to discover the hard way. Nobody scripts
+the price path; it emerges from independent agents' orders colliding in
+the same book, the same way real market microstructure does.
 
-## Quick start
+## How to run it
 
 ```bash
 cd 2026-09-04-matchbook
-python3 -m matchbook.cli demo            # exercises every feature end-to-end
-python3 -m matchbook.cli run --ticks 500 # run a simulation, print a summary
-python3 -m matchbook.cli viz --out session.html   # render an interactive replay
-python3 -m matchbook.cli crash-demo      # prove journal-only crash recovery
-python3 -m unittest discover -s tests    # run the test suite
+
+# Run the full end-to-end verification (unit tests + 16 feature checks)
+./demo.sh
+
+# Or drive it by hand:
+python3 -m matchbook.cli demo                      # tour of every feature
+python3 -m matchbook.cli run --ticks 500            # simulate, print a JSON summary
+python3 -m matchbook.cli viz --out session.html     # render an interactive replay
+open session.html                                   # (or just double-click it — no server needed)
+python3 -m matchbook.cli crash-demo                 # prove journal-only crash recovery
+python3 -m matchbook.cli replay some.journal         # rebuild state from a journal alone
+
+python3 -m unittest discover -s tests               # 101 unit/property tests
 ```
 
-## What's implemented so far
+Every subcommand takes `--symbols`, `--ticks`, `--seed`, and a full set of
+market/risk knobs — run `python3 -m matchbook.cli <subcommand> --help` for
+the complete list.
 
-1. **Matching engine** (`matchbook/book.py`) — price-time priority, limit /
-   market / IOC / FOK orders, partial fills, cancel, cancel-replace.
-2. **Event-sourced journal** (`matchbook/journal.py`, `matchbook/engine.py`)
-   — every command is durably logged (CRC-checked, fsynced) before it
-   mutates state; `Exchange.replay()` rebuilds exact state from the log
-   alone.
+## Full feature list
+
+**Required (all 4 implemented and demonstrably working end-to-end):**
+
+1. **Price-time-priority matching engine** (`matchbook/book.py`) — limit,
+   market, IOC (immediate-or-cancel), and FOK (fill-or-kill, atomic — all
+   or nothing with zero book effect otherwise) orders; partial fills;
+   cancel; cancel/replace. Verified by property tests (price-time priority
+   and share conservation) fuzzed over hundreds of random order sequences,
+   not just fixed examples.
+2. **Event-sourced journal with crash recovery** (`matchbook/journal.py`,
+   `matchbook/engine.py`) — every accepted order/cancel/modify is appended
+   to a CRC-32-checked, fsynced, append-only log *before* it mutates
+   in-memory state. `Exchange.replay()` rebuilds exact state from the log
+   alone, byte-for-byte identical to what was live — demonstrated by
+   literally abandoning a live `Exchange` mid-session (no clean shutdown)
+   and reconstructing it purely from disk.
 3. **Multi-agent market simulation** (`matchbook/agents.py`,
-   `matchbook/simulator.py`) — market makers, noise traders, momentum
-   traders, and an informed trader with a private signal, all generating
-   real emergent order flow.
-4. **Interactive HTML visualizer** (`matchbook/viz.py`) — scrubbable replay
-   with a candlestick chart, depth ladder, and trade tape, no server
-   required.
+   `matchbook/simulator.py`) — a `MarketMaker` (inventory-skewed quoting on
+   both sides), `NoiseTrader`s (random uninformed flow), `MomentumTrader`s
+   (trend-chasing), and an `InformedTrader` (a private look-ahead into a
+   fundamental-value path the rest of the market can't see) all submit real
+   orders to the same live book over a seeded, fully deterministic session.
+   Same seed → byte-identical trade tape, every time.
+4. **Interactive HTML visualizer** (`matchbook/viz.py`) — one self-contained
+   file (no server, no external dependencies) with a scrubbable OHLCV
+   candlestick chart, a live order-book depth ladder, a scrolling trade
+   tape, and an agent P&L leaderboard, all reconstructed from a finished
+   session's real journal and trade tape.
 
-Stretch features also live and demonstrated by `demo`:
+**Stretch (2 implemented, both load-bearing — the simulation needed them
+to be realistic, not bolted on afterward):**
 
-5. **Risk engine** (`matchbook/risk.py`) — position limits, self-trade
-   prevention, fat-finger collars, enforced pre-trade.
-6. **Multi-symbol exchange** — `Exchange` runs several independent order
-   books with cross-symbol per-agent P&L.
+5. **Risk engine** (`matchbook/risk.py`) — per-agent position limits,
+   self-trade prevention (an agent's own resting order is cancelled rather
+   than matched against its own incoming order), and fat-finger price
+   collars, enforced pre-trade with every rejection recorded and reasoned.
+6. **Multi-symbol exchange with cross-symbol portfolios** — `Exchange` runs
+   several independent order books at once, with each agent's
+   position/cash/mark-to-market P&L tracked across every symbol
+   simultaneously.
 
-Remaining work: final documentation (Phase 6) — this README will get a
-proper feature list, "why this today," and "where a human could take this
-next" before the last commit.
+## Why I chose this today
 
-## Verification
+This repo has built a lot of "from scratch" systems — languages, VCS
+implementations, crypto, renderers, search engines, SAT solvers, nine
+separate Transformers — but never **market microstructure**: the plumbing
+that decides who gets to trade at what price under contention. It's a
+compact, precisely-specified algorithm with an unusually rich set of
+*mechanically checkable* correctness invariants (share conservation,
+price-time priority, FOK atomicity, replay-equals-live), and it produces
+something genuinely interesting to look at — real-looking candlestick
+price action and market-maker adverse selection — that emerges from
+independent agents rather than being hand-tuned to look nice. It also let
+me build something with genuine "hard invariant" oracles the way past SAT
+solvers and VCS implementations did (a differential proof-checker, a real
+`git` oracle), but in a domain — exchanges — that's both economically
+central and that I hadn't seen this repo touch.
 
-```bash
-./demo.sh          # 16-check end-to-end verification, all green
-python3 -m unittest discover -s tests   # 101 unit/property tests, all green
-```
+## Adversarial review
+
+Phase 3 found and fixed 8 real issues, the worst a critical silent-order-
+loss bug in `OrderBook.modify()` — full writeup in [`REVIEW.md`](./REVIEW.md).
+
+## Where a human could take this next
+
+- **Real limit-order-book depth charts and Level 2 market data feeds** —
+  the `depth()` snapshot already exists; a WebSocket/SSE feed off it would
+  turn this into something a real trading UI could consume live.
+- **More realistic agents**: a proper Avellaneda-Stoikov market maker with
+  volatility-aware spread widening, a mean-reverting stat-arb agent, or
+  agents with actual latency (network delay between decision and order
+  arrival) instead of the current "acts once per discrete tick" model.
+- **Auction mechanisms**: opening/closing call auctions (uncrossing a batch
+  of orders at a single clearing price) alongside the current continuous
+  double auction — real exchanges run both.
+- **Order book snapshots + incremental deltas** as a wire format, so the
+  journal could double as a real market-data replay/backtesting format for
+  external strategies, not just this repo's own agents.
+- **A real accompanying options/futures layer** priced off the underlying
+  spot book, since the risk engine and multi-symbol plumbing are already
+  in place to support it.
+- **Persistent order books across restarts** (the journal already supports
+  this in principle — `Exchange.replay()` at startup instead of only after
+  a simulated crash — this just isn't wired into a long-running daemon
+  mode yet).
