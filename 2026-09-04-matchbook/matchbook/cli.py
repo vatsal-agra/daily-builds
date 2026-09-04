@@ -14,10 +14,23 @@ from .viz import render_session_html
 
 
 def _parse_symbols(s: str) -> list[str]:
-    symbols = [x.strip().upper() for x in s.split(",") if x.strip()]
-    if not symbols:
+    seen: dict[str, None] = {}
+    for x in s.split(","):
+        x = x.strip().upper()
+        if x:
+            seen[x] = None  # dedupe while preserving first-seen order
+    if not seen:
         raise argparse.ArgumentTypeError("at least one symbol is required")
-    return symbols
+    return list(seen)
+
+
+def _require_positive_ticks(ticks: int) -> int | None:
+    """Shared by every subcommand that runs a simulation. Returns an exit
+    code to return immediately on failure, or None if `ticks` is fine."""
+    if ticks <= 0:
+        print("error: --ticks must be positive", file=sys.stderr)
+        return 2
+    return None
 
 
 def _build_config(args) -> SimulationConfig:
@@ -60,9 +73,9 @@ def _add_sim_args(p: argparse.ArgumentParser) -> None:
 
 
 def cmd_run(args) -> int:
-    if args.ticks <= 0:
-        print("error: --ticks must be positive", file=sys.stderr)
-        return 2
+    rc = _require_positive_ticks(args.ticks)
+    if rc is not None:
+        return rc
     config = _build_config(args)
     sim = Simulator(config)
     sim.run(record_history=False)
@@ -76,20 +89,22 @@ def cmd_replay(args) -> int:
     if not os.path.exists(args.journal):
         print(f"error: journal file not found: {args.journal}", file=sys.stderr)
         return 2
-    risk_limits = RiskLimits(
-        position_limit=args.position_limit,
-        fat_finger_pct=args.fat_finger_pct,
-        max_order_qty=args.max_order_qty,
-    )
-    ex = Exchange.replay(
-        args.journal, symbols=args.symbols, risk_limits=risk_limits,
-        self_trade_prevention=not args.no_stp,
-    )
+    # Note: no risk-limit flags here. Replay never re-runs the risk engine
+    # -- a journaled rejection is replayed verbatim, and an accepted order
+    # is never re-checked -- so a risk limit passed here would silently do
+    # nothing. `--no-stp` is the one flag that matters: self-trade
+    # prevention *is* re-evaluated live during replay (it's a matching-time
+    # decision, not something the journal records in advance), so it must
+    # match whatever the original live session used.
+    ex = Exchange.replay(args.journal, symbols=args.symbols, self_trade_prevention=not args.no_stp)
     print(json.dumps(ex.summary(), indent=2, sort_keys=True))
     return 0
 
 
 def cmd_viz(args) -> int:
+    rc = _require_positive_ticks(args.ticks)
+    if rc is not None:
+        return rc
     config = _build_config(args)
     sim = Simulator(config)
     sim.run(record_history=True)
@@ -112,6 +127,9 @@ def cmd_crash_demo(args) -> int:
     """Run half a session, 'crash' (abandon the live Exchange without a
     clean shutdown), then reconstruct state purely from the journal and
     prove it matches what was live at the moment of the crash."""
+    rc = _require_positive_ticks(args.ticks)
+    if rc is not None:
+        return rc
     journal_path = args.journal
     config = SimulationConfig(
         symbols=args.symbols, n_ticks=args.ticks, seed=args.seed,
@@ -203,10 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_replay = sub.add_parser("replay", help="rebuild exchange state from a journal file")
     p_replay.add_argument("journal")
     p_replay.add_argument("--symbols", type=_parse_symbols, default=["ACME"])
-    p_replay.add_argument("--position-limit", type=int, default=500)
-    p_replay.add_argument("--fat-finger-pct", type=float, default=0.25)
-    p_replay.add_argument("--max-order-qty", type=int, default=200)
-    p_replay.add_argument("--no-stp", action="store_true")
+    p_replay.add_argument("--no-stp", action="store_true", help="must match the original live session's setting")
     p_replay.set_defaults(func=cmd_replay)
 
     p_viz = sub.add_parser("viz", help="run a simulation and render an interactive HTML replay")

@@ -2,7 +2,7 @@ import random
 import unittest
 
 from matchbook.book import OrderBook
-from matchbook.order import Order, OrderStatus, OrderType, Side, TimeInForce
+from matchbook.order import Order, OrderStatus, OrderType, Side, TimeInForce, ValidationError
 
 
 def mk(order_id, side, qty, price=None, order_type=OrderType.LIMIT, tif=TimeInForce.GTC, agent="", symbol="X"):
@@ -156,6 +156,65 @@ class TestCancelModify(unittest.TestCase):
         replacement = book.modify(1, new_qty=20)
         self.assertEqual(replacement.order_id, 1)
         self.assertEqual(replacement.remaining_qty, 20)
+
+    def test_modify_unknown_order_returns_none(self):
+        book = OrderBook("X")
+        self.assertIsNone(book.modify(999, new_qty=10))
+
+
+class TestModifyValidation(unittest.TestCase):
+    """Regression coverage for REVIEW.md finding #1: modify() must validate
+    the replacement *before* touching the original order."""
+
+    def test_invalid_new_qty_leaves_original_order_fully_intact(self):
+        book = OrderBook("X")
+        book.submit(mk(1, Side.BUY, 10, 9.0, agent="alice"))
+        with self.assertRaises(ValidationError):
+            book.modify(1, new_qty=0)
+        self.assertEqual(book.total_resting_qty(), 10)
+        self.assertIn(1, book.orders)
+        self.assertEqual(book.best_bid(), 9.0)
+
+    def test_invalid_negative_qty_leaves_original_order_intact(self):
+        book = OrderBook("X")
+        book.submit(mk(1, Side.BUY, 10, 9.0, agent="alice"))
+        with self.assertRaises(ValidationError):
+            book.modify(1, new_qty=-5)
+        self.assertEqual(book.total_resting_qty(), 10)
+
+    def test_invalid_new_price_leaves_original_order_intact(self):
+        book = OrderBook("X")
+        book.submit(mk(1, Side.BUY, 10, 9.0, agent="alice"))
+        with self.assertRaises(ValidationError):
+            book.modify(1, new_price=-1.0)
+        self.assertEqual(book.total_resting_qty(), 10)
+        self.assertEqual(book.best_bid(), 9.0)
+
+    def test_valid_modify_still_works_after_the_fix(self):
+        book = OrderBook("X")
+        book.submit(mk(1, Side.BUY, 10, 9.0, agent="alice"))
+        replacement = book.modify(1, new_qty=15, new_price=9.5)
+        self.assertEqual(replacement.remaining_qty, 15)
+        self.assertEqual(book.best_bid(), 9.5)
+
+
+class TestCancelPrunesEmptyLevels(unittest.TestCase):
+    """Regression coverage for REVIEW.md finding #6."""
+
+    def test_cancel_removes_emptied_price_level_from_the_book(self):
+        book = OrderBook("X")
+        book.submit(mk(1, Side.BUY, 10, 9.0))
+        self.assertIn(9.0, book.bid_levels)
+        book.cancel(1)
+        self.assertNotIn(9.0, book.bid_levels)
+
+    def test_cancel_keeps_level_when_other_orders_remain_at_same_price(self):
+        book = OrderBook("X")
+        book.submit(mk(1, Side.BUY, 10, 9.0, agent="a"))
+        book.submit(mk(2, Side.BUY, 5, 9.0, agent="b"))
+        book.cancel(1)
+        self.assertIn(9.0, book.bid_levels)
+        self.assertEqual(book.total_resting_qty(), 5)
 
 
 class TestSelfTradePrevention(unittest.TestCase):

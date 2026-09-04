@@ -142,9 +142,24 @@ class TestCrashRecovery(unittest.TestCase):
         live_rejections = ex.rejections
         ex.close()
 
-        replayed = Exchange.replay(self.journal_path, symbols=["X"], risk_limits=limits)
+        # Note: replay takes no risk_limits (see REVIEW.md #4) -- the
+        # journal already records the rejection verbatim.
+        replayed = Exchange.replay(self.journal_path, symbols=["X"])
         self.assertEqual(live_fp, replayed.state_fingerprint())
         self.assertEqual(live_rejections, replayed.rejections)
+
+    def test_replay_with_wrong_symbols_raises_clear_error(self):
+        """Regression coverage for REVIEW.md finding #3: replaying with the
+        wrong --symbols list must fail with a clear, actionable error, not
+        a bare KeyError."""
+        ex = Exchange(["X"], journal_path=self.journal_path)
+        ex.submit_order("X", Side.BUY, OrderType.LIMIT, 10, 9.0, agent_id="a")
+        ex.close()
+
+        with self.assertRaises(ValueError) as ctx:
+            Exchange.replay(self.journal_path, symbols=["WRONGSYM"])
+        self.assertIn("X", str(ctx.exception))
+        self.assertIn("--symbols", str(ctx.exception))
 
 
 if __name__ == "__main__":

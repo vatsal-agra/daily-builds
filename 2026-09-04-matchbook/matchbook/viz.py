@@ -169,7 +169,11 @@ symbolSelect.value = symbol;
 symbolSelect.addEventListener('change', () => { symbol = symbolSelect.value; render(); });
 
 const scrubber = document.getElementById('scrubber');
-scrubber.max = String(DATA.history.length - 1);
+scrubber.max = String(Math.max(0, DATA.history.length - 1));
+if (DATA.history.length === 0) {
+  scrubber.disabled = true;
+  document.getElementById('playBtn').disabled = true;
+}
 scrubber.addEventListener('input', () => { tick = parseInt(scrubber.value, 10); render(); });
 
 document.getElementById('playBtn').addEventListener('click', () => {
@@ -254,6 +258,9 @@ function renderCandles() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
+  if (DATA.history.length === 0) {
+    ctx.fillStyle = '#7d8ba0'; ctx.fillText('no session data', 10, 20); return;
+  }
   const frame = DATA.history[tick];
   const allCandles = (DATA.candles[symbol] || []).filter(c => c.bucket * DATA.barSize < frame.seq);
   if (allCandles.length === 0) {
@@ -286,6 +293,17 @@ function renderCandles() {
 }
 
 function render() {
+  if (DATA.history.length === 0) {
+    // Defensive fallback: the CLI now refuses to write an empty session
+    // (see REVIEW.md #2), but an empty replay should never hard-crash the
+    // page even so -- show a plain message instead of indexing into an
+    // empty array.
+    document.getElementById('tickLabel').textContent = 'no session data';
+    document.getElementById('depthBody').innerHTML = '';
+    document.getElementById('tape').innerHTML = '<div style="color:var(--muted)">no session data</div>';
+    renderSummary();
+    return;
+  }
   document.getElementById('tickLabel').textContent = `tick ${DATA.history[tick].tick}`;
   renderDepth();
   renderTape();

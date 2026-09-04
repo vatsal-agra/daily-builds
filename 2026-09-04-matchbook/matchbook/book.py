@@ -149,17 +149,27 @@ class OrderBook:
                 level.orders.remove(order)
             except ValueError:
                 pass
+            if not level.orders:
+                # Prune immediately rather than waiting for the price to
+                # reach the top of its heap -- matches the cleanup `_match`
+                # already does, and keeps a long-running book's level maps
+                # from accumulating stale empty entries indefinitely.
+                levels.pop(order.price, None)
         order.status = OrderStatus.CANCELLED
         return True
 
     def modify(self, order_id: int, new_price: float | None = None, new_qty: int | None = None) -> Order | None:
         """Cancel/replace: any price or quantity change loses time priority,
         matching real-exchange semantics -- implemented as cancel + re-submit
-        as a brand-new resting order (same order_id, fresh queue position)."""
+        as a brand-new resting order (same order_id, fresh queue position).
+
+        Validates the replacement *before* touching the original order: an
+        invalid `new_price`/`new_qty` (e.g. zero or negative) must leave the
+        original resting order completely untouched, not cancel it and then
+        blow up constructing a replacement that never gets submitted."""
         old = self.orders.get(order_id)
         if old is None:
             return None
-        self.cancel(order_id)
         price = new_price if new_price is not None else old.price
         qty = new_qty if new_qty is not None else old.remaining_qty
         replacement = Order(
@@ -172,7 +182,8 @@ class OrderBook:
             tif=TimeInForce.GTC,
             agent_id=old.agent_id,
             seq=old.seq,
-        )
+        )  # raises ValidationError here, before any mutation, if qty/price is bad
+        self.cancel(order_id)
         self.submit(replacement)
         return replacement
 

@@ -12,19 +12,10 @@ any other non-reproducible input.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
 from .book import OrderBook
 from .journal import Journal
 from .order import Order, OrderStatus, OrderType, Side, TimeInForce, Trade
 from .risk import RiskEngine, RiskLimits
-
-
-@dataclass
-class ExchangeConfig:
-    symbols: list[str]
-    self_trade_prevention: bool = True
-    risk_limits: RiskLimits = field(default_factory=RiskLimits)
 
 
 class Exchange:
@@ -215,20 +206,35 @@ class Exchange:
         cls,
         journal_path: str,
         symbols: list[str],
-        risk_limits: RiskLimits | None = None,
         self_trade_prevention: bool = True,
     ) -> "Exchange":
+        """Rebuild an Exchange purely from its journal.
+
+        Deliberately takes no `risk_limits`: replay never re-runs the risk
+        engine (a rejected order's journal entry already records the
+        rejection, and an accepted order is never re-checked), so a risk
+        limit passed here would silently have no effect -- see REVIEW.md
+        finding #4. `self_trade_prevention` *does* matter and must match
+        the original live session: it's a matching-time decision re-derived
+        by re-running the deterministic match against the reconstructed
+        book, not something the journal records in advance.
+        """
         events = Journal.read_all(journal_path)
         ex = cls(
             symbols=symbols,
             journal_path=None,
-            risk_limits=risk_limits,
             self_trade_prevention=self_trade_prevention,
         )
         for ev in events:
             cmd = ev.get("cmd")
             if cmd == "SUBMIT":
                 order = Order.from_dict(ev)
+                if order.symbol not in ex.books:
+                    raise ValueError(
+                        f"journal references symbol {order.symbol!r}, which is not in "
+                        f"the replay's symbol list {sorted(ex.books)}. Pass the full set "
+                        f"of symbols the original session traded via --symbols."
+                    )
                 ex._next_order_id = max(ex._next_order_id, order.order_id + 1)
                 ex._order_seq = max(ex._order_seq, order.seq + 1)
                 if ev.get("rejected_pretrade"):
