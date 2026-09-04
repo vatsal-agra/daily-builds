@@ -117,6 +117,23 @@ many transient price levels accumulate stale dict entries indefinitely.
 A leftover from early design that was never actually wired into `Exchange.__init__`
 or used by any caller. Removed.
 
+### 8. [BUG, found during Phase 4 polish] CLI's `--market-makers` default drifted from `SimulationConfig`'s
+
+While tuning agent parameters for stable price dynamics during Phase 2
+(bumping `SimulationConfig.n_market_makers` from 1 to 2, since one market
+maker alone occasionally got overwhelmed by momentum/noise flow and let the
+price run away), the CLI's own `argparse` default for `--market-makers`
+was never updated and stayed at `1`. Running `matchbook viz`/`run` with no
+`--market-makers` flag therefore silently simulated a *different, less
+stable* market than `Simulator(SimulationConfig())` does when driven
+directly (the configuration this whole build was tuned and tested against) —
+found when a rendered session was mysteriously missing one of its two
+market makers from the P&L panel entirely (`MM1` never existed in that run).
+
+**Fix:** corrected the CLI default to 2, and added a regression test that
+asserts every CLI default agent count matches `SimulationConfig`'s default,
+so the two can never silently drift apart again.
+
 ## Verification
 
 Every fix above has a regression test (see `tests/test_book.py::TestModifyValidation`,

@@ -93,7 +93,7 @@ _TEMPLATE = r"""<!doctype html>
     border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px;
   }
   button:hover { border-color: var(--accent); }
-  .tickLabel { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; }
+  .tickLabel { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 110px; text-align: right; }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
   td, th { padding: 2px 6px; text-align: right; font-size: 12.5px; }
   th { color: var(--muted); font-weight: 500; text-align: right; }
@@ -143,7 +143,7 @@ _TEMPLATE = r"""<!doctype html>
   </div>
   <div>
     <div class="panel">
-      <h2>Session summary</h2>
+      <h2>Session summary (end of session)</h2>
       <div id="summaryBody"></div>
     </div>
     <div class="panel">
@@ -304,7 +304,8 @@ function render() {
     renderSummary();
     return;
   }
-  document.getElementById('tickLabel').textContent = `tick ${DATA.history[tick].tick}`;
+  const lastTick = DATA.history[DATA.history.length - 1].tick;
+  document.getElementById('tickLabel').textContent = `tick ${DATA.history[tick].tick} / ${lastTick}`;
   renderDepth();
   renderTape();
   renderSummary();

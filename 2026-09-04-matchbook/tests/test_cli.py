@@ -129,6 +129,52 @@ class TestCliAdversarialInput(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("Traceback", result.stderr)
 
+    def test_negative_start_price_rejected(self):
+        result = run_cli("run", "--ticks", "10", "--start-price", "-5")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--start-price", result.stderr)
+
+    def test_zero_start_price_rejected(self):
+        result = run_cli("run", "--ticks", "10", "--start-price", "0")
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_negative_volatility_rejected(self):
+        result = run_cli("run", "--ticks", "10", "--vol", "-1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--vol", result.stderr)
+
+    def test_negative_agent_count_rejected(self):
+        result = run_cli("run", "--ticks", "10", "--market-makers", "-1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--market-makers", result.stderr)
+
+    def test_journal_in_nonexistent_directory_gives_clean_error(self):
+        result = run_cli("run", "--ticks", "10", "--journal", "/no/such/dir/x.journal")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertIn("--journal", result.stderr)
+
+    def test_viz_rejects_the_same_bad_input_as_run(self):
+        out = os.path.join(self.tmpdir, "bad2.html")
+        result = run_cli("viz", "--ticks", "10", "--start-price", "-1", "--out", out)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(os.path.exists(out))
+
+    def test_default_market_maker_count_matches_simulation_config(self):
+        """Regression test: the CLI's own --market-makers argparse default
+        once drifted out of sync with SimulationConfig's default (1 vs 2)
+        after a mid-build retune, silently running every default `viz`/`run`
+        with only one market maker instead of two. Assert they agree."""
+        from matchbook.simulator import SimulationConfig
+        from matchbook.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["run", "--ticks", "1"])
+        self.assertEqual(args.market_makers, SimulationConfig().n_market_makers)
+        self.assertEqual(args.noise_traders, SimulationConfig().n_noise_traders)
+        self.assertEqual(args.momentum_traders, SimulationConfig().n_momentum_traders)
+        self.assertEqual(args.informed_traders, SimulationConfig().n_informed_traders)
+
 
 if __name__ == "__main__":
     unittest.main()

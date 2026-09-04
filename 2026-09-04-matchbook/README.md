@@ -1,10 +1,12 @@
 # Matchbook
 
-> Status: **Phase 3 — Adversarial review complete.** All 4 required features
-> work end-to-end; 7 real issues found by hostile testing (including a
-> critical silent-order-loss bug) are fixed and regression-tested. See
-> [`REVIEW.md`](./REVIEW.md). Stretch polish and final verification still
-> to come.
+> Status: **Phase 4 — Stretch + polish complete.** All 4 required features
+> plus both stretch features (risk engine, multi-symbol exchange) work
+> end-to-end. 8 real issues found by adversarial testing (including a
+> critical silent-order-loss bug and a CLI/config default drift that
+> silently ran every default session with only one market maker) are fixed
+> and regression-tested — see [`REVIEW.md`](./REVIEW.md). Final
+> verification and documentation still to come.
 
 A from-scratch exchange matching engine: a real price-time-priority limit
 order book, an event-sourced journal with crash recovery, a multi-agent
@@ -47,5 +49,5 @@ Stretch features also live and demonstrated by `demo`:
 6. **Multi-symbol exchange** — `Exchange` runs several independent order
    books with cross-symbol per-agent P&L.
 
-Remaining work: further polish (Phase 4), a full verification pass
-(Phase 5), and final documentation (Phase 6).
+Remaining work: a full verification pass (Phase 5), and final
+documentation (Phase 6).

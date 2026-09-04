@@ -33,6 +33,40 @@ def _require_positive_ticks(ticks: int) -> int | None:
     return None
 
 
+def _validate_journal_path(journal_path: str | None) -> int | None:
+    if journal_path is None:
+        return None
+    parent = os.path.dirname(journal_path) or "."
+    if not os.path.isdir(parent):
+        print(f"error: --journal directory does not exist: {parent}", file=sys.stderr)
+        return 2
+    return None
+
+
+def _validate_sim_args(args) -> int | None:
+    """Shared by `run` and `viz`: every check a degenerate/adversarial CLI
+    invocation of a full simulation config needs, in one place so the two
+    subcommands can't drift out of sync the way they did before REVIEW.md
+    finding #2 (viz silently accepted what run correctly rejected)."""
+    rc = _require_positive_ticks(args.ticks)
+    if rc is not None:
+        return rc
+    rc = _validate_journal_path(args.journal)
+    if rc is not None:
+        return rc
+    if args.start_price <= 0:
+        print("error: --start-price must be positive", file=sys.stderr)
+        return 2
+    if args.vol < 0:
+        print("error: --vol (volatility) cannot be negative", file=sys.stderr)
+        return 2
+    for name in ("market_makers", "noise_traders", "momentum_traders", "informed_traders"):
+        if getattr(args, name) < 0:
+            print(f"error: --{name.replace('_', '-')} cannot be negative", file=sys.stderr)
+            return 2
+    return None
+
+
 def _build_config(args) -> SimulationConfig:
     risk_limits = RiskLimits(
         position_limit=args.position_limit,
@@ -61,7 +95,7 @@ def _add_sim_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--start-price", type=float, default=100.0)
     p.add_argument("--vol", type=float, default=0.08, help="fundamental-value per-tick volatility")
-    p.add_argument("--market-makers", type=int, default=1)
+    p.add_argument("--market-makers", type=int, default=2)
     p.add_argument("--noise-traders", type=int, default=6)
     p.add_argument("--momentum-traders", type=int, default=3)
     p.add_argument("--informed-traders", type=int, default=1)
@@ -73,7 +107,7 @@ def _add_sim_args(p: argparse.ArgumentParser) -> None:
 
 
 def cmd_run(args) -> int:
-    rc = _require_positive_ticks(args.ticks)
+    rc = _validate_sim_args(args)
     if rc is not None:
         return rc
     config = _build_config(args)
@@ -102,7 +136,7 @@ def cmd_replay(args) -> int:
 
 
 def cmd_viz(args) -> int:
-    rc = _require_positive_ticks(args.ticks)
+    rc = _validate_sim_args(args)
     if rc is not None:
         return rc
     config = _build_config(args)
@@ -128,6 +162,9 @@ def cmd_crash_demo(args) -> int:
     clean shutdown), then reconstruct state purely from the journal and
     prove it matches what was live at the moment of the crash."""
     rc = _require_positive_ticks(args.ticks)
+    if rc is not None:
+        return rc
+    rc = _validate_journal_path(args.journal)
     if rc is not None:
         return rc
     journal_path = args.journal
