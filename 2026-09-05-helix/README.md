@@ -1,7 +1,8 @@
 # Helix
 
-*Status: Phase 2 (core build) complete — all 4 required features implemented
-and tested end-to-end. See PLAN.md for the full plan.*
+*Status: Phase 3 (adversarial review) complete — 7 real issues found and
+fixed (see REVIEW.md), all 4 required features still green. See PLAN.md for
+the full plan.*
 
 A from-scratch computational biology toolkit in pure Python 3 (stdlib only,
 no numpy/biopython/any external dependency): pairwise sequence alignment,
@@ -52,7 +53,10 @@ python3 -m helix.cli search --pattern ACGTAC --genome-length 2000
 python3 -m unittest discover -s tests
 ```
 
-118 unit/property/fuzz/differential/CLI tests, all green.
+117 unit/property/fuzz/differential/CLI tests, all green — including a
+dedicated regression test for every issue found in the adversarial review
+(REVIEW.md).
 
 See `PLAN.md` for the full concept, architecture, and feature list (including
-the stretch features still to come).
+the stretch features still to come), and `REVIEW.md` for the Phase 3
+adversarial review.

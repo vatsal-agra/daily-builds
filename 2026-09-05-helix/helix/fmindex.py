@@ -112,6 +112,13 @@ class FMIndex:
             raise FMIndexError("reference must be non-empty")
         if SENTINEL in self.reference:
             raise FMIndexError(f"reference must not contain the sentinel {SENTINEL!r}")
+        if self.checkpoint_interval < 1:
+            # Not just a crash-avoidance check: a negative interval doesn't
+            # raise at all (Python's % on a negative divisor is well-defined,
+            # just not what this indexing scheme assumes) — it silently
+            # produces WRONG occ() lookups and therefore wrong search
+            # results, which is worse than a crash.
+            raise FMIndexError("checkpoint_interval must be >= 1")
         s = self.reference + SENTINEL
         self.sa = build_suffix_array(s)
         self.bwt = bwt_from_suffix_array(s, self.sa)

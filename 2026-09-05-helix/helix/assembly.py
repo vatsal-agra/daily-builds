@@ -92,6 +92,11 @@ def build_de_bruijn_graph(reads: list[str], k: int) -> DeBruijnGraph:
     counts: Counter[str] = Counter()
     for read in reads:
         counts.update(extract_kmers(read, k))
+    if not counts:
+        raise AssemblyError(
+            f"no k-mers of length {k} could be extracted — every one of "
+            f"the {len(reads)} reads is shorter than k={k}"
+        )
     graph = DeBruijnGraph(k)
     for kmer, c in counts.items():
         graph.add_edge(kmer[:-1], kmer[1:], c)

@@ -1,3 +1,4 @@
+import math
 import unittest
 
 from helix.phylo import (
@@ -68,6 +69,13 @@ class TestDistances(unittest.TestCase):
     def test_jukes_cantor_saturates(self):
         self.assertEqual(jukes_cantor_distance(0.75), float("inf"))
         self.assertEqual(jukes_cantor_distance(0.9), float("inf"))
+
+    def test_jukes_cantor_zero_has_no_sign(self):
+        # REVIEW.md #5: -0.75 * log(1) == -0.0, which used to leak into
+        # Newick output as an ugly literal "-0" branch length.
+        d = jukes_cantor_distance(0.0)
+        self.assertEqual(d, 0.0)
+        self.assertNotEqual(math.copysign(1.0, d), -1.0)
 
     def test_jukes_cantor_exceeds_raw_p_distance(self):
         # correction always inflates the distance relative to raw p, since
@@ -156,6 +164,14 @@ class TestUPGMA(unittest.TestCase):
         with self.assertRaises(PhyloError):
             upgma(["a"], [[0]])
 
+    def test_rejects_infinite_distance(self):
+        # REVIEW.md #3: a Jukes-Cantor-saturated (inf) distance used to
+        # propagate silently into NaN branch lengths instead of erroring.
+        names = ["a", "b", "c"]
+        mat = [[0, 1, float("inf")], [1, 0, 2], [float("inf"), 2, 0]]
+        with self.assertRaises(PhyloError):
+            upgma(names, mat)
+
 
 class TestNeighborJoining(unittest.TestCase):
     def test_recovers_exact_additive_quartet_tree(self):
@@ -214,6 +230,12 @@ class TestNeighborJoining(unittest.TestCase):
     def test_rejects_single_taxon(self):
         with self.assertRaises(PhyloError):
             neighbor_joining(["a"], [[0]])
+
+    def test_rejects_infinite_distance(self):
+        names = ["a", "b", "c"]
+        mat = [[0, 1, float("inf")], [1, 0, 2], [float("inf"), 2, 0]]
+        with self.assertRaises(PhyloError):
+            neighbor_joining(names, mat)
 
     def test_newick_parses_back_taxa(self):
         names = ["p", "q", "r", "s"]

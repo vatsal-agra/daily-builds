@@ -5,8 +5,8 @@ Subcommands: align, phylo, assemble, index, search, simulate, demo.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
+from typing import NoReturn
 
 from helix.seq import (
     SequenceError, parse_fasta, random_genome, simulate_reads,
@@ -18,7 +18,7 @@ from helix.assembly import assemble as run_assembly, contig_matches_reference, A
 from helix.fmindex import FMIndex, FMIndexError, align_reads
 
 
-def _die(msg: str) -> "NoReturn":
+def _die(msg: str) -> NoReturn:
     print(f"helix: error: {msg}", file=sys.stderr)
     raise SystemExit(1)
 
@@ -30,7 +30,27 @@ def _load_sequences_from_fasta(path: str) -> dict[str, str]:
         records = parse_fasta(text)
     except (OSError, SequenceError) as e:
         _die(str(e))
-    return {r.header: r.sequence.upper() for r in records}
+    seqs: dict[str, str] = {}
+    for r in records:
+        if r.header in seqs:
+            _die(f"duplicate FASTA header {r.header!r} — every sequence needs a unique name")
+        seqs[r.header] = r.sequence.upper()
+    return seqs
+
+
+def _load_single_sequence_from_fasta(path: str) -> str:
+    """For commands that operate on exactly one reference genome: load a
+    FASTA file and use its first record, warning loudly (not silently) if
+    the file actually contains more than one."""
+    seqs = _load_sequences_from_fasta(path)
+    names = list(seqs)
+    if len(names) > 1:
+        print(
+            f"helix: warning: {path} contains {len(names)} sequences; "
+            f"using only the first ({names[0]!r}) — the other "
+            f"{len(names) - 1} were ignored", file=sys.stderr,
+        )
+    return seqs[names[0]]
 
 
 # ---------------------------------------------------------------------------
@@ -89,10 +109,13 @@ def cmd_phylo(args: argparse.Namespace) -> None:
 
 def cmd_assemble(args: argparse.Namespace) -> None:
     if args.fasta:
-        seqs = _load_sequences_from_fasta(args.fasta)
-        genome = next(iter(seqs.values()))
+        genome = _load_single_sequence_from_fasta(args.fasta)
     else:
         genome = random_genome(args.genome_length, seed=args.seed)
+
+    if args.read_length < args.k:
+        _die(f"--read-length ({args.read_length}) must be >= --k ({args.k}) — "
+             f"otherwise no read can even produce one k-mer")
 
     reads_obj = simulate_reads(
         genome, n_reads=args.n_reads, read_length=args.read_length,
@@ -129,8 +152,7 @@ def cmd_assemble(args: argparse.Namespace) -> None:
 
 def cmd_index(args: argparse.Namespace) -> None:
     if args.fasta:
-        seqs = _load_sequences_from_fasta(args.fasta)
-        genome = next(iter(seqs.values()))
+        genome = _load_single_sequence_from_fasta(args.fasta)
     else:
         genome = random_genome(args.genome_length, seed=args.seed)
     try:
@@ -141,15 +163,17 @@ def cmd_index(args: argparse.Namespace) -> None:
     print(f"BWT (first 80 chars): {idx.bwt[:80]}{'...' if len(idx.bwt) > 80 else ''}")
     print(f"alphabet: {idx.alphabet}")
     if args.save_fasta:
-        with open(args.save_fasta, "w") as fh:
-            fh.write(write_fasta([FastaRecord("reference", genome)]))
+        try:
+            with open(args.save_fasta, "w") as fh:
+                fh.write(write_fasta([FastaRecord("reference", genome)]))
+        except OSError as e:
+            _die(f"could not write {args.save_fasta}: {e}")
         print(f"wrote reference FASTA to {args.save_fasta}")
 
 
 def cmd_search(args: argparse.Namespace) -> None:
     if args.fasta:
-        seqs = _load_sequences_from_fasta(args.fasta)
-        genome = next(iter(seqs.values()))
+        genome = _load_single_sequence_from_fasta(args.fasta)
     else:
         genome = random_genome(args.genome_length, seed=args.seed)
     try:
@@ -179,13 +203,19 @@ def cmd_simulate(args: argparse.Namespace) -> None:
     total_errors = sum(r.n_errors for r in reads)
     print(f"total substitution errors introduced: {total_errors}")
     if args.out_fasta:
-        with open(args.out_fasta, "w") as fh:
-            fh.write(write_fasta([FastaRecord("reference", genome)]))
+        try:
+            with open(args.out_fasta, "w") as fh:
+                fh.write(write_fasta([FastaRecord("reference", genome)]))
+        except OSError as e:
+            _die(f"could not write {args.out_fasta}: {e}")
         print(f"wrote reference to {args.out_fasta}")
     if args.out_reads_fasta:
         recs = [FastaRecord(r.read_id, r.sequence) for r in reads]
-        with open(args.out_reads_fasta, "w") as fh:
-            fh.write(write_fasta(recs))
+        try:
+            with open(args.out_reads_fasta, "w") as fh:
+                fh.write(write_fasta(recs))
+        except OSError as e:
+            _die(f"could not write {args.out_reads_fasta}: {e}")
         print(f"wrote {len(recs)} reads to {args.out_reads_fasta}")
 
 

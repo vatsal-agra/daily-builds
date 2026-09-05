@@ -86,6 +86,45 @@ class TestCLI(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("error", r.stderr)
 
+    def test_index_rejects_bad_checkpoint_interval(self):
+        # REVIEW.md #1
+        r = run_cli("index", "--genome-length", "100", "--seed", "1", "--checkpoint-interval", "0")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("error", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_assemble_rejects_read_length_shorter_than_k(self):
+        # REVIEW.md #2
+        r = run_cli("assemble", "--genome-length", "200", "--read-length", "10", "--k", "21", "--seed", "1")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("error", r.stderr)
+
+    def test_multi_record_fasta_warns_instead_of_silently_dropping(self):
+        # REVIEW.md #4
+        with tempfile.TemporaryDirectory() as tmp:
+            fasta_path = Path(tmp) / "multi.fasta"
+            fasta_path.write_text(">first\nACGTACGTACGTACGTACGTACGTACGT\n>second\nTTTTTTTTTTTTTTTTTTTTTTTTTTTT\n")
+            r = run_cli("search", "--fasta", str(fasta_path), "--pattern", "TTTTTT")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("warning", r.stderr)
+            self.assertIn("first", r.stderr)
+
+    def test_duplicate_fasta_header_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fasta_path = Path(tmp) / "dup.fasta"
+            fasta_path.write_text(">a\nACGT\n>a\nTTTT\n>b\nGGGG\n")
+            r = run_cli("phylo", "--fasta", str(fasta_path))
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("duplicate", r.stderr)
+
+    def test_bad_output_path_reported_cleanly(self):
+        # REVIEW.md #6
+        r = run_cli("simulate", "--genome-length", "100", "--seed", "1",
+                     "--out-fasta", "/nonexistent_dir_xyz/out.fasta")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("error", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

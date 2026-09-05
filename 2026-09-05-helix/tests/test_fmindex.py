@@ -95,6 +95,16 @@ class TestFMIndexSearch(unittest.TestCase):
         with self.assertRaises(FMIndexError):
             FMIndex("ACG" + SENTINEL + "T")
 
+    def test_rejects_bad_checkpoint_interval(self):
+        # REVIEW.md #1: checkpoint_interval=0 used to crash with a raw
+        # ZeroDivisionError; negative values used to silently return WRONG
+        # search results (no crash at all) rather than either erroring or
+        # working. Both must now be rejected up front.
+        with self.assertRaises(FMIndexError):
+            FMIndex("ACGTACGT", checkpoint_interval=0)
+        with self.assertRaises(FMIndexError):
+            FMIndex("ACGTACGT", checkpoint_interval=-3)
+
     def test_rejects_empty_pattern(self):
         idx = FMIndex("ACGT")
         with self.assertRaises(FMIndexError):

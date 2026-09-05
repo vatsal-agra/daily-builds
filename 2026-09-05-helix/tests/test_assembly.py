@@ -33,6 +33,14 @@ class TestKmerAndGraphBasics(unittest.TestCase):
         with self.assertRaises(AssemblyError):
             assemble(["ACGTACGT"], k=2)
 
+    def test_reject_all_reads_shorter_than_k(self):
+        # REVIEW.md #2: this used to silently succeed with an empty,
+        # unexplained AssemblyResult(contigs=[]) instead of a clear error.
+        with self.assertRaises(AssemblyError):
+            build_de_bruijn_graph(["AC", "GT", "AA"], k=10)
+        with self.assertRaises(AssemblyError):
+            assemble(["AC", "GT", "AA"], k=10)
+
 
 class TestEulerianPathTheorem(unittest.TestCase):
     def test_simple_chain_is_a_path(self):

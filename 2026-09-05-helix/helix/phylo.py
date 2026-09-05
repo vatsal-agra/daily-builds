@@ -47,7 +47,10 @@ def jukes_cantor_distance(p: float) -> float:
         raise PhyloError("p-distance must be non-negative")
     if p >= 0.75:
         return math.inf
-    return -0.75 * math.log(1 - (4.0 / 3.0) * p)
+    # `+ 0.0` normalizes the IEEE-754 `-0.0` that `-0.75 * log(1.0)` (p == 0,
+    # identical sequences) produces back to a plain `0.0` — mathematically
+    # identical, but `-0.0` prints as a stray "-0" in Newick output.
+    return -0.75 * math.log(1 - (4.0 / 3.0) * p) + 0.0
 
 
 def distance_matrix(
@@ -124,6 +127,7 @@ class TreeNode:
 
 
 def _fmt(x: float) -> str:
+    x += 0.0  # normalize away any stray IEEE-754 -0.0, regardless of source
     return f"{x:.6f}".rstrip("0").rstrip(".") or "0"
 
 
@@ -140,6 +144,25 @@ def _newick(node: TreeNode) -> str:
 # UPGMA
 # ---------------------------------------------------------------------------
 
+def _check_finite_matrix(names: list[str], mat: list[list[float]]) -> None:
+    """Both tree-building algorithms below do real arithmetic (subtraction,
+    division) on the distance matrix; an infinite entry (e.g. a
+    Jukes-Cantor-saturated pair, p-distance >= 0.75) silently produces NaN
+    branch lengths several steps downstream rather than an error. Catch it
+    at the one place both algorithms share, with an actionable message,
+    instead of every caller needing to know to check first."""
+    n = len(names)
+    for i in range(n):
+        for j in range(n):
+            if not math.isfinite(mat[i][j]):
+                raise PhyloError(
+                    f"distance between {names[i]!r} and {names[j]!r} is "
+                    f"{mat[i][j]} (not finite) — Jukes-Cantor correction "
+                    "saturates at p-distance >= 0.75; use correction='raw', "
+                    "or drop/collapse the too-divergent sequence pair"
+                )
+
+
 def upgma(names: list[str], mat: list[list[float]]) -> TreeNode:
     """Average-linkage hierarchical clustering (UPGMA). Produces an
     ultrametric, rooted binary tree (or a multifurcation only in the
@@ -147,6 +170,7 @@ def upgma(names: list[str], mat: list[list[float]]) -> TreeNode:
     n = len(names)
     if n < 2:
         raise PhyloError("UPGMA needs at least 2 taxa")
+    _check_finite_matrix(names, mat)
     # Each active cluster: id -> (TreeNode, size, height)
     next_id = n
     clusters: dict[int, tuple[TreeNode, int, float]] = {
@@ -205,6 +229,7 @@ def neighbor_joining(names: list[str], mat: list[list[float]]) -> TreeNode:
     n = len(names)
     if n < 2:
         raise PhyloError("Neighbor-Joining needs at least 2 taxa")
+    _check_finite_matrix(names, mat)
     if n == 2:
         a, b = TreeNode(name=names[0]), TreeNode(name=names[1])
         d = mat[0][1]
