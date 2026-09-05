@@ -267,6 +267,7 @@ def align_affine(
     match: int = 1, mismatch: int = -1,
     gap_open: int = 5, gap_extend: int = 1,
     matrix: dict | None = None,
+    trace: list | None = None,
 ) -> AlignmentResult:
     """Gotoh affine-gap alignment.
 
@@ -274,6 +275,11 @@ def align_affine(
     entire sequences.
     mode='local'  -> Smith-Waterman-with-affine-gaps: the highest-scoring
     local alignment (may be a strict substring of each input).
+
+    If `trace` is given a list, it is populated (in forward, start-to-end
+    order) with the (i, j) DP-matrix cell visited at each step of the
+    traceback — used by helix.viz to draw the real traceback path over the
+    alignment matrix, rather than re-deriving it from the returned strings.
     """
     if mode not in ("global", "local"):
         raise ValueError("mode must be 'global' or 'local'")
@@ -308,6 +314,8 @@ def align_affine(
         else:
             if i == 0 and j == 0:
                 break
+        if trace is not None:
+            trace.append((i, j))
 
         if state == "M":
             ai, bj = seq_a[i - 1], seq_b[j - 1]
@@ -334,6 +342,10 @@ def align_affine(
             came_from_M = I[i][j] == M[i][j - 1] - gap_first
             j -= 1
             state = "M" if came_from_M else "I"
+
+    if trace is not None:
+        trace.append((i, j))  # the terminal cell (a_start, b_start)
+        trace.reverse()       # forward, start-to-end order
 
     aligned_a.reverse()
     aligned_b.reverse()

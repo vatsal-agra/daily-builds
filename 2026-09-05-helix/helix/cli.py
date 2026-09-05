@@ -1,10 +1,12 @@
 """Command-line entry point: `helix <subcommand> ...`.
 
-Subcommands: align, phylo, assemble, index, search, simulate, demo.
+Subcommands: align, phylo, assemble, index, search, simulate, callvariants,
+viz, demo.
 """
 from __future__ import annotations
 
 import argparse
+import random
 import sys
 from typing import NoReturn
 
@@ -16,6 +18,14 @@ from helix.align import global_align, local_align, AlignmentResult
 from helix.phylo import distance_matrix, upgma, neighbor_joining, PhyloError
 from helix.assembly import assemble as run_assembly, contig_matches_reference, AssemblyError
 from helix.fmindex import FMIndex, FMIndexError, align_reads
+from helix.variants import (
+    VariantError, apply_variants, call_variants_from_reads, place_reads,
+)
+from helix.assembly import (
+    build_de_bruijn_graph, filter_low_coverage, estimate_coverage,
+    normalize_to_copy_number,
+)
+import helix.viz as viz
 
 
 def _die(msg: str) -> NoReturn:
@@ -220,6 +230,138 @@ def cmd_simulate(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# callvariants — resequencing + variant calling (stretch feature)
+# ---------------------------------------------------------------------------
+
+def cmd_callvariants(args: argparse.Namespace) -> None:
+    if args.fasta:
+        reference = _load_single_sequence_from_fasta(args.fasta)
+    else:
+        reference = random_genome(args.genome_length, seed=args.seed)
+
+    rng = random.Random(args.seed + 1)
+    candidate_positions = list(range(50, len(reference) - 50))
+    if args.n_snps > len(candidate_positions):
+        _die(f"--n-snps ({args.n_snps}) exceeds the number of usable "
+             f"positions ({len(candidate_positions)}) for a genome of "
+             f"length {len(reference)}")
+    snp_positions = sorted(rng.sample(candidate_positions, args.n_snps))
+    edits = []
+    for pos in snp_positions:
+        alt = rng.choice([b for b in "ACGT" if b != reference[pos]])
+        edits.append((pos, alt))
+    sample_genome = apply_variants(reference, edits)
+
+    reads = simulate_reads(
+        sample_genome, n_reads=args.n_reads, read_length=args.read_length,
+        error_rate=args.error_rate, seed=args.seed + 2, both_strands=False,
+    )
+    idx = FMIndex(reference)
+    try:
+        variants, summary = call_variants_from_reads(
+            reference, idx, [r.sequence for r in reads],
+            seed_length=args.seed_length, min_depth=args.min_depth,
+            min_allele_frequency=args.min_allele_frequency,
+        )
+    except VariantError as e:
+        _die(str(e))
+
+    true_positions = {p for p, _ in edits}
+    called_positions = {v.position for v in variants}
+    true_positives = sorted(true_positions & called_positions)
+    false_negatives = sorted(true_positions - called_positions)
+    false_positives = sorted(called_positions - true_positions)
+
+    print(f"reference length: {len(reference)}")
+    print(f"true SNPs injected ({len(edits)}): "
+          f"{[(p, reference[p] + '>' + a) for p, a in edits]}")
+    print(f"reads: {summary.n_reads} (placed={summary.n_placed}, "
+          f"unplaced={summary.n_unplaced}, ambiguous_votes={summary.n_ambiguous_votes})")
+    print(f"variants called: {len(variants)}")
+    for v in variants:
+        print(f"  {v}")
+    print(f"true positives:  {len(true_positives)}/{len(edits)}")
+    print(f"false negatives: {false_negatives}")
+    print(f"false positives: {false_positives}")
+
+
+# ---------------------------------------------------------------------------
+# viz — a single self-contained HTML report over real data from this run
+# ---------------------------------------------------------------------------
+
+def cmd_viz(args: argparse.Namespace) -> None:
+    if args.genome_length < 150:
+        _die(f"--genome-length ({args.genome_length}) must be >= 150 — "
+             f"the assembly and variant-calling panels each need room for "
+             f"real reads and a handful of SNPs")
+    rng = random.Random(args.seed)
+
+    # 1. alignment
+    align_html = viz.render_alignment_svg(
+        "GATTACAGATTACA", "GATCACAGATTAGA",
+        match=2, mismatch=-1, gap_open=4, gap_extend=1, mode="global",
+    )
+
+    # 2. phylogenetics
+    seqs = {
+        "human": "ACGTACGTTGCATGCACGTAGCTAGCATGCAACGTACGT",
+        "chimp": "ACGTACGTTGCATCCACGTAGCTAGCATGCAACGTACGT",
+        "gorilla": "ACGTACCTTGCATGCACGTAGATAGCATGCAACGTACCT",
+        "orangutan": "ACTTACGTTGCATGCACCTAGCTAGCATGCAACTTACGT",
+        "gibbon": "ACGTACGTTGGATGCACGTAGCTAGGATGCAACGTACGT",
+    }
+    names, mat = distance_matrix(seqs, correction="jc")
+    tree = neighbor_joining(names, mat)
+    phylo_html = viz.render_dendrogram_svg(tree, method_label="Neighbor-Joining, Jukes-Cantor corrected")
+
+    # 3. assembly — deliberately modest coverage so real tips/branches
+    #    survive to be shown, plus the same run's final cleaned result.
+    genome = random_genome(args.genome_length, seed=args.seed)
+    raw_reads = [r.sequence for r in simulate_reads(
+        genome, n_reads=max(20, args.genome_length // 12), read_length=60,
+        error_rate=0.02, seed=args.seed + 1, both_strands=False,
+    )]
+    raw_graph = build_de_bruijn_graph(raw_reads, k=15)
+    filtered = filter_low_coverage(raw_graph, min_multiplicity=2)
+    cov = estimate_coverage(filtered)
+    normalized = normalize_to_copy_number(filtered, cov)
+    cleaned_result = run_assembly(raw_reads, k=15, min_multiplicity=2)
+    asm_html = (
+        viz.render_assembly_graph_svg(normalized, highlight_note="raw graph, before tip-clipping/bubble-popping")
+        + f'<div class="viz-caption" style="margin-top:18px">'
+        f"after cleanup: {len(cleaned_result.contigs)} contig(s), "
+        f"longest {max((len(c) for c in cleaned_result.contigs), default=0)}bp "
+        f"(genome length {len(genome)}bp)</div>"
+    )
+
+    # 4. variant calling / pileup
+    ref = random_genome(args.genome_length, seed=args.seed + 2)
+    snp_positions = sorted(rng.sample(range(50, args.genome_length - 50), 4))
+    edits = [(p, rng.choice([b for b in "ACGT" if b != ref[p]])) for p in snp_positions]
+    sample = apply_variants(ref, edits)
+    reads = simulate_reads(sample, n_reads=100, read_length=90, error_rate=0.01, seed=args.seed + 3, both_strands=False)
+    idx = FMIndex(ref)
+    variants, _ = call_variants_from_reads(ref, idx, [r.sequence for r in reads])
+    placed, _ = place_reads(idx, [r.sequence for r in reads])
+    window = (max(0, snp_positions[0] - 40), min(len(ref), snp_positions[-1] + 40))
+    pileup_html = viz.render_pileup_svg(ref, placed, variants, window=window)
+
+    sections = [
+        ("align", "Alignment", f'<h2>Pairwise Alignment</h2><p class="sub">Gotoh affine-gap global alignment — the highlighted path is the real traceback through the DP matrix, not redrawn from the answer.</p><div class="viz-block">{align_html}</div>'),
+        ("phylo", "Phylogenetics", f'<h2>Phylogenetic Tree</h2><p class="sub">Neighbor-Joining tree over 5 taxa, Jukes-Cantor-corrected pairwise distances from real Gotoh alignments.</p><div class="viz-block">{phylo_html}</div>'),
+        ("assembly", "Assembly", f'<h2>De Novo Assembly</h2><p class="sub">de Bruijn graph from {len(raw_reads)} reads over a {args.genome_length}bp genome, k=15 — shown before cleanup so real tips and branch points are visible.</p><div class="viz-block">{asm_html}</div>'),
+        ("variants", "Variant Calling", f'<h2>Genome Browser / Pileup</h2><p class="sub">Reads placed against the reference by FM-index seed-and-vote, windowed around {len(edits)} injected SNPs.</p><div class="viz-block">{pileup_html}</div>'),
+    ]
+    report = viz.build_report_html(sections, title="Helix — Bioinformatics Toolkit Report")
+    try:
+        with open(args.out, "w") as fh:
+            fh.write(report)
+    except OSError as e:
+        _die(f"could not write {args.out}: {e}")
+    print(f"wrote {len(report)} bytes to {args.out}")
+
+
+# ---------------------------------------------------------------------------
 # demo — a scripted end-to-end walkthrough of every required feature
 # ---------------------------------------------------------------------------
 
@@ -264,7 +406,22 @@ def cmd_demo(args: argparse.Namespace) -> None:
     print(f"{sum(1 for a_ in aligned if a_.mapped)}/{len(reads2)} reads mapped, "
           f"{n_correct}/{len(reads2)} at the true simulated position")
 
-    print("\nDemo complete — all 4 required features exercised end-to-end.")
+    print("\n--- 5. Variant calling (stretch): resequence a mutated sample genome ---")
+    ref3 = random_genome(3000, seed=21)
+    rng = random.Random(22)
+    snp_positions = sorted(rng.sample(range(50, 2950), 5))
+    edits = [(p, rng.choice([b for b in "ACGT" if b != ref3[p]])) for p in snp_positions]
+    sample3 = apply_variants(ref3, edits)
+    reads3 = simulate_reads(sample3, n_reads=800, read_length=100, error_rate=0.01, seed=23, both_strands=False)
+    idx3 = FMIndex(ref3)
+    variants, summary = call_variants_from_reads(ref3, idx3, [r.sequence for r in reads3])
+    true_pos = {p for p, _ in edits}
+    called_pos = {v.position for v in variants}
+    print(f"{summary.n_placed}/{summary.n_reads} reads placed; "
+          f"{len(true_pos & called_pos)}/{len(edits)} true SNPs recovered, "
+          f"{len(called_pos - true_pos)} false positives")
+
+    print("\nDemo complete — all 4 required features + 1 stretch feature exercised end-to-end.")
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +486,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_sim.add_argument("--out-reads-fasta")
     p_sim.set_defaults(func=cmd_simulate)
 
+    p_var = sub.add_parser("callvariants", help="simulate a mutated sample genome, resequence it, and call SNPs")
+    p_var.add_argument("--fasta", help="reference FASTA (else a random genome is generated)")
+    p_var.add_argument("--genome-length", type=int, default=3000)
+    p_var.add_argument("--n-snps", type=int, default=5)
+    p_var.add_argument("--n-reads", type=int, default=800)
+    p_var.add_argument("--read-length", type=int, default=100)
+    p_var.add_argument("--error-rate", type=float, default=0.01)
+    p_var.add_argument("--seed-length", type=int, default=20)
+    p_var.add_argument("--min-depth", type=int, default=4)
+    p_var.add_argument("--min-allele-frequency", type=float, default=0.5)
+    p_var.add_argument("--seed", type=int, default=0)
+    p_var.set_defaults(func=cmd_callvariants)
+
+    p_viz = sub.add_parser("viz", help="write a self-contained interactive HTML report over real run data")
+    p_viz.add_argument("--out", default="helix_report.html")
+    p_viz.add_argument("--genome-length", type=int, default=400)
+    p_viz.add_argument("--seed", type=int, default=0)
+    p_viz.set_defaults(func=cmd_viz)
+
     p_demo = sub.add_parser("demo", help="run a scripted walkthrough of every required feature")
     p_demo.set_defaults(func=cmd_demo)
 
@@ -340,7 +516,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     try:
         args.func(args)
-    except (SequenceError, PhyloError, AssemblyError, FMIndexError) as e:
+    except (SequenceError, PhyloError, AssemblyError, FMIndexError, VariantError) as e:
         _die(str(e))
 
 

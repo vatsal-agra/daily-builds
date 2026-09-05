@@ -135,3 +135,47 @@ count and a completely clean pass — a fresh run-through of every scenario
 listed above now behaves correctly (clean error, correct result, or clean
 warning, as appropriate) instead of crashing, corrupting output, or staying
 silent.
+
+---
+
+# Phase 4 additions (found while building/polishing the stretch features)
+
+## 8. `helix/viz.py`: `-0.0`-style caption double-escaping produced literal `&amp;middot;` text
+
+Two of the four SVG renderers (`render_dendrogram_svg`, `render_pileup_svg`)
+built their caption string with a literal `&middot;` HTML entity already
+embedded, then ran the *entire* caption back through `html.escape()` before
+emitting it — turning `&middot;` into `&amp;middot;`, which browsers render
+as the literal text "&middot;" instead of a middle-dot character. Caught by
+a dedicated `_assert_no_double_escaped_entities` check across every
+`test_viz.py` case before it ever reached a screenshot. Fixed by escaping
+only the dynamic parts (e.g. a user-suppliable `method_label`) before
+composing the caption, never the whole pre-built string.
+
+## 9. `helix/viz.py`: assembly-graph branch layout could collide two children onto the same row
+
+The row-layout algorithm for the compressed assembly graph reserved a
+node's own display row lazily (incrementing a shared counter *after*
+recursing into its children), so a branch point discovered while a sibling
+branch was still being laid out could grab the same "next available" row
+number the parent itself was about to claim — two genuinely different
+tips/branches then rendered on top of each other as a single
+indistinguishable line. Caught by a regression test asserting every
+rendered node position is unique on a small hand-built branching graph.
+Fixed by reserving a start row immediately, before descending into it.
+
+## 10. CLI `viz` command crashed on a small `--genome-length`
+
+`cmd_viz`'s variant-calling panel hardcodes sampling 4 SNP positions from
+`range(50, genome_length - 50)`; `--genome-length 100` (or smaller) leaves
+that range empty or negative, and `random.sample` raised an uncaught
+`ValueError` with a full traceback — the exact same class of bug as
+Phase 3 finding #2, just in a stretch-feature command written afterward.
+Fixed with the same pattern: an explicit, actionable `--genome-length`
+lower-bound check before any work is done.
+
+## Verification (Phase 4)
+
+Findings #8-10 each have a dedicated regression test in `test_viz.py` /
+`test_cli.py`. Full suite green after every fix (see the Phase 4 commit for
+the final count).

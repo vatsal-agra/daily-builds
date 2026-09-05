@@ -117,10 +117,49 @@ class TestCLI(unittest.TestCase):
             self.assertNotEqual(r.returncode, 0)
             self.assertIn("duplicate", r.stderr)
 
+    def test_callvariants_recovers_snps(self):
+        r = run_cli("callvariants", "--genome-length", "3000", "--n-snps", "5",
+                    "--n-reads", "800", "--seed", "1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("true positives:  5/5", r.stdout)
+        self.assertIn("false positives: []", r.stdout)
+
+    def test_callvariants_rejects_too_many_snps(self):
+        r = run_cli("callvariants", "--genome-length", "100", "--n-snps", "500", "--seed", "1")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("error", r.stderr)
+
     def test_bad_output_path_reported_cleanly(self):
         # REVIEW.md #6
         r = run_cli("simulate", "--genome-length", "100", "--seed", "1",
                      "--out-fasta", "/nonexistent_dir_xyz/out.fasta")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("error", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_viz_writes_self_contained_html_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out_path = Path(tmp) / "report.html"
+            r = run_cli("viz", "--out", str(out_path), "--genome-length", "300", "--seed", "1")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertTrue(out_path.exists())
+            content = out_path.read_text()
+            self.assertTrue(content.startswith("<!doctype html>"))
+            for tab in ("Alignment", "Phylogenetics", "Assembly", "Variant Calling"):
+                self.assertIn(tab, content)
+            self.assertIn("<svg", content)
+
+    def test_viz_bad_output_path_reported_cleanly(self):
+        r = run_cli("viz", "--out", "/nonexistent_dir_xyz/report.html", "--genome-length", "200", "--seed", "1")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("error", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
+    def test_viz_rejects_too_small_genome_length(self):
+        # found during Phase 4 polish: a small --genome-length used to
+        # crash with a raw ValueError from random.sample() deep inside the
+        # variant-calling panel instead of a clean CLI error.
+        r = run_cli("viz", "--out", "/tmp/should_not_be_written.html", "--genome-length", "100", "--seed", "1")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("error", r.stderr)
         self.assertNotIn("Traceback", r.stderr)
