@@ -1,9 +1,58 @@
 # Helix
 
-*Status: Phase 1 (planning) complete. Implementation in progress — see PLAN.md.*
+*Status: Phase 2 (core build) complete — all 4 required features implemented
+and tested end-to-end. See PLAN.md for the full plan.*
 
-A from-scratch computational biology toolkit: pairwise sequence alignment,
+A from-scratch computational biology toolkit in pure Python 3 (stdlib only,
+no numpy/biopython/any external dependency): pairwise sequence alignment,
 phylogenetic tree reconstruction, de novo genome assembly, and an FM-index
-short-read aligner, in pure Python 3 with no external dependencies.
+short-read aligner — the algorithms behind real sequence-analysis pipelines,
+built from first principles.
 
-See `PLAN.md` for the full concept, architecture, and feature list.
+## What's implemented so far
+
+- **`helix/seq.py`** — FASTA/FASTQ parsing and writing, reverse complement,
+  transcription/translation, GC content, and a seeded synthetic-genome +
+  read simulator (with a configurable per-base substitution error rate and
+  optional reverse-strand sampling).
+- **`helix/align.py`** — Needleman-Wunsch (global, linear gap) and Gotoh's
+  algorithm (affine-gap global **and** local/Smith-Waterman alignment via
+  three coupled DP planes), full traceback to aligned strings + a CIGAR
+  string, plain match/mismatch or BLOSUM62 scoring.
+- **`helix/phylo.py`** — pairwise distance matrices (raw p-distance or
+  Jukes-Cantor corrected) from real alignments, UPGMA and Neighbor-Joining
+  tree construction, Newick serialization.
+- **`helix/assembly.py`** — de novo genome assembly via de Bruijn graphs:
+  k-mer graph construction, coverage-depth filtering + genomic copy-number
+  normalization, tip clipping, bubble popping, and Eulerian-path contig
+  assembly (Hierholzer's algorithm), with an explicit Eulerian-path
+  existence-theorem check and a unitig-extraction fallback for anything that
+  doesn't satisfy it.
+- **`helix/fmindex.py`** — a real FM-index: prefix-doubling suffix array
+  construction, Burrows-Wheeler Transform (with an independent LF-mapping
+  inverse proving losslessness), checkpointed rank/occurrence tables, and
+  exact backward-search read alignment, plus seed-and-vote placement for
+  reads carrying scattered mismatches.
+- **`helix/cli.py`** — the `helix` command-line tool: `align`, `phylo`,
+  `assemble`, `index`, `search`, `simulate`, and `demo` (a scripted
+  walkthrough exercising all 4 required features end-to-end).
+
+## Try it
+
+```
+python3 -m helix.cli demo
+python3 -m helix.cli align --a GATTACA --b GATCACA --mode global
+python3 -m helix.cli assemble --genome-length 2000 --n-reads 6000 --k 25
+python3 -m helix.cli search --pattern ACGTAC --genome-length 2000
+```
+
+## Tests
+
+```
+python3 -m unittest discover -s tests
+```
+
+118 unit/property/fuzz/differential/CLI tests, all green.
+
+See `PLAN.md` for the full concept, architecture, and feature list (including
+the stretch features still to come).
