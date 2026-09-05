@@ -1,9 +1,10 @@
 # Helix
 
-*Status: Phase 4 (stretch + polish) complete — both planned stretch features
-shipped (variant calling, interactive HTML visualizers), 3 more issues found
-and fixed during polish. See PLAN.md for the full plan, REVIEW.md for every
-issue found (Phase 3 + Phase 4) and how it was fixed.*
+*Status: Phase 5 (verification) complete — `demo.sh` runs the full test
+suite plus every CLI subcommand end-to-end (including a headless-Chromium,
+zero-console-error pass over the generated HTML report), green on 3
+consecutive runs. See PLAN.md for the full plan, REVIEW.md for every issue
+found (Phase 3 + Phase 4) and how it was fixed.*
 
 A from-scratch computational biology toolkit in pure Python 3 (stdlib only,
 no numpy/biopython/any external dependency): pairwise sequence alignment,
@@ -70,12 +71,16 @@ python3 -m helix.cli viz --out report.html
 ## Tests
 
 ```
-python3 -m unittest discover -s tests
+python3 -m unittest discover -s tests   # 152 tests
+./demo.sh                                # tests + every CLI subcommand + headless-browser check
 ```
 
 152 unit/property/fuzz/differential/CLI tests, all green — including a
 dedicated regression test for every issue found in the adversarial review
-(REVIEW.md).
+(REVIEW.md). `demo.sh` additionally walks every CLI subcommand end-to-end
+with real, verified-against-ground-truth outputs, and does a headless
+Chromium pass over the generated HTML report checking for zero console
+errors across all four visualization tabs.
 
 See `PLAN.md` for the full concept, architecture, and feature list, and
 `REVIEW.md` for the full adversarial review (Phase 3 + Phase 4).
