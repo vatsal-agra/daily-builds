@@ -77,7 +77,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                      fwd_loss_prob=args.loss, fwd_reorder_prob=args.reorder, rng=rng)
     data = bytes(rng.getrandbits(8) for _ in range(args.bytes))
     conn = TcpConnection(sim, 0, topo, data, args.access_delay, cc_name=args.cc, rng=rng,
-                          sack_enabled=args.sack)
+                          sack_enabled=args.sack, recv_window=args.recv_window)
     conn.start()
     sim.run(until=args.cap)
 
@@ -132,6 +132,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--loss", type=float, default=0.0, help="independent random loss probability")
     run_p.add_argument("--reorder", type=float, default=0.0, help="reordering probability")
     run_p.add_argument("--cap", type=float, default=120.0, help="simulated-time cap, s")
+    run_p.add_argument("--recv-window", type=int, default=65536, help="receiver's advertised window cap, bytes")
     run_p.add_argument("--sack", action="store_true", help="enable RFC 2018 SACK")
     run_p.add_argument("--seed", type=int, default=0)
     run_p.set_defaults(func=cmd_run)
