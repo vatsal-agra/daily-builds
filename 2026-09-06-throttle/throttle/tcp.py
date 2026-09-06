@@ -17,8 +17,19 @@ Deliberate, documented simplifications (also called out in README.md):
   than approximated.
 * Fast recovery is Reno-style, not NewReno: a recovery episode covering
   more than one lost segment resolves with a second round of dup ACKs
-  rather than NewReno's partial-ACK handling. This is a real, named Reno
-  limitation, not a shortcut invented for this build.
+  rather than NewReno's partial-ACK handling — *unless* SACK is enabled
+  (see below), in which case holes are patched directly from the SACK
+  scoreboard instead of needing that second round at all.
+* SACK (`sack_enabled=True`, RFC 2018) is a simplified but real
+  implementation: the receiver reports up to 3 out-of-order byte ranges it
+  already holds (real TCP's usual practical limit, driven by TCP option
+  space), and the sender retransmits precisely the outstanding segments
+  *not* covered by that scoreboard — rather than RFC 6675's full
+  pipe/rescue-retransmission accounting. What's real: multiple losses
+  within one window get repaired within roughly one RTT of duplicate ACKs
+  instead of Reno's one-timeout-per-lost-segment (see REVIEW.md, where
+  this exact limitation was found and documented before this feature
+  existed to fix it).
 """
 from __future__ import annotations
 
@@ -52,6 +63,7 @@ class TcpSender:
         recv_window: int = DEFAULT_RECV_WINDOW,
         rng: Optional[random.Random] = None,
         min_rto_s: float = 1.0,
+        sack_enabled: bool = False,
     ) -> None:
         if mss <= 0:
             raise ValueError(f"mss must be positive, got {mss}")
@@ -59,6 +71,9 @@ class TcpSender:
         self.sim = sim
         self.mss = mss
         self.cc = cc
+        self.sack_enabled = sack_enabled
+        self.sacked_ranges: List[Tuple[int, int]] = []
+        self.sack_retransmits = 0
         # Per RFC 6298, the *pre-measurement* default RTO is 1s regardless
         # of any floor a caller applies to later, sample-derived RTOs --
         # except when a caller explicitly lowers min_rto_s below that
@@ -123,6 +138,52 @@ class TcpSender:
         self.link_send(seg)
         self._reset_timer()
 
+    # -- SACK scoreboard (RFC 2018, simplified — see module docstring) ---
+
+    def _merge_sack_blocks(self, blocks) -> None:
+        if not blocks:
+            return
+        ranges = list(self.sacked_ranges) + [tuple(b) for b in blocks]
+        ranges.sort()
+        merged: List[Tuple[int, int]] = []
+        for s, e in ranges:
+            if merged and s <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+            else:
+                merged.append((s, e))
+        self.sacked_ranges = merged
+
+    def _prune_sacked_ranges(self) -> None:
+        pruned = []
+        for s, e in self.sacked_ranges:
+            s = max(s, self.una)
+            if e > s:
+                pruned.append((s, e))
+        self.sacked_ranges = pruned
+
+    def _covered_by_sack(self, start: int, end: int) -> bool:
+        return any(s <= start and end <= e for s, e in self.sacked_ranges)
+
+    def _sack_retransmit_holes(self, now: float) -> None:
+        """Retransmit every outstanding segment the peer's SACK scoreboard
+        says it does *not* already have, within the current congestion
+        window — the actual mechanism that lets SACK repair several lost
+        segments in one recovery episode instead of Reno's one-per-RTO."""
+        if not self.sack_enabled or not self.cc.in_recovery:
+            return
+        window = min(self.cc.cwnd, self.rwnd)
+        for k in sorted(self.in_flight):
+            out = self.in_flight[k]
+            if out.seg.is_retransmit:
+                continue  # already retried this hole this recovery episode
+            if self._covered_by_sack(k, k + out.seq_len):
+                continue  # receiver already has these bytes -- not lost
+            if self._flight_bytes() >= window:
+                break
+            self.in_flight.pop(k)
+            self.sack_retransmits += 1
+            self._send_segment(out.seg.clone_for_retransmit())
+
     # -- handshake ---------------------------------------------------------
 
     def connect(self) -> None:
@@ -168,6 +229,9 @@ class TcpSender:
             was_recovery = self.cc.in_recovery
             self.una = seg.ack
             self.dup_ack_count = 0
+            if self.sack_enabled:
+                self._prune_sacked_ranges()
+                self._merge_sack_blocks(seg.sack_blocks)
 
             if was_recovery:
                 self.cc.on_recovery_ack()
@@ -190,15 +254,20 @@ class TcpSender:
 
         elif seg.ack == self.una and self.in_flight:
             self.dup_ack_count += 1
+            if self.sack_enabled:
+                self._merge_sack_blocks(seg.sack_blocks)
             flight_before = self._flight_bytes()
             fire = self.cc.on_dup_ack(self.dup_ack_count, flight_before)
             self._record_sample(now)
             if fire:
                 self.fast_retransmits += 1
-                oldest = min(self.in_flight)
-                out = self.in_flight.pop(oldest)
-                retseg = out.seg.clone_for_retransmit()
-                self._send_segment(retseg)
+            if self.cc.in_recovery:
+                if self.sack_enabled:
+                    self._sack_retransmit_holes(now)
+                elif fire:
+                    oldest = min(self.in_flight)
+                    out = self.in_flight.pop(oldest)
+                    self._send_segment(out.seg.clone_for_retransmit())
             self._maybe_send_more(now)
 
     def _on_timer(self, epoch: int) -> None:
@@ -263,10 +332,12 @@ class TcpReceiver:
         link_send: Callable[[Segment], None],
         recv_window_capacity: int = DEFAULT_RECV_WINDOW,
         rng: Optional[random.Random] = None,
+        sack_enabled: bool = False,
     ) -> None:
         self.sim = sim
         self.link_send = link_send
         self.recv_window_capacity = recv_window_capacity
+        self.sack_enabled = sack_enabled
 
         rng = rng or random.Random()
         self.iss = rng.randrange(0, 2 ** 30)
@@ -286,6 +357,26 @@ class TcpReceiver:
 
     def _advertised_window(self) -> int:
         return max(0, self.recv_window_capacity - self._out_of_order_bytes())
+
+    def _sack_blocks(self) -> Tuple[Tuple[int, int], ...]:
+        """Merge the out-of-order buffer's individual segments into
+        contiguous (start, end) ranges and report up to 3 of them — real
+        TCP's usual practical SACK-option limit, driven by header option
+        space (RFC 2018 leaves room for a handful of blocks at most)."""
+        if not self.sack_enabled or not self.out_of_order:
+            return ()
+        items = sorted(self.out_of_order.items())
+        ranges: List[Tuple[int, int]] = []
+        cur_start, cur_end = items[0][0], items[0][0] + len(items[0][1])
+        for seq, payload in items[1:]:
+            end = seq + len(payload)
+            if seq <= cur_end:
+                cur_end = max(cur_end, end)
+            else:
+                ranges.append((cur_start, cur_end))
+                cur_start, cur_end = seq, end
+        ranges.append((cur_start, cur_end))
+        return tuple(ranges[:3])
 
     def on_segment(self, seg: Segment, now: float) -> None:
         if self.state == "LISTEN":
@@ -346,7 +437,8 @@ class TcpReceiver:
             self.rcv_nxt += 1
             self.fin_received = True
 
-        ack = Segment(seq=self.iss + 1, ack=self.rcv_nxt, ack_flag=True, window=self._advertised_window())
+        ack = Segment(seq=self.iss + 1, ack=self.rcv_nxt, ack_flag=True,
+                      window=self._advertised_window(), sack_blocks=self._sack_blocks())
         self.link_send(ack)
 
         if self.fin_received and not self.done:
@@ -425,6 +517,7 @@ class TcpConnection:
         recv_window: int = DEFAULT_RECV_WINDOW,
         rng: Optional[random.Random] = None,
         min_rto_s: float = 1.0,
+        sack_enabled: bool = False,
     ) -> None:
         rng = rng or random.Random()
         cc = congestion.make(cc_name, mss)
@@ -433,12 +526,12 @@ class TcpConnection:
         self.sender = TcpSender(
             sim, mss, cc, data,
             link_send=lambda seg: topology.send_from_sender(flow_id, seg),
-            recv_window=recv_window, rng=rng, min_rto_s=min_rto_s,
+            recv_window=recv_window, rng=rng, min_rto_s=min_rto_s, sack_enabled=sack_enabled,
         )
         self.receiver = TcpReceiver(
             sim,
             link_send=lambda seg: topology.send_from_receiver(flow_id, seg),
-            recv_window_capacity=recv_window, rng=rng,
+            recv_window_capacity=recv_window, rng=rng, sack_enabled=sack_enabled,
         )
         topology.add_flow(flow_id, access_delay_s,
                            on_deliver_to_receiver=self.receiver.on_segment,

@@ -4,8 +4,23 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .experiment import CANNED_EXPERIMENTS, run_all_named
+from .experiment import (
+    CANNED_EXPERIMENTS,
+    exp_reno_vs_cubic_high_bdp,
+    exp_sack_vs_no_sack,
+    run_all_named,
+)
 from .viz import build_html
+
+# Comparison experiments run the *same* transfer twice (once per side) on
+# non-competing, independent links rather than as concurrent flows sharing
+# one bottleneck — that's the right way to isolate "does this algorithm
+# alone recover faster/use more of the pipe," as opposed to the
+# competing-flow fairness experiments in CANNED_EXPERIMENTS.
+COMPARISON_EXPERIMENTS = {
+    "reno-vs-cubic": exp_reno_vs_cubic_high_bdp,
+    "reno-vs-sack": exp_sack_vs_no_sack,
+}
 
 
 def _print_result(label: str, result) -> None:
@@ -21,20 +36,23 @@ def _print_result(label: str, result) -> None:
         verified = "OK" if f.verified_correct else "MISMATCH!!"
         print(f"  - {f.name:16s} [{f.cc_name:5s}] {status:20s} "
               f"throughput={f.throughput_Bps:>10,.0f} B/s  timeouts={f.timeouts:3d}  "
-              f"fast_retx={f.fast_retransmits:3d}  reassembly={verified}")
+              f"fast_retx={f.fast_retransmits:3d}  sack_retx={f.sack_retransmits:4d}  "
+              f"reassembly={verified}")
     print()
 
 
 def cmd_experiment(args: argparse.Namespace) -> int:
-    if args.name == "reno-vs-cubic":
-        from .experiment import exp_reno_vs_cubic_high_bdp
-        results = exp_reno_vs_cubic_high_bdp(seed=args.seed)
+    if args.name in COMPARISON_EXPERIMENTS:
+        results = COMPARISON_EXPERIMENTS[args.name](seed=args.seed)
+        ok = True
         for label, r in results.items():
-            _print_result(f"reno-vs-cubic:{label}", r)
-        return 0
+            _print_result(f"{args.name}:{label}", r)
+            if any((not f.completed) or (not f.verified_correct) for f in r.flows):
+                ok = False
+        return 0 if ok else 1
     if args.name not in CANNED_EXPERIMENTS:
         print(f"unknown experiment {args.name!r}. choices: "
-              f"{sorted(CANNED_EXPERIMENTS)} + reno-vs-cubic", file=sys.stderr)
+              f"{sorted(list(CANNED_EXPERIMENTS) + list(COMPARISON_EXPERIMENTS))}", file=sys.stderr)
         return 2
     result = CANNED_EXPERIMENTS[args.name](seed=args.seed)
     _print_result(args.name, result)
@@ -58,7 +76,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     topo = Topology(sim, args.bandwidth, args.buffer, args.delay,
                      fwd_loss_prob=args.loss, fwd_reorder_prob=args.reorder, rng=rng)
     data = bytes(rng.getrandbits(8) for _ in range(args.bytes))
-    conn = TcpConnection(sim, 0, topo, data, args.access_delay, cc_name=args.cc, rng=rng)
+    conn = TcpConnection(sim, 0, topo, data, args.access_delay, cc_name=args.cc, rng=rng,
+                          sack_enabled=args.sack)
     conn.start()
     sim.run(until=args.cap)
 
@@ -70,7 +89,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"  time: {conn.sender.done_time:.3f}s   "
               f"throughput: {args.bytes/conn.sender.done_time:,.0f} B/s")
     print(f"  timeouts: {conn.sender.timeouts}   fast retransmits: {conn.sender.fast_retransmits}   "
-          f"segments sent: {conn.sender.segments_sent}")
+          f"sack retransmits: {conn.sender.sack_retransmits}   segments sent: {conn.sender.segments_sent}")
     print(f"  link drops: {topo.fwd_link.stats.dropped_overflow} overflow / "
           f"{topo.fwd_link.stats.dropped_random} random   max queue: {topo.fwd_link.stats.max_queue_bytes} B")
     print(f"  bottleneck utilization: {topo.fwd_link.utilization(sim.now) * 100:.1f}%")
@@ -113,11 +132,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_p.add_argument("--loss", type=float, default=0.0, help="independent random loss probability")
     run_p.add_argument("--reorder", type=float, default=0.0, help="reordering probability")
     run_p.add_argument("--cap", type=float, default=120.0, help="simulated-time cap, s")
+    run_p.add_argument("--sack", action="store_true", help="enable RFC 2018 SACK")
     run_p.add_argument("--seed", type=int, default=0)
     run_p.set_defaults(func=cmd_run)
 
-    exp_p = sub.add_parser("experiment", help="run one canned multi-flow experiment")
-    exp_p.add_argument("name", choices=sorted(list(CANNED_EXPERIMENTS) + ["reno-vs-cubic"]))
+    exp_p = sub.add_parser("experiment", help="run one canned experiment (or comparison)")
+    exp_p.add_argument("name", choices=sorted(list(CANNED_EXPERIMENTS) + list(COMPARISON_EXPERIMENTS)))
     exp_p.add_argument("--seed", type=int, default=1234)
     exp_p.set_defaults(func=cmd_experiment)
 

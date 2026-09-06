@@ -214,6 +214,91 @@ def test_all_algorithms_complete_a_transfer_correctly(cc_name):
     assert bytes(conn.receiver.assembled) == data
 
 
+def test_sack_blocks_report_merged_contiguous_out_of_order_ranges():
+    sim = Simulator()
+    from throttle.tcp import TcpReceiver
+    from throttle.packet import Segment
+    recv = TcpReceiver(sim, link_send=lambda seg: None, sack_enabled=True)
+    syn = Segment(seq=100, ack=0, syn=True)
+    recv.on_segment(syn, 0.0)
+    rcv_nxt0 = recv.irs + 1
+    ack = Segment(seq=200, ack=recv.iss + 1, ack_flag=True)
+    recv.on_segment(ack, 0.01)
+
+    # two adjacent out-of-order chunks (should merge into one SACK block)
+    # plus one disjoint chunk further out (a second, separate block).
+    recv.on_segment(Segment(seq=rcv_nxt0 + 10, ack=0, payload=b"AAAAA"), 0.02)
+    recv.on_segment(Segment(seq=rcv_nxt0 + 15, ack=0, payload=b"BBBBB"), 0.03)
+    recv.on_segment(Segment(seq=rcv_nxt0 + 40, ack=0, payload=b"CCC"), 0.04)
+
+    blocks = recv._sack_blocks()
+    assert blocks == ((rcv_nxt0 + 10, rcv_nxt0 + 20), (rcv_nxt0 + 40, rcv_nxt0 + 43))
+
+
+def test_sack_disabled_reports_no_blocks_even_with_gaps():
+    sim = Simulator()
+    from throttle.tcp import TcpReceiver
+    from throttle.packet import Segment
+    recv = TcpReceiver(sim, link_send=lambda seg: None, sack_enabled=False)
+    syn = Segment(seq=100, ack=0, syn=True)
+    recv.on_segment(syn, 0.0)
+    rcv_nxt0 = recv.irs + 1
+    ack = Segment(seq=200, ack=recv.iss + 1, ack_flag=True)
+    recv.on_segment(ack, 0.01)
+    recv.on_segment(Segment(seq=rcv_nxt0 + 10, ack=0, payload=b"AAAAA"), 0.02)
+    assert recv._sack_blocks() == ()
+
+
+def test_sack_enabled_transfer_completes_correctly_and_uses_the_scoreboard():
+    """A SACK-enabled transfer under real bursty loss must still reassemble
+    byte-exact, and (for this to be testing anything) must actually have
+    exercised the hole-retransmit path at least once across a handful of
+    seeds."""
+    any_sack_retransmits = False
+    for seed in [1, 4, 5]:
+        rng = random.Random(seed)
+        sim = Simulator()
+        topo = Topology(sim, 1_000_000, 100_000, 0.01, fwd_loss_prob=0.02, rng=rng)
+        data = bytes(rng.getrandbits(8) for _ in range(2_000_000))
+        conn = TcpConnection(sim, 0, topo, data, access_delay_s=0.02, cc_name="reno",
+                              rng=rng, min_rto_s=0.5, sack_enabled=True)
+        conn.start()
+        sim.run(until=180.0)
+
+        assert conn.sender.done and conn.receiver.done
+        assert bytes(conn.receiver.assembled) == data
+        any_sack_retransmits = any_sack_retransmits or conn.sender.sack_retransmits > 0
+    assert any_sack_retransmits
+
+
+def test_sack_matches_or_beats_plain_reno_on_average_across_seeds():
+    """SACK's benefit is statistical, not guaranteed on every single random
+    loss pattern (see REVIEW.md) -- but averaged over several seeds with
+    identical loss, it must not be worse, and should show fewer timeouts."""
+    seeds = [1, 2, 4, 5]
+    plain_times, sack_times = [], []
+    plain_timeouts, sack_timeouts = 0, 0
+    for seed in seeds:
+        for sack_enabled, times in ((False, plain_times), (True, sack_times)):
+            rng = random.Random(seed)
+            sim = Simulator()
+            topo = Topology(sim, 1_000_000, 100_000, 0.01, fwd_loss_prob=0.02, rng=rng)
+            data = bytes(rng.getrandbits(8) for _ in range(2_000_000))
+            conn = TcpConnection(sim, 0, topo, data, access_delay_s=0.02, cc_name="reno",
+                                  rng=rng, min_rto_s=0.5, sack_enabled=sack_enabled)
+            conn.start()
+            sim.run(until=180.0)
+            assert conn.sender.done and bytes(conn.receiver.assembled) == data
+            times.append(conn.sender.done_time)
+            if sack_enabled:
+                sack_timeouts += conn.sender.timeouts
+            else:
+                plain_timeouts += conn.sender.timeouts
+
+    assert sum(sack_times) <= sum(plain_times)
+    assert sack_timeouts <= plain_timeouts
+
+
 def test_reno_recovers_faster_than_tahoe_under_identical_loss():
     _, _, reno_conn, _ = _run_transfer(2_000_000, cc_name="reno", bandwidth=1_000_000,
                                         buffer=100_000, access_delay=0.02, loss=0.005,

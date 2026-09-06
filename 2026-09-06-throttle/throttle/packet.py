@@ -22,8 +22,10 @@ still consumes real bytes on the wire).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Tuple
 
 HEADER_BYTES = 40  # 20 bytes IPv4 + 20 bytes TCP, no options
+SACK_BLOCK_BYTES = 8  # 2 x 32-bit sequence numbers, real RFC 2018 SACK option cost
 
 
 @dataclass
@@ -39,6 +41,9 @@ class Segment:
     window: int = 0             # advertised receive window, in bytes
     payload: bytes = b""
     flow_id: int = 0
+    sack_blocks: Tuple[Tuple[int, int], ...] = ()  # RFC 2018: (start, end) ranges
+                                                     # of extra bytes the receiver
+                                                     # already holds beyond `ack`
 
     # simulation-only bookkeeping (never inspected by the "protocol logic"
     # itself, only by the RTT estimator / stats collector)
@@ -62,7 +67,7 @@ class Segment:
 
     @property
     def size_bytes(self) -> int:
-        return HEADER_BYTES + self.payload_len
+        return HEADER_BYTES + self.payload_len + SACK_BLOCK_BYTES * len(self.sack_blocks)
 
     def clone_for_retransmit(self) -> "Segment":
         return Segment(
@@ -70,4 +75,5 @@ class Segment:
             fin=self.fin, window=self.window, payload=self.payload,
             flow_id=self.flow_id, send_time=self.send_time,
             is_retransmit=True, retransmit_count=self.retransmit_count + 1,
+            sack_blocks=self.sack_blocks,
         )

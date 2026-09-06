@@ -7,14 +7,15 @@ TCP implementation (handshake, sliding-window byte-stream flow control,
 out-of-order reassembly, Jacobson/Karels RTT estimation, RTO backoff, and
 pluggable Reno/Tahoe/CUBIC congestion control).
 
-> **Status: Phase 3 (adversarial review) complete.** All 4 required
-> features are implemented and passing 63 unit/integration tests plus a
-> 500-run randomized fuzz sweep (0 crashes, 0 reassembly mismatches). Two
-> critical crash/deadlock bugs and one bug in the review tooling itself
-> were found and fixed — see `REVIEW.md` for the full account, including
-> what was investigated and deliberately *not* changed. See `PLAN.md` for
-> architecture. Stretch features and the HTML visualizer are implemented
-> but land officially in Phase 4/polish.
+> **Status: Phase 4 (stretch + polish) complete.** All 4 required features
+> plus all 3 stretch features (Tahoe/CUBIC, the HTML visualizer, and RFC
+> 2018 SACK) are implemented, tested (67 unit/integration tests, a
+> browser console-error check on the generated report), and fuzzed
+> (600+ randomized single- and multi-flow runs, 0 crashes, 0 reassembly
+> mismatches). See `PLAN.md` for architecture and `REVIEW.md` for the
+> adversarial-review findings (two critical bugs found and fixed, one of
+> them — Reno's slow multi-loss recovery without SACK — later turned into
+> the SACK stretch feature that fixes it).
 
 ## Quick look (implementation in progress, interface may still shift)
 

@@ -122,7 +122,7 @@ def _experiment_section(label: str, result: ExperimentResult) -> str:
             f"<tr><td>{html.escape(f.name)}</td><td>{html.escape(f.cc_name)}</td>"
             f"<td>{f.data_bytes:,}</td><td>{comp}</td>"
             f"<td>{f.throughput_Bps:,.0f}</td>"
-            f"<td>{f.timeouts}</td><td>{f.fast_retransmits}</td>"
+            f"<td>{f.timeouts}</td><td>{f.fast_retransmits}</td><td>{f.sack_retransmits}</td>"
             f"<td class='{'ok' if f.verified_correct else 'bad'}'>{verified}</td></tr>"
         )
     rows = "".join(row_html)
@@ -140,7 +140,7 @@ def _experiment_section(label: str, result: ExperimentResult) -> str:
   {fairness_line}
   <table>
     <thead><tr><th>flow</th><th>algo</th><th>bytes</th><th>completed</th>
-    <th>throughput B/s</th><th>timeouts</th><th>fast retx</th><th>verified</th></tr></thead>
+    <th>throughput B/s</th><th>timeouts</th><th>fast retx</th><th>SACK retx</th><th>verified</th></tr></thead>
     <tbody>{rows}</tbody>
   </table>
   <div class="charts">

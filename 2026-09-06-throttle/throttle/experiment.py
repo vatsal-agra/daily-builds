@@ -25,6 +25,7 @@ class FlowSpec:
     access_delay_s: float
     recv_window: int = 65536
     min_rto_s: float = 1.0
+    sack_enabled: bool = False
 
 
 @dataclass
@@ -39,6 +40,7 @@ class FlowResult:
     throughput_Bps: float
     timeouts: int
     fast_retransmits: int
+    sack_retransmits: int
     segments_sent: int
     verified_correct: bool
     cwnd_series: List[Tuple[float, float]]
@@ -96,6 +98,7 @@ def run_experiment(
         conn = TcpConnection(
             sim, i, topo, data, spec.access_delay_s, mss=mss, cc_name=spec.cc_name,
             recv_window=spec.recv_window, rng=rng, min_rto_s=spec.min_rto_s,
+            sack_enabled=spec.sack_enabled,
         )
         connections.append((spec, conn, data))
 
@@ -119,7 +122,7 @@ def run_experiment(
             access_delay_s=spec.access_delay_s, completed=bool(completed),
             completion_time=t, bytes_delivered=delivered, throughput_Bps=thpt,
             timeouts=conn.sender.timeouts, fast_retransmits=conn.sender.fast_retransmits,
-            segments_sent=conn.sender.segments_sent,
+            sack_retransmits=conn.sender.sack_retransmits, segments_sent=conn.sender.segments_sent,
             verified_correct=bytes(conn.receiver.assembled) == data[:delivered],
             cwnd_series=conn.sender.cwnd_series, rtt_series=conn.sender.rtt_series,
             inflight_series=conn.sender.inflight_series,
@@ -213,6 +216,41 @@ def exp_reno_vs_tahoe(seed: int = 4) -> ExperimentResult:
     )
 
 
+def exp_sack_vs_no_sack(seed: int = 1) -> dict:
+    """Same transfer, same bursty-loss path, run twice: plain Reno (no
+    SACK — the receiver never reports which out-of-order bytes it already
+    holds, so the sender can only ever retransmit its oldest unacked
+    segment) vs. Reno+SACK (RFC 2018 — the sender retransmits every
+    specific hole the scoreboard says is still missing). This is the exact
+    "multiple losses in one window recover very slowly" limitation
+    documented in REVIEW.md, demonstrated as a fix rather than only a
+    caveat: SACK should show fewer RTO timeouts and a faster completion
+    under identical loss.
+    """
+    common = dict(bandwidth_Bps=1_000_000, buffer_bytes=100_000, core_prop_delay_s=0.01,
+                  fwd_loss_prob=0.02, sim_duration_cap=180.0, seed=seed)
+    return {
+        "no-sack": run_experiment(
+            name="reno-no-sack",
+            description="A Reno flow (no SACK) over a bottleneck with 2% independent "
+                        "loss. Multiple losses within one window can only be repaired "
+                        "one RTO timeout at a time.",
+            flow_specs=[FlowSpec("reno-plain", "reno", 2_000_000, access_delay_s=0.02,
+                                  min_rto_s=0.5, sack_enabled=False)],
+            **common,
+        ),
+        "sack": run_experiment(
+            name="reno-sack",
+            description="The identical transfer, same seed, same loss — SACK enabled. "
+                        "The sender retransmits every hole the receiver's scoreboard "
+                        "reports missing, instead of one segment per RTO.",
+            flow_specs=[FlowSpec("reno-sack", "reno", 2_000_000, access_delay_s=0.02,
+                                  min_rto_s=0.5, sack_enabled=True)],
+            **common,
+        ),
+    }
+
+
 def exp_reno_vs_cubic_high_bdp(seed: int = 5) -> ExperimentResult:
     return {
         "reno": run_experiment(
@@ -254,4 +292,7 @@ def run_all_named() -> List[Tuple[str, ExperimentResult]]:
     hb = exp_reno_vs_cubic_high_bdp()
     out.append(("high-bdp-reno", hb["reno"]))
     out.append(("high-bdp-cubic", hb["cubic"]))
+    sack = exp_sack_vs_no_sack()
+    out.append(("reno-no-sack", sack["no-sack"]))
+    out.append(("reno-sack", sack["sack"]))
     return out
