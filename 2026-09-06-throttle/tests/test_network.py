@@ -124,6 +124,42 @@ def test_access_link_applies_fixed_delay_only():
     assert got == [0.05]
 
 
+def test_access_link_loss_prob_can_drop_packets():
+    sim = Simulator()
+    rng = random.Random(0)
+    access = AccessLink(sim, delay_s=0.01, loss_prob=1.0, rng=rng)
+    got = []
+    access.send(_pkt(10), lambda pkt, t: got.append(t))
+    sim.run()
+    assert got == []
+
+
+def test_link_rejects_invalid_parameters_with_clean_valueerror():
+    sim = Simulator()
+    for kwargs in [
+        dict(bandwidth_Bps=0, buffer_bytes=100, prop_delay_s=0.0),
+        dict(bandwidth_Bps=-5, buffer_bytes=100, prop_delay_s=0.0),
+        dict(bandwidth_Bps=100, buffer_bytes=-1, prop_delay_s=0.0),
+        dict(bandwidth_Bps=100, buffer_bytes=100, prop_delay_s=-0.1),
+        dict(bandwidth_Bps=100, buffer_bytes=100, prop_delay_s=0.0, loss_prob=1.5),
+        dict(bandwidth_Bps=100, buffer_bytes=100, prop_delay_s=0.0, reorder_prob=-0.1),
+    ]:
+        try:
+            Link(sim, **kwargs)
+            assert False, f"expected ValueError for {kwargs}"
+        except ValueError:
+            pass
+
+
+def test_access_link_rejects_invalid_parameters():
+    sim = Simulator()
+    try:
+        AccessLink(sim, delay_s=-1.0)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
 def test_queue_bytes_returns_to_zero_after_drain():
     sim = Simulator()
     link = Link(sim, bandwidth_Bps=10_000, buffer_bytes=10_000, prop_delay_s=0.0)

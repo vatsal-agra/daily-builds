@@ -152,6 +152,53 @@ def test_lost_final_handshake_ack_does_not_deadlock_connection():
     assert bytes(recv.assembled) == b"hi"
 
 
+def test_syn_timeout_retransmits_without_crashing():
+    """Regression test for a real crash found by fuzzing (see REVIEW.md):
+    a RTO firing on the SYN itself (i.e. the SYN was lost) used to always
+    fall through to `_maybe_send_more`, which dereferences `self.irs`
+    (the receiver's ISN) before the handshake has told the sender what it
+    is -- TypeError. The SYN is dropped once here via 100% loss on the
+    very first access-link send, forcing exactly that path."""
+    rng = random.Random(0)
+    sim = Simulator()
+    topo = Topology(sim, 200_000, 60_000, 0.01, rng=rng)
+
+    from throttle.network import AccessLink
+    # Drop only the very first packet sent (the initial SYN); let
+    # everything after it (the retransmitted SYN included) through.
+    dropped = {"done": False}
+    orig_add_flow = Topology.add_flow
+
+    def patched_add_flow(self, flow_id, access_delay_s, on_deliver_to_receiver, on_deliver_to_sender):
+        access = AccessLink(self.sim, access_delay_s)
+        orig_send = access.send
+
+        def send_once_dropping_first(pkt, on_deliver):
+            if not dropped["done"]:
+                dropped["done"] = True
+                return  # drop it silently, like a lost SYN
+            return orig_send(pkt, on_deliver)
+
+        access.send = send_once_dropping_first
+        self.access[flow_id] = access
+        self.receiver_cb[flow_id] = on_deliver_to_receiver
+        self.sender_cb[flow_id] = on_deliver_to_sender
+
+    Topology.add_flow = patched_add_flow
+    try:
+        data = b"hello world" * 100
+        conn = TcpConnection(sim, 0, topo, data, access_delay_s=0.01, cc_name="reno",
+                              rng=rng, min_rto_s=0.2)
+        conn.start()
+        sim.run(until=30.0)  # must not raise
+    finally:
+        Topology.add_flow = orig_add_flow
+
+    assert conn.sender.timeouts >= 1
+    assert conn.sender.done and conn.receiver.done
+    assert bytes(conn.receiver.assembled) == data
+
+
 def test_fin_teardown_completes_and_marks_both_sides_done():
     sim, topo, conn, data = _run_transfer(5000)
     assert conn.sender.state == "CLOSED"

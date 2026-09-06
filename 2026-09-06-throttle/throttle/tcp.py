@@ -53,10 +53,19 @@ class TcpSender:
         rng: Optional[random.Random] = None,
         min_rto_s: float = 1.0,
     ) -> None:
+        if mss <= 0:
+            raise ValueError(f"mss must be positive, got {mss}")
+
         self.sim = sim
         self.mss = mss
         self.cc = cc
-        self.rtt = RttEstimator(min_rto_s=min_rto_s)
+        # Per RFC 6298, the *pre-measurement* default RTO is 1s regardless
+        # of any floor a caller applies to later, sample-derived RTOs --
+        # except when a caller explicitly lowers min_rto_s below that
+        # default (as tests do, to keep simulated timeouts fast), in which
+        # case the initial guess should honor the same floor rather than
+        # start needlessly conservative.
+        self.rtt = RttEstimator(min_rto_s=min_rto_s, initial_rto_s=min(1.0, min_rto_s))
         self.data = data
         self.total_len = len(data)
         self.link_send = link_send
@@ -203,7 +212,13 @@ class TcpSender:
         self.rtt.backoff()
         retseg = out.seg.clone_for_retransmit()
         self._send_segment(retseg)
-        self._maybe_send_more(self.sim.now)
+        # A timeout during the handshake retransmits the SYN itself (the
+        # only thing that can be in `in_flight` in SYN_SENT); there is no
+        # data to send yet (self.irs isn't even known), so trying to fill
+        # the window here would crash on `self.irs + 1` — this was a real
+        # bug caught by fuzzing (see REVIEW.md).
+        if self.state != "SYN_SENT":
+            self._maybe_send_more(self.sim.now)
 
     # -- outbound data -----------------------------------------------------
 

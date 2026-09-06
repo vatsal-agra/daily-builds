@@ -56,6 +56,7 @@ class ExperimentResult:
     dropped_overflow: int
     dropped_random: int
     max_queue_bytes: int
+    utilization_pct: float
     queue_samples: List[Tuple[float, int]]
     flows: List[FlowResult]
     fairness_index: Optional[float]
@@ -130,6 +131,7 @@ def run_experiment(
         dropped_overflow=topo.fwd_link.stats.dropped_overflow,
         dropped_random=topo.fwd_link.stats.dropped_random,
         max_queue_bytes=topo.fwd_link.stats.max_queue_bytes,
+        utilization_pct=topo.fwd_link.utilization(duration) * 100.0,
         queue_samples=topo.fwd_link.stats.queue_samples,
         flows=flow_results,
         fairness_index=jains_fairness_index(throughputs) if len(throughputs) > 1 else None,

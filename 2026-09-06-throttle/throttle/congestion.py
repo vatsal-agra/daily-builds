@@ -140,6 +140,7 @@ class Cubic(CongestionControl):
         self.w_max_segs: float | None = None
         self.epoch_start: float | None = None
         self.origin_segs: float = self.cwnd / self.mss
+        self._k: float = 0.0
 
     def on_ack(self, acked_bytes: int, flight_before: int, now: float) -> None:
         if self.cwnd < self.ssthresh:

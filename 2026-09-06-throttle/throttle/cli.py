@@ -11,9 +11,9 @@ from .viz import build_html
 def _print_result(label: str, result) -> None:
     print(f"=== {label} ===")
     print(result.description)
-    print(f"  duration: {result.duration_s:.2f}s   bottleneck: {result.bandwidth_Bps:,.0f} B/s   "
-          f"buffer: {result.buffer_bytes:,} B   drops: {result.dropped_overflow} overflow / "
-          f"{result.dropped_random} random")
+    print(f"  duration: {result.duration_s:.2f}s   bottleneck: {result.bandwidth_Bps:,.0f} B/s "
+          f"({result.utilization_pct:.1f}% utilized)   buffer: {result.buffer_bytes:,} B   "
+          f"drops: {result.dropped_overflow} overflow / {result.dropped_random} random")
     if result.fairness_index is not None:
         print(f"  Jain's fairness index: {result.fairness_index:.4f}")
     for f in result.flows:
@@ -48,6 +48,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     from .network import Simulator
     from .tcp import Topology, TcpConnection
 
+    if args.bytes < 0:
+        raise ValueError(f"--bytes must be >= 0, got {args.bytes}")
+    if args.cap <= 0:
+        raise ValueError(f"--cap must be positive, got {args.cap}")
+
     rng = random.Random(args.seed)
     sim = Simulator()
     topo = Topology(sim, args.bandwidth, args.buffer, args.delay,
@@ -68,6 +73,7 @@ def cmd_run(args: argparse.Namespace) -> int:
           f"segments sent: {conn.sender.segments_sent}")
     print(f"  link drops: {topo.fwd_link.stats.dropped_overflow} overflow / "
           f"{topo.fwd_link.stats.dropped_random} random   max queue: {topo.fwd_link.stats.max_queue_bytes} B")
+    print(f"  bottleneck utilization: {topo.fwd_link.utilization(sim.now) * 100:.1f}%")
     print(f"  byte-for-byte reassembly correct: {verified}")
     return 0 if (ok and verified) else 1
 
@@ -128,7 +134,15 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except ValueError as e:
+        # Invalid simulation parameters (negative bandwidth, an
+        # out-of-range probability, ...) raise ValueError from deep inside
+        # network.py/tcp.py with a specific message -- surface that
+        # message cleanly instead of a raw traceback.
+        print(f"throttle: error: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

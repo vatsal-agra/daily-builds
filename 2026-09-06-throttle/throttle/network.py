@@ -56,17 +56,26 @@ class Simulator:
         self._stopped = True
 
     def run(self, until: Optional[float] = None) -> None:
+        """Process events up to (and including) `until`. If the event heap
+        empties *before* `until` is reached (nothing left to simulate),
+        `self.now` stays at the last processed event's time rather than
+        jumping forward — advancing it would fabricate elapsed time in
+        which nothing happened, which would corrupt every duration/
+        throughput/utilization figure computed from `self.now` after a run
+        that finished early (a real bug caught while building the
+        experiment-report tooling; see REVIEW.md). Only the "stopped early
+        because the next event is beyond the horizon, but there IS a next
+        event" case advances `now` to the horizon, since in that case time
+        provably did pass with nothing happening."""
         self._stopped = False
         while self._heap and not self._stopped:
             t, _, cb = self._heap[0]
             if until is not None and t > until:
-                self.now = until  # simulated up to `until` with no events left in that span
+                self.now = until
                 return
             heapq.heappop(self._heap)
             self.now = t
             cb()
-        if until is not None and self.now < until:
-            self.now = until  # ran out of events entirely, but still "simulated" up to `until`
 
 
 @dataclass
@@ -93,6 +102,17 @@ class Link:
         rng: Optional[random.Random] = None,
         name: str = "link",
     ) -> None:
+        if bandwidth_Bps <= 0:
+            raise ValueError(f"bandwidth_Bps must be positive, got {bandwidth_Bps}")
+        if buffer_bytes < 0:
+            raise ValueError(f"buffer_bytes must be >= 0, got {buffer_bytes}")
+        if prop_delay_s < 0:
+            raise ValueError(f"prop_delay_s must be >= 0, got {prop_delay_s}")
+        if not (0.0 <= loss_prob <= 1.0):
+            raise ValueError(f"loss_prob must be in [0, 1], got {loss_prob}")
+        if not (0.0 <= reorder_prob <= 1.0):
+            raise ValueError(f"reorder_prob must be in [0, 1], got {reorder_prob}")
+
         self.sim = sim
         self.bandwidth_Bps = bandwidth_Bps
         self.buffer_bytes = buffer_bytes
@@ -164,6 +184,10 @@ class AccessLink:
 
     def __init__(self, sim: Simulator, delay_s: float, loss_prob: float = 0.0,
                  rng: Optional[random.Random] = None) -> None:
+        if delay_s < 0:
+            raise ValueError(f"delay_s must be >= 0, got {delay_s}")
+        if not (0.0 <= loss_prob <= 1.0):
+            raise ValueError(f"loss_prob must be in [0, 1], got {loss_prob}")
         self.sim = sim
         self.delay_s = delay_s
         self.loss_prob = loss_prob

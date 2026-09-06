@@ -135,7 +135,7 @@ def _experiment_section(label: str, result: ExperimentResult) -> str:
 <section class="exp">
   <h2>{html.escape(label)}</h2>
   <p class="desc">{html.escape(result.description)}</p>
-  <p class="meta">bottleneck: {result.bandwidth_Bps:,.0f} B/s, buffer {result.buffer_bytes:,} bytes,
+  <p class="meta">bottleneck: {result.bandwidth_Bps:,.0f} B/s ({result.utilization_pct:.1f}% utilized), buffer {result.buffer_bytes:,} bytes,
      duration {result.duration_s:.2f}s, drops: {result.dropped_overflow} overflow / {result.dropped_random} random</p>
   {fairness_line}
   <table>
