@@ -7,6 +7,18 @@ TCP implementation (handshake, sliding-window byte-stream flow control,
 out-of-order reassembly, Jacobson/Karels RTT estimation, RTO backoff, and
 pluggable Reno/Tahoe/CUBIC congestion control).
 
-> **Status: Phase 1 (plan) complete.** See `PLAN.md` for the full
-> architecture and feature list. Implementation in progress — this file
-> will be replaced with real usage instructions as each phase lands.
+> **Status: Phase 2 (core build) complete.** All 4 required features are
+> implemented and passing 59 unit/integration tests, plus 6 canned
+> experiments that each check a real, falsifiable TCP prediction (not
+> eyeballed). See `PLAN.md` for architecture. `REVIEW.md` and the stretch
+> features/visualizer land in later phases.
+
+## Quick look (implementation in progress, interface may still shift)
+
+```
+python3 -m throttle.cli run --bytes 500000 --cc reno
+python3 -m throttle.cli experiment rtt-unfairness
+python3 -m throttle.cli viz report.html
+python3 -m throttle.cli demo
+python3 -m pytest
+```
