@@ -27,11 +27,13 @@ Stretch features (symbolic integration, HTML step visualizer) are also
 already working, ahead of the adversarial-review and polish passes still to
 come.
 
-**Status: Phase 4 (stretch + polish) complete.** Both planned stretch
-features (symbolic integration, the HTML step visualizer) already worked as
-of Phase 2; Phase 4 added a bonus rational-function simplifier (`ratsimp`),
-tightened a handful of error messages, and re-verified everything found in
-[REVIEW.md](REVIEW.md) stays fixed.
+**Status: Phase 5 (verification) complete.** 122 unit tests (parser,
+simplifier, diff, integrate, solve, polynomial/factor, CLI, visualizer --
+including fuzz tests that cross-check diff against numerical finite
+differences, integration by differentiating the antiderivative back, and
+factor/solve by substitution) plus `demo.sh`'s 30-check end-to-end run
+(including a real headless-Chromium pass over the visualizer) are all green.
+Run `./demo.sh` to verify for yourself.
 
 ## Quick tour
 

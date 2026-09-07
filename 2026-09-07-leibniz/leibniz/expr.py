@@ -231,10 +231,20 @@ def _term_degree(term: Expr) -> Fraction:
     return _factor_degree(term)
 
 
+def _term_is_negative(term: Expr) -> bool:
+    if isinstance(term, Num):
+        return term.value < 0
+    if isinstance(term, Mul) and isinstance(term.args[0], Num):
+        return term.args[0].value < 0
+    return False
+
+
 def _add_sort_key(term: Expr):
     from .render import to_str
 
-    return (-_term_degree(term), to_str(term))
+    # same degree -> positive-looking terms before negative ones (so "x - i"
+    # prints as "x - i", not "-i + x"), then alphabetical for determinism
+    return (-_term_degree(term), _term_is_negative(term), to_str(term))
 
 
 # ---------------------------------------------------------------------------
@@ -512,10 +522,10 @@ def func_(name: str, arg: Expr) -> Expr:
             if v == 0:
                 return Num(0)
             if v < 0:
-                exact = _isqrt_exact(-v)
-                if exact is not None:
-                    return mul(I, Num(exact))
-                return mul(I, Func("sqrt", Num(-v)))
+                # recurse (not a raw Func) so a non-perfect-square magnitude
+                # still gets its largest square factor extracted, e.g.
+                # sqrt(-8) -> 2*i*sqrt(2), not i*sqrt(8)
+                return mul(I, func_("sqrt", Num(-v)))
             exact = _isqrt_exact(v)
             if exact is not None:
                 return Num(exact)

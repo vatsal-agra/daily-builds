@@ -52,6 +52,11 @@ def to_str(e: Expr) -> str:
     if isinstance(e, Func):
         return f"{e.name}({to_str(e.arg)})"
     if isinstance(e, Pow):
+        if isinstance(e.exp, Num) and e.exp.value < 0:
+            from .expr import pow_
+
+            positive = pow_(e.base, Num(-e.exp.value))
+            return f"1/{_atom_str(positive, to_str)}"
         base_s = _atom_str(e.base, to_str)
         exp_s = _atom_str(e.exp, to_str)
         return f"{base_s}^{exp_s}"
