@@ -165,6 +165,23 @@ def poly_gcd(a: list[Fraction], b: list[Fraction]) -> list[Fraction]:
     return [c / lead for c in a] if lead != 0 else a
 
 
+def poly_add(a: list[Fraction], b: list[Fraction]) -> list[Fraction]:
+    n = max(len(a), len(b))
+    a = a + [Fraction(0)] * (n - len(a))
+    b = b + [Fraction(0)] * (n - len(b))
+    return _strip([x + y for x, y in zip(a, b)])
+
+
+def poly_mul(a: list[Fraction], b: list[Fraction]) -> list[Fraction]:
+    out = [Fraction(0)] * (len(a) + len(b) - 1)
+    for i, x in enumerate(a):
+        if x == 0:
+            continue
+        for j, y in enumerate(b):
+            out[i + j] += x * y
+    return _strip(out)
+
+
 # ---------------------------------------------------------------------------
 # factoring
 # ---------------------------------------------------------------------------
@@ -311,3 +328,63 @@ def factor(e: Expr) -> Expr:
     if len(factors_out) == 1:
         return factors_out[0]
     return Mul(tuple(factors_out))
+
+
+# ---------------------------------------------------------------------------
+# rational-function simplification (bonus, beyond the planned feature list):
+# combine a sum of fractions in one variable over a common denominator, then
+# cancel their GCD -- e.g. (x^2-1)/(x-1) -> x+1, or 1/x + 1/(x+1) ->
+# (2*x+1)/(x^2+x). Best-effort: returns `e` unchanged (never raises) if it
+# isn't a rational function of exactly one variable.
+# ---------------------------------------------------------------------------
+
+
+def simplify_rational(e: Expr) -> Expr:
+    e = expand(e)
+    try:
+        var = univariate_var(e)
+    except NotPolynomial:
+        return e
+
+    terms = e.args if isinstance(e, Add) else (e,)
+    parts = []
+    for t in terms:
+        factors = t.args if isinstance(t, Mul) else (t,)
+        num_factors, den_coeffs = [], [Fraction(1)]
+        try:
+            for f in factors:
+                if isinstance(f, Pow) and isinstance(f.exp, Num) and f.exp.value < 0 and f.exp.value.denominator == 1:
+                    base_coeffs = poly_coeffs(f.base, var)
+                    for _ in range(-int(f.exp.value)):
+                        den_coeffs = poly_mul(den_coeffs, base_coeffs)
+                else:
+                    num_factors.append(f)
+            num_coeffs = poly_coeffs(mul(*num_factors) if num_factors else Num(1), var)
+        except NotPolynomial:
+            return e  # not a rational function we can handle -- leave as-is
+        parts.append((num_coeffs, den_coeffs))
+
+    if all(d == [Fraction(1)] for _, d in parts):
+        return e  # no denominators at all -- nothing to cancel
+
+    combined_den = [Fraction(1)]
+    for _, d in parts:
+        combined_den = poly_mul(combined_den, d)
+    combined_num = [Fraction(0)]
+    for n, d in parts:
+        scale, _ = poly_div(combined_den, d)
+        combined_num = poly_add(combined_num, poly_mul(n, scale))
+
+    if any(c != 0 for c in combined_num):
+        g = poly_gcd(combined_num, combined_den)
+        if len(g) > 1:  # degree >= 1 common factor to cancel
+            combined_num, _ = poly_div(combined_num, g)
+            combined_den, _ = poly_div(combined_den, g)
+
+    if len(combined_den) == 1:
+        c = combined_den[0]
+        return poly_from_coeffs([n / c for n in combined_num], var)
+
+    num_expr = poly_from_coeffs(combined_num, var)
+    den_expr = poly_from_coeffs(combined_den, var)
+    return Mul((num_expr, pow_(den_expr, Num(-1))))

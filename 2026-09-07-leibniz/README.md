@@ -27,6 +27,12 @@ Stretch features (symbolic integration, HTML step visualizer) are also
 already working, ahead of the adversarial-review and polish passes still to
 come.
 
+**Status: Phase 4 (stretch + polish) complete.** Both planned stretch
+features (symbolic integration, the HTML step visualizer) already worked as
+of Phase 2; Phase 4 added a bonus rational-function simplifier (`ratsimp`),
+tightened a handful of error messages, and re-verified everything found in
+[REVIEW.md](REVIEW.md) stays fixed.
+
 ## Quick tour
 
 ```
@@ -40,6 +46,8 @@ come.
 ./leibniz_cli eval "sin(x)^2 + cos(x)^2" --at x=1.234
 ./leibniz_cli repl
 ./leibniz_cli diff "x^3" --var x --viz out.html  # step-by-step HTML visualizer
+./leibniz_cli ratsimp "(x^2-1)/(x-1)"            # x + 1
+./leibniz_cli ratsimp "1/x + 1/(x+1)"            # (2*x + 1)/(x^2 + x)
 ```
 
 Run `python3 -m unittest discover tests` from this directory for the test

@@ -128,6 +128,16 @@ tests/           unittest suite: parser round-trips, simplifier identities,
    expression-tree diagram with a scrubbable step list, no server or
    external assets.
 
+## Bonus, beyond the planned feature list
+
+7. **Rational-function simplification** (`ratsimp`) — combine a sum of
+   fractions in one variable over a common denominator via `poly_mul`/
+   `poly_add`, then cancel their GCD via the existing `poly_gcd`
+   (implemented in Phase 2 for factoring but originally unused elsewhere).
+   `(x^2-1)/(x-1)` -> `x+1`; `1/x + 1/(x+1)` -> `(2*x+1)/(x^2+x)`. Added in
+   Phase 4 polish once the two committed stretch features (integration, the
+   HTML visualizer) were both already done in Phase 2.
+
 ## Honest scope boundaries (decided up front, not discovered late)
 
 - Integration is rule-based, not a full decision procedure (no Risch

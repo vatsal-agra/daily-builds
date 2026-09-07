@@ -8,7 +8,7 @@ import sys
 from . import (
     CannotIntegrate, LinearSystemError, NotPolynomial, ParseError, SolveError,
     diff, evalf, expand, factor, free_symbols, integrate, parse, parse_equation,
-    simplify, solve, solve_linear_system, to_latex, to_str,
+    simplify, simplify_rational, solve, solve_linear_system, to_latex, to_str,
 )
 from .render import Steps
 
@@ -40,6 +40,11 @@ def cmd_expand(args):
 
 def cmd_factor(args):
     e = factor(parse(args.expr))
+    print(to_str(e))
+
+
+def cmd_ratsimp(args):
+    e = simplify_rational(parse(args.expr))
     print(to_str(e))
 
 
@@ -156,6 +161,7 @@ Commands:
   solve <eqn>, <var>       solve an equation ("=" optional, defaults rhs=0)
   expand <expr>            fully distribute
   factor <expr>            factor a polynomial
+  ratsimp <expr>           combine/cancel a rational function
   quit                     leave the REPL
 """
 
@@ -167,6 +173,7 @@ def _repl_eval(line: str):
         ("solve ", lambda body: _repl_solve(body)),
         ("expand ", lambda body: print(to_str(expand(parse(body))))),
         ("factor ", lambda body: print(to_str(factor(parse(body))))),
+        ("ratsimp ", lambda body: print(to_str(simplify_rational(parse(body))))),
     ):
         if line.startswith(prefix):
             handler(line[len(prefix):])
@@ -239,6 +246,10 @@ def build_parser():
     pf = sub.add_parser("factor", help="factor a univariate polynomial")
     pf.add_argument("expr")
     pf.set_defaults(func=cmd_factor)
+
+    prs = sub.add_parser("ratsimp", help="combine/cancel a rational function (e.g. (x^2-1)/(x-1) -> x+1)")
+    prs.add_argument("expr")
+    prs.set_defaults(func=cmd_ratsimp)
 
     pd = sub.add_parser("diff", help="symbolic derivative")
     pd.add_argument("expr")
