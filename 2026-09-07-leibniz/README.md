@@ -9,8 +9,10 @@ point except where a result is genuinely numeric.
 See [PLAN.md](PLAN.md) for the full design, feature list, and why this is a
 new domain for this repo.
 
-**Status: Phase 2 (core build) complete.** The four required features are
-implemented and working end-to-end:
+**Status: Phase 3 (adversarial review) complete.** See [REVIEW.md](REVIEW.md)
+for what was found (including one critical canonicalization bug) and fixed,
+plus the fuzz-based verification now in place. The four required features
+are implemented and working end-to-end:
 
 1. Expression parser + canonical simplifier
 2. Symbolic differentiation (sum/product/quotient/power/chain/generalized

@@ -135,8 +135,10 @@ def to_latex(e: Expr) -> str:
 
                 den_factors.append(pow_(f.base, Num(-f.exp.value)))
         if den_factors:
-            num = " \\cdot ".join(_latex_atom(f) for f in num_factors) or "1"
-            den = " \\cdot ".join(_latex_atom(f) for f in den_factors)
+            # a \frac{}{} already groups its contents, so a lone factor on
+            # either side doesn't need _latex_atom's extra \left(\right)
+            num = (" \\cdot ".join(_latex_atom(f) for f in num_factors) or "1") if len(num_factors) != 1 else to_latex(num_factors[0])
+            den = " \\cdot ".join(_latex_atom(f) for f in den_factors) if len(den_factors) != 1 else to_latex(den_factors[0])
             return f"\\frac{{{num}}}{{{den}}}"
         return " \\cdot ".join(_latex_atom(f) for f in e.args)
     if isinstance(e, Add):

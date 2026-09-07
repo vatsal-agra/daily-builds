@@ -277,7 +277,12 @@ def add(*terms: Expr) -> Expr:
         if coeff == 1:
             out_terms.append(rest)
         else:
-            out_terms.append(Mul((Num(coeff), rest)))
+            # rest may be a raw (unflattened) Mul from _split_coeff below;
+            # go through mul() rather than a bare Mul(...) so a term like
+            # coeff*(i*sqrt(19)) doesn't end up as a Mul nested inside a
+            # Mul, which would later hide i and sqrt(19) from mul()'s own
+            # same-base combining if this term gets multiplied again.
+            out_terms.append(mul(Num(coeff), rest))
 
     out_terms.sort(key=_add_sort_key)
 
@@ -307,20 +312,32 @@ def _split_coeff(t: Expr):
     return Fraction(1), t
 
 
+def _flatten_mul(f: Expr):
+    """Fully flatten nested Muls (any depth), not just one level -- a
+    defensive measure so mul()'s same-base combining never misses an atom
+    hidden inside a Mul-within-a-Mul, however that structure was built."""
+    if isinstance(f, Mul):
+        for sub in f.args:
+            yield from _flatten_mul(sub)
+    else:
+        yield f
+
+
+def _distribute_pair(a: Expr, b: Expr) -> Expr:
+    a_terms = a.args if isinstance(a, Add) else (a,)
+    b_terms = b.args if isinstance(b, Add) else (b,)
+    return add(*[mul(ta, tb) for ta in a_terms for tb in b_terms])
+
+
 def mul(*factors: Expr) -> Expr:
     """Build a simplified product: flatten nested Mul, fold Num factors
     exactly, combine powers of identical bases (x*x -> x**2), reduce powers
-    of the imaginary unit modulo 4, and distribute a numeric/atomic factor
-    over a single Add factor when there's exactly one Add among the factors
-    (keeps common cases like ``2*(x+1)`` expanded without a full expand()).
+    of the imaginary unit modulo 4, and fully distribute over every Add
+    factor still present (so multiplication is always as eager as addition).
     """
     flat: list[Expr] = []
     for f in factors:
-        f = _wrap(f)
-        if isinstance(f, Mul):
-            flat.extend(f.args)
-        else:
-            flat.append(f)
+        flat.extend(_flatten_mul(_wrap(f)))
 
     num_coeff = Fraction(1)
     # base._key()/type -> (base, exponent Expr-built-additively-when-Num)
@@ -347,18 +364,8 @@ def mul(*factors: Expr) -> Expr:
     out_factors: list[Expr] = []
     for key in order:
         base, exp = bases[key]
-        if isinstance(base, Imaginary) and isinstance(exp, Num) and exp.value.denominator == 1:
-            n = int(exp.value) % 4
-            if n == 0:
-                pass
-            elif n == 1:
-                out_factors.append(base)
-            elif n == 2:
-                num_coeff *= -1
-            elif n == 3:
-                num_coeff *= -1
-                out_factors.append(base)
-            continue
+        # pow_() folds i**n (mod-4 cycle), sqrt(u)**n, and (f1*f2*...)**n
+        # on its own now, so no special-casing is needed here any more.
         p = pow_(base, exp)
         if isinstance(p, Num):
             num_coeff *= p.value
@@ -375,15 +382,19 @@ def mul(*factors: Expr) -> Expr:
     if num_coeff == 0:
         return Num(0)
 
-    # distribute a scalar-and-atoms coefficient over a single remaining Add
-    add_factors = [f for f in out_factors if isinstance(f, Add)]
-    if len(add_factors) == 1 and len(out_factors) >= 1:
-        the_add = add_factors[0]
-        rest = [f for f in out_factors if f is not the_add]
-        scalar = Mul(tuple([Num(num_coeff)] + rest)) if rest else Num(num_coeff)
-        if not (isinstance(scalar, Num) and scalar.value == 1):
-            return add(*[mul(scalar, term) for term in the_add.args])
-        return the_add
+    # Fully distribute whenever any Add factor remains, so multiplication is
+    # always as eager as addition (mul() never leaves "2*(x+1)" any more
+    # un-distributed than add() would leave "x + x" un-combined) -- a single
+    # scalar times one Add and a product of several Adds are both expanded
+    # the same way, instead of the former auto-expanding and the latter
+    # silently staying factored. `factor()` deliberately builds its
+    # (intentionally-factored) result through the raw Mul/Add constructors,
+    # bypassing this, rather than asking mul() to hold something back.
+    if any(isinstance(f, Add) for f in out_factors):
+        result: Expr = Num(num_coeff)
+        for f in out_factors:
+            result = _distribute_pair(result, f)
+        return result
 
     out_factors.sort(key=_sort_key)
 
@@ -404,10 +415,32 @@ def pow_(base: Expr, exp: Expr) -> Expr:
             return Num(1)
         if exp.value == 1:
             return base
+
+    if isinstance(base, Func) and base.name == "sqrt" and isinstance(exp, Num) and exp.value.denominator == 1:
+        # rationalize an integer power of sqrt(u): sqrt(u)**n = u**(n//2) * (sqrt(u) if n odd)
+        # (Python's divmod floors, so this is exact for negative n too)
+        half, remainder = divmod(exp.value.numerator, 2)
+        result = pow_(base.arg, Num(half))
+        return mul(result, base) if remainder else result
+
+    if isinstance(base, Imaginary) and isinstance(exp, Num) and exp.value.denominator == 1:
+        # i**n cycles with period 4; Python's % always returns 0..3 here,
+        # even for negative n, so this is exact for negative powers too
+        return (Num(1), base, Num(-1), mul(Num(-1), base))[exp.value.numerator % 4]
+
+    if isinstance(base, Mul) and isinstance(exp, Num) and exp.value.denominator == 1:
+        # (f1*f2*...)**n = f1**n * f2**n * ... -- exact for any integer n,
+        # positive or negative, with no branch-cut ambiguity (unlike a
+        # fractional exponent, integer powers are just repeated
+        # multiplication, so this can never change the value)
+        return mul(*[pow_(f, exp) for f in base.args])
+
     if isinstance(base, Num):
         if base.value == 0:
-            if isinstance(exp, Num) and exp.value > 0:
-                return Num(0)
+            if isinstance(exp, Num):
+                if exp.value > 0:
+                    return Num(0)
+                raise ZeroDivisionError("0 cannot be raised to a non-positive power")
         elif base.value == 1:
             return Num(1)
         elif isinstance(exp, Num):

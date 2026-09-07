@@ -12,7 +12,8 @@ from __future__ import annotations
 from fractions import Fraction
 from math import gcd
 
-from .expr import Add, Expr, Mul, Num, Pow, Symbol, add, free_symbols, mul, pow_
+from .expr import Add, Expr, Mul, Num, Pow, Symbol, _distribute_pair, add, free_symbols, mul, pow_
+from .render import to_str
 from .simplify import simplify
 
 
@@ -47,7 +48,7 @@ def _expand(e: Expr) -> Expr:
     if isinstance(e, Mul):
         result = Num(1)
         for f in e.args:
-            result = _mul_distribute(result, _expand(f))
+            result = _distribute_pair(result, _expand(f))
         return result
     if isinstance(e, Pow):
         base = _expand(e.base)
@@ -57,16 +58,10 @@ def _expand(e: Expr) -> Expr:
                 raise NotPolynomial(f"exponent {n} too large to expand")
             result = Num(1)
             for _ in range(n):
-                result = _mul_distribute(result, base)
+                result = _distribute_pair(result, base)
             return result
         return pow_(base, _expand(e.exp))
     return e
-
-
-def _mul_distribute(a: Expr, b: Expr) -> Expr:
-    a_terms = a.args if isinstance(a, Add) else (a,)
-    b_terms = b.args if isinstance(b, Add) else (b,)
-    return add(*[mul(ta, tb) for ta in a_terms for tb in b_terms])
 
 
 # ---------------------------------------------------------------------------
@@ -76,8 +71,10 @@ def _mul_distribute(a: Expr, b: Expr) -> Expr:
 
 def univariate_var(e: Expr) -> str:
     syms = free_symbols(e)
-    if len(syms) != 1:
-        raise NotPolynomial(f"expected exactly one variable, found {sorted(syms)}")
+    if not syms:
+        raise NotPolynomial(f"{to_str(e)} has no variable to factor (it's just a constant)")
+    if len(syms) > 1:
+        raise NotPolynomial(f"expected exactly one variable, found {sorted(syms)} in {to_str(e)}")
     return next(iter(syms))
 
 
@@ -222,9 +219,15 @@ def factor(e: Expr) -> Expr:
     like (2*x + 1) rather than (x + 1/2)) is folded into one overall Num,
     never scattered across several. Verify with expand(factor(e)) ==
     expand(e)."""
-    var = univariate_var(e)
+    simplified = simplify(e)
+    if isinstance(simplified, Num) and simplified.value == 0:
+        # the zero polynomial factors as 0 regardless of how many (if any)
+        # variables it superficially mentions before cancelling out
+        return Num(0)
+
+    var = univariate_var(simplified)
     x = Symbol(var)
-    coeffs = _strip(poly_coeffs(e, var))
+    coeffs = _strip(poly_coeffs(simplified, var))
 
     if all(c == 0 for c in coeffs):
         return Num(0)
