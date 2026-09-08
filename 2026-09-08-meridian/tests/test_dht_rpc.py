@@ -85,5 +85,39 @@ class TestStoreAndFindValue(unittest.TestCase):
         self.assertIsNone(result["value"])
 
 
+class TestLookupTracing(unittest.TestCase):
+    """A DHTNode records trace events via its `_trace` callback; internal
+    housekeeping lookups (bucket refresh, republish) pass trace=False so
+    they don't flood a replay/trace log with per-hop noise from routine
+    background activity. Confirms the on/off switch actually works at the
+    Lookup level, independent of the CLI-level test that checks the same
+    thing end to end through tick_maintenance()."""
+
+    def test_traced_lookup_emits_start_and_done_events(self):
+        events = []
+        net = Network(random.Random(0), loss_prob=0.0)
+        a = DHTNode(0xA, net, trace=lambda kind, **f: events.append(kind))
+        b = DHTNode(0xB, net)
+        net.set_live(a.id, True)
+        net.set_live(b.id, True)
+        a.record_contact(b.id)
+        a.lookup_nodes(0xB, lambda contacts: None, trace=True)
+        net.run_all()
+        self.assertIn("lookup_start", events)
+        self.assertIn("lookup_done", events)
+
+    def test_untraced_lookup_emits_nothing(self):
+        events = []
+        net = Network(random.Random(0), loss_prob=0.0)
+        a = DHTNode(0xA, net, trace=lambda kind, **f: events.append(kind))
+        b = DHTNode(0xB, net)
+        net.set_live(a.id, True)
+        net.set_live(b.id, True)
+        a.record_contact(b.id)
+        a.lookup_nodes(0xB, lambda contacts: None, trace=False)
+        net.run_all()
+        self.assertEqual(events, [])
+
+
 if __name__ == "__main__":
     unittest.main()

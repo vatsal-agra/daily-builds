@@ -67,13 +67,22 @@ class Lookup:
     the lookup ends.
     """
 
-    def __init__(self, owner: "DHTNode", target: int, find_value: bool, on_complete):
+    def __init__(self, owner: "DHTNode", target: int, find_value: bool, on_complete, trace: bool = True):
         self.owner = owner
         self.target = target
         self.find_value = find_value
         self.on_complete = on_complete
         self.k = owner.k
         self.alpha = owner.alpha
+        # Internal housekeeping lookups (bucket refresh, republish) run
+        # constantly in the background and are individually uninteresting;
+        # tracing every one of their hops would drown out the handful of
+        # narratively meaningful events (a crash, a STORE, a user's GET) in
+        # noise. `trace=False` runs the exact same lookup logic -- it only
+        # suppresses this class's own start/hop/done trace calls, not any
+        # DHT behavior. The higher-level event that triggered it (e.g.
+        # 'bucket_refresh') is still traced by its caller.
+        self._trace_enabled = trace
 
         self.shortlist: dict[int, None] = {}
         for c in owner.routing_table.closest(target, self.k):
@@ -88,7 +97,8 @@ class Lookup:
         self.hops = 0  # number of RPC round-trips that got a real response
         self.rounds = 0
 
-        owner._trace("lookup_start", node=owner.id, target=target, find_value=find_value)
+        if self._trace_enabled:
+            owner._trace("lookup_start", node=owner.id, target=target, find_value=find_value)
         self._run_round()
 
     # -- helpers -----------------------------------------------------
@@ -127,7 +137,8 @@ class Lookup:
         if self._finished:
             return
         self.hops += 1
-        self.owner._trace("lookup_hop", node=self.owner.id, target=self.target, queried=contact, ok=True)
+        if self._trace_enabled:
+            self.owner._trace("lookup_hop", node=self.owner.id, target=self.target, queried=contact, ok=True)
         if self.find_value and isinstance(resp, FindValueResp) and resp.value is not None:
             self._found_value = resp.value
             self._finish()
@@ -141,7 +152,8 @@ class Lookup:
         self._pending_this_round.discard(contact)
         if self._finished:
             return
-        self.owner._trace("lookup_hop", node=self.owner.id, target=self.target, queried=contact, ok=False)
+        if self._trace_enabled:
+            self.owner._trace("lookup_hop", node=self.owner.id, target=self.target, queried=contact, ok=False)
         self._maybe_advance()
 
     def _maybe_advance(self) -> None:
@@ -164,15 +176,16 @@ class Lookup:
         if self._finished:
             return
         self._finished = True
-        self.owner._trace(
-            "lookup_done",
-            node=self.owner.id,
-            target=self.target,
-            hops=self.hops,
-            rounds=self.rounds,
-            result=list(self._k_closest()),
-            value_found=self._found_value is not None,
-        )
+        if self._trace_enabled:
+            self.owner._trace(
+                "lookup_done",
+                node=self.owner.id,
+                target=self.target,
+                hops=self.hops,
+                rounds=self.rounds,
+                result=list(self._k_closest()),
+                value_found=self._found_value is not None,
+            )
         self.on_complete(self._k_closest(), self._found_value)
 
 
@@ -300,11 +313,11 @@ class DHTNode:
             raise TypeError(f"unhandled message type: {type(msg)!r}")
 
     # -- public API: lookups -----------------------------------------------------
-    def lookup_nodes(self, target: int, on_complete) -> Lookup:
-        return Lookup(self, target, find_value=False, on_complete=lambda contacts, val: on_complete(contacts))
+    def lookup_nodes(self, target: int, on_complete, trace: bool = True) -> Lookup:
+        return Lookup(self, target, find_value=False, on_complete=lambda contacts, val: on_complete(contacts), trace=trace)
 
-    def lookup_value(self, key: int, on_complete) -> Lookup:
-        return Lookup(self, key, find_value=True, on_complete=lambda contacts, val: on_complete(val, contacts))
+    def lookup_value(self, key: int, on_complete, trace: bool = True) -> Lookup:
+        return Lookup(self, key, find_value=True, on_complete=lambda contacts, val: on_complete(val, contacts), trace=trace)
 
     # -- public API: bootstrap -----------------------------------------------------
     def bootstrap(self, contact_id: int, on_complete=None) -> None:
@@ -392,7 +405,11 @@ class DHTNode:
             if now - pk.last_published >= REPUBLISH_INTERVAL:
                 pk.last_published = now
                 self._store_local(key_id, pk.value, pk.ttl, origin="owner")
-                self.lookup_nodes(key_id, lambda contacts, key_id=key_id, pk=pk: self._replicate(key_id, pk.value, pk.ttl, contacts, None))
+                self.lookup_nodes(
+                    key_id,
+                    lambda contacts, key_id=key_id, pk=pk: self._replicate(key_id, pk.value, pk.ttl, contacts, None),
+                    trace=False,
+                )
 
         for key_id, entry in list(self.storage.items()):
             if entry.origin == "replica" and entry.expires_at > now and now - entry.last_republished >= REPLICA_REPUBLISH_INTERVAL:
@@ -401,6 +418,7 @@ class DHTNode:
                 self.lookup_nodes(
                     key_id,
                     lambda contacts, key_id=key_id, value=value: self._replicate(key_id, value, DEFAULT_TTL, contacts, None),
+                    trace=False,
                 )
 
         expired = [key_id for key_id, entry in self.storage.items() if entry.expires_at <= now]
@@ -409,9 +427,17 @@ class DHTNode:
             del self.storage[key_id]
 
         if self._rng is not None:
+            refreshed = []
             for idx, bucket in enumerate(self.routing_table.buckets):
                 if len(bucket) > 0 and now - bucket.last_refreshed >= BUCKET_REFRESH_INTERVAL:
                     bucket.last_refreshed = now
                     target = nodeid.random_id_in_bucket(self.id, idx, self._rng)
-                    self._trace("bucket_refresh", node=self.id, bucket=idx)
-                    self.lookup_nodes(target, lambda contacts: None)
+                    refreshed.append(idx)
+                    self.lookup_nodes(target, lambda contacts: None, trace=False)
+            if refreshed:
+                # One event for however many buckets came due *this tick*,
+                # not one per bucket -- a node's first maintenance pass
+                # after joining can have every bucket due at once (they
+                # all start at last_refreshed=0), which used to flood the
+                # trace/replay log with a wall of near-identical lines.
+                self._trace("bucket_refresh", node=self.id, buckets=refreshed)

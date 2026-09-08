@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian — Kademlia replay</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #11171f;
+    --panel-2: #161d27;
+    --border: #232c38;
+    --text: #dbe4ee;
+    --text-dim: #7c8a9c;
+    --accent: #4fd1c5;
+    --accent-2: #f0a860;
+    --live: #57d38c;
+    --dead: #3a4452;
+    --bad: #e6667a;
+    --store: #b58cf0;
+    --get: #4fb2f0;
+    --ring: #1c2530;
+    mono-font: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    height: 100%;
+  }
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  header {
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
+    background: linear-gradient(180deg, var(--panel), var(--bg));
+  }
+  header h1 {
+    font-size: 17px; margin: 0; letter-spacing: 0.02em;
+    font-family: var(--mono-font), monospace;
+  }
+  header h1 .dot { color: var(--accent); }
+  .meta { font-size: 12px; color: var(--text-dim); font-family: var(--mono-font), monospace; }
+  .meta b { color: var(--text); font-weight: 600; }
+
+  main { flex: 1; display: flex; min-height: 0; }
+  .ring-pane { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; min-width: 0; }
+  #canvasWrap { position: relative; width: min(78vh, 62vw); aspect-ratio: 1 / 1; }
+  canvas { width: 100%; height: 100%; display: block; }
+
+  .side { width: 340px; flex: 0 0 340px; border-left: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  .side h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin: 14px 16px 8px; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 16px 12px; }
+  .stat { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .stat .n { font-family: var(--mono-font), monospace; font-size: 18px; font-weight: 600; }
+  .stat .l { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
+
+  .legend { padding: 0 16px 14px; font-size: 12px; display: grid; gap: 6px; }
+  .legend .row { display: flex; align-items: center; gap: 8px; color: var(--text-dim); }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
+  #log { flex: 1 1 auto; overflow-y: auto; border-top: 1px solid var(--border); padding: 8px 0; min-height: 120px; }
+  .entry { padding: 6px 16px; font-family: var(--mono-font), monospace; font-size: 11.5px; color: var(--text-dim); cursor: pointer; border-left: 2px solid transparent; }
+  .entry:hover { background: var(--panel-2); }
+  .entry.current { color: var(--text); background: var(--panel-2); border-left-color: var(--accent); }
+  .entry .t { color: var(--accent-2); }
+
+  footer {
+    border-top: 1px solid var(--border); background: var(--panel);
+    padding: 12px 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  button {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 7px 12px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  button:disabled:hover { border-color: var(--border); color: var(--text); }
+  input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent); }
+  select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+  #posLabel { font-family: var(--mono-font), monospace; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+  #eventLabel { font-family: var(--mono-font), monospace; font-size: 12px; color: var(--text); min-width: 260px; }
+
+  #emptyState { padding: 60px 20px; text-align: center; color: var(--text-dim); font-family: var(--mono-font), monospace; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1><span class="dot">&#9679;</span> meridian <span style="color:var(--text-dim); font-weight:400;">/ replay</span></h1>
+    <div class="meta" id="metaLine">loading…</div>
+  </header>
+  <main>
+    <div class="ring-pane">
+      <div id="canvasWrap">
+        <canvas id="ring" width="900" height="900"></canvas>
+      </div>
+    </div>
+    <div class="side">
+      <h2>Session</h2>
+      <div class="stats" id="stats"></div>
+      <h2>Legend</h2>
+      <div class="legend">
+        <div class="row"><span class="swatch" style="background:var(--live)"></span> live node</div>
+        <div class="row"><span class="swatch" style="background:var(--dead)"></span> offline / not yet joined</div>
+        <div class="row"><span class="swatch" style="background:var(--bad)"></span> just crashed</div>
+        <div class="row"><span class="swatch" style="background:var(--accent)"></span> lookup initiator</div>
+        <div class="row"><span class="swatch" style="background:var(--accent-2)"></span> lookup hop target</div>
+        <div class="row"><span class="swatch" style="background:var(--store)"></span> STORE / replica</div>
+        <div class="row"><span class="swatch" style="background:var(--get)"></span> GET</div>
+      </div>
+      <div id="log"></div>
+    </div>
+  </main>
+  <footer id="controls">
+    <button id="stepBack" title="previous event">&#9664;</button>
+    <button id="playPause" title="play/pause">&#9654; play</button>
+    <button id="stepFwd" title="next event">&#9654;&#9654;</button>
+    <input type="range" id="scrubber" min="0" max="0" value="0">
+    <span id="posLabel">0 / 0</span>
+    <select id="speed">
+      <option value="1">1&times;</option>
+      <option value="4" selected>4&times;</option>
+      <option value="16">16&times;</option>
+      <option value="64">64&times;</option>
+    </select>
+    <span id="eventLabel"></span>
+  </footer>
+</div>
+
+<script>
+window.MERIDIAN_TRACE = __MERIDIAN_TRACE_JSON__;
+</script>
+<script>
+(function () {
+  "use strict";
+  const data = window.MERIDIAN_TRACE;
+  const app = document.getElementById("app");
+
+  if (!data || !Array.isArray(data.nodes) || data.nodes.length === 0) {
+    app.innerHTML = '<div id="emptyState">No trace data. Generate one with:<br><br><code>python3 -m meridian.cli viz --html-out viz/replay.html</code></div>';
+    return;
+  }
+
+  const nodes = data.nodes;               // [hex id, ...]
+  const events = data.events || [];       // [{t, kind, ...}, ...]
+  const nodeAngle = new Map();
+  nodes.forEach((hex) => {
+    const prefix = hex.slice(0, 13);
+    const frac = parseInt(prefix, 16) / Math.pow(16, prefix.length);
+    nodeAngle.set(hex, frac * Math.PI * 2 - Math.PI / 2);
+  });
+
+  document.getElementById("metaLine").innerHTML =
+    `seed <b>${data.seed}</b> &middot; ${nodes.length} nodes &middot; k=<b>${data.k}</b> &middot; alpha=<b>${data.alpha}</b> &middot; ${events.length} events`;
+
+  const canvas = document.getElementById("ring");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2, R = W * 0.40;
+
+  function pos(hex) {
+    const a = nodeAngle.get(hex);
+    return [cx + R * Math.cos(a), cy + R * Math.sin(a)];
+  }
+
+  const TRAIL = 24; // how many recent events stay visible, fading out
+
+  function computeStateAt(index) {
+    const live = new Set();
+    const counts = { join: 0, crash: 0, leave: 0, lookup_start: 0, lookup_done: 0, stored: 0, expire: 0, get_result: 0 };
+    for (let i = 0; i <= index && i < events.length; i++) {
+      const e = events[i];
+      if (e.kind === "join" || e.kind === "bootstrap_done") live.add(e.node);
+      if (e.kind === "join") counts.join++;
+      if (e.kind === "crash") { live.delete(e.node); counts.crash++; }
+      if (e.kind === "leave") { live.delete(e.node); counts.leave++; }
+      if (e.kind === "lookup_start") counts.lookup_start++;
+      if (e.kind === "lookup_done") counts.lookup_done++;
+      if (e.kind === "stored") counts.stored++;
+      if (e.kind === "expire") counts.expire++;
+      if (e.kind === "get_result") counts.get_result++;
+    }
+    return { live, counts };
+  }
+
+  function describe(e) {
+    const short = (h) => (h ? h.slice(0, 6) : "?");
+    switch (e.kind) {
+      case "join": return `node ${short(e.node)} joined${e.seed ? " (seed node)" : ""}`;
+      case "bootstrap_done": return `node ${short(e.node)} finished bootstrap (${e.contacts} contacts)`;
+      case "crash": return `node ${short(e.node)} crashed`;
+      case "leave": return `node ${short(e.node)} left`;
+      case "lookup_start": return `lookup start: ${short(e.node)} -> target ${short(e.target)} (${e.find_value ? "FIND_VALUE" : "FIND_NODE"})`;
+      case "lookup_hop": return `  hop: ${short(e.node)} -> ${short(e.queried)} [${e.ok ? "ok" : "timeout"}]`;
+      case "lookup_done": return `lookup done: ${short(e.node)} (${e.hops} hops, ${e.rounds} rounds${e.value_found ? ", value found" : ""})`;
+      case "put_start": return `PUT from ${short(e.node)} (${e.size}B)`;
+      case "stored": return `  stored on ${short(e.node)} (from ${short(e.from_)})`;
+      case "get_start": return `GET from ${short(e.node)}`;
+      case "get_result": return `GET result at ${short(e.node)}: ${e.found ? "found" + (e.local ? " (local)" : "") : "NOT FOUND"}`;
+      case "expire": return `  expired on ${short(e.node)}`;
+      case "bucket_refresh": return `bucket refresh: ${short(e.node)} (${e.buckets ? e.buckets.length : 1} bucket${e.buckets && e.buckets.length !== 1 ? "s" : ""})`;
+      default: return `${e.kind} ${JSON.stringify(e)}`;
+    }
+  }
+
+  function draw(index) {
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+
+    // keyspace ring guide
+    ctx.strokeStyle = getCss("--ring");
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.stroke();
+
+    const { live } = computeStateAt(index);
+
+    // trail: recent events, most recent = full opacity
+    const trailStart = Math.max(0, index - TRAIL);
+    const trail = events.slice(trailStart, index + 1);
+
+    // draw lookup hop arcs (older = fainter)
+    trail.forEach((e, i) => {
+      if (e.kind !== "lookup_hop") return;
+      const age = index - (trailStart + i);
+      const alpha = Math.max(0, 1 - age / TRAIL);
+      const [x1, y1] = pos(e.node);
+      const [x2, y2] = pos(e.queried);
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      const pull = 0.55; // arc toward center for legibility
+      const bx = mx + (cx - mx) * pull, by = my + (cy - my) * pull;
+      ctx.strokeStyle = e.ok ? withAlpha(getCss("--accent"), alpha * 0.85) : withAlpha(getCss("--bad"), alpha * 0.85);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(bx, by, x2, y2);
+      ctx.stroke();
+    });
+
+    // draw store pulses
+    trail.forEach((e, i) => {
+      if (e.kind !== "stored") return;
+      const age = index - (trailStart + i);
+      const alpha = Math.max(0, 1 - age / TRAIL);
+      const [x, y] = pos(e.node);
+      ctx.strokeStyle = withAlpha(getCss("--store"), alpha);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, 9 + age * 0.6, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+
+    // nodes
+    nodes.forEach((hex) => {
+      const [x, y] = pos(hex);
+      const isLive = live.has(hex);
+      ctx.fillStyle = isLive ? getCss("--live") : getCss("--dead");
+      ctx.beginPath();
+      ctx.arc(x, y, isLive ? 4.2 : 3, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // highlight current event's actors
+    const cur = events[index];
+    if (cur) {
+      const highlight = (hex, color, radius) => {
+        if (!hex || !nodeAngle.has(hex)) return;
+        const [x, y] = pos(hex);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+      };
+      if (cur.node) highlight(cur.node, actorColor(cur.kind), 8);
+      if (cur.queried) highlight(cur.queried, getCss("--accent-2"), 8);
+      if (cur.from_) highlight(cur.from_, getCss("--store"), 8);
+      if (cur.kind === "crash" || cur.kind === "leave") highlight(cur.node, getCss("--bad"), 11);
+    }
+
+    ctx.restore();
+  }
+
+  function actorColor(kind) {
+    if (kind === "lookup_start" || kind === "lookup_hop" || kind === "lookup_done") return getCss("--accent");
+    if (kind === "put_start" || kind === "stored") return getCss("--store");
+    if (kind === "get_start" || kind === "get_result") return getCss("--get");
+    if (kind === "crash" || kind === "leave") return getCss("--bad");
+    return getCss("--live");
+  }
+
+  const cssCache = {};
+  function getCss(varName) {
+    if (!cssCache[varName]) cssCache[varName] = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+    return cssCache[varName];
+  }
+  function withAlpha(hexColor, alpha) {
+    const c = hexColor.replace("#", "");
+    const r = parseInt(c.slice(0, 2), 16), g = parseInt(c.slice(2, 4), 16), b = parseInt(c.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+  }
+
+  // -- stats panel -----------------------------------------------------
+  function renderStats(index) {
+    const { live, counts } = computeStateAt(index);
+    const tiles = [
+      ["live nodes", `${live.size}/${nodes.length}`],
+      ["crashes", counts.crash],
+      ["lookups done", counts.lookup_done],
+      ["values stored", counts.stored],
+      ["expired", counts.expire],
+      ["GETs resolved", counts.get_result],
+    ];
+    document.getElementById("stats").innerHTML = tiles
+      .map(([l, n]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`)
+      .join("");
+  }
+
+  // -- event log -----------------------------------------------------
+  const LOG_WINDOW = 9;
+  function renderLog(index) {
+    const start = Math.max(0, index - LOG_WINDOW);
+    const end = Math.min(events.length - 1, index + LOG_WINDOW);
+    let html = "";
+    for (let i = start; i <= end; i++) {
+      const e = events[i];
+      html += `<div class="entry${i === index ? " current" : ""}" data-i="${i}"><span class="t">t=${e.t}</span> ${describe(e)}</div>`;
+    }
+    const log = document.getElementById("log");
+    log.innerHTML = html;
+    const cur = log.querySelector(".current");
+    if (cur) cur.scrollIntoView({ block: "center" });
+  }
+
+  document.getElementById("log").addEventListener("click", (ev) => {
+    const row = ev.target.closest(".entry");
+    if (row) setIndex(parseInt(row.dataset.i, 10));
+  });
+
+  // -- controls -----------------------------------------------------
+  const scrubber = document.getElementById("scrubber");
+  const posLabel = document.getElementById("posLabel");
+  const eventLabel = document.getElementById("eventLabel");
+  const playBtn = document.getElementById("playPause");
+  scrubber.max = String(Math.max(0, events.length - 1));
+
+  let index = 0;
+  let playing = false;
+  let playTimer = null;
+
+  function setIndex(i) {
+    index = Math.max(0, Math.min(events.length - 1, i));
+    scrubber.value = String(index);
+    posLabel.textContent = `${index + 1} / ${events.length}`;
+    const e = events[index];
+    eventLabel.textContent = e ? `t=${e.t}  ${e.kind}` : "";
+    draw(index);
+    renderStats(index);
+    renderLog(index);
+  }
+
+  function stepsPerTick() {
+    return parseInt(document.getElementById("speed").value, 10);
+  }
+
+  function play() {
+    if (playing) return;
+    playing = true;
+    playBtn.innerHTML = "&#10074;&#10074; pause";
+    playTimer = setInterval(() => {
+      if (index >= events.length - 1) { pause(); return; }
+      setIndex(index + stepsPerTick());
+    }, 90);
+  }
+  function pause() {
+    playing = false;
+    playBtn.innerHTML = "&#9654; play";
+    if (playTimer) clearInterval(playTimer);
+    playTimer = null;
+  }
+
+  playBtn.addEventListener("click", () => (playing ? pause() : play()));
+  document.getElementById("stepFwd").addEventListener("click", () => { pause(); setIndex(index + 1); });
+  document.getElementById("stepBack").addEventListener("click", () => { pause(); setIndex(index - 1); });
+  scrubber.addEventListener("input", () => { pause(); setIndex(parseInt(scrubber.value, 10)); });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === " ") { ev.preventDefault(); playing ? pause() : play(); }
+    if (ev.key === "ArrowRight") { pause(); setIndex(index + 1); }
+    if (ev.key === "ArrowLeft") { pause(); setIndex(index - 1); }
+  });
+
+  setIndex(0);
+})();
+</script>
+</body>
+</html>

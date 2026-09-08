@@ -61,6 +61,10 @@ class TestDemoCommand(unittest.TestCase):
         rc = main(["demo", "--nodes", "18", "--seed", "7"])
         self.assertEqual(rc, 0)
 
+    def test_demo_rejects_fewer_than_two_nodes(self):
+        with self.assertRaises(SystemExit):
+            main(["demo", "--nodes", "1"])
+
     def test_demo_can_emit_viz_trace(self):
         with tempfile.TemporaryDirectory() as td:
             out = str(Path(td) / "trace.json")
@@ -78,6 +82,20 @@ class TestFiledemoCommand(unittest.TestCase):
             src.write_bytes(b"meridian file demo payload\n" * 100)
             rc = main(["filedemo", str(src), "--nodes", "15", "--seed", "9", "--chunk-size", "256"])
             self.assertEqual(rc, 0)
+
+    def test_round_trips_an_empty_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "empty.bin"
+            src.write_bytes(b"")
+            rc = main(["filedemo", str(src), "--nodes", "12", "--seed", "13"])
+            self.assertEqual(rc, 0)
+
+    def test_rejects_fewer_than_two_nodes(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "x.bin"
+            src.write_bytes(b"abc")
+            with self.assertRaises(SystemExit):
+                main(["filedemo", str(src), "--nodes", "1"])
 
     def test_rejects_a_directory(self):
         with tempfile.TemporaryDirectory() as td:
@@ -109,6 +127,45 @@ class TestVizCommand(unittest.TestCase):
     def test_rejects_negative_churn_ticks(self):
         with self.assertRaises(SystemExit):
             main(["viz", "--churn-ticks", "-1"])
+
+    def test_rejects_negative_lookups(self):
+        with self.assertRaises(SystemExit):
+            main(["viz", "--lookups", "-1"])
+
+    def test_html_out_produces_a_standalone_viewer_with_trace_embedded(self):
+        with tempfile.TemporaryDirectory() as td:
+            json_out = str(Path(td) / "trace.json")
+            html_out = str(Path(td) / "replay.html")
+            rc = main(["viz", "--nodes", "12", "--seed", "11", "--out", json_out, "--html-out", html_out, "--lookups", "2", "--churn-ticks", "200"])
+            self.assertEqual(rc, 0)
+            html = Path(html_out).read_text()
+            self.assertIn("<title>", html)
+            self.assertIn("MERIDIAN_TRACE", html)
+            self.assertNotIn("__MERIDIAN_TRACE_JSON__", html)  # placeholder must be substituted
+            # the embedded payload must be the same data as the JSON sidecar
+            marker = "window.MERIDIAN_TRACE = "
+            start = html.index(marker) + len(marker)
+            end = html.index(";\n", start)
+            embedded = json.loads(html[start:end])
+            sidecar = json.loads(Path(json_out).read_text())
+            self.assertEqual(embedded, sidecar)
+
+    def test_bucket_refresh_events_are_coalesced_not_one_per_bucket(self):
+        """A node's very first maintenance pass can have every non-empty
+        bucket due for refresh at once (they all start at
+        last_refreshed=0) -- this used to emit one trace event per bucket,
+        flooding the replay log. Confirms it's now one event per node per
+        maintenance tick, carrying the full list of buckets refreshed."""
+        with tempfile.TemporaryDirectory() as td:
+            out = str(Path(td) / "trace.json")
+            main(["viz", "--nodes", "20", "--seed", "12", "--out", out, "--lookups", "0", "--churn-ticks", "0"])
+            payload = json.loads(Path(out).read_text())
+            refresh_events = [e for e in payload["events"] if e["kind"] == "bucket_refresh"]
+            self.assertTrue(refresh_events)
+            for e in refresh_events:
+                self.assertIn("buckets", e)
+                self.assertIsInstance(e["buckets"], list)
+                self.assertGreaterEqual(len(e["buckets"]), 1)
 
 
 if __name__ == "__main__":

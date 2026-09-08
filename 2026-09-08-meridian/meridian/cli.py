@@ -126,6 +126,8 @@ def cmd_run(args) -> int:
 def cmd_demo(args) -> int:
     _validate_common(args)
     n = args.nodes
+    if n < 2:
+        _die("--nodes must be >= 2 for demo (it showcases replication and retrieval across different nodes)")
     print(f"=== Meridian demo: {n}-node Kademlia swarm, seed={args.seed} ===\n")
     sim = _build_sim(args)
     nodes = sim.bootstrap_swarm(n)
@@ -257,7 +259,7 @@ def cmd_filedemo(args) -> int:
     return 1
 
 
-def _write_viz(sim: Simulation, out_path: str) -> None:
+def _viz_payload(sim: Simulation) -> dict:
     def hexify(e: dict) -> dict:
         out = dict(e)
         for field in ("node", "target", "queried", "from_"):
@@ -269,16 +271,39 @@ def _write_viz(sim: Simulation, out_path: str) -> None:
             out["key"] = format(out["key"], "x")
         return out
 
-    payload = {
+    return {
         "seed": sim.seed,
         "k": sim.k,
         "alpha": sim.alpha,
         "nodes": [nodeid.to_hex(nid) for nid in sim.nodes],
         "events": [hexify(e) for e in sim.trace],
     }
+
+
+def _write_viz(sim: Simulation, out_path: str) -> None:
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(payload))
+    out.write_text(json.dumps(_viz_payload(sim)))
+
+
+_TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "viz" / "template.html"
+_TRACE_PLACEHOLDER = "__MERIDIAN_TRACE_JSON__"
+
+
+def render_viz_html(payload: dict) -> str:
+    if not _TEMPLATE_PATH.exists():
+        raise OSError(f"visualizer template not found at {_TEMPLATE_PATH}")
+    template = _TEMPLATE_PATH.read_text()
+    if _TRACE_PLACEHOLDER not in template:
+        raise ValueError("visualizer template is missing its trace placeholder -- was it edited?")
+    return template.replace(_TRACE_PLACEHOLDER, json.dumps(payload))
+
+
+def _write_viz_html(sim: Simulation, out_path: str) -> None:
+    html = render_viz_html(_viz_payload(sim))
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html)
 
 
 def cmd_viz(args) -> int:
@@ -313,6 +338,9 @@ def cmd_viz(args) -> int:
 
     _write_viz(sim, args.out)
     print(f"wrote {len(sim.trace)} trace events to {args.out}")
+    if args.html_out:
+        _write_viz_html(sim, args.html_out)
+        print(f"wrote standalone replay viewer to {args.html_out}")
     return 0
 
 
@@ -350,6 +378,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_viz = sub.add_parser("viz", help="run a simulation and emit a replay trace for the HTML visualizer")
     common(p_viz)
     p_viz.add_argument("--out", type=str, default="viz/trace.json")
+    p_viz.add_argument("--html-out", type=str, default=None, help="also render a standalone, self-contained HTML replay viewer")
     p_viz.add_argument("--lookups", type=int, default=15)
     p_viz.add_argument("--churn-ticks", type=int, default=1500)
     p_viz.set_defaults(func=cmd_viz)
