@@ -1,0 +1,115 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from meridian.cli import main
+
+
+class TestArgValidation(unittest.TestCase):
+    def test_nodes_must_be_positive(self):
+        with self.assertRaises(SystemExit):
+            main(["run", "--nodes", "0"])
+
+    def test_latency_max_must_be_at_least_min(self):
+        with self.assertRaises(SystemExit):
+            main(["run", "--latency-min", "50", "--latency-max", "10"])
+
+    def test_loss_must_be_in_unit_interval(self):
+        with self.assertRaises(SystemExit):
+            main(["run", "--loss", "1.5"])
+        with self.assertRaises(SystemExit):
+            main(["run", "--loss", "-0.1"])
+
+    def test_k_must_be_positive(self):
+        with self.assertRaises(SystemExit):
+            main(["run", "--k", "0"])
+
+    def test_alpha_must_be_positive(self):
+        with self.assertRaises(SystemExit):
+            main(["run", "--alpha", "0"])
+
+    def test_bad_int_flag_is_a_clean_argparse_error_not_a_traceback(self):
+        with self.assertRaises(SystemExit):
+            main(["run", "--nodes", "not-a-number"])
+
+    def test_unknown_command_is_a_clean_error(self):
+        with self.assertRaises(SystemExit):
+            main(["not-a-real-command"])
+
+    def test_filedemo_missing_file_reported_cleanly(self):
+        with self.assertRaises(SystemExit):
+            main(["filedemo", "/no/such/file/anywhere.bin"])
+
+
+class TestRunCommand(unittest.TestCase):
+    def test_small_run_succeeds(self):
+        rc = main(["run", "--nodes", "10", "--seed", "1", "--ticks", "1000", "--lookups", "3"])
+        self.assertEqual(rc, 0)
+
+    def test_run_with_churn_succeeds(self):
+        rc = main(["run", "--nodes", "12", "--seed", "2", "--ticks", "1500", "--churn", "--lookups", "2"])
+        self.assertEqual(rc, 0)
+
+    def test_run_with_zero_lookups(self):
+        rc = main(["run", "--nodes", "5", "--ticks", "500", "--lookups", "0"])
+        self.assertEqual(rc, 0)
+
+
+class TestDemoCommand(unittest.TestCase):
+    def test_demo_passes_all_checks_at_small_scale(self):
+        rc = main(["demo", "--nodes", "18", "--seed", "7"])
+        self.assertEqual(rc, 0)
+
+    def test_demo_can_emit_viz_trace(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = str(Path(td) / "trace.json")
+            rc = main(["demo", "--nodes", "16", "--seed", "8", "--emit-viz", out])
+            self.assertEqual(rc, 0)
+            payload = json.loads(Path(out).read_text())
+            self.assertIn("events", payload)
+            self.assertGreater(len(payload["events"]), 0)
+
+
+class TestFiledemoCommand(unittest.TestCase):
+    def test_round_trips_a_real_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "input.txt"
+            src.write_bytes(b"meridian file demo payload\n" * 100)
+            rc = main(["filedemo", str(src), "--nodes", "15", "--seed", "9", "--chunk-size", "256"])
+            self.assertEqual(rc, 0)
+
+    def test_rejects_a_directory(self):
+        with tempfile.TemporaryDirectory() as td:
+            with self.assertRaises(SystemExit):
+                main(["filedemo", td])
+
+    def test_rejects_nonpositive_chunk_size(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "x.bin"
+            src.write_bytes(b"abc")
+            with self.assertRaises(SystemExit):
+                main(["filedemo", str(src), "--chunk-size", "0", "--nodes", "5"])
+
+
+class TestVizCommand(unittest.TestCase):
+    def test_writes_valid_trace_json(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = str(Path(td) / "sub" / "trace.json")
+            rc = main(["viz", "--nodes", "14", "--seed", "10", "--out", out, "--lookups", "3", "--churn-ticks", "300"])
+            self.assertEqual(rc, 0)
+            payload = json.loads(Path(out).read_text())
+            self.assertIn("nodes", payload)
+            self.assertIn("events", payload)
+            self.assertEqual(len(payload["nodes"]), 14)
+            kinds = {e["kind"] for e in payload["events"]}
+            self.assertIn("join", kinds)
+            self.assertIn("lookup_start", kinds)
+
+    def test_rejects_negative_churn_ticks(self):
+        with self.assertRaises(SystemExit):
+            main(["viz", "--churn-ticks", "-1"])
+
+
+if __name__ == "__main__":
+    unittest.main()
