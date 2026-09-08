@@ -6,11 +6,13 @@ Ethereum node discovery — running inside a deterministic, seeded network
 simulator with latency, packet loss, and node churn, topped with a
 content-addressed file store and an interactive HTML replay visualizer.
 
-**Status: feature-complete.** All 4 required features and both stretch
-features are implemented, tested (115 unit tests + a 60-seed multi-feature
-fuzz sweep), and adversarially reviewed (5 real bugs found and fixed — see
-[`REVIEW.md`](./REVIEW.md)). See [`PLAN.md`](./PLAN.md) for the full
-architecture and feature list.
+**Status: feature-complete and verified.** All 4 required features and both
+stretch features are implemented, tested (115 unit tests + a 60-seed
+multi-feature fuzz sweep), adversarially reviewed (5 real bugs found and
+fixed — see [`REVIEW.md`](./REVIEW.md)), and verified end to end via
+[`demo.sh`](./demo.sh) (9/9 checks green — see
+[`VERIFICATION.md`](./VERIFICATION.md)). See [`PLAN.md`](./PLAN.md) for the
+full architecture and feature list.
 
 ## Why this, today
 
