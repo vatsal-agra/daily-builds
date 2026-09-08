@@ -255,10 +255,10 @@ class DHTNode:
 
         def on_ping_ok(_resp):
             self.routing_table.buckets[idx].touch(head)  # refresh head to MRU
-            self.routing_table.resolve_ping_head(idx, other_id, head_alive=True)
+            self.routing_table.resolve_ping_head(idx, other_id, head, head_alive=True)
 
         def on_ping_timeout():
-            self.routing_table.resolve_ping_head(idx, other_id, head_alive=False)
+            self.routing_table.resolve_ping_head(idx, other_id, head, head_alive=False)
 
         self._rpc(head, lambda rid: PingReq(rid, self.id), on_ping_ok, on_ping_timeout)
 

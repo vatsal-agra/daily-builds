@@ -65,15 +65,24 @@ class KBucket:
             self.replacement.popitem(last=False)
         return "full"
 
-    def replace_head_with(self, new_id: int) -> int | None:
-        """The head contact failed to answer a ping: evict it and promote
-        `new_id` (the candidate that triggered the check) into its slot."""
-        evicted = None
-        if self.contacts:
-            evicted, _ = self.contacts.popitem(last=False)
+    def replace_head_with(self, old_id: int, new_id: int) -> bool:
+        """The contact `old_id` -- which must have been the head at the
+        moment it was pinged -- failed to answer: evict it and promote
+        `new_id` into its slot. Takes the *specific* contact to evict
+        rather than just popping "whichever contact is head() right now",
+        because by the time a ping's response/timeout comes back, a
+        second, independent full-bucket episode may already have replaced
+        the head with someone else -- blindly evicting "the current head"
+        at resolution time could then evict the wrong (and possibly
+        perfectly healthy) contact. Returns False (a no-op) if `old_id`
+        is no longer present, e.g. because that other episode already
+        resolved first."""
+        if old_id not in self.contacts:
+            return False
+        del self.contacts[old_id]
         self.contacts[new_id] = None
         self.replacement.pop(new_id, None)
-        return evicted
+        return True
 
     def remove(self, node_id: int) -> bool:
         """Drop a contact outright (used when a graceful leave is observed
@@ -114,15 +123,14 @@ class RoutingTable:
             return "ping_head", {"idx": idx, "head": bucket.head()}
         return status, {"idx": idx}
 
-    def resolve_ping_head(self, idx: int, candidate_id: int, head_alive: bool) -> None:
-        """Finish a deferred 'ping_head' decision. If the head answered,
-        it's kept (already moved to MRU by the ping's own record() call);
-        if it didn't, the candidate takes its place."""
-        bucket = self.buckets[idx]
+    def resolve_ping_head(self, idx: int, candidate_id: int, pinged_head_id: int, head_alive: bool) -> None:
+        """Finish a deferred 'ping_head' decision for the specific contact
+        `pinged_head_id` that was actually pinged. If it answered, it's
+        kept (already moved to MRU by the ping's own record() call); if it
+        didn't, the candidate takes its place -- but only if
+        `pinged_head_id` is still there to evict (see replace_head_with)."""
         if not head_alive:
-            head = bucket.head()
-            if head is not None:
-                bucket.replace_head_with(candidate_id)
+            self.buckets[idx].replace_head_with(pinged_head_id, candidate_id)
 
     def remove(self, other_id: int) -> bool:
         idx = bucket_index(self.id, other_id)

@@ -6,9 +6,13 @@ Ethereum node discovery — running inside a deterministic, seeded network
 simulator with latency, packet loss, and node churn, topped with a
 content-addressed file store.
 
-**Status: Phase 2 (core build) complete.** All four required features are
-implemented and passing 104 automated tests. See [`PLAN.md`](./PLAN.md) for
-the full architecture and feature list.
+**Status: Phase 3 (adversarial review) complete.** All four required
+features are implemented, 5 real bugs found (one of them a subtle
+concurrency-correctness race in the routing table's eviction logic) and
+fixed with regression tests, and 107 automated tests plus a 60-seed fuzz
+sweep pass clean. See [`PLAN.md`](./PLAN.md) for the architecture and
+feature list, and [`REVIEW.md`](./REVIEW.md) for the full writeup of what
+was found.
 
 ## Try it now
 
@@ -52,7 +56,7 @@ integrity verification, cross-node retrieval surviving a crashed chunk
 holder) — this is stretch feature #6 from the plan, pulled forward because
 the file store and the KV engine share the same put/get plumbing.
 
-Still to come: the interactive HTML replay visualizer (stretch #5), the
-adversarial review pass, and final polish.
+Still to come: the interactive HTML replay visualizer (stretch #5) and
+final polish.
 
 Remaining work will update this section as each phase lands.

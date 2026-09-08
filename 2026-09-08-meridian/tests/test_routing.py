@@ -34,10 +34,20 @@ class TestKBucket(unittest.TestCase):
         b.touch(1)
         b.touch(2)
         b.touch(3)  # full -> goes to replacement
-        evicted = b.replace_head_with(3)
-        self.assertEqual(evicted, 1)  # 1 was least-recently-seen
+        self.assertEqual(b.head(), 1)  # 1 was least-recently-seen
+        swapped = b.replace_head_with(1, 3)
+        self.assertTrue(swapped)
         self.assertEqual(sorted(b.all_ids()), [2, 3])
         self.assertNotIn(3, b.replacement)
+
+    def test_replace_head_with_is_a_no_op_if_old_id_already_gone(self):
+        b = KBucket(k=2)
+        b.touch(1)
+        b.touch(2)
+        b.touch(3)  # queued in replacement
+        swapped = b.replace_head_with(999, 3)  # 999 was never a contact
+        self.assertFalse(swapped)
+        self.assertEqual(sorted(b.all_ids()), [1, 2])  # untouched
 
     def test_replacement_cache_is_capped_at_k(self):
         b = KBucket(k=2)
@@ -116,7 +126,7 @@ class TestRoutingTable(unittest.TestCase):
         rt.record(4)
         rt.record(5)
         rt.record(6)  # queued as candidate, head=4
-        rt.resolve_ping_head(idx=2, candidate_id=6, head_alive=True)
+        rt.resolve_ping_head(idx=2, candidate_id=6, pinged_head_id=4, head_alive=True)
         self.assertEqual(sorted(rt.buckets[2].all_ids()), [4, 5])
 
     def test_resolve_ping_head_evicts_dead_head(self):
@@ -124,7 +134,34 @@ class TestRoutingTable(unittest.TestCase):
         rt.record(4)
         rt.record(5)
         rt.record(6)
-        rt.resolve_ping_head(idx=2, candidate_id=6, head_alive=False)
+        rt.resolve_ping_head(idx=2, candidate_id=6, pinged_head_id=4, head_alive=False)
+        self.assertEqual(sorted(rt.buckets[2].all_ids()), [5, 6])
+
+    def test_overlapping_ping_episodes_never_evict_the_wrong_contact(self):
+        """Regression test for a real bug found in adversarial review: two
+        candidates (6, 7) both show up while the bucket [4, 5] is full,
+        before either ping resolves -- both trigger their own independent
+        ping-the-head episode against contact 4. If contact 4 really is
+        dead, the first episode to resolve should evict *it* specifically;
+        the second, now-redundant episode must not then evict contact 5
+        (which was never pinged and may be perfectly healthy) just because
+        it happens to be head() by the time it resolves."""
+        rt = RoutingTable(self_id=0, k=2)
+        rt.record(4)
+        rt.record(5)
+        status6, info6 = rt.record(6)  # bucket full -> ping_head against 4
+        status7, info7 = rt.record(7)  # also full -> a second, independent ping_head against 4
+        self.assertEqual((status6, status7), ("ping_head", "ping_head"))
+        self.assertEqual(info6["head"], 4)
+        self.assertEqual(info7["head"], 4)
+
+        # first episode resolves: 4 really is dead -> evicted, 6 takes its place
+        rt.resolve_ping_head(idx=2, candidate_id=6, pinged_head_id=4, head_alive=False)
+        self.assertEqual(sorted(rt.buckets[2].all_ids()), [5, 6])
+
+        # second, now-stale episode resolves for the same (already-handled)
+        # dead contact 4 -- must be a no-op, not evict healthy contact 5
+        rt.resolve_ping_head(idx=2, candidate_id=7, pinged_head_id=4, head_alive=False)
         self.assertEqual(sorted(rt.buckets[2].all_ids()), [5, 6])
 
     def test_remove_and_non_empty_buckets(self):

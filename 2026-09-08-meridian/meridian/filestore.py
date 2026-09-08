@@ -123,7 +123,22 @@ def get_file(node, manifest_key_bytes: bytes, on_complete):
             on_complete(None, False, f"corrupt manifest: {exc}", None)
             return
 
-        chunk_hashes = manifest.get("chunk_hashes", [])
+        # A tampered or bit-rotted value can be syntactically valid JSON
+        # that still isn't a usable manifest -- e.g. `"hello"` or `[1,2]`
+        # decode fine but have no .get()/no chunk_hashes. Validate shape
+        # before touching any field, so that case reports a clean error
+        # here instead of raising an uncaught AttributeError/TypeError
+        # from inside a scheduled network callback deep in the simulator.
+        if (
+            not isinstance(manifest, dict)
+            or not isinstance(manifest.get("chunk_hashes"), list)
+            or not all(isinstance(h, str) for h in manifest.get("chunk_hashes", []))
+            or not isinstance(manifest.get("sha256"), str)
+        ):
+            on_complete(None, False, "corrupt manifest: not a valid manifest object", None)
+            return
+
+        chunk_hashes = manifest["chunk_hashes"]
         if not chunk_hashes:
             data = b""
             if hashlib.sha256(data).hexdigest() != manifest.get("sha256"):

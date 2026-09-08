@@ -142,6 +142,26 @@ class TestFailureModes(unittest.TestCase):
         self.assertFalse(box["ok"])
         self.assertIn("not found", box["err"])
 
+    def test_malformed_manifest_shape_is_reported_not_crashed(self):
+        """Regression test for a real bug found in adversarial review:
+        get_file only guarded against invalid JSON *syntax*, not against
+        syntactically-valid JSON that isn't a manifest object (e.g. a
+        tampered/bit-rotted value storing a JSON string or list) -- that
+        used to raise an uncaught AttributeError from inside a scheduled
+        network callback instead of reporting a clean error."""
+        sim, nodes = _settled_swarm(seed=7)
+        uploader, downloader = nodes[0], nodes[-1]
+
+        bogus_key = b"manifest:not-really-a-manifest"
+        put_box = {}
+        uploader.put(bogus_key, b'"just a json string, not an object"', on_complete=lambda ok, total: put_box.update(done=True))
+        completed = sim.pump_until(lambda: put_box.get("done", False))
+        self.assertTrue(completed)
+
+        box = _get_sync(sim, downloader, bogus_key)
+        self.assertFalse(box["ok"])
+        self.assertIn("not a valid manifest", box["err"])
+
     def test_tampered_chunk_is_detected_not_silently_accepted(self):
         sim, nodes = _settled_swarm(seed=6, n=20)
         uploader, downloader = nodes[0], nodes[-1]
