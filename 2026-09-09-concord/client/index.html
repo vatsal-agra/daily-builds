@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concord</title>
+<link rel="icon" href="data:,">
+
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div id="brand">
+        <span id="brand-mark">◈</span>
+        <span id="brand-name">Concord</span>
+      </div>
+      <div id="doc-picker">
+        <label for="doc-input">Document</label>
+        <input id="doc-input" type="text" spellcheck="false" autocomplete="off">
+        <button id="doc-go" title="Switch document">Go</button>
+      </div>
+      <div id="peers" aria-label="Connected peers"></div>
+      <div id="status-cluster">
+        <span id="status-dot" class="status-dot" data-status="connecting"></span>
+        <span id="status-label">connecting…</span>
+        <button id="offline-toggle" title="Toggle offline mode">Go offline</button>
+      </div>
+    </header>
+
+    <div id="workspace">
+      <div id="editor-pane">
+        <div id="editor-shell">
+          <div id="mirror" aria-hidden="true"></div>
+          <div id="cursor-layer" aria-hidden="true"></div>
+          <textarea id="editor" spellcheck="false" autocomplete="off" autocorrect="off"
+                    placeholder="Start typing… open this same document URL in another tab to see it sync live."></textarea>
+        </div>
+        <div id="offline-banner" hidden>
+          You're <strong>offline</strong>. Edits are being kept locally and will sync the moment you reconnect.
+        </div>
+      </div>
+
+      <aside id="inspector-pane" hidden>
+        <div id="inspector-header">
+          <h2>CRDT internals</h2>
+          <p>The real RGA structure behind the text above — every node this
+             replica knows about, in actual sequence order, including
+             tombstones. This is what "conflict-free" looks like from the
+             inside.</p>
+        </div>
+        <div id="inspector-stats"></div>
+        <div id="inspector-list"></div>
+      </aside>
+    </div>
+
+    <footer id="statusbar">
+      <span id="char-count">0 characters</span>
+      <span id="pending-count"></span>
+      <button id="inspector-toggle">Show CRDT internals</button>
+      <a href="https://github.com/vatsal-agra/daily-builds/tree/main/2026-09-09-concord" target="_blank" rel="noopener">source</a>
+    </footer>
+  </div>
+
+  <script src="/crdt.js"></script>
+  <script src="/net.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
