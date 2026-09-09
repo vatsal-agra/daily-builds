@@ -4,7 +4,11 @@
 > No leader, no locking, no merge-conflict dialog — independent replicas
 > that mathematically converge.
 
-**Status: Phase 4 (Stretch + polish) complete.** All 4 required features and
+**Status: Phase 5 (Verification) complete.** `./demo.sh` runs the full
+verification suite end-to-end (property-fuzz convergence, the real relay +
+real HTTP/SSE integration suite, the relay's own unit tests, a narrated
+CLI walkthrough, and a real two-tab headless-Chromium run of the actual
+app) and reports **10/10 checks passing**. All 4 required features and
 both stretch features (live multi-cursor presence, the CRDT internals
 inspector) are implemented and verified end-to-end against the real server,
 real engine, and a real headless browser. A hostile-reviewer pass (Phase 3)
@@ -39,9 +43,12 @@ Or see it work without a browser at all:
 node examples/two_clients_demo.js  # narrated walkthrough, spins up its own server
 ```
 
-## Tests so far
+## Tests
 
 ```
+./demo.sh                             # runs everything below + a narrated
+                                       # walkthrough, prints a PASS/FAIL tally
+
 node tests/fuzz_convergence.js 2000   # property fuzzer: thousands of randomized
                                        # concurrent-edit trials against every
                                        # possible delivery order; asserts every
@@ -58,5 +65,4 @@ NODE_PATH=/opt/node22/lib/node_modules node tests/test_browser.js
                                        # security regression test
 ```
 
-See [REVIEW.md](REVIEW.md) for the full adversarial review writeup. More
-formal verification (Phase 5) and stretch/polish (Phase 4) still to come.
+See [REVIEW.md](REVIEW.md) for the full adversarial review writeup.
