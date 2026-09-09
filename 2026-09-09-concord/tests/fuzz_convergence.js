@@ -152,6 +152,20 @@ function runTrial(seed, numSites, opsPerSite) {
   }
   replicas.push(reversedReplica);
 
+  // And one replica fed a TOTAL scramble that doesn't even respect each
+  // origin site's own op order — stronger than any real network actually
+  // does (a single TCP connection can't reorder itself), but strictly
+  // more adversarial, and it's cheap to also prove the engine survives it:
+  // a delete can arrive before its own insert, in the middle of an
+  // unrelated site's multi-character run, etc.
+  const scrambledReplica = new RGA('scrambled-' + seed);
+  const scrambledOrder = shuffle(allOpsInOrder, rand);
+  for (const op of scrambledOrder) scrambledReplica.applyRemote(op);
+  if (scrambledReplica.pendingCount() !== 0) {
+    return { ok: false, reason: 'fully-scrambled-order replica has leaked pending ops', seed };
+  }
+  replicas.push(scrambledReplica);
+
   const texts = replicas.map((r) => r.text());
   const first = texts[0];
   for (let i = 1; i < texts.length; i++) {

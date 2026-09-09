@@ -45,6 +45,40 @@ STATIC_FILES = {
 DOC_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 
 
+def _valid_id(value):
+    return (
+        isinstance(value, list)
+        and len(value) == 2
+        and isinstance(value[0], int)
+        and not isinstance(value[0], bool)
+        and isinstance(value[1], str)
+        and value[1] != ''
+    )
+
+
+def _valid_op(op):
+    """Structural validation of one client-submitted op. Deliberately
+    permissive on *values* (any single-character string is a legal
+    character to insert) and strict on *shape* (ids must be the
+    [counter, siteId] pairs crdt.js actually produces) — the relay's job
+    is to stop a malformed op from ever reaching another client's
+    `applyRemote`, which has no reason to expect anything but well-formed
+    input and would throw on it, corrupting every other open tab's
+    session over one bad request."""
+    if not isinstance(op, dict):
+        return False
+    if op.get('type') == 'insert':
+        return (
+            _valid_id(op.get('id'))
+            and isinstance(op.get('value'), str)
+            and len(op.get('value')) == 1
+            and (op.get('leftId') is None or _valid_id(op.get('leftId')))
+        )
+    if op.get('type') == 'delete':
+        return _valid_id(op.get('id'))
+    return False
+
+
 class Document:
     """All server-side state for one collaborative document: an
     append-only op log (each entry gets a monotonically increasing `seq`
@@ -182,12 +216,21 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict) or 'ops' not in payload or not isinstance(payload['ops'], list):
             return self._send_json(400, {'error': 'expected {"siteId": ..., "ops": [...]}'})
         site_id = payload.get('siteId', 'unknown')
-        doc = STORE.get(doc_id)
-        seqs = []
-        for op in payload['ops']:
-            if not isinstance(op, dict) or op.get('type') not in ('insert', 'delete'):
+        if not isinstance(site_id, str) or not site_id:
+            return self._send_json(400, {'error': 'siteId must be a non-empty string'})
+        ops = payload['ops']
+        # Validate the ENTIRE batch before appending/broadcasting any of
+        # it. Doing this op-by-op (append valid ones, then bail on the
+        # first invalid one) would silently broadcast a partial batch to
+        # every other subscriber while telling *this* client the whole
+        # request failed — a real correctness bug an earlier version of
+        # this handler had (caught during adversarial review, not by any
+        # request that only ever sent well-formed ops — see REVIEW.md).
+        for op in ops:
+            if not _valid_op(op):
                 return self._send_json(400, {'error': 'malformed op: %r' % (op,)})
-            seqs.append(doc.append_and_broadcast({'siteId': site_id, 'op': op}))
+        doc = STORE.get(doc_id)
+        seqs = [doc.append_and_broadcast({'siteId': site_id, 'op': op}) for op in ops]
         self._send_json(200, {'seqs': seqs})
 
     def _handle_post_cursor(self, doc_id):
@@ -203,8 +246,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(400, {'error': 'invalid JSON'})
         if not isinstance(payload, dict) or 'siteId' not in payload:
             return self._send_json(400, {'error': 'expected {"siteId": ..., ...}'})
+        site_id = payload.get('siteId')
+        index = payload.get('index')
+        if not isinstance(site_id, str) or not site_id:
+            return self._send_json(400, {'error': 'siteId must be a non-empty string'})
+        if index is not None and not isinstance(index, int):
+            return self._send_json(400, {'error': 'index must be an integer or null'})
+        # Presence is cosmetic and best-effort, but still worth a floor of
+        # sanity: an unbounded name/color string would get echoed straight
+        # into every other client's DOM as a caret label — cap it rather
+        # than trust it verbatim.
+        name = payload.get('name')
+        clean = {
+            'siteId': site_id,
+            'name': (str(name)[:40] if name is not None else None),
+            'color': (str(payload.get('color'))[:20] if payload.get('color') is not None else None),
+            'index': index,
+        }
         doc = STORE.get(doc_id)
-        doc.broadcast_ephemeral('cursor', payload)
+        doc.broadcast_ephemeral('cursor', clean)
         self._send_json(200, {'ok': True})
 
     def _handle_snapshot(self, doc_id):

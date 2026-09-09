@@ -23,11 +23,21 @@
   }
 
   function loadIdentity() {
-    var siteId = sessionStorage.getItem('concord-site-id');
-    if (!siteId) {
-      siteId = randomSiteId();
-      sessionStorage.setItem('concord-site-id', siteId);
-    }
+    // Deliberately NOT persisted in sessionStorage (unlike name/color
+    // below): a browser's "Duplicate Tab" — a completely ordinary, common
+    // action — clones sessionStorage verbatim into the new tab. If siteId
+    // were persisted, both tabs would generate ops under the *same*
+    // (counter, siteId) identity and could mint genuinely colliding ids
+    // for two different concurrently-typed characters, which the CRDT's
+    // dedup logic would then treat as a real duplicate and silently drop
+    // one of them — actual data loss, not just a cosmetic glitch. A fresh
+    // random siteId every page load closes that off entirely, and costs
+    // nothing: net.js no longer special-cases "my own" ops (see its
+    // comment), so a reload's fresh, empty replica still correctly
+    // rebuilds full history from the relay's backlog under its new
+    // identity. Caught during adversarial review, not by normal use —
+    // see REVIEW.md.
+    var siteId = randomSiteId();
     var name = sessionStorage.getItem('concord-name');
     if (!name) {
       name = 'Guest-' + siteId.slice(0, 4);
@@ -243,11 +253,21 @@
       if (n.deleted) tomb++; else visible++;
       var cls = n.deleted ? 'node tombstone' : 'node';
       var displayVal = n.value === '\n' ? '\\n' : n.value === ' ' ? '·' : escapeHtml(n.value);
+      // n.id[0]/n.leftId[0] are server-validated integers (safe to
+      // concatenate raw), but the siteId half of an id is an arbitrary
+      // string the relay only checks is non-empty — NOT that it's free of
+      // HTML-breaking characters. A hostile/misbehaving peer could craft
+      // an op whose siteId is itself markup, which every other client's
+      // inspector then renders. escapeHtml() here isn't decorative: this
+      // exact author/leftId metadata was going in as raw string
+      // concatenation into innerHTML with no escaping — found during
+      // adversarial review, not by any test using this build's own
+      // (harmless, [a-z0-9]-only) generated siteIds. See REVIEW.md.
       return (
         '<div class="' + cls + '" style="--author:' + colorForSite(n.author) + '">' +
         '<span class="node-val">' + displayVal + '</span>' +
-        '<span class="node-meta">id ' + n.id[0] + ':' + shortSite(n.author) +
-        ' &middot; after ' + (n.leftId ? n.leftId[0] + ':' + shortSite(n.leftId[1]) : '∅') +
+        '<span class="node-meta">id ' + n.id[0] + ':' + escapeHtml(shortSite(n.author)) +
+        ' &middot; after ' + (n.leftId ? n.leftId[0] + ':' + escapeHtml(shortSite(n.leftId[1])) : '∅') +
         (n.deleted ? ' &middot; tombstoned' : '') + '</span>' +
         '</div>'
       );
@@ -338,6 +358,23 @@
     });
     peersEl.innerHTML = html.join('');
   }
+
+  // Reloading or closing the tab wipes the in-memory RGA replica entirely
+  // — this build keeps no localStorage snapshot of the document (see
+  // README's "known limits"). That's fine while online (a reload just
+  // re-syncs from the relay's backlog), but while OFFLINE it would
+  // silently throw away any edits net.js's outbox hasn't sent yet, with
+  // zero warning to the user. Standard browser guard, same pattern any
+  // "you have unsaved changes" app uses: block the unload and let the
+  // browser's native confirmation dialog do the asking. Found and fixed
+  // during adversarial review by actually reloading mid-offline-edit —
+  // see REVIEW.md.
+  window.addEventListener('beforeunload', function (e) {
+    if (net.hasUnsyncedChanges()) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
 
   // Sweep stale peers periodically so a closed tab's cursor eventually
   // disappears even without an explicit "goodbye" message.

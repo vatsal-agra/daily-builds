@@ -117,6 +117,25 @@
     this._setStatus('offline');
   };
 
+  /** A failed POST doesn't necessarily mean the SSE stream itself has
+   *  noticed anything wrong — a transient hiccup can fail one fetch
+   *  without EventSource ever firing its own onerror, which would
+   *  otherwise be the only thing that re-triggers `_flushOutbox` (it only
+   *  runs again on the next 'ready' event). Without forcing a fresh
+   *  connect here, ops that fail to send while nominally "online" could
+   *  sit in the outbox indefinitely with nothing left to retry them —
+   *  found by reasoning through the failure path during adversarial
+   *  review, not by a flaky test (reproducing a real transient-network
+   *  blip deterministically isn't practical to test directly, so this is
+   *  documented instead of test-gated — see REVIEW.md). Forcing a
+   *  reconnect is cheap and always safe here: this only runs from a path
+   *  that already checked `this.online`, so it can never fight a
+   *  deliberate disconnect(). */
+  Net.prototype._retryConnection = function () {
+    this._setStatus('reconnecting');
+    this.connect();
+  };
+
   Net.prototype._flushOutbox = function () {
     if (!this.online || this.outbox.length === 0) return;
     var toSend = this.outbox;
@@ -127,8 +146,9 @@
     }).catch(
       function () {
         // Couldn't reach the relay: put the ops back at the FRONT of the
-        // outbox (preserve order) and try again on the next reconnect.
+        // outbox (preserve order) and force a fresh connection attempt.
         this.outbox = toSend.concat(this.outbox);
+        this._retryConnection();
       }.bind(this)
     );
   };
@@ -149,9 +169,20 @@
     }).catch(
       function () {
         this.outbox.push.apply(this.outbox, ops);
-        this._setStatus('reconnecting');
+        this._retryConnection();
       }.bind(this)
     );
+  };
+
+  /** True while there are locally-generated ops this replica has not yet
+   *  confirmed reaching the relay (queued while offline, or a send that
+   *  failed and fell back to the outbox). Used by app.js to warn before
+   *  an accidental reload/close silently discards them — see its
+   *  `beforeunload` handler. Deliberately NOT "is the outbox non-empty
+   *  OR are we offline": being offline with an empty outbox (nothing
+   *  typed yet) has nothing to lose. */
+  Net.prototype.hasUnsyncedChanges = function () {
+    return this.outbox.length > 0;
   };
 
   Net.prototype.sendCursor = function (index) {

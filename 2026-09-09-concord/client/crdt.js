@@ -134,7 +134,7 @@
    *  a node whose left-neighbor sits strictly *before* our insertion
    *  point, because that means we've walked past the entire run that was
    *  ever contesting this position. */
-  RGA.prototype._integrateInsert = function (node) {
+  RGA.prototype._integrateInsert = function (node, skipReindex) {
     var startIndex;
     if (node.leftId === null) {
       startIndex = 0;
@@ -173,7 +173,13 @@
     }
     this.seq.splice(i, 0, node);
     this.byId.set(idKey(node.id), node);
-    this._reindex();
+    // `skipReindex` lets a caller that's about to do several splices in a
+    // row (localInsert's same-run fast path, below) defer the O(n)
+    // posById rebuild to a single pass at the end instead of paying for
+    // it after every single character — see localInsert's comment for why
+    // that's still correct.
+    if (!skipReindex) this._reindex();
+    return i;
   };
 
   /** Re-attempt every op that was buffered waiting on `key` to exist,
@@ -232,6 +238,25 @@
         this._buffer(idKey(op.id), op);
         return { applied: false, reason: 'buffered' };
       }
+      if (node.deleted) return { applied: false, reason: 'duplicate' };
+      // Idempotence guard, symmetric with the insert branch's `byId.has`
+      // check above. Without it, a redelivered delete (its own author's
+      // op echoing back over the relay's SSE stream, or the same op
+      // arriving twice on a reconnect) would fall through, and because
+      // an already-tombstoned node makes `visibleIndexOf` return -1,
+      // app.js's caret-shift logic (`visibleIndex < caret`) would read
+      // that -1 as "something to the left of the caret was deleted" and
+      // shift the caret again for a delete that didn't actually change
+      // any text. Repeated over several redelivered echoes this walks
+      // the real caret away from where the user is actually typing,
+      // so *subsequent* keystrokes land on and corrupt the wrong
+      // characters — a real, user-visible bug, not just an internal
+      // bookkeeping nit. Caught by typing+backspacing through a live
+      // browser tab during adversarial review (a single tab echoes its
+      // own ops back to itself once net.js stopped special-casing "my
+      // own siteId" — see net.js's comment); no engine-only test caught
+      // it because the *data* was always correct, only the caller-facing
+      // position bookkeeping drifted. See REVIEW.md.
       // Computed BEFORE tombstoning — this is the last instant the node's
       // visible position is still meaningful.
       var visIdx = this.visibleIndexOf(op.id);
@@ -271,21 +296,56 @@
    *  the previous one just inserted, so a multi-char paste is itself a
    *  sequence of RGA nodes, not a special "block" primitive. */
   RGA.prototype.localInsert = function (pos, text) {
+    // Clamp rather than trust the caller: a stale caret/position computed
+    // against a document that has since shrunk (or any out-of-range value
+    // from a caller) must not crash the whole replica — it should behave
+    // like a real text editor and insert at the nearest valid spot. An
+    // earlier version of this method did `this._visibleNodeAt(pos - 1).id`
+    // unguarded and threw on any pos <= 0 or pos > length(); caught by
+    // adversarial testing, not by any normal typing flow — see REVIEW.md.
+    pos = Math.max(0, Math.min(pos, this.length()));
+    if (text.length === 0) return [];
     var ops = [];
+
+    // The first character goes through the full general-purpose
+    // integration scan (it may have to contest position against nodes
+    // some other site already inserted at this exact spot).
     var leftId = pos === 0 ? null : this._visibleNodeAt(pos - 1).id;
-    for (var i = 0; i < text.length; i++) {
+    var firstId = this.nextId();
+    var firstNode = { id: firstId, value: text[0], leftId: leftId, deleted: false };
+    var idx = this._integrateInsert(firstNode, /* skipReindex */ true);
+    ops.push({ type: 'insert', id: firstId, value: text[0], leftId: leftId });
+
+    // Every subsequent character in this SAME local call is chained to
+    // the one immediately before it — an id that didn't exist until this
+    // exact synchronous call created it a moment ago, so by construction
+    // nothing else can possibly claim to be its concurrent sibling. That
+    // means the general scan's whole job (find where we rank among
+    // contesting siblings) is moot for these — they always land exactly
+    // one slot past the previous character, no scan required. Without
+    // this fast path, pasting a large block of text was O(n^2) (an O(n)
+    // tie-break scan *and* an O(n) posById rebuild per character) and
+    // visibly froze the UI for seconds on a few-thousand-character paste
+    // — caught by timing a large paste during adversarial review, not by
+    // any functional test (small inputs never revealed it). See REVIEW.md.
+    var prevId = firstId;
+    for (var i = 1; i < text.length; i++) {
       var id = this.nextId();
-      var node = { id: id, value: text[i], leftId: leftId, deleted: false };
-      this._integrateInsert(node);
-      ops.push({ type: 'insert', id: id, value: text[i], leftId: leftId });
-      leftId = id;
+      var node = { id: id, value: text[i], leftId: prevId, deleted: false };
+      idx += 1;
+      this.seq.splice(idx, 0, node);
+      this.byId.set(idKey(id), node);
+      ops.push({ type: 'insert', id: id, value: text[i], leftId: prevId });
+      prevId = id;
     }
+    this._reindex(); // one O(n) rebuild for the whole batch, not one per char
     return ops;
   };
 
   /** Tombstone `count` visible characters starting at visible position
    *  `pos`. Returns the delete ops for broadcast. */
   RGA.prototype.localDelete = function (pos, count) {
+    pos = Math.max(0, pos);
     var ops = [];
     for (var k = 0; k < count; k++) {
       var node = this._visibleNodeAt(pos);
@@ -322,7 +382,8 @@
    *  visibleIndexOf, instead of trusting a raw number that silently goes
    *  stale the moment someone inserts text before it. */
   RGA.prototype.anchorAt = function (pos) {
-    if (pos <= 0) return null;
+    pos = Math.max(0, Math.min(pos, this.length()));
+    if (pos === 0) return null;
     var n = this._visibleNodeAt(pos - 1);
     return n ? n.id : null;
   };
