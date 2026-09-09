@@ -274,6 +274,40 @@ reasoned-through rather than test-gated.
 
 ---
 
+---
+
+### 10. MEDIUM — the offline banner rendered even while hidden (Phase 4)
+
+**Found:** screenshotting the freshly-loaded, still-online empty-state UI
+during Phase 4's visual redesign pass — the "You're offline" banner was
+plainly visible in a screenshot of a tab that had never gone offline.
+
+**What was wrong:** the redesign gave `#offline-banner` its own
+`display: flex` rule (needed for its icon + text layout). An ID selector
+outranks a bare attribute selector on specificity, so that rule beat the
+browser's built-in `[hidden] { display: none }` UA rule outright —
+`app.js` was correctly setting/clearing the `hidden` attribute the whole
+time (this project's own stated convention: toggle `.hidden`, never
+`style.display`), but the attribute was being silently overridden by CSS
+that had nothing to do with visibility logic. A `Playwright` check that
+only asserts the `[hidden]`/`:not([hidden])` attribute selector — which
+`test_browser.js` did, right up until this was found — would never catch
+this, because the attribute itself was always correct; only the actual
+rendered `display` was wrong. Only a real screenshot (or an explicit
+`isVisible()` check) surfaces it.
+
+**Fix:** split the layout declaration into `#offline-banner:not([hidden])
+{ display: flex; }` so the `[hidden]` state has nothing left to lose the
+specificity fight against.
+
+**Verified:** direct `page.isVisible('#offline-banner')` checks (true only
+while offline, false otherwise) — added permanently to `test_browser.js`
+right after the initial online-status check, specifically to keep this
+"attribute is right but rendering is wrong" class of bug from silently
+regressing again.
+
+---
+
 ## Things checked and found NOT to be bugs
 
 - **Same-site ops arriving at the relay out of the order they were

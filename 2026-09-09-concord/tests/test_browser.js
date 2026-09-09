@@ -70,6 +70,18 @@ async function main() {
     await p2.waitForSelector('#status-dot[data-status="online"]', { timeout: 5000 });
     console.log('ok - both tabs report status=online against the real relay');
 
+    // Checks the HTML [hidden] attribute reflects into actual rendered
+    // visibility, not just its own presence/absence — a real CSS bug this
+    // build shipped (a `display: flex` rule on #offline-banner outranked
+    // the browser's own `[hidden] { display: none }` on specificity, so
+    // the banner rendered even while genuinely hidden) would pass a check
+    // that only asserted the attribute, and was only caught by looking at
+    // an actual screenshot. See REVIEW.md.
+    if (await p1.isVisible('#offline-banner')) {
+      throw new Error('offline banner is visibly rendered while online and disconnected-state banner should be hidden');
+    }
+    console.log('ok - offline banner is actually invisible (not just attribute-hidden) while online');
+
     // --- required: live multi-client sync ---
     await p1.click('#editor');
     await p1.type('#editor', 'Hello from tab one!');
@@ -90,8 +102,11 @@ async function main() {
     await p1.click('#offline-toggle');
     await p1.waitForSelector('#status-dot[data-status="offline"]');
     await p1.waitForSelector('#offline-banner:not([hidden])');
+    if (!(await p1.isVisible('#offline-banner'))) {
+      throw new Error('offline banner should be actually visible (not just attribute-unhidden) while offline');
+    }
     await p1.type('#editor', ' (offline edit)');
-    console.log('ok - offline UI toggle actually disconnects (status=offline, banner visible) and local typing still works');
+    console.log('ok - offline UI toggle actually disconnects (status=offline, banner visibly shown) and local typing still works');
 
     // --- stretch: CRDT internals inspector, checked while genuinely offline ---
     await p1.click('#inspector-toggle');

@@ -242,6 +242,7 @@
     inspectorOpen = !inspectorOpen;
     inspectorPane.hidden = !inspectorOpen;
     inspectorToggle.textContent = inspectorOpen ? 'Hide CRDT internals' : 'Show CRDT internals';
+    inspectorToggle.classList.toggle('active', inspectorOpen);
     if (inspectorOpen) renderInspector();
   });
 
@@ -356,7 +357,7 @@
       if (now - peer.lastSeen > 12000) return;
       html.push('<span class="peer-chip" style="--peer-color:' + peer.color + '" title="' + escapeHtml(peer.name) + '">' + escapeHtml(peer.name.slice(0, 1).toUpperCase()) + '</span>');
     });
-    peersEl.innerHTML = html.join('');
+    peersEl.innerHTML = html.length ? html.join('') : '<span class="peers-alone">Only you here — share this URL to collaborate</span>';
   }
 
   // Reloading or closing the tab wipes the in-memory RGA replica entirely
@@ -402,6 +403,7 @@
   // ---- go ---------------------------------------------------------------
   editor.focus();
   refreshChrome();
+  renderPeerList();
   net.connect();
 
   // Exposed for tests (headless-browser smoke test drives the real app
