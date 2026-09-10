@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Box model</title>
+<style>
+  body { margin: 0; background-color: #ffffff; padding: 20px; }
+  h1 { font-size: 1.2em; }
+  .outer { width: 500px; border: 3px solid #333333; padding: 20px; background-color: #eef3fb; }
+  .inner { width: 200px; height: 60px; margin: 10px auto; padding: 10px; border: 4px solid #cc3333; background-color: #ffdddd; }
+  .row { display: flex; justify-content: space-around; align-items: center; margin-top: 20px; background-color: #ddeedd; padding: 10px; }
+  .chip { background-color: #227744; color: #ffffff; padding: 6px 14px; border: 1px solid #113322; }
+</style>
+</head>
+<body>
+  <h1>BOX MODEL DEMO</h1>
+  <div class="outer">
+    <div class="inner">CENTERED (AUTO MARGINS)</div>
+  </div>
+  <div class="row">
+    <span class="chip">ONE</span>
+    <span class="chip">TWO</span>
+    <span class="chip">THREE</span>
+  </div>
+</body>
+</html>

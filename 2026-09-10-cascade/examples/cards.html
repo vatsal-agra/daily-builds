@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Card grid</title>
+<style>
+  body { margin: 0; background-color: #1c1f26; color: #ffffff; }
+  .nav { display: flex; justify-content: space-between; align-items: center; background-color: #12141a; padding: 16px 24px; }
+  .brand { color: #66ccff; font-weight: bold; }
+  .links { display: flex; }
+  .links a { color: #cccccc; margin-left: 20px; }
+  .row { display: flex; justify-content: flex-start; align-items: stretch; padding: 24px; }
+  .card { background-color: #262b36; border: 1px solid #363c4a; padding: 16px; margin-right: 20px; width: 180px; }
+  .card h3 { color: #66ccff; margin-top: 0; margin-bottom: 8px; }
+  .card p { color: #aaaaaa; margin-top: 0; margin-bottom: 0; }
+  .badge { display: inline-block; background-color: #33aa55; color: #ffffff; padding: 2px 8px; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <div class="nav">
+    <span class="brand">CASCADE</span>
+    <div class="links">
+      <a href="#">HOME</a>
+      <a href="#">DOCS</a>
+      <a href="#">ABOUT</a>
+    </div>
+  </div>
+  <div class="row">
+    <div class="card">
+      <h3>PARSER</h3>
+      <p>HTML AND CSS TOKENIZERS BUILT FROM SCRATCH.</p>
+      <span class="badge">DONE</span>
+    </div>
+    <div class="card">
+      <h3>CASCADE</h3>
+      <p>SPECIFICITY, INHERITANCE AND IMPORTANT RULES.</p>
+      <span class="badge">DONE</span>
+    </div>
+    <div class="card">
+      <h3>LAYOUT</h3>
+      <p>BLOCK, INLINE, AND A FLEXBOX SUBSET.</p>
+      <span class="badge">DONE</span>
+    </div>
+  </div>
+</body>
+</html>

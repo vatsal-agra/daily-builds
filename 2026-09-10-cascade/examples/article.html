@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Article</title>
+<style>
+  body { margin: 0; background-color: #f4f1ea; color: #222222; }
+  .page { width: 720px; margin-left: auto; margin-right: auto; padding: 30px; background-color: #ffffff; border-left: 1px solid #dddddd; border-right: 1px solid #dddddd; }
+  h1 { color: #111111; margin-bottom: 4px; }
+  .byline { color: #888888; margin-top: 0; margin-bottom: 24px; }
+  p { line-height: 1.5; margin-top: 0; margin-bottom: 16px; }
+  blockquote { background-color: #f0ece0; border-left: 4px solid #cc9944; margin-left: 0; margin-right: 0; padding: 12px 20px; color: #555555; }
+  ul { margin-top: 8px; margin-bottom: 16px; }
+  li { margin-bottom: 4px; }
+  .tag { display: inline-block; background-color: #eeddaa; color: #664411; padding: 4px 10px; margin-right: 6px; border: 1px solid #cc9944; }
+</style>
+</head>
+<body>
+  <div class="page">
+    <h1>Building a Browser Engine From Scratch</h1>
+    <p class="byline">Filed under experiments, one afternoon at a time</p>
+    <p>Every page on the web goes through the same pipeline before a single
+    pixel reaches your eyes an HTML parser builds a tree, a CSS engine works
+    out which rules apply to which nodes, and a layout engine turns all of
+    that into boxes with real positions and sizes.</p>
+    <blockquote>
+      The cascade is not a bug. It is the whole point: many rules, one
+      final answer, decided by specificity, source order, and importance.
+    </blockquote>
+    <p>This build does exactly that from first principles a tokenizer, a
+    tree builder with real auto-close rules, a selector matcher with
+    specificity, a block and inline formatting context with margin
+    collapsing, and a flexbox subset.</p>
+    <ul>
+      <li>HTML parsing with recovery from malformed markup</li>
+      <li>CSS selectors, specificity, and inheritance</li>
+      <li>Block layout with the real box model</li>
+      <li>Text wrapping into line boxes</li>
+    </ul>
+    <p>
+      <span class="tag">html</span><span class="tag">css</span><span class="tag">layout</span>
+    </p>
+  </div>
+</body>
+</html>
