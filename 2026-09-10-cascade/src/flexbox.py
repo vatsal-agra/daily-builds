@@ -106,7 +106,13 @@ def _layout_flex_item(el, direction, main_available, cross_available, font_size_
     return box
 
 
-def layout_flex_container(box, content_w, font_size):
+def layout_flex_container(box, content_w, font_size, cbh=None):
+    """`cbh`: this flex container's own resolved definite height (already
+    computed by the caller, which knows the *its* containing block's
+    height -- see layout.py's _resolve_definite_height/cbh threading), or
+    None if indefinite/auto. Row direction's cross size and column
+    direction's main size both come from this box's `height`, so they
+    reuse that one already-resolved value rather than re-deriving it."""
     style = box.style
     direction = style.get("flex-direction", "row")
     if direction not in ("row", "column"):
@@ -118,12 +124,10 @@ def layout_flex_container(box, content_w, font_size):
 
     if direction == "row":
         main_available = content_w
-        cross_len = parse_length(style.get("height", "auto"), font_size)
-        cross_available = None if cross_len.auto else cross_len.resolve(0)
+        cross_available = cbh
     else:
         cross_available = content_w
-        main_len = parse_length(style.get("height", "auto"), font_size)
-        main_available = None if main_len.auto else main_len.resolve(0)
+        main_available = cbh
 
     items = [_layout_flex_item(el, direction, main_available, cross_available, font_size) for el in items_el]
 

@@ -141,5 +141,65 @@ class DisplayNoneTests(unittest.TestCase):
         self.assertEqual(len(divs), 0)
 
 
+class RegressionTests(unittest.TestCase):
+    """One test per bug found and fixed during Phase 3 adversarial review
+    (see REVIEW.md) -- pinned down so it can never silently come back."""
+
+    def test_percentage_height_resolves_against_definite_containing_block(self):
+        # was: always resolved against a hardcoded base of 0 (always 0px)
+        root = layout(
+            "<div style='width:200px;height:300px'>"
+            "<div class='inner' style='height:50%'></div></div>",
+            "body{margin:0}", width=400)
+        inner = box_for(root, "div", nth=1)
+        self.assertEqual(inner.height, 150.0)
+
+    def test_percentage_height_falls_back_to_auto_against_indefinite_container(self):
+        # against an auto-height parent, % height must NOT collapse to 0 --
+        # it behaves as if 'height' were 'auto' and content determines it.
+        root = layout(
+            "<div><div class='inner' style='height:50%'><p>hi</p></div></div>",
+            "body{margin:0}", width=400)
+        inner = box_for(root, "div", nth=1)
+        self.assertGreater(inner.height, 0.0)
+
+    def test_inline_block_auto_width_shrinks_to_fit_text_content(self):
+        # was: auto-width inline-block filled the ENTIRE line width instead
+        # of hugging its (short) text content.
+        root = layout(
+            "<div style='width:400px'><span style='display:inline-block'>hi</span></div>",
+            "body{margin:0}", width=400)
+        span = box_for(root, "span")
+        self.assertLess(span.width, 100.0)
+
+    def test_border_defaults_to_currentcolor_not_black(self):
+        # was: border-*-color's initial value was hardcoded to #000000
+        # instead of the real CSS initial value, currentcolor.
+        root = layout(
+            "<div style='color:blue;border:2px solid;width:20px;height:20px'></div>",
+            "body{margin:0}", width=400)
+        div = box_for(root, "div")
+        self.assertEqual(div.border_color.top, (0, 0, 255, 255))
+
+    def test_explicit_border_color_still_overrides_currentcolor(self):
+        root = layout(
+            "<div style='color:blue;border:2px solid red;width:20px;height:20px'></div>",
+            "body{margin:0}", width=400)
+        div = box_for(root, "div")
+        self.assertEqual(div.border_color.top, (255, 0, 0, 255))
+
+    def test_deeply_nested_document_does_not_crash(self):
+        depth = 1200
+        html = "<div>" * depth + "x" + "</div>" * depth
+        import sys as _sys
+        old_limit = _sys.getrecursionlimit()
+        _sys.setrecursionlimit(10000)
+        try:
+            root = layout(html, "", width=400)
+        finally:
+            _sys.setrecursionlimit(old_limit)
+        self.assertGreater(root.height, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -189,4 +189,17 @@ def _match_pseudo(name, arg, el):
         return False
     if name == "link":
         return el.tag == "a" and "href" in el.attrs
+    if name == "not":
+        # :not(<compound selector>) -- combinators inside :not() (e.g.
+        # :not(div > p)) aren't supported, a documented scope cut; a
+        # simple/compound argument (the vast majority of real-world
+        # :not() usage: :not(.active), :not(:last-child), :not([x])) is.
+        if not arg or not arg.strip():
+            return True
+        from css_parser import _parse_compound  # deferred: avoids a
+        # module-level import cycle (css_parser already imports selector).
+        inner = _parse_compound(arg.strip())
+        if inner is None:
+            return True
+        return not _simple_matches(inner, el)
     return False

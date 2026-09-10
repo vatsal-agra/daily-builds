@@ -7,6 +7,11 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Parsing/cascading/laying out one deeply-nested element costs several
+# Python stack frames; raise the ceiling so realistic (if deep) real-world
+# markup doesn't hit Python's conservative default limit. Still-pathological
+# input past this is caught cleanly below (RecursionError), not crashed.
+sys.setrecursionlimit(10000)
 
 from cascade import Cascade
 from html_parser import parse_html
@@ -14,9 +19,21 @@ from layout import build_root
 from paint import paint_tree
 
 
+class CascadeCLIError(Exception):
+    """A clean, expected CLI-facing error (bad path, bad argument, etc.) --
+    caught in main() and reported without a raw Python traceback."""
+
+
 def _read(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
+    if not os.path.isfile(path):
+        raise CascadeCLIError(f"no such file: {path}")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except UnicodeDecodeError as exc:
+        raise CascadeCLIError(f"{path}: not valid UTF-8 text ({exc})") from exc
+    except OSError as exc:
+        raise CascadeCLIError(f"{path}: {exc.strerror or exc}") from exc
 
 
 def _load_page(html_path, css_path=None):
@@ -123,7 +140,19 @@ def main():
     p_demo.set_defaults(func=cmd_demo)
 
     args = parser.parse_args()
-    args.func(args)
+    if hasattr(args, "width") and args.width <= 0:
+        print(f"cascade: error: --width must be a positive integer, got {args.width}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        args.func(args)
+    except CascadeCLIError as exc:
+        print(f"cascade: error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except RecursionError:
+        print("cascade: error: page nesting is too deep for this engine to lay out "
+              f"(Python recursion limit {sys.getrecursionlimit()}; each nested element "
+              "costs several stack frames across parsing/cascade/layout)", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -155,6 +155,18 @@ class MatchingTests(unittest.TestCase):
         matched = [li for li in self.items if sel.matches(li)]
         self.assertEqual(len(matched), 1)
 
+    def test_not_pseudo_class(self):
+        # regression: :not() used to be an unrecognized pseudo-class that
+        # silently matched nothing at all, dropping the whole rule.
+        sel = parse_selector(".item:not(.special)")
+        matched = [li.text_content() for li in self.items if sel.matches(li)]
+        self.assertEqual(matched, ["one", "three"])
+
+    def test_not_pseudo_with_nth_child_arg(self):
+        sel = parse_selector("li:not(:first-child)")
+        matched = [li.text_content() for li in self.items if sel.matches(li)]
+        self.assertEqual(matched, ["two", "three"])
+
 
 class NthChildMathTests(unittest.TestCase):
     def test_odd_even(self):

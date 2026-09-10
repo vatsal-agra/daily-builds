@@ -134,7 +134,14 @@ def set_visual_props(box, style, font_size):
     box.font_weight = parse_font_weight(style.get("font-weight", "normal"))
     box.background_color = parse_color(style.get("background-color", "transparent"), default=(0, 0, 0, 0))
     for side in ("top", "right", "bottom", "left"):
-        setattr(box.border_color, side, parse_color(style.get(f"border-{side}-color", "#000000")))
+        raw = style.get(f"border-{side}-color", "currentcolor")
+        # border-color's real CSS initial value is `currentcolor`: an
+        # unspecified border (e.g. `border: 2px solid` with no color)
+        # takes the element's own text color, not a fixed black.
+        if raw.strip().lower() == "currentcolor":
+            setattr(box.border_color, side, box.color)
+        else:
+            setattr(box.border_color, side, parse_color(raw))
 
 
 def resolve_box_metrics(style, cbw, font_size):
@@ -189,11 +196,14 @@ def build_root(html_root, viewport_width):
 
     content_w, margin, border, padding = resolve_box_metrics(style, viewport_width, font_size)
     root.margin, root.border, root.padding = margin, border, padding
-    layout_block_children_into(root, content_w, font_size)
-    content_h = root._content_h
-    height_len = parse_length(style.get("height", "auto"), font_size)
-    if not height_len.auto:
-        content_h = height_len.resolve(0)
+    # the <html> element's own containing block is the viewport, whose
+    # height this engine doesn't model (no scroll/viewport-height concept),
+    # so its containing-block height is indefinite (cbh=None): a percentage
+    # `height` on <html>/<body> itself falls back to auto, matching how a
+    # real browser treats a percentage height with no definite ancestor.
+    own_definite_h = _resolve_definite_height(style, font_size, None)
+    layout_block_children_into(root, content_w, font_size, cbh=own_definite_h)
+    content_h = own_definite_h if own_definite_h is not None else root._content_h
     root.width = content_w + border.left + border.right + padding.left + padding.right
     root.height = content_h + border.top + border.bottom + padding.top + padding.bottom
     root.x = margin.left
@@ -222,26 +232,42 @@ def _make_element_box(el, font_size_parent, style_override=None):
     return box
 
 
-def layout_block_box(el, cbw, parent_font_size, style_override=None):
+def _resolve_definite_height(style, font_size, cbh):
+    """A CSS percentage height only resolves against a containing block
+    with a DEFINITE height (CSS 2.1 10.5); against an auto-height
+    container it computes to 'auto' instead. `cbh` is the containing
+    block's own resolved content height, or None if that's auto/unknown.
+    Returns a resolved px height, or None if the height is (effectively)
+    auto and should come from content instead."""
+    height_len = parse_length(style.get("height", "auto"), font_size)
+    if height_len.auto:
+        return None
+    if height_len.percent is not None:
+        return height_len.resolve(cbh) if cbh is not None else None
+    return height_len.px
+
+
+def layout_block_box(el, cbw, parent_font_size, style_override=None, cbh=None):
     """Lays out one element as a block-level (or inline-block/flex) box.
     Returns a Box positioned RELATIVE to its future parent's content
     origin (box.x = its resolved margin-left; box.y left at 0, set later
-    by the caller's stacking/positioning pass)."""
+    by the caller's stacking/positioning pass). `cbh`: this box's OWN
+    containing block's definite content height (for resolving a
+    percentage `height` on this box), or None if indefinite."""
     box = _make_element_box(el, parent_font_size, style_override)
     font_size = box.font_size
     content_w, margin, border, padding = resolve_box_metrics(box.style, cbw, font_size)
     box.margin, box.border, box.padding = margin, border, padding
 
+    own_definite_h = _resolve_definite_height(box.style, font_size, cbh)
+
     if box.box_type == "flex":
         from flexbox import layout_flex_container
-        layout_flex_container(box, content_w, font_size)
+        layout_flex_container(box, content_w, font_size, cbh=own_definite_h)
     else:
-        layout_block_children_into(box, content_w, font_size)
+        layout_block_children_into(box, content_w, font_size, cbh=own_definite_h)
 
-    content_h = box._content_h
-    height_len = parse_length(box.style.get("height", "auto"), font_size)
-    if not height_len.auto:
-        content_h = height_len.resolve(0)
+    content_h = own_definite_h if own_definite_h is not None else box._content_h
 
     box.width = content_w + border.left + border.right + padding.left + padding.right
     box.height = content_h + border.top + border.bottom + padding.top + padding.bottom
@@ -250,30 +276,31 @@ def layout_block_box(el, cbw, parent_font_size, style_override=None):
     return box
 
 
-def relayout_at_outer_width(box, new_outer_width, font_size):
+def relayout_at_outer_width(box, new_outer_width, font_size, cbh=None):
     """Re-runs this box's own content layout at a specific final outer
     (border-box) width -- used by flexbox when the flex algorithm assigns
     an item a main/cross size different from its hypothetical size."""
     new_content_w = max(new_outer_width - box.border.left - box.border.right
                          - box.padding.left - box.padding.right, 0.0)
+    own_definite_h = _resolve_definite_height(box.style, font_size, cbh)
     if box.box_type == "flex":
         from flexbox import layout_flex_container
-        layout_flex_container(box, new_content_w, font_size)
+        layout_flex_container(box, new_content_w, font_size, cbh=own_definite_h)
     else:
-        layout_block_children_into(box, new_content_w, font_size)
-    content_h = box._content_h
-    height_len = parse_length(box.style.get("height", "auto"), font_size)
-    if not height_len.auto:
-        content_h = height_len.resolve(0)
+        layout_block_children_into(box, new_content_w, font_size, cbh=own_definite_h)
+    content_h = own_definite_h if own_definite_h is not None else box._content_h
     box.width = new_outer_width
     box.height = content_h + box.border.top + box.border.bottom + box.padding.top + box.padding.bottom
 
 
-def layout_block_children_into(container_box, cbw, font_size):
+def layout_block_children_into(container_box, cbw, font_size, cbh=None):
     """Groups container_box's DOM children into block boxes and anonymous
     inline-run block boxes, lays each out, stacks them vertically with
     margin collapsing, and sets container_box.children + ._content_h.
-    Children get positions RELATIVE to container_box's own content origin."""
+    Children get positions RELATIVE to container_box's own content origin.
+    `cbh`: container_box's own definite content height, passed to block
+    children as their containing-block height (for their percentage
+    `height`, if any)."""
     node = container_box.node
     kids = visible_children(node) if node is not None else []
 
@@ -307,14 +334,14 @@ def layout_block_children_into(container_box, cbw, font_size):
 
     for kind, payload in groups:
         if kind == "block":
-            child = layout_block_box(payload, cbw, font_size)
+            child = layout_block_box(payload, cbw, font_size, cbh=cbh)
             top_gap = child.margin.top if first else max(prev_margin_bottom, child.margin.top)
             cursor_y += top_gap
             child.y = cursor_y
             cursor_y += child.height
             prev_margin_bottom = child.margin.bottom
         else:
-            child = layout_inline_run(payload, cbw, font_size, container_box.style)
+            child = layout_inline_run(payload, cbw, font_size, container_box.style, cbh=cbh)
             top_gap = 0.0 if first else prev_margin_bottom
             cursor_y += top_gap
             child.y = cursor_y
@@ -344,7 +371,7 @@ class InlineToken:
         self.box = box
 
 
-def _collect_inline_tokens(nodes, cbw, font_size_parent, style_parent, tokens):
+def _collect_inline_tokens(nodes, cbw, font_size_parent, style_parent, tokens, cbh=None):
     for n in nodes:
         if isinstance(n, Text):
             for w in n.data.split():
@@ -376,20 +403,22 @@ def _collect_inline_tokens(nodes, cbw, font_size_parent, style_parent, tokens):
                     approx_content = measure_text(text, fs) if text else 0.0
                     override = dict(style)
                     override["width"] = f"{approx_content}px"
-                box = layout_block_box(n, cbw, font_size_parent, style_override=override)
+                box = layout_block_box(n, cbw, font_size_parent, style_override=override, cbh=cbh)
                 tokens.append(InlineToken("box", width=box.width + box.margin.left + box.margin.right,
                                            height=box.height, box=box))
             else:
-                _collect_inline_tokens(visible_children(n), cbw, fs, style, tokens)
+                _collect_inline_tokens(visible_children(n), cbw, fs, style, tokens, cbh=cbh)
 
 
-def layout_inline_run(nodes, cbw, font_size, parent_style):
+def layout_inline_run(nodes, cbw, font_size, parent_style, cbh=None):
     """Lays a run of inline-level nodes out into line boxes, inside an
-    anonymous block-level container box positioned relative to (0, 0)."""
+    anonymous block-level container box positioned relative to (0, 0).
+    `cbh` is threaded through only so a nested inline-block's own
+    percentage `height` can resolve against the real containing block."""
     container = Box("block", node=None, style={}, anonymous=True)
     container.font_size = font_size
     tokens = []
-    _collect_inline_tokens(nodes, cbw, font_size, parent_style, tokens)
+    _collect_inline_tokens(nodes, cbw, font_size, parent_style, tokens, cbh=cbh)
 
     text_align = parent_style.get("text-align", "left")
     space_w = char_advance(font_size)

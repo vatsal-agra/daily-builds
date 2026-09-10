@@ -51,8 +51,11 @@ INITIAL_VALUES = {
     "border-bottom-width": "0px", "border-left-width": "0px",
     "border-top-style": "none", "border-right-style": "none",
     "border-bottom-style": "none", "border-left-style": "none",
-    "border-top-color": "#000000", "border-right-color": "#000000",
-    "border-bottom-color": "#000000", "border-left-color": "#000000",
+    # real CSS initial value: currentcolor (the element's own `color`),
+    # not a fixed black -- resolved in layout.set_visual_props once the
+    # box's own color is known.
+    "border-top-color": "currentcolor", "border-right-color": "currentcolor",
+    "border-bottom-color": "currentcolor", "border-left-color": "currentcolor",
     "list-style-type": "disc",
     "white-space": "normal",
     "visibility": "visible",
