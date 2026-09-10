@@ -169,6 +169,24 @@ positioning (`box.x` was overwritten by the flex algorithm without adding
 the item's margin back in) — fixed by tracking "outer" (margin-inclusive)
 main/cross sizes throughout the flex algorithm.
 
+## Phase 4 polish pass: one more real bug
+
+Stress-testing edge cases while building the stretch features surfaced one
+more genuine defect: **a negative `height` (or `width`) propagated as a
+negative size through the whole ancestor chain** instead of clamping, the
+way a real browser does (CSS treats a negative specified length as
+invalid and falls back to the property's initial/inherited value; clamping
+the used value to 0 is the practical equivalent). `<div style="height:
+-50px">` produced a box with `height: -50.0`, and every ancestor's
+content height above it went negative too. Fixed by clamping both
+`_resolve_definite_height`'s and `resolve_box_metrics`'s resolved value to
+`max(..., 0.0)` — for width, *before* it feeds into the auto-margin
+"remaining space" arithmetic, since an unclamped negative width would
+otherwise inflate the computed remaining space and miscenter the box, not
+just report a wrong size. Regression tests:
+`test_layout.py::RegressionTests.test_negative_height_clamps_to_zero`,
+`test_negative_width_clamps_to_zero`.
+
 ## What Phase 3 deliberately did NOT change
 
 Documented scope cuts that are simplifications, not bugs, so they're

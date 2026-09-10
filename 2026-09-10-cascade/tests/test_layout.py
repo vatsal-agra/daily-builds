@@ -188,6 +188,22 @@ class RegressionTests(unittest.TestCase):
         div = box_for(root, "div")
         self.assertEqual(div.border_color.top, (255, 0, 0, 255))
 
+    def test_negative_height_clamps_to_zero(self):
+        # was: a negative height propagated as a negative content height
+        # through every ancestor's box, instead of clamping like a real
+        # browser (a negative specified length is invalid).
+        root = layout("<div style='width:100px;height:-50px'></div>",
+                       "body{margin:0}", width=400)
+        div = box_for(root, "div")
+        self.assertEqual(div.height, 0.0)
+        self.assertGreaterEqual(root.height, 0.0)
+
+    def test_negative_width_clamps_to_zero(self):
+        root = layout("<div style='width:-30px;height:20px'></div>",
+                       "body{margin:0}", width=400)
+        div = box_for(root, "div")
+        self.assertEqual(div.content_width, 0.0)
+
     def test_deeply_nested_document_does_not_crash(self):
         depth = 1200
         html = "<div>" * depth + "x" + "</div>" * depth

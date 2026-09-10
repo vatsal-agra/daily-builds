@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+tools/oracle/node_modules/
+renders/*.png.tmp
+inspector.html

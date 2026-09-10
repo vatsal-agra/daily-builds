@@ -17,6 +17,7 @@ from cascade import Cascade
 from html_parser import parse_html
 from layout import build_root
 from paint import paint_tree
+from viz import generate_inspector_html
 
 
 class CascadeCLIError(Exception):
@@ -95,6 +96,15 @@ def cmd_boxes_json(args):
     print(json.dumps(out, indent=2))
 
 
+def cmd_viz(args):
+    doc, html_el = _load_page(args.html, args.css)
+    root = build_root(html_el, args.width)
+    out = generate_inspector_html(root, args.width)
+    with open(args.out, "w", encoding="utf-8") as f:
+        f.write(out)
+    print(f"wrote {args.out}")
+
+
 def cmd_demo(args):
     here = os.path.dirname(os.path.abspath(__file__))
     examples_dir = os.path.join(os.path.dirname(here), "examples")
@@ -135,6 +145,13 @@ def main():
     p_boxes.add_argument("--css", default=None)
     p_boxes.add_argument("--width", type=int, default=900)
     p_boxes.set_defaults(func=cmd_boxes_json)
+
+    p_viz = sub.add_parser("viz", help="generate an interactive HTML box inspector")
+    p_viz.add_argument("html")
+    p_viz.add_argument("--css", default=None)
+    p_viz.add_argument("--width", type=int, default=900)
+    p_viz.add_argument("--out", default="inspector.html")
+    p_viz.set_defaults(func=cmd_viz)
 
     p_demo = sub.add_parser("demo", help="render every example page")
     p_demo.set_defaults(func=cmd_demo)

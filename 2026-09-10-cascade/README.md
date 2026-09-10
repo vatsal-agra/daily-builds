@@ -7,21 +7,21 @@ formatting contexts with margin collapsing, a flexbox subset, and a
 from-scratch PNG rasterizer with a hand-rolled bitmap font — no browser, no
 HTML/CSS library, no imaging library anywhere in the pipeline.
 
-**Status: Phase 3 (adversarial review) complete.** All 4 required features
-work end-to-end: HTML parsing, CSS parsing + cascade, layout, and
-rendering to a real PNG. The flexbox stretch feature is also already
-working. See `PLAN.md` for the full concept and feature list, and
-`REVIEW.md` for the adversarial review's findings and fixes (7 real bugs
-found and fixed, including a critical percentage-height bug and a
-`:not()` selector that silently matched nothing).
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features
+and all 3 stretch features are shipped and verified — including a
+Chromium differential oracle that renders the same pages in real headless
+Chromium and finds Cascade's layout **pixel-identical** across box model,
+margin collapsing, percentages, and flexbox. See `PLAN.md` for the full
+concept/feature list and `REVIEW.md` for the adversarial review.
 
 ## Try it
 
 ```
 cd src
-python3 cli.py render ../examples/cards.html --width 900 --out out.png
-python3 cli.py layout ../examples/article.html --width 720   # dump the box tree
-python3 cli.py demo                                          # render every example
+python3 cli.py render ../examples/cards.html --width 900 --out out.png     # -> real PNG
+python3 cli.py layout ../examples/article.html --width 720                 # dump the box tree
+python3 cli.py viz ../examples/cards.html --width 900 --out inspector.html # interactive box inspector
+python3 cli.py demo                                                        # render every example
 ```
 
 ## Tests
@@ -31,4 +31,32 @@ cd tests
 python3 -m unittest discover -s . -p "test_*.py" -v
 ```
 
-133/133 tests passing as of Phase 3.
+153/153 tests passing (unit tests for every stage + a Chromium
+differential oracle + headless-browser UI smoke tests). The Chromium/
+Playwright-backed tests (`test_diff_oracle.py`, `test_viz_ui.py`) skip
+themselves cleanly if the oracle isn't set up; to enable them:
+
+```
+cd tools/oracle && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install
+```
+
+(Chromium itself is already present in this environment at
+`/opt/pw-browsers/chromium` — only the `playwright` npm package needs
+installing, hence the skip-download flag.)
+
+## Layout
+
+```
+src/
+  html_tokenizer.py, html_parser.py, dom.py   HTML -> DOM tree
+  css_tokenizer.py, css_parser.py, selector.py CSS -> rules + selectors
+  cascade.py, css_values.py                    the cascade -> computed style
+  layout.py, flexbox.py, font.py               computed style -> box tree
+  png_encoder.py, paint.py                     box tree -> real PNG pixels
+  viz.py                                       box tree -> interactive HTML inspector
+  cli.py                                       the `cascade` command
+tests/          unit tests + the Chromium differential oracle + UI tests
+tools/oracle/   Node/Playwright harness the oracle tests drive
+examples/       example pages rendered by `cascade demo`
+renders/        their committed PNG/HTML output
+```

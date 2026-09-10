@@ -110,23 +110,29 @@ to the browser's own `getBoundingClientRect()` output.
    library) — a real `.png` file a real image viewer opens, produced with
    zero use of a browser or any imaging library.
 
-**Stretch:**
+**Stretch (all 3 shipped):**
 
 5. **Flexbox subset** — `display:flex`, `flex-direction` (row/column),
    `justify-content` (flex-start/center/flex-end/space-between/space-around),
    `align-items` (stretch/flex-start/center/flex-end), and `flex-grow`/
    `flex-shrink`/`flex-basis` free-space distribution per the real algorithm.
+   ✅ Shipped in Phase 2, 10 unit tests + 6 Chromium-diffed cases.
 6. **Chromium differential oracle** — a Playwright-driven test suite that
    renders a battery of fixed-dimension HTML/CSS pages in real headless
    Chromium, reads every element's true `getBoundingClientRect()`, and
    asserts our layout engine computes pixel-identical boxes — turning "no
    crashes" into "provably correct against the real reference
    implementation" for the pages that don't depend on font metrics.
-7. *(if time allows)* An interactive self-contained HTML "DevTools-lite" box
+   ✅ Shipped in Phase 4 (`tools/oracle/measure.js` +
+   `tests/test_diff_oracle.py`) — **12/12 pixel-identical to real Chromium**
+   across box model, margin collapsing, percentages, and flexbox.
+7. An interactive self-contained HTML "DevTools-lite" box
    inspector: click any box to see its full computed style and box-model
    breakdown, generated from one real Cascade layout run with zero
    client-side layout logic (same server/precompute-then-render pattern this
-   repo has used since Gambit/Formulate).
+   repo has used since Gambit/Formulate). ✅ Shipped in Phase 4
+   (`src/viz.py`, `cascade viz`), headless-Chromium-verified zero console
+   errors + working click-to-inspect (`tests/test_viz_ui.py`).
 
 ## Verification strategy
 

@@ -156,7 +156,11 @@ def resolve_box_metrics(style, cbw, font_size):
     width_len = parse_length(style.get("width", "auto"), font_size)
 
     if not width_len.auto:
-        content_w = width_len.resolve(cbw)
+        # clamp before using content_w in the margin arithmetic below --
+        # CSS never allows a negative used width, and an unclamped negative
+        # value would otherwise inflate the "remaining space" auto-margins
+        # see, miscentering the box instead of just floor-ing its width.
+        content_w = max(width_len.resolve(cbw), 0.0)
         remaining = cbw - fixed - content_w
         if margin_left_len.auto and margin_right_len.auto:
             ml = mr = max(remaining / 2.0, 0.0)
@@ -243,8 +247,13 @@ def _resolve_definite_height(style, font_size, cbh):
     if height_len.auto:
         return None
     if height_len.percent is not None:
-        return height_len.resolve(cbh) if cbh is not None else None
-    return height_len.px
+        return max(height_len.resolve(cbh), 0.0) if cbh is not None else None
+    # CSS never allows a negative used length for `height` (a negative
+    # specified value is invalid and the property falls back to its
+    # initial/inherited value); clamping to 0 here is the practical
+    # equivalent -- without it a single negative height would propagate
+    # as a negative content height through every ancestor's stacking math.
+    return max(height_len.px, 0.0)
 
 
 def layout_block_box(el, cbw, parent_font_size, style_override=None, cbh=None):
