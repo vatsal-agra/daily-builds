@@ -7,12 +7,15 @@ formatting contexts with margin collapsing, a flexbox subset, and a
 from-scratch PNG rasterizer with a hand-rolled bitmap font — no browser, no
 HTML/CSS library, no imaging library anywhere in the pipeline.
 
-**Status: Phase 4 (stretch + polish) complete.** All 4 required features
-and all 3 stretch features are shipped and verified — including a
-Chromium differential oracle that renders the same pages in real headless
-Chromium and finds Cascade's layout **pixel-identical** across box model,
-margin collapsing, percentages, and flexbox. See `PLAN.md` for the full
+**Status: Phase 5 (verification) complete.** All 4 required features and
+all 3 stretch features are shipped and verified — including a Chromium
+differential oracle that renders the same pages in real headless Chromium
+and finds Cascade's layout **pixel-identical** across box model, margin
+collapsing, percentages, and flexbox. See `PLAN.md` for the full
 concept/feature list and `REVIEW.md` for the adversarial review.
+
+Run `./demo.sh` for a single command that exercises every feature end to
+end and reports pass/fail (15/15 as of this commit, exits 0).
 
 ## Try it
 
