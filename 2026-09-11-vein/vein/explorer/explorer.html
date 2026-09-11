@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vein Explorer</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #12151d;
+    --panel-2: #171b26;
+    --border: #232838;
+    --text: #e7e9ee;
+    --text-dim: #8a90a3;
+    --accent: #7c9eff;
+    --accent-dim: #3d4d80;
+    --good: #4ade80;
+    --bad: #f87171;
+    --warn: #fbbf24;
+    --mono: "SF Mono", "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 20px 20px 60px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: 0.02em; }
+  h1 .dot { color: var(--accent); }
+  .sub { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
+  .rpc-bar {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 20px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px;
+    flex-wrap: wrap;
+  }
+  .rpc-bar input {
+    flex: 1; min-width: 200px; background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 10px; font-family: var(--mono); font-size: 13px;
+  }
+  .rpc-bar button, .lookup button {
+    background: var(--accent-dim); color: var(--text); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 13px;
+  }
+  .rpc-bar button:hover, .lookup button:hover { background: var(--accent); color: #0b0d12; }
+  .status-pill { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); }
+  .status-pill.live { color: var(--good); border-color: var(--good); }
+  .status-pill.down { color: var(--bad); border-color: var(--bad); }
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px; margin-bottom: 20px;
+  }
+  .stat {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+  }
+  .stat .label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .value { font-family: var(--mono); font-size: 20px; margin-top: 4px; }
+  .cols { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 16px;
+  }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim);
+    margin: 0 0 12px; }
+  .block-row {
+    display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border);
+    font-family: var(--mono); font-size: 12px; cursor: pointer;
+  }
+  .block-row:hover { color: var(--accent); }
+  .block-row:last-child { border-bottom: none; }
+  .block-height {
+    background: var(--panel-2); border-radius: 6px; padding: 2px 8px; color: var(--accent); min-width: 40px;
+    text-align: center;
+  }
+  .block-hash { color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .block-ntx { color: var(--warn); }
+  .mempool-row {
+    font-family: var(--mono); font-size: 12px; padding: 6px 0; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; color: var(--text-dim);
+  }
+  .peer-row {
+    font-family: var(--mono); font-size: 12px; padding: 4px 0; display: flex; justify-content: space-between;
+  }
+  .peer-row .sev { color: var(--bad); }
+  .peer-row .ok { color: var(--good); }
+  .lookup { display: flex; gap: 8px; margin-bottom: 10px; }
+  .lookup input {
+    flex: 1; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 6px 10px; font-family: var(--mono); font-size: 12px;
+  }
+  .balance-result { font-family: var(--mono); font-size: 15px; margin-top: 8px; }
+  .balance-result .amt { color: var(--good); }
+  .empty { color: var(--text-dim); font-size: 12px; font-style: italic; }
+  .modal-backdrop {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px;
+    max-width: 640px; width: 100%; max-height: 80vh; overflow: auto;
+  }
+  .modal h3 { margin-top: 0; font-family: var(--mono); font-size: 14px; word-break: break-all; }
+  .modal pre { font-size: 11px; color: var(--text-dim); white-space: pre-wrap; word-break: break-all; }
+  .modal .close { float: right; cursor: pointer; color: var(--text-dim); }
+  .tx-item { border-bottom: 1px solid var(--border); padding: 8px 0; font-size: 12px; font-family: var(--mono); }
+  .tx-item .coinbase { color: var(--warn); }
+</style>
+</head>
+<body>
+  <h1><span class="dot">●</span> Vein Explorer</h1>
+  <div class="sub">A live view of one node's chain, mempool, and peers — nothing here is simulated.</div>
+
+  <div class="rpc-bar">
+    <span style="font-size:12px;color:var(--text-dim)">node RPC:</span>
+    <input id="rpcInput" value="__DEFAULT_RPC__" spellcheck="false">
+    <button onclick="setRpc()">connect</button>
+    <span id="connPill" class="status-pill down">connecting…</span>
+  </div>
+
+  <div class="grid" id="statGrid"></div>
+
+  <div class="cols">
+    <div>
+      <div class="panel">
+        <h2>Active Chain (most recent first)</h2>
+        <div id="chainList"><div class="empty">loading…</div></div>
+      </div>
+      <div class="panel">
+        <h2>Mempool</h2>
+        <div id="mempoolList"><div class="empty">loading…</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2>Balance Lookup</h2>
+        <div class="lookup">
+          <input id="addrInput" placeholder="Vein address">
+          <button onclick="lookupBalance()">check</button>
+        </div>
+        <div id="balanceResult"></div>
+      </div>
+      <div class="panel">
+        <h2>Peers</h2>
+        <div id="peerList"><div class="empty">loading…</div></div>
+      </div>
+      <div class="panel">
+        <h2>Chain Tips</h2>
+        <div id="tipsList"><div class="empty">loading…</div></div>
+      </div>
+      <div class="panel">
+        <h2>Event Log</h2>
+        <div id="eventLog" style="font-family:var(--mono);font-size:11px;color:var(--text-dim);max-height:180px;overflow:auto;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <span class="close" onclick="closeModal()">✕ close</span>
+      <h3 id="modalTitle"></h3>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+<script>
+let RPC = document.getElementById('rpcInput').value;
+let es = null;
+
+function setRpc() {
+  RPC = document.getElementById('rpcInput').value.replace(/\/$/, '');
+  if (es) { es.close(); es = null; }
+  connectEvents();
+  refreshAll();
+}
+
+async function api(path) {
+  const resp = await fetch(RPC + path);
+  if (!resp.ok) throw new Error('rpc error ' + resp.status);
+  return resp.json();
+}
+
+function fmtSats(n) {
+  return (n / 1e8).toFixed(8) + ' VEIN (' + n.toLocaleString() + ' sats)';
+}
+
+function short(h, n=14) { return h ? h.slice(0, n) + '…' : ''; }
+
+function setConn(ok) {
+  const pill = document.getElementById('connPill');
+  pill.textContent = ok ? 'live' : 'disconnected';
+  pill.className = 'status-pill ' + (ok ? 'live' : 'down');
+}
+
+async function refreshAll() {
+  try {
+    const status = await api('/status');
+    setConn(true);
+    renderStats(status);
+    renderTips(status.tips || []);
+    const chain = await api('/chain?limit=25');
+    renderChain(chain.blocks);
+    const mem = await api('/mempool');
+    renderMempool(mem);
+    const peers = await api('/peers');
+    renderPeers(peers);
+  } catch (e) {
+    setConn(false);
+  }
+}
+
+function renderStats(s) {
+  const items = [
+    ['Height', s.height],
+    ['Mining', s.mining ? 'yes' : 'no'],
+    ['Hashrate', Math.round(s.hashrate || 0).toLocaleString() + ' h/s'],
+    ['Blocks Found', s.blocks_found],
+    ['Mempool', s.mempool_size],
+    ['Peers', s.peers.length],
+  ];
+  document.getElementById('statGrid').innerHTML = items.map(([label, value]) =>
+    `<div class="stat"><div class="label">${label}</div><div class="value">${value}</div></div>`
+  ).join('');
+}
+
+function renderChain(blocks) {
+  const el = document.getElementById('chainList');
+  if (!blocks.length) { el.innerHTML = '<div class="empty">no blocks yet</div>'; return; }
+  el.innerHTML = blocks.slice().reverse().map(b => `
+    <div class="block-row" onclick="showBlock('${b.hash}')">
+      <span class="block-height">#${b.height}</span>
+      <span class="block-hash">${b.hash}</span>
+      <span class="block-ntx">${b.n_tx} tx</span>
+    </div>
+  `).join('');
+}
+
+function renderMempool(mem) {
+  const el = document.getElementById('mempoolList');
+  if (!mem.txs.length) { el.innerHTML = '<div class="empty">mempool is empty</div>'; return; }
+  el.innerHTML = mem.txs.map(t => `
+    <div class="mempool-row"><span>${short(t.txid)}</span><span>fee ${t.fee} sats · ${t.n_in}→${t.n_out}</span></div>
+  `).join('');
+}
+
+function renderPeers(p) {
+  const el = document.getElementById('peerList');
+  if (!p.peers.length) { el.innerHTML = '<div class="empty">no peers connected</div>'; return; }
+  el.innerHTML = p.peers.map(peer => {
+    const sev = p.severed.includes(peer);
+    return `<div class="peer-row"><span>${peer}</span><span class="${sev ? 'sev' : 'ok'}">${sev ? 'severed' : 'connected'}</span></div>`;
+  }).join('');
+}
+
+function renderTips(tips) {
+  const el = document.getElementById('tipsList');
+  if (!tips.length) { el.innerHTML = '<div class="empty">—</div>'; return; }
+  el.innerHTML = tips.map(t => `
+    <div class="peer-row"><span>${t.active ? '★' : '·'} h${t.height} ${short(t.hash, 10)}</span><span>${t.active ? 'active' : 'side branch'}</span></div>
+  `).join('');
+}
+
+async function lookupBalance() {
+  const addr = document.getElementById('addrInput').value.trim();
+  const el = document.getElementById('balanceResult');
+  if (!addr) return;
+  try {
+    const r = await api('/balance?address=' + encodeURIComponent(addr));
+    el.innerHTML = `<div class="balance-result">balance: <span class="amt">${fmtSats(r.balance)}</span></div>`;
+  } catch (e) {
+    el.innerHTML = `<div class="balance-result" style="color:var(--bad)">error looking up address</div>`;
+  }
+}
+
+async function showBlock(hash) {
+  const modal = document.getElementById('modalBackdrop');
+  document.getElementById('modalTitle').textContent = 'block ' + hash;
+  document.getElementById('modalBody').innerHTML = '<div class="empty">loading…</div>';
+  modal.classList.add('open');
+  try {
+    const b = await api('/block?hash=' + hash);
+    document.getElementById('modalBody').innerHTML = `
+      <div style="font-family:var(--mono);font-size:12px;color:var(--text-dim);margin-bottom:10px;">
+        height ${b.height} · prev ${short(b.prev, 20)} · nonce ${b.nonce} · bits ${b.bits.toString(16)}
+      </div>
+      ${b.transactions.map(tx => `
+        <div class="tx-item">
+          <div>${tx.coinbase ? '<span class="coinbase">[coinbase]</span> ' : ''}${short(tx.txid, 20)}</div>
+          <div style="color:var(--text-dim)">in: ${tx.inputs.length} · out: ${tx.outputs.map(o => o.value).join(', ')}</div>
+        </div>
+      `).join('')}
+    `;
+  } catch (e) {
+    document.getElementById('modalBody').innerHTML = '<div class="empty">failed to load block</div>';
+  }
+}
+
+function closeModal() {
+  document.getElementById('modalBackdrop').classList.remove('open');
+}
+
+function logEvent(text) {
+  const el = document.getElementById('eventLog');
+  const line = document.createElement('div');
+  line.textContent = new Date().toLocaleTimeString() + '  ' + text;
+  el.prepend(line);
+  while (el.children.length > 50) el.removeChild(el.lastChild);
+}
+
+function connectEvents() {
+  try {
+    es = new EventSource(RPC + '/events');
+    es.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        if (data.type === 'new_tip') {
+          logEvent(`new tip: height=${data.height} ${short(data.hash, 12)}`);
+          refreshAll();
+        } else if (data.type === 'new_tx') {
+          logEvent(`new tx: ${short(data.txid, 16)}`);
+          refreshAll();
+        }
+      } catch (e) {}
+    };
+    es.onerror = () => { setConn(false); };
+    es.onopen = () => { setConn(true); };
+  } catch (e) { /* SSE not available */ }
+}
+
+connectEvents();
+refreshAll();
+setInterval(refreshAll, 4000);
+</script>
+</body>
+</html>
