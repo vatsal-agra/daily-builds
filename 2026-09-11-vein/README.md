@@ -61,4 +61,16 @@ wallet file, invalid address, unreachable RPC, zero/negative amount,
 insufficient funds, no spendable coins, malformed RPC input) and the
 explorer degrades gracefully with no node connected.
 
-Next: Phase 5 (verification).
+**Status: Phase 5 (Verification) complete.** `demo.sh` runs 5 checks,
+each exercising real, live behavior (nothing mocked): the 70-test unit
+suite; the single-process core walkthrough; a real node with a real
+wallet-to-wallet payment confirmed on-chain and a real headless-Chromium
+pass over the block explorer with zero console errors; the 4-subprocess
+network-partition/double-spend/reorg demo; and clean CLI error handling
+on bad input. Run twice consecutively with zero failures both times.
+
+```
+./demo.sh
+```
+
+Next: Phase 6 (ship).
