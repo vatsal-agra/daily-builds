@@ -33,4 +33,12 @@ python3 -m vein.cli partition-demo    # 4 real OS subprocesses, a network partit
 python3 -m unittest discover -s tests -v
 ```
 
-Next: Phase 3 (adversarial review).
+**Status: Phase 3 (Adversarial review) complete.** See
+[`REVIEW.md`](REVIEW.md) for the full write-up — 12 real issues found and
+fixed, from a wrong hand-transcribed elliptic-curve constant to a genuine
+unsynchronized-thread race condition in the P2P layer, surfaced mainly by
+running `partition-demo` repeatedly under real concurrent load until it
+broke. The multi-node partition demo now passes consistently across
+repeated runs; the full test suite (70 tests) is green.
+
+Next: Phase 4 (stretch features + polish).

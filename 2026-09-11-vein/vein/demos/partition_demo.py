@@ -237,6 +237,31 @@ def run_partition_demo(base_port: int = 19000, target_height_each_side: int = 3,
             n.mine_stop()
         time.sleep(0.5)
 
+        # group2's own two nodes were racing each other for that last
+        # block, so they themselves can land on a genuine tie (two valid
+        # blocks at the same height, equal cumulative work) — real and
+        # correct, but it must be *this* side that heals into one
+        # unambiguous winner before it faces group1, or convergence at
+        # the end is ambiguous by construction, not because of a bug.
+        # Mine one more block within group2 alone, as many times as it
+        # takes, until its own two nodes agree with each other.
+        settle_attempts = 0
+        while group2[0].status()["tip"] != group2[1].status()["tip"] and settle_attempts < 8:
+            for n in group2:
+                n.mine_start()
+            base = max(n.status()["height"] for n in group2)
+            t0 = time.time()
+            while time.time() - t0 < max_wait:
+                if min(n.status()["height"] for n in group2) > base:
+                    break
+                time.sleep(0.2)
+            for n in group2:
+                n.mine_stop()
+            time.sleep(0.5)
+            settle_attempts += 1
+        assert group2[0].status()["tip"] == group2[1].status()["tip"], \
+            "group2 should settle on one chain internally before facing group1"
+
         tip1, tip2 = group1[0].status()["tip"], group2[0].status()["tip"]
         h1f, h2f = group1[0].status()["height"], group2[0].status()["height"]
         _p(f"    side 1 (alpha/beta):  height={h1f} tip={tip1[:16]}")

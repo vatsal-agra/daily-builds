@@ -195,6 +195,8 @@ class Blockchain:
         spent_this_block: set[UTXOKey] = set()
 
         for tx in block.transactions[1:]:
+            if not tx.inputs or not tx.outputs:
+                raise ValidationError(f"tx {tx.txid().hex()[:12]} has no inputs or no outputs")
             fee_in = 0
             for i, txin in enumerate(tx.inputs):
                 key = (txin.prev_txid, txin.prev_index)
@@ -268,7 +270,7 @@ class Blockchain:
 
     # -- adding blocks --------------------------------------------------------
 
-    def add_block(self, block: Block, now: Optional[float] = None) -> bool:
+    def add_block(self, block: Block, now: Optional[float] = None, _skip_orphan_drain: bool = False) -> bool:
         """Validate and accept a block. Returns True if the active tip changed.
 
         Handles three cases: (1) a simple extension of the active tip,
@@ -326,7 +328,8 @@ class Blockchain:
             scratch = self._replay_utxo_at(header.prev_hash)
             self._apply_block_to_utxo(block, scratch, height, check_only=True)
 
-        self._accept_orphans_of(h)
+        if not _skip_orphan_drain:
+            self._accept_orphans_of(h)
         return changed
 
     def _reorganize_to(self, new_tip: bytes) -> None:
@@ -364,9 +367,25 @@ class Blockchain:
         self.active_chain = active
 
     def _accept_orphans_of(self, parent_hash: bytes) -> None:
-        pending = self._orphans.pop(parent_hash, [])
-        for blk in pending:
-            self.add_block(blk)
+        # Iterative, not recursive: add_block() itself calls this method
+        # at the end of every successful application, so a naive
+        # recursive "pop this parent's orphans, call add_block on each"
+        # re-enters _accept_orphans_of through add_block for every block
+        # in the chain — a hostile peer relaying a few thousand blocks in
+        # reverse order would blow Python's recursion limit. A plain
+        # queue drains the same cascade without growing the call stack.
+        queue = list(self._orphans.pop(parent_hash, []))
+        while queue:
+            blk = queue.pop()
+            h = blk.hash()
+            self._apply_or_buffer(blk)
+            queue.extend(self._orphans.pop(h, []))
+
+    def _apply_or_buffer(self, block: "Block") -> bool:
+        """Like add_block(), but never itself recurses into
+        _accept_orphans_of — the caller (either add_block's own top-level
+        call, or the iterative drain above) is responsible for that."""
+        return self.add_block(block, _skip_orphan_drain=True)
 
     # -- queries ----------------------------------------------------------
 

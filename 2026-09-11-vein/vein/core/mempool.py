@@ -36,9 +36,23 @@ class Mempool:
     def _validate_against(self, tx: Transaction, extra_claimed: Dict[UTXOKey, bytes]) -> int:
         if tx.is_coinbase():
             raise ValidationError("coinbase transactions do not belong in the mempool")
+        if not tx.inputs or not tx.outputs:
+            raise ValidationError("transaction must have at least one input and one output")
         fee_in = 0
+        seen_inputs: set = set()
         for i, txin in enumerate(tx.inputs):
             key = (txin.prev_txid, txin.prev_index)
+            if key in seen_inputs:
+                # A single transaction spending its own input twice would
+                # otherwise double-count that coin's value into fee_in
+                # below, letting a tx that doesn't actually have enough
+                # funds pass mempool validation — it would still be
+                # caught later when a block containing it is applied (see
+                # chain.py's per-block `spent_this_block` check), but only
+                # after wasting a miner's real proof-of-work on a block
+                # that chain.add_block then rejects outright.
+                raise ValidationError(f"transaction spends its own input {key} more than once")
+            seen_inputs.add(key)
             claimer = extra_claimed.get(key)
             if claimer is not None and claimer != tx.txid():
                 raise ValidationError(f"input {key} already claimed by pending tx {claimer.hex()[:12]}")
@@ -102,7 +116,11 @@ class Mempool:
         return dropped
 
     def select_for_block(self, max_count: int = 1000) -> List[Transaction]:
-        ranked = sorted(self.entries.values(), key=lambda e: e.fee, reverse=True)
+        # Rank by fee *rate* (sats/byte), not flat fee — a real miner
+        # maximizing revenue per byte of scarce block space would always
+        # prefer a small high-fee tx over a large one paying the same
+        # flat fee, and sorting by flat fee alone gets that backwards.
+        ranked = sorted(self.entries.values(), key=lambda e: e.fee / max(len(e.tx.serialize()), 1), reverse=True)
         return [e.tx for e in ranked[:max_count]]
 
     def total_fees(self, txids: List[bytes]) -> int:
