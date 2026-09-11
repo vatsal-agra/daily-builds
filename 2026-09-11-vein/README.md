@@ -41,4 +41,24 @@ running `partition-demo` repeatedly under real concurrent load until it
 broke. The multi-node partition demo now passes consistently across
 repeated runs; the full test suite (70 tests) is green.
 
-Next: Phase 4 (stretch features + polish).
+**Status: Phase 4 (Stretch + polish) complete.** Both stretch features
+from [`PLAN.md`](PLAN.md) are shipped, not just one:
+
+5. **Live block-explorer web UI** (`vein/explorer/explorer.html`) — a
+   self-contained, dark-themed page with zero build step, backed entirely
+   by one node's real RPC (chain view, per-block transaction detail in a
+   modal, live mempool, balance lookup, peer/severed status, chain-tips
+   view, and a live SSE event log) — verified with a real headless-
+   Chromium pass (zero console errors) against a live mining node,
+   including clicking into a real block and looking up a real balance.
+6. **CLI wallet + orchestrated network-partition demo** (`vein wallet
+   new/address/balance/send`, `vein partition-demo`) — verified
+   end-to-end: a real wallet-to-wallet payment, mined and confirmed on a
+   live node, RPC-queried back out.
+
+Polish: clean, non-traceback error handling across the CLI (missing
+wallet file, invalid address, unreachable RPC, zero/negative amount,
+insufficient funds, no spendable coins, malformed RPC input) and the
+explorer degrades gracefully with no node connected.
+
+Next: Phase 5 (verification).

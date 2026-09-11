@@ -104,8 +104,17 @@ def cmd_wallet_send(args: argparse.Namespace) -> None:
     if not is_valid_address(args.to):
         print(f"error: {args.to!r} is not a valid Vein address", file=sys.stderr)
         sys.exit(1)
+    if args.amount <= 0:
+        print(f"error: --amount must be positive, got {args.amount}", file=sys.stderr)
+        sys.exit(1)
+    if args.fee < 0:
+        print(f"error: --fee cannot be negative, got {args.fee}", file=sys.stderr)
+        sys.exit(1)
     to_pkh = pubkey_hash_from_address(args.to)
     utxo_resp = _rpc_get(args.rpc, f"/utxos?address={w.address}")
+    if not utxo_resp["utxos"]:
+        print(f"error: {w.address} has no spendable coins", file=sys.stderr)
+        sys.exit(1)
     utxos = [((bytes.fromhex(u["txid"]), u["index"]), TxOut(u["value"], Script.p2pkh_lock(w.pubkey_hash)))
              for u in utxo_resp["utxos"]]
     try:
@@ -222,7 +231,23 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
-    args.func(args)
+    try:
+        args.func(args)
+    except KeyboardInterrupt:
+        raise
+    except FileNotFoundError as e:
+        print(f"error: file not found: {e.filename}", file=sys.stderr)
+        sys.exit(1)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except urllib.error.URLError as e:
+        rpc = getattr(args, "rpc", "the node")
+        print(f"error: could not reach {rpc} ({e.reason}) — is a node running there?", file=sys.stderr)
+        sys.exit(1)
+    except ConnectionError as e:
+        print(f"error: connection failed: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

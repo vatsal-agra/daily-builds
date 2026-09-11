@@ -160,6 +160,7 @@ class RPCServer:
         }
 
     def _chain_summary(self, limit: int) -> dict:
+        limit = max(1, limit)  # a zero/negative limit would slice from the wrong end
         out = []
         for h in self.chain.active_chain[-limit:]:
             meta = self.chain.meta[h]
