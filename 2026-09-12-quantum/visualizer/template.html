@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quantum — OS Scheduler &amp; Virtual Memory Visualizer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#0d1117; --panel:#151b23; --panel2:#1c2530; --border:#2a3441;
+    --text:#e6edf3; --muted:#8b98a5; --accent:#58a6ff; --accent2:#3fb950;
+    --warn:#f0883e; --danger:#f85149; --idle:#30363d;
+    --p0:#58a6ff; --p1:#3fb950; --p2:#f0883e; --p3:#bc8cff; --p4:#f778ba;
+    --p5:#56d4dd; --p6:#e3b341; --p7:#ff7b72; --p8:#79c0ff; --p9:#7ee787;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 64px;}
+  .wrap{max-width:1100px;margin:0 auto;}
+  h1{font-size:1.6rem;margin:0 0 4px;}
+  h1 .quantum-mark{color:var(--accent);}
+  .subtitle{color:var(--muted);margin:0 0 28px;font-size:.95rem;line-height:1.5;}
+  h2{font-size:1.15rem;border-bottom:1px solid var(--border);padding-bottom:8px;margin:40px 0 16px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:18px;}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+  label{font-size:.82rem;color:var(--muted);margin-right:6px;}
+  select{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:.85rem;}
+  table{width:100%;border-collapse:collapse;font-size:.82rem;}
+  th,td{text-align:right;padding:6px 10px;border-bottom:1px solid var(--border);}
+  th:first-child,td:first-child{text-align:left;}
+  th{color:var(--muted);font-weight:600;}
+  canvas{display:block;width:100%;}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.78rem;color:var(--muted);margin-top:8px;}
+  .swatch{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px;}
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px;}
+  .stat{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+  .stat .label{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;}
+  .stat .value{font-size:1.25rem;font-weight:600;margin-top:2px;}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.72rem;font-weight:600;}
+  .badge.ok{background:rgba(63,185,80,.15);color:var(--accent2);}
+  .badge.warn{background:rgba(240,136,62,.15);color:var(--warn);}
+  .note{color:var(--muted);font-size:.82rem;line-height:1.5;margin-top:10px;}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:.85em;}
+  .tick-tooltip{position:fixed;pointer-events:none;background:#000c;border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:.75rem;display:none;z-index:10;white-space:nowrap;}
+  footer{color:var(--muted);font-size:.78rem;text-align:center;margin-top:40px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="quantum-mark">Quantum</span> — OS Scheduler &amp; Virtual Memory Visualizer</h1>
+  <p class="subtitle">Every chart below is rendered directly from one real simulation run —
+    six CPU scheduling algorithms and four page-replacement algorithms, embedded as JSON
+    at build time. Nothing here is a mock-up.</p>
+
+  <h2>CPU Scheduling</h2>
+  <div class="panel">
+    <div class="row">
+      <div><label for="schedAlgo">Algorithm</label><select id="schedAlgo"></select></div>
+      <div id="schedStats" class="row" style="margin:0;"></div>
+    </div>
+    <canvas id="ganttCanvas" height="140"></canvas>
+    <div id="ganttLegend" class="legend"></div>
+    <table id="schedTable"><thead><tr>
+      <th>PID</th><th>Name</th><th>Arrival</th><th>Complete</th><th>Turnaround</th><th>Waiting</th><th>Response</th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="panel">
+    <div class="row" style="justify-content:space-between;">
+      <strong>Algorithm comparison — average waiting time</strong>
+    </div>
+    <canvas id="schedCompareCanvas" height="180"></canvas>
+  </div>
+
+  <h2>Virtual Memory</h2>
+  <div class="panel">
+    <div class="row">
+      <div><label for="memFrames">Frames</label><select id="memFrames"></select></div>
+      <div><label for="memAlgo">Algorithm</label><select id="memAlgo"></select></div>
+      <div id="memStats" class="row" style="margin:0;"></div>
+    </div>
+    <canvas id="memCanvas" height="160"></canvas>
+    <div class="legend"><span><span class="swatch" style="background:var(--idle)"></span>empty frame</span>
+      <span><span class="swatch" style="background:var(--danger)"></span>page fault</span>
+      <span><span class="swatch" style="background:var(--accent2)"></span>hit</span></div>
+    <p class="note">Each column is one memory access from the locality-of-reference workload
+      (a random walk over a small working set, with occasional jumps to a new one — not
+      uniform noise). Rows are physical frames; a red-outlined cell marks a page fault.</p>
+  </div>
+
+  <div class="panel">
+    <strong>Page faults by algorithm, across frame counts</strong>
+    <canvas id="memCompareCanvas" height="180"></canvas>
+    <div id="memCompareLegend" class="legend"></div>
+    <div id="optimalBadge" class="note"></div>
+  </div>
+
+  <div class="panel">
+    <strong>Belady's Anomaly — the classic counter-example</strong>
+    <p class="note">Reference string <code id="beladyString"></code> under FIFO: more physical
+      memory should never make performance <em>worse</em> — yet it does.</p>
+    <table id="beladyTable"><thead><tr><th>Frames</th><th>FIFO</th><th>LRU</th><th>Clock</th><th>Optimal</th></tr></thead><tbody></tbody></table>
+    <div id="beladyBadge" class="note"></div>
+  </div>
+
+  <footer>Quantum — built from scratch, no chart libraries, no mocked numbers.</footer>
+</div>
+<div id="tooltip" class="tick-tooltip"></div>
+
+<script>
+const DATA = /*__QUANTUM_DATA__*/;
+const PROC_COLORS = ['--p0','--p1','--p2','--p3','--p4','--p5','--p6','--p7','--p8','--p9'];
+function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function colorForPid(pid){ return cssVar(PROC_COLORS[(pid-1) % PROC_COLORS.length]); }
+function fmt(n){ return (Math.round(n*100)/100).toString(); }
+
+/* ---------------- Scheduling ---------------- */
+const schedAlgoSel = document.getElementById('schedAlgo');
+const algoNames = Object.keys(DATA.scheduler.runs);
+for (const name of algoNames){
+  const opt = document.createElement('option'); opt.value = name; opt.textContent = name;
+  schedAlgoSel.appendChild(opt);
+}
+schedAlgoSel.addEventListener('change', renderSchedule);
+
+function renderSchedule(){
+  const run = DATA.scheduler.runs[schedAlgoSel.value];
+  const statsEl = document.getElementById('schedStats');
+  statsEl.innerHTML = `
+    <div class="stat"><div class="label">Avg Waiting</div><div class="value">${fmt(run.avg_waiting)}</div></div>
+    <div class="stat"><div class="label">Avg Turnaround</div><div class="value">${fmt(run.avg_turnaround)}</div></div>
+    <div class="stat"><div class="label">Avg Response</div><div class="value">${fmt(run.avg_response)}</div></div>
+    <div class="stat"><div class="label">CPU Util</div><div class="value">${fmt(run.cpu_utilization*100)}%</div></div>
+    <div class="stat"><div class="label">Switches</div><div class="value">${run.context_switches}</div></div>
+  `;
+
+  const canvas = document.getElementById('ganttCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth || 1000;
+  const height = 140;
+  canvas.width = width*dpr; canvas.height = height*dpr;
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,width,height);
+
+  const totalTicks = run.total_ticks;
+  const padL = 40, padR = 10, padT = 10, padB = 20;
+  const plotW = width - padL - padR;
+  const barY = padT, barH = height - padT - padB;
+  const scale = t => padL + (t/totalTicks)*plotW;
+
+  for (const [start,end,pid,level] of run.gantt){
+    ctx.fillStyle = pid === -1 ? cssVar('--idle') : colorForPid(pid);
+    const x0 = scale(start), x1 = scale(end);
+    ctx.fillRect(x0, barY, Math.max(1,x1-x0), barH);
+    ctx.strokeStyle = cssVar('--bg'); ctx.lineWidth = 1;
+    ctx.strokeRect(x0, barY, Math.max(1,x1-x0), barH);
+  }
+  ctx.fillStyle = cssVar('--muted'); ctx.font = '11px sans-serif';
+  ctx.fillText('0', padL, height-6);
+  ctx.fillText(String(totalTicks), width-padR-18, height-6);
+  ctx.strokeStyle = cssVar('--border');
+  ctx.strokeRect(padL, barY, plotW, barH);
+
+  const legend = document.getElementById('ganttLegend');
+  legend.innerHTML = DATA.scheduler.processes.map(p =>
+    `<span><span class="swatch" style="background:${colorForPid(p.pid)}"></span>${p.name} (arr ${p.arrival_time}, cpu ${p.total_cpu_time})</span>`
+  ).join('') + `<span><span class="swatch" style="background:${cssVar('--idle')}"></span>idle</span>`;
+
+  const tbody = document.querySelector('#schedTable tbody');
+  tbody.innerHTML = run.processes.map(m => `<tr>
+    <td>${m.pid}</td><td style="text-align:left">${m.name}</td><td>${m.arrival_time}</td>
+    <td>${m.completion_time}</td><td>${m.turnaround_time}</td><td>${m.waiting_time}</td><td>${m.response_time}</td>
+  </tr>`).join('');
+}
+
+function renderSchedCompare(){
+  const canvas = document.getElementById('schedCompareCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth || 1000, height = 180;
+  canvas.width = width*dpr; canvas.height = height*dpr;
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,width,height);
+
+  const values = algoNames.map(n => DATA.scheduler.runs[n].avg_waiting);
+  const maxV = Math.max(...values, 1);
+  const padL = 40, padB = 30, padT = 24;
+  const plotW = width - padL - 10, plotH = height - padT - padB;
+  const barW = plotW / values.length * 0.6;
+  const gap = plotW / values.length;
+
+  algoNames.forEach((name, i) => {
+    const v = values[i];
+    const h = (v/maxV) * plotH;
+    const x = padL + i*gap + (gap-barW)/2;
+    const y = padT + plotH - h;
+    ctx.fillStyle = cssVar('--accent');
+    ctx.fillRect(x, y, barW, h);
+    ctx.fillStyle = cssVar('--text'); ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(fmt(v), x+barW/2, Math.max(12, y-4));
+    ctx.fillStyle = cssVar('--muted');
+    ctx.fillText(name, x+barW/2, height-10);
+  });
+  ctx.textAlign='left';
+}
+
+/* ---------------- Memory ---------------- */
+const memFramesSel = document.getElementById('memFrames');
+const memAlgoSel = document.getElementById('memAlgo');
+const locality = DATA.memory.locality;
+for (const f of locality.frame_counts){
+  const opt = document.createElement('option'); opt.value = f; opt.textContent = f + ' frames';
+  memFramesSel.appendChild(opt);
+}
+for (const a of Object.keys(locality.by_frames[locality.frame_counts[0]])){
+  const opt = document.createElement('option'); opt.value = a; opt.textContent = a.toUpperCase();
+  memAlgoSel.appendChild(opt);
+}
+memFramesSel.addEventListener('change', renderMemory);
+memAlgoSel.addEventListener('change', renderMemory);
+
+function renderMemory(){
+  const frames = memFramesSel.value;
+  const algo = memAlgoSel.value;
+  const result = locality.by_frames[frames][algo];
+  const statsEl = document.getElementById('memStats');
+  statsEl.innerHTML = `
+    <div class="stat"><div class="label">Page Faults</div><div class="value">${result.page_faults}</div></div>
+    <div class="stat"><div class="label">Fault Rate</div><div class="value">${fmt(result.fault_rate*100)}%</div></div>
+    <div class="stat"><div class="label">TLB Hit Rate</div><div class="value">${fmt(result.tlb_hit_rate*100)}%</div></div>
+  `;
+
+  const canvas = document.getElementById('memCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth || 1000;
+  const numFrames = Number(frames);
+  const cellH = 24, padT = 10, padL = 40;
+  const height = padT*2 + numFrames*cellH;
+  canvas.height = height; canvas.style.height = height+'px';
+  canvas.width = width*dpr; canvas.height = height*dpr;
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,width,height);
+
+  const n = result.accesses.length;
+  const cellW = Math.max(4, (width - padL - 10) / n);
+  for (let i=0;i<n;i++){
+    const access = result.accesses[i];
+    const frameRow = result.frame_timeline[i];
+    for (let f=0; f<numFrames; f++){
+      const vpage = frameRow[f];
+      const x = padL + i*cellW, y = padT + f*cellH;
+      ctx.fillStyle = vpage === null ? cssVar('--idle') : (f === access.frame ? cssVar('--accent2') : cssVar('--panel2'));
+      ctx.fillRect(x, y, Math.max(1,cellW-0.5), cellH-2);
+      if (f === access.frame && access.page_fault){
+        ctx.strokeStyle = cssVar('--danger'); ctx.lineWidth = 2;
+        ctx.strokeRect(x+1, y+1, Math.max(1,cellW-2.5), cellH-4);
+      }
+    }
+  }
+  ctx.fillStyle = cssVar('--muted'); ctx.font='11px sans-serif';
+  for (let f=0; f<numFrames; f++){
+    ctx.fillText('f'+f, 6, padT + f*cellH + cellH/2 + 4);
+  }
+}
+
+function renderMemCompare(){
+  const canvas = document.getElementById('memCompareCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth || 1000, height = 180;
+  canvas.width = width*dpr; canvas.height = height*dpr;
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,width,height);
+
+  const algos = Object.keys(locality.by_frames[locality.frame_counts[0]]);
+  const colors = {fifo:'--p2', lru:'--p0', clock:'--p3', optimal:'--p1'};
+  const maxV = Math.max(...locality.frame_counts.map(f =>
+    Math.max(...algos.map(a => locality.by_frames[f][a].page_faults))), 1);
+
+  const padL = 40, padB = 30, padT = 10;
+  const plotW = width - padL - 10, plotH = height - padT - padB;
+  const groupW = plotW / locality.frame_counts.length;
+  const barW = groupW / (algos.length+1);
+
+  locality.frame_counts.forEach((f, gi) => {
+    algos.forEach((a, ai) => {
+      const v = locality.by_frames[f][a].page_faults;
+      const h = (v/maxV) * plotH;
+      const x = padL + gi*groupW + ai*barW + barW*0.3;
+      const y = padT + plotH - h;
+      ctx.fillStyle = cssVar(colors[a] || '--accent');
+      ctx.fillRect(x, y, barW*0.8, h);
+    });
+    ctx.fillStyle = cssVar('--muted'); ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(f+' frames', padL + gi*groupW + groupW/2, height-10);
+  });
+  ctx.textAlign='left';
+
+  const legendRow = document.getElementById('memCompareLegend');
+  legendRow.innerHTML = algos.map(a =>
+    `<span><span class="swatch" style="background:${cssVar(colors[a] || '--accent')}"></span>${a.toUpperCase()}</span>`
+  ).join('');
+
+  const legend = document.getElementById('optimalBadge');
+  const badgeClass = locality.optimal_is_minimal ? 'ok' : 'warn';
+  legend.innerHTML = `<span class="badge ${badgeClass}">Optimal-minimality: ${locality.optimal_is_minimal ? 'holds on every frame count' : 'VIOLATED'}</span> — Belady's MIN never has more faults than FIFO/LRU/Clock on the same input, by construction.`;
+}
+
+function renderBelady(){
+  const b = DATA.memory.belady_anomaly_demo;
+  document.getElementById('beladyString').textContent = '[' + b.reference_string.join(', ') + ']';
+  const tbody = document.querySelector('#beladyTable tbody');
+  tbody.innerHTML = b.frame_counts.map(f => {
+    const row = b.by_frames[f];
+    return `<tr><td>${f}</td><td>${row.fifo.page_faults}</td><td>${row.lru.page_faults}</td><td>${row.clock.page_faults}</td><td>${row.optimal.page_faults}</td></tr>`;
+  }).join('');
+  const anomaly = b.belady_anomaly.fifo;
+  document.getElementById('beladyBadge').innerHTML =
+    `<span class="badge ${anomaly ? 'warn':'ok'}">FIFO ${anomaly ? 'DOES exhibit' : 'does not exhibit'} Belady's Anomaly here</span> — fault count goes from ${b.by_frames[b.frame_counts[0]].fifo.page_faults} (${b.frame_counts[0]} frames) to ${b.by_frames[b.frame_counts[1]].fifo.page_faults} (${b.frame_counts[1]} frames).`;
+}
+
+schedAlgoSel.value = algoNames[0];
+memFramesSel.value = locality.frame_counts[Math.floor(locality.frame_counts.length/2)];
+memAlgoSel.value = 'lru';
+renderSchedule();
+renderSchedCompare();
+renderMemory();
+renderMemCompare();
+renderBelady();
+window.addEventListener('resize', () => { renderSchedule(); renderSchedCompare(); renderMemory(); renderMemCompare(); });
+</script>
+</body>
+</html>
