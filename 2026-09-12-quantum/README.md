@@ -63,4 +63,12 @@ from [PLAN.md](PLAN.md) are implemented and tested, not just one:
 
 117 pytest tests pass (up from 97).
 
-Next: Phase 5 (verification).
+**Status: Phase 5 (Verification) complete.** `./demo.sh` runs 9 checks
+covering every required and stretch feature end to end — the full pytest
+suite, the brute-force oracle against Belady's MIN, the full
+scheduler/memory comparison matrix with the Optimal-minimality invariant,
+Belady's Anomaly reproduced live (FIFO: 9 → 10 faults), the visualizer
+built and headless-browser smoke tested with zero console errors, and
+both stretch features (CoW fork, thrashing cliff) — and all 9 pass.
+
+Next: Phase 6 (ship).
