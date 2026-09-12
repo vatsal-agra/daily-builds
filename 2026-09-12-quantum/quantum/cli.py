@@ -6,9 +6,11 @@ import json
 import sys
 
 from .compare import brute_force_min_faults, compare_memory, compare_schedulers
+from .cow import COWMemory
 from .memory import simulate_memory
 from .process import Process
 from .scheduler import POLICIES, simulate
+from .thrash import find_thrashing_cliff
 from .viz_export import export_to_file
 from .workload import make_belady_anomaly_string, make_processes, make_reference_string
 
@@ -93,6 +95,57 @@ def cmd_export(args: argparse.Namespace) -> None:
     print(f"wrote {args.out}")
 
 
+def cmd_cow(args: argparse.Namespace) -> None:
+    mem = COWMemory()
+    parent = mem.new_process(pid=1)
+    for vp in range(args.pages):
+        mem.map_page(parent, vp, f"page{vp}-v0")
+    print(f"parent (pid 1): mapped {args.pages} pages, all refcount 1")
+
+    child = mem.fork(parent, child_pid=2)
+    print(f"child (pid 2) forked: shares all {args.pages} frames with parent "
+          f"(refcount now {mem.refcount_of(parent, 0)} on every page)")
+
+    print(f"\nchild writes vpage 0 ...")
+    mem.write(child, 0, "page0-v1-by-child")
+    same = mem.frame_of(parent, 0) == mem.frame_of(child, 0)
+    print(f"  parent/child now share vpage 0's frame? {same} (must be False)")
+    print(f"  parent still reads: {mem.read(parent, 0)!r}")
+    print(f"  child now reads:    {mem.read(child, 0)!r}")
+    print(f"  vpage 1 still shared? {mem.frame_of(parent, 1) == mem.frame_of(child, 1)} "
+          f"(refcount {mem.refcount_of(parent, 1)})")
+    print(f"  total real copies made so far: {mem.copies_made}")
+
+    mem.exit_process(child)
+    mem.exit_process(parent)
+    print(f"\nboth processes exited: {mem.frames_freed} frames freed, "
+          f"{len(mem.refcount)} still held (must be 0)")
+
+
+def cmd_thrash(args: argparse.Namespace) -> None:
+    results = find_thrashing_cliff(
+        num_frames=args.frames, max_processes=args.max_processes,
+        ref_length=args.length, fault_service_time=args.fault_service_time,
+        working_set_size=args.working_set, num_pages=args.pages,
+    )
+    throughputs = [r.throughput for r in results]
+    peak_n = throughputs.index(max(throughputs)) + 1
+    print(f"=== Multiprogramming sweep, {args.frames} fixed physical frames ===")
+    print(f"{'Degree':>7}{'Faults':>8}{'FaultRate':>11}{'Makespan':>10}{'Throughput':>12}")
+    for r in results:
+        marker = "  <- peak" if r.num_processes == peak_n else ""
+        print(f"{r.num_processes:>7}{r.page_faults:>8}{r.fault_rate:>11.1%}"
+              f"{r.makespan:>10}{r.throughput:>12.4f}{marker}")
+    collapse = max(throughputs) / throughputs[-1]
+    print(f"\nthroughput peaks at degree {peak_n}, then collapses {collapse:.1f}x by degree "
+          f"{args.max_processes} -- more concurrency stopped helping once the aggregate "
+          f"working set overran the fixed frame pool.")
+    if args.out:
+        with open(args.out, "w") as f:
+            json.dump([r.as_dict() for r in results], f, indent=2)
+        print(f"wrote {args.out}")
+
+
 def cmd_oracle(args: argparse.Namespace) -> None:
     ref = [int(x) for x in args.ref.split(",")]
     bruteforce = brute_force_min_faults(ref, args.frames)
@@ -144,6 +197,20 @@ def build_parser() -> argparse.ArgumentParser:
     ep.add_argument("--n", type=int, default=8)
     ep.add_argument("--length", type=int, default=60)
     ep.set_defaults(func=cmd_export)
+
+    wp = sub.add_parser("cow", help="demo the copy-on-write fork simulator")
+    wp.add_argument("--pages", type=int, default=4)
+    wp.set_defaults(func=cmd_cow)
+
+    tp = sub.add_parser("thrash", help="sweep multiprogramming degree to find the thrashing cliff")
+    tp.add_argument("--frames", type=int, default=28)
+    tp.add_argument("--max-processes", type=int, default=16)
+    tp.add_argument("--length", type=int, default=150)
+    tp.add_argument("--fault-service-time", type=int, default=20)
+    tp.add_argument("--working-set", type=int, default=4)
+    tp.add_argument("--pages", type=int, default=12)
+    tp.add_argument("--out")
+    tp.set_defaults(func=cmd_thrash)
 
     op = sub.add_parser("oracle", help="check Belady's MIN against a brute-force oracle")
     op.add_argument("--ref", default="1,2,3,1,4,2,3,4,1")
