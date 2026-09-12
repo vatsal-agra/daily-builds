@@ -106,6 +106,18 @@ def brute_force_min_faults(reference_string: list[int], num_frames: int) -> int:
     """
     from functools import lru_cache
 
+    if num_frames < 1:
+        raise ValueError("num_frames must be >= 1")
+    if not reference_string:
+        raise ValueError("reference_string must not be empty")
+    distinct_pages = len(set(reference_string))
+    if distinct_pages > 12 or len(reference_string) > 200:
+        raise ValueError(
+            "brute_force_min_faults is exhaustive (exponential in the number of distinct "
+            f"pages resident at once) — it's an oracle for small inputs only; got "
+            f"{distinct_pages} distinct pages over {len(reference_string)} accesses. "
+            "Use simulate_memory(..., 'optimal') directly for real workloads."
+        )
     n = len(reference_string)
 
     @lru_cache(maxsize=None)

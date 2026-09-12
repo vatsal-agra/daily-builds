@@ -151,8 +151,73 @@ class TestConservationLaws:
             self._check(algo, **kwargs)
 
 
+class TestContextSwitchCost:
+    def test_overhead_is_paid_and_conserved(self):
+        # Regression test: an earlier implementation discarded the
+        # already-chosen next process while "paying" the switch cost,
+        # so it vanished from the simulation and the run never
+        # terminated. This exercises the exact scenario that hung.
+        procs = [_cpu_only(1, 0, 24), _cpu_only(2, 0, 3), _cpu_only(3, 0, 3)]
+        baseline = simulate(procs, "rr", quantum=4, context_switch_cost=0)
+        with_cost = simulate(procs, "rr", quantum=4, context_switch_cost=2)
+        total_cpu = sum(p.total_cpu_time for p in procs)
+        busy = sum(end - start for (start, end, pid, _) in with_cost.gantt if pid != -1)
+        assert busy == total_cpu, "context-switch overhead must never eat real CPU time"
+        assert with_cost.total_ticks == baseline.total_ticks + with_cost.context_switches * 2
+        assert len(with_cost.metrics) == len(procs)  # nobody vanished
+
+    def test_zero_cost_matches_no_overhead_semantics(self):
+        procs = [_cpu_only(1, 0, 10), _cpu_only(2, 0, 5)]
+        a = simulate(procs, "rr", quantum=2, context_switch_cost=0)
+        b = simulate(procs, "rr", quantum=2)
+        assert a.as_dict() == b.as_dict()
+
+    def test_rejects_negative_cost(self):
+        import pytest
+        with pytest.raises(ValueError):
+            simulate([_cpu_only(1, 0, 5)], "fcfs", context_switch_cost=-1)
+
+
+class TestInputValidation:
+    def test_rejects_duplicate_pids(self):
+        import pytest
+        procs = [_cpu_only(1, 0, 5), _cpu_only(1, 1, 3)]
+        with pytest.raises(ValueError):
+            simulate(procs, "fcfs")
+
+    def test_rejects_empty_process_list(self):
+        import pytest
+        with pytest.raises(ValueError):
+            simulate([], "fcfs")
+
+    def test_rejects_unknown_algorithm(self):
+        import pytest
+        with pytest.raises(ValueError):
+            simulate([_cpu_only(1, 0, 5)], "not_a_real_algorithm")
+
+    def test_rejects_zero_aging_interval_instead_of_dividing_by_zero(self):
+        import pytest
+        with pytest.raises(ValueError):
+            simulate([_cpu_only(1, 0, 5)], "priority", aging_interval=0)
+
+    def test_rejects_non_positive_mlfq_quantum(self):
+        import pytest
+        with pytest.raises(ValueError):
+            simulate([_cpu_only(1, 0, 5)], "mlfq", quantums=(4, 0, 8))
+
+    def test_rejects_non_positive_boost_interval(self):
+        import pytest
+        with pytest.raises(ValueError):
+            simulate([_cpu_only(1, 0, 5)], "mlfq", boost_interval=0)
+
+
 class TestBursts:
     def test_process_with_io_bursts_alternates_correctly(self):
+        # Regression test: an earlier version of Process had two
+        # redundant fields (remaining_in_burst / io_remaining) that got
+        # mixed up on the CPU->IO transition, so the I/O burst's
+        # countdown was never actually initialized and it "completed"
+        # instantly (0 ticks) instead of taking its real length.
         p = Process(
             pid=1, arrival_time=0,
             bursts=[Burst(BurstKind.CPU, 3), Burst(BurstKind.IO, 5), Burst(BurstKind.CPU, 2)],

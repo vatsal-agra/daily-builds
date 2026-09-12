@@ -28,6 +28,7 @@
   th:first-child,td:first-child{text-align:left;}
   th{color:var(--muted);font-weight:600;}
   canvas{display:block;width:100%;}
+  .table-scroll{overflow-x:auto;}
   .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.78rem;color:var(--muted);margin-top:8px;}
   .swatch{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px;}
   .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px;}
@@ -58,9 +59,12 @@
     </div>
     <canvas id="ganttCanvas" height="140"></canvas>
     <div id="ganttLegend" class="legend"></div>
-    <table id="schedTable"><thead><tr>
+    <p class="note">Under MLFQ, a darker slice marked <code>L1</code>/<code>L2</code> means that
+      process burned through its quantum and got demoted a queue level — watch for it climbing
+      back to full brightness after the periodic priority boost.</p>
+    <div class="table-scroll"><table id="schedTable"><thead><tr>
       <th>PID</th><th>Name</th><th>Arrival</th><th>Complete</th><th>Turnaround</th><th>Waiting</th><th>Response</th>
-    </tr></thead><tbody></tbody></table>
+    </tr></thead><tbody></tbody></table></div>
   </div>
 
   <div class="panel">
@@ -97,7 +101,7 @@
     <strong>Belady's Anomaly — the classic counter-example</strong>
     <p class="note">Reference string <code id="beladyString"></code> under FIFO: more physical
       memory should never make performance <em>worse</em> — yet it does.</p>
-    <table id="beladyTable"><thead><tr><th>Frames</th><th>FIFO</th><th>LRU</th><th>Clock</th><th>Optimal</th></tr></thead><tbody></tbody></table>
+    <div class="table-scroll"><table id="beladyTable"><thead><tr><th>Frames</th><th>FIFO</th><th>LRU</th><th>Clock</th><th>Optimal</th></tr></thead><tbody></tbody></table></div>
     <div id="beladyBadge" class="note"></div>
   </div>
 
@@ -147,11 +151,20 @@ function renderSchedule(){
   const scale = t => padL + (t/totalTicks)*plotW;
 
   for (const [start,end,pid,level] of run.gantt){
-    ctx.fillStyle = pid === -1 ? cssVar('--idle') : colorForPid(pid);
     const x0 = scale(start), x1 = scale(end);
+    // Darker with each MLFQ demotion (level 0 = full brightness); always
+    // level 0 for every non-MLFQ algorithm, so this is a no-op there.
+    ctx.globalAlpha = pid === -1 ? 1 : Math.max(0.35, 1 - level*0.28);
+    ctx.fillStyle = pid === -1 ? cssVar('--idle') : colorForPid(pid);
     ctx.fillRect(x0, barY, Math.max(1,x1-x0), barH);
+    ctx.globalAlpha = 1;
     ctx.strokeStyle = cssVar('--bg'); ctx.lineWidth = 1;
     ctx.strokeRect(x0, barY, Math.max(1,x1-x0), barH);
+    if (pid !== -1 && level > 0 && (x1-x0) > 14){
+      ctx.fillStyle = cssVar('--bg'); ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('L'+level, (x0+x1)/2, barY+barH/2+3);
+      ctx.textAlign = 'left';
+    }
   }
   ctx.fillStyle = cssVar('--muted'); ctx.font = '11px sans-serif';
   ctx.fillText('0', padL, height-6);
@@ -185,6 +198,13 @@ function renderSchedCompare(){
   const plotW = width - padL - 10, plotH = height - padT - padB;
   const barW = plotW / values.length * 0.6;
   const gap = plotW / values.length;
+  // Labels like "RoundRobin(q=4)" collide with their neighbors once bars
+  // get narrow (small screens, or many algorithms) — shorten first, then
+  // shrink the font, rather than letting them overlap into mush.
+  const shortLabel = n => n.replace('RoundRobin', 'RR').replace('PriorityAging', 'Priority');
+  ctx.font = '11px sans-serif';
+  const labelFont = algoNames.some(n => ctx.measureText(shortLabel(n)).width > gap - 4)
+    ? '9px sans-serif' : '11px sans-serif';
 
   algoNames.forEach((name, i) => {
     const v = values[i];
@@ -195,8 +215,8 @@ function renderSchedCompare(){
     ctx.fillRect(x, y, barW, h);
     ctx.fillStyle = cssVar('--text'); ctx.font='11px sans-serif'; ctx.textAlign='center';
     ctx.fillText(fmt(v), x+barW/2, Math.max(12, y-4));
-    ctx.fillStyle = cssVar('--muted');
-    ctx.fillText(name, x+barW/2, height-10);
+    ctx.fillStyle = cssVar('--muted'); ctx.font = labelFont;
+    ctx.fillText(shortLabel(name), x+barW/2, height-10);
   });
   ctx.textAlign='left';
 }

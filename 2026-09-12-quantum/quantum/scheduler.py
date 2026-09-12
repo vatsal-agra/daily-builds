@@ -233,6 +233,8 @@ class PriorityAgingPolicy:
     name = "PriorityAging"
 
     def __init__(self, aging_rate: float = 1.0, aging_interval: int = 10) -> None:
+        if aging_interval < 1:
+            raise ValueError("aging_interval must be >= 1")  # else `% 0` crashes on the first tick
         self.aging_rate = aging_rate
         self.aging_interval = aging_interval
         self.ready: list[Process] = []
@@ -278,6 +280,10 @@ class MLFQPolicy:
     def __init__(self, quantums: tuple[int, ...] = (4, 8, 16), boost_interval: int | None = 50):
         if len(quantums) < 1:
             raise ValueError("MLFQ needs at least one level")
+        if any(q < 1 for q in quantums):
+            raise ValueError(f"every MLFQ quantum must be >= 1, got {quantums}")
+        if boost_interval is not None and boost_interval < 1:
+            raise ValueError("boost_interval must be None (disabled) or >= 1")
         self.quantums = quantums
         self.boost_interval = boost_interval
         self.queues: list[deque[Process]] = [deque() for _ in quantums]
@@ -350,6 +356,11 @@ def simulate(
     procs = [p.clone() for p in processes]
     if not procs:
         raise ValueError("at least one process is required")
+    pids = [p.pid for p in procs]
+    if len(set(pids)) != len(pids):
+        raise ValueError(f"process pids must be unique, got {pids}")
+    if context_switch_cost < 0:
+        raise ValueError("context_switch_cost must be >= 0")
     policy = POLICIES[algorithm](**policy_kwargs)
 
     arrivals_at: dict[int, list[Process]] = {}
@@ -361,10 +372,17 @@ def simulate(
     done_count = 0
     total = len(procs)
 
-    raw_ticks: list[tuple[int, int]] = []  # (t, pid) pid=-1 means idle
+    raw_ticks: list[tuple[int, int, int]] = []  # (t, pid, mlfq_level); pid=-1 means idle
     idle_ticks = 0
     context_switches = 0
-    forced_idle_remaining = 0  # context-switch overhead in progress
+    # Ticks of context-switch overhead still owed on the *current* running
+    # process before it actually starts making progress. Modeled as "the
+    # CPU has dispatched to it but isn't yet doing useful work" rather
+    # than as a separate no-one-is-running phase — that would require
+    # remembering the policy's already-committed choice in a second place
+    # (an earlier version of this code did exactly that, discarded the
+    # choice when the overhead finished, and lost the process forever).
+    overhead_remaining = 0
 
     t = 0
     max_ticks = MAX_TICKS_PER_PROCESS * total
@@ -378,31 +396,13 @@ def simulate(
         for p in arrivals_at.get(t, []):
             policy.enqueue(p, t)
 
-        if forced_idle_remaining > 0:
-            forced_idle_remaining -= 1
-            raw_ticks.append((t, -1))
-            idle_ticks += 1
-            for p in io_waiting:
-                p.remaining_in_burst -= 1
-            io_waiting, done_count = _drain_finished_io(io_waiting, policy, t, done_count)
-            t += 1
-            continue
-
         policy.on_tick_start(t, running)
         chosen = policy.select(t, running)
 
         if chosen is not running and chosen is not None and running is not None:
             context_switches += 1
             if context_switch_cost > 0:
-                forced_idle_remaining = context_switch_cost
-                running = None
-                raw_ticks.append((t, -1))
-                idle_ticks += 1
-                for p in io_waiting:
-                    p.remaining_in_burst -= 1
-                io_waiting, done_count = _drain_finished_io(io_waiting, policy, t, done_count)
-                t += 1
-                continue
+                overhead_remaining = context_switch_cost
 
         running = chosen
         if running is not None and running.first_run_time is None:
@@ -410,10 +410,14 @@ def simulate(
 
         if running is None:
             idle_ticks += 1
-            raw_ticks.append((t, -1))
+            raw_ticks.append((t, -1, 0))
+        elif overhead_remaining > 0:
+            overhead_remaining -= 1
+            idle_ticks += 1
+            raw_ticks.append((t, -1, 0))  # paying switch-over cost, no progress yet
         else:
             running.remaining_in_burst -= 1
-            raw_ticks.append((t, running.pid))
+            raw_ticks.append((t, running.pid, running.mlfq_level))
 
         for p in io_waiting:
             p.remaining_in_burst -= 1
@@ -433,7 +437,7 @@ def simulate(
         t += 1
 
     total_ticks = t
-    gantt = _compress_gantt(raw_ticks, procs)
+    gantt = _compress_gantt(raw_ticks)
     metrics = [_process_metrics(p) for p in sorted(procs, key=lambda p: p.pid)]
     return SimulationResult(
         algorithm=policy.name,
@@ -461,19 +465,23 @@ def _drain_finished_io(io_waiting, policy, t, done_count):
     return still_waiting, done_count
 
 
-def _compress_gantt(raw_ticks, procs):
-    """Turn a per-tick (t, pid) list into minimal (start, end, pid, level)
-    segments — pid=-1 represents idle."""
-    level_by_pid = {p.pid: 0 for p in procs}
+def _compress_gantt(raw_ticks):
+    """Turn a per-tick (t, pid, mlfq_level) list into minimal
+    (start, end, pid, level) segments — pid=-1 represents idle.
+
+    A segment also breaks on a level change even when the pid doesn't
+    change: MLFQ can demote a process and immediately reselect that same
+    process (it was the only one ready) — collapsing that into one segment
+    would silently hide every demotion from the Gantt trace."""
     segments: list[tuple[int, int, int, int]] = []
     if not raw_ticks:
         return segments
-    seg_start, seg_pid = raw_ticks[0]
-    for (t, pid) in raw_ticks[1:]:
-        if pid != seg_pid:
-            segments.append((seg_start, t, seg_pid, level_by_pid.get(seg_pid, 0)))
-            seg_start, seg_pid = t, pid
-    segments.append((seg_start, raw_ticks[-1][0] + 1, seg_pid, level_by_pid.get(seg_pid, 0)))
+    seg_start, seg_pid, seg_level = raw_ticks[0]
+    for (t, pid, level) in raw_ticks[1:]:
+        if pid != seg_pid or level != seg_level:
+            segments.append((seg_start, t, seg_pid, seg_level))
+            seg_start, seg_pid, seg_level = t, pid, level
+    segments.append((seg_start, raw_ticks[-1][0] + 1, seg_pid, seg_level))
     return segments
 
 

@@ -34,6 +34,8 @@ def make_processes(
     and longer I/O bursts (interactive/I/O-bound) — the same two archetypes
     every OS scheduling textbook contrasts.
     """
+    if n < 1:
+        raise ValueError("n must be >= 1")
     rng = random.Random(seed)
     procs = []
     for pid in range(1, n + 1):
@@ -69,6 +71,10 @@ def make_reference_string(
     jumps to a brand new working set (simulating a phase change — a new
     function called, a new data structure traversed).
     """
+    if num_pages < 1:
+        raise ValueError("num_pages must be >= 1")
+    if working_set_size < 1:
+        raise ValueError("working_set_size must be >= 1")
     if working_set_size > num_pages:
         raise ValueError("working_set_size cannot exceed num_pages")
     rng = random.Random(seed)

@@ -22,8 +22,26 @@ implemented and verified against independent ground truth — see
   timeline, and comparison charts, driven by real exported JSON. Headless
   Chromium smoke-tested with zero console errors.
 
-73 pytest tests pass, including an independent brute-force oracle that
-verifies Belady's MIN against exhaustive search on small inputs, and the
-LRU stack-property invariant checked tick-by-tick.
+**Status: Phase 3 (Adversarial Review) complete.** See
+[REVIEW.md](REVIEW.md) for the full writeup. Three real bugs were found
+and fixed by attacking the code as a hostile reviewer, not just admiring
+what already passed:
 
-Next: Phase 3 (adversarial review).
+- Every I/O burst completed in 0 ticks (two redundant `Process` fields
+  got mixed up on the CPU→IO transition).
+- `context_switch_cost > 0` hung the simulation forever (a process was
+  silently discarded mid-switch).
+- The MLFQ Gantt trace's queue-level field was hardcoded to `0` — a real
+  feature (visualizing demotions) was decoratively fake.
+
+Plus 8 input-validation hardenings (duplicate PIDs, zero-division on
+`aging_interval=0`, non-positive quantums, etc.) and 4 UX fixes (clipped
+chart labels, overlapping bar labels, mobile horizontal overflow, a
+missing chart legend).
+
+97 pytest tests now pass (up from 73), including an independent
+brute-force oracle that verifies Belady's MIN against exhaustive search on
+small inputs, the LRU stack-property invariant checked tick-by-tick, and
+regression tests for every bug above.
+
+Next: Phase 4 (stretch features + polish).
