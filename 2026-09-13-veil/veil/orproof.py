@@ -48,7 +48,7 @@ import hashlib
 import random
 from dataclasses import dataclass
 
-from veil.group import SchnorrGroup
+from veil.group import SchnorrGroup, default_rng, is_valid_group_element
 
 
 @dataclass(frozen=True)
@@ -80,10 +80,17 @@ def prove_or(
     n = len(public_keys)
     if not (0 <= secret_index < n):
         raise ValueError("secret_index out of range")
+    for i, y_i in enumerate(public_keys):
+        if not is_valid_group_element(group, y_i):
+            # See REVIEW.md Finding 1: refuse to build a proof over a
+            # degenerate/out-of-subgroup key at all, rather than silently
+            # producing a proof whose real-branch anonymity guarantee
+            # would not actually hold against that key.
+            raise ValueError(f"public_keys[{i}] is not a valid group element")
     if group.pow_g(x) != public_keys[secret_index]:
         raise ValueError("x is not the discrete log of public_keys[secret_index]")
 
-    rng = rng or random.Random()
+    rng = rng or default_rng()
 
     t_list: list[int | None] = [None] * n
     c_list: list[int | None] = [None] * n
@@ -126,6 +133,8 @@ def verify_or(
 
     for i in range(n):
         y_i, t_i, c_i, s_i = public_keys[i], proof.t_list[i], proof.c_list[i], proof.s_list[i]
+        if not is_valid_group_element(group, y_i):
+            return False  # REVIEW.md Finding 1
         if not (0 <= t_i < group.p and 0 <= c_i < group.q and 0 <= s_i < group.q):
             return False
         lhs = group.pow_g(s_i)

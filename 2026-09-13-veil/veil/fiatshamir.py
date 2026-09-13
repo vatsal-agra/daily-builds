@@ -36,7 +36,7 @@ import hashlib
 import random
 from dataclasses import dataclass
 
-from veil.group import SchnorrGroup
+from veil.group import SchnorrGroup, default_rng, is_valid_group_element
 from veil.schnorr import KeyPair, generate_keypair  # re-exported for convenience
 
 __all__ = ["KeyPair", "generate_keypair", "Signature", "sign", "verify", "prove", "verify_proof"]
@@ -63,7 +63,7 @@ def sign(
     who wants replay protection must track which (message, signature)
     pairs it has already accepted, exactly like membership.py does.
     """
-    rng = rng or random.Random()
+    rng = rng or default_rng()
     r = group.random_exponent(rng)
     t = group.pow_g(r)
     c = _hash_challenge(group, t, message)
@@ -72,6 +72,11 @@ def sign(
 
 
 def verify(group: SchnorrGroup, y: int, message: bytes, sig: Signature) -> bool:
+    if not is_valid_group_element(group, y):
+        # See REVIEW.md Finding 1 — same degenerate-key rejection Schnorr
+        # verification needs, since this is the same equation under Fiat-
+        # Shamir.
+        return False
     c = _hash_challenge(group, sig.t, message)
     lhs = group.pow_g(sig.s)
     rhs = (sig.t * pow(y, c, group.p)) % group.p

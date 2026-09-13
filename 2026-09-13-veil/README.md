@@ -2,11 +2,15 @@
 
 > A from-scratch Zero-Knowledge Proof toolkit.
 
-**Status: Phase 2 (core build) complete.** All four required features are
-implemented and demonstrably work end-to-end via the CLI. See
-[PLAN.md](PLAN.md) for the full concept and architecture. This README will
-gain full usage docs, the complete feature list, and design rationale as
-later phases (adversarial review, stretch features, verification) land.
+**Status: Phase 3 (adversarial review) complete.** All four required
+features are implemented, and a hostile self-review found and fixed six
+real issues — including a critical soundness break (a degenerate public
+key let a witness-less prover fool the verifier ~50% of the time instead
+of the negligible rate soundness promises) and a non-cryptographic default
+randomness source. Full writeup in [REVIEW.md](REVIEW.md). See
+[PLAN.md](PLAN.md) for the concept and architecture. This README will gain
+full usage docs, the complete feature list, and design rationale as later
+phases (stretch features, verification) land.
 
 ## Quick look (works today)
 

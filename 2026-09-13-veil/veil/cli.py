@@ -18,7 +18,15 @@ from veil import coloring as C
 
 
 def _rng(seed: int | None) -> random.Random:
-    return random.Random(seed) if seed is not None else random.Random()
+    # An explicit --seed opts into reproducible-but-insecure demo output;
+    # with no seed, use the same CSPRNG default the library itself uses
+    # (see REVIEW.md Finding 2 — never silently fall back to bare
+    # random.Random(), whose output is predictable after ~624 draws).
+    if seed is not None:
+        return random.Random(seed)
+    from veil.group import default_rng
+
+    return default_rng()
 
 
 def cmd_group_info(args: argparse.Namespace) -> int:
@@ -81,7 +89,7 @@ def cmd_schnorr_demo(args: argparse.Namespace) -> int:
     while c3b == c3a:
         c3b = S.challenge(g, rng)
     s3b = S.respond(g, kp.x, r3, c3b)
-    extracted = S.extract_witness(g, S.Transcript(t3, c3a, s3a), S.Transcript(t3, c3b, s3b))
+    extracted = S.extract_witness(g, kp.y, S.Transcript(t3, c3a, s3a), S.Transcript(t3, c3b, s3b))
     print(f"  extracted x = {extracted}")
     print(f"  matches real secret: {extracted == kp.x}")
     if extracted != kp.x:

@@ -47,7 +47,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-from veil.commit import Commitment, commit, open_commitment
+from veil.commit import NONCE_BYTES, Commitment, commit, open_commitment
 
 
 @dataclass(frozen=True)
@@ -86,22 +86,39 @@ def soundness_error_bound(num_edges: int, rounds: int) -> float:
 @dataclass
 class RoundCommitState:
     """Prover-side secret state for one round, kept until the challenge
-    edge is known and the two relevant commitments are opened."""
+    edge is known and the two relevant commitments are opened.
+
+    `opened` guards against a single committed round being opened against
+    more than one edge (REVIEW.md Finding 5): the soundness/zero-knowledge
+    argument for this protocol depends on exactly one edge being revealed
+    per fresh random relabeling — opening a second edge from the same
+    permutation leaks strictly more about the real coloring than the
+    protocol is supposed to allow.
+    """
 
     permuted_coloring: list[int]
     nonces: list[bytes]
     commitments: tuple[Commitment, ...]
+    opened: bool = False
 
 
 def commit_round(graph: Graph, coloring: list[int], rng: random.Random) -> RoundCommitState:
-    """Prover's move 1: random relabeling + fresh commitment per vertex."""
+    """Prover's move 1: random relabeling + fresh commitment per vertex.
+
+    Nonces are drawn from `rng` itself (REVIEW.md Finding 4), not from
+    `os.urandom` behind the scenes — the whole round's randomness comes
+    from one source, so a run is fully reproducible under a seeded `rng`
+    and still cryptographically fresh whenever `rng` is (the default
+    everywhere in this toolkit is `secrets.SystemRandom`).
+    """
     perm = [0, 1, 2]
     rng.shuffle(perm)
     permuted = [perm[c] for c in coloring]
     commitments: list[Commitment] = []
     nonces: list[bytes] = []
     for c in permuted:
-        cm, nonce = commit(bytes([c]))
+        nonce = rng.randbytes(NONCE_BYTES)
+        cm, nonce = commit(bytes([c]), nonce=nonce)
         commitments.append(cm)
         nonces.append(nonce)
     return RoundCommitState(permuted_coloring=permuted, nonces=nonces, commitments=tuple(commitments))
@@ -121,14 +138,26 @@ class RoundOpening:
 
 
 def open_round(graph: Graph, state: RoundCommitState, edge_index: int) -> RoundOpening:
-    """Prover's move 2: reveal only the two challenged vertices."""
+    """Prover's move 2: reveal only the two challenged vertices.
+
+    Raises if this commitment round has already been opened once (REVIEW.md
+    Finding 5) — a fresh `commit_round` (new permutation, new commitments)
+    is required for every edge challenge.
+    """
+    if state.opened:
+        raise RuntimeError(
+            "this commitment round has already been opened once; "
+            "call commit_round again for a fresh round before opening another edge"
+        )
     u, v = graph.edges[edge_index]
-    return RoundOpening(
+    opening = RoundOpening(
         color_u=state.permuted_coloring[u],
         nonce_u=state.nonces[u],
         color_v=state.permuted_coloring[v],
         nonce_v=state.nonces[v],
     )
+    state.opened = True
+    return opening
 
 
 def verify_round(
