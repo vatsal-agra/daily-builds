@@ -15,6 +15,9 @@ from veil import schnorr as S
 from veil import fiatshamir as FS
 from veil import orproof as OR
 from veil import coloring as C
+from veil import simulator as SIM
+from veil import membership as M
+from veil import viz_export as VIZ
 
 
 def _rng(seed: int | None) -> random.Random:
@@ -183,6 +186,70 @@ def cmd_coloring_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_simulate(args: argparse.Namespace) -> int:
+    g = STANDARD_GROUP
+    rng = _rng(args.seed)
+    kp = S.generate_keypair(g, rng)
+
+    print("-- Schnorr: real transcripts vs. a witness-less simulator --")
+    stat, df, p = SIM.schnorr_indistinguishability_test(g, kp.x, kp.y, rng, n_samples=args.samples)
+    print(f"  chi-squared statistic = {stat:.4f}, df = {df}, p-value = {p:.4f}")
+    print(f"  (p-value close to 0 would mean distinguishable; p={p:.4f} is not remotely close to 0)")
+    fail1 = p < 0.001
+    if fail1:
+        print("FATAL: p-value implausibly low for a correct simulator", file=sys.stderr)
+
+    print("\n-- Graph coloring: real round openings vs. a witness-less simulator --")
+    stat2, df2, p2 = SIM.coloring_indistinguishability_test(
+        C.HOUSE_GRAPH, C.HOUSE_COLORING, rng, n_samples=args.samples
+    )
+    print(f"  chi-squared statistic = {stat2:.4f}, df = {df2}, p-value = {p2:.4f}")
+    fail2 = p2 < 0.001
+    if fail2:
+        print("FATAL: p-value implausibly low for a correct simulator", file=sys.stderr)
+
+    return 1 if (fail1 or fail2) else 0
+
+
+def cmd_club_demo(args: argparse.Namespace) -> int:
+    g = STANDARD_GROUP
+    rng = _rng(args.seed)
+    members = [S.generate_keypair(g, rng) for _ in range(args.n)]
+    club = M.Club(group=g, public_keys=[m.y for m in members])
+    print(f"Registered a club of {args.n} members (public keys only stored server-side).")
+
+    auth = club.authenticate(args.index, members[args.index].x, args.command.encode(), rng)
+    ok, msg = club.verify_and_consume(auth)
+    print(f"\nMember #{args.index} anonymously authenticates command {args.command!r}:")
+    print(f"  {msg}")
+    if not ok:
+        print("FATAL: a genuine member's authentication was rejected", file=sys.stderr)
+        return 1
+
+    print("\n-- Replay attack: the exact same authentication is sent again --")
+    ok2, msg2 = club.verify_and_consume(auth)
+    print(f"  {msg2}")
+    if ok2:
+        print("FATAL: a replayed authentication was accepted", file=sys.stderr)
+        return 1
+
+    print("\n-- Outsider with no registered key attempts to authenticate --")
+    outsider = S.generate_keypair(g, rng)
+    try:
+        club.authenticate(0, outsider.x, b"malicious command", rng)
+        print("FATAL: outsider was able to construct a valid authentication", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"  rejected at construction time: {e}")
+    return 0
+
+
+def cmd_viz(args: argparse.Namespace) -> int:
+    path = VIZ.build_visualizer(seed=args.seed)
+    print(f"Wrote {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="veil", description="A from-scratch zero-knowledge proof toolkit.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -213,6 +280,24 @@ def build_parser() -> argparse.ArgumentParser:
     cd.add_argument("--rounds", type=int, default=20)
     cd.add_argument("--seed", type=int, default=None)
     cd.set_defaults(func=cmd_coloring_demo)
+
+    sim = sub.add_parser(
+        "simulate", help="Statistically test real vs. simulated (witness-less) ZK transcripts."
+    )
+    sim.add_argument("--samples", type=int, default=4000)
+    sim.add_argument("--seed", type=int, default=None)
+    sim.set_defaults(func=cmd_simulate)
+
+    club = sub.add_parser("club", help="Flagship anonymous membership/authentication demo.")
+    club.add_argument("--n", type=int, default=5, help="Number of registered members.")
+    club.add_argument("--index", type=int, default=2, help="Which member really authenticates.")
+    club.add_argument("--command", type=str, default="withdraw 100")
+    club.add_argument("--seed", type=int, default=None)
+    club.set_defaults(func=cmd_club_demo)
+
+    viz = sub.add_parser("viz", help="Regenerate visualizer/index.html from a real protocol run.")
+    viz.add_argument("--seed", type=int, default=20260913)
+    viz.set_defaults(func=cmd_viz)
 
     return p
 

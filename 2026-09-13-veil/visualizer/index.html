@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Veil — Zero-Knowledge Proof Visualizer</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #131826;
+    --panel-2: #1a2033;
+    --border: #262d42;
+    --text: #e6e9f2;
+    --muted: #8892b0;
+    --accent: #7dd3fc;
+    --accent-2: #a78bfa;
+    --good: #4ade80;
+    --bad: #f87171;
+    --mono: "SF Mono", "Fira Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  body { padding: 24px 20px 60px; max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.02em; }
+  .subtitle { color: var(--muted); margin: 0 0 24px; font-size: 0.95rem; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+  .tab {
+    padding: 10px 16px; cursor: pointer; color: var(--muted); border: none; background: none;
+    font-size: 0.95rem; border-bottom: 2px solid transparent; font-family: inherit;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 16px;
+  }
+  .card h3 { margin-top: 0; font-size: 1.05rem; }
+  .card p { color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .kv { font-family: var(--mono); font-size: 0.82rem; word-break: break-all; }
+  .kv .k { color: var(--muted); }
+  .kv .v { color: var(--text); }
+  .num {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; font-family: var(--mono); font-size: 0.78rem; word-break: break-all;
+    display: inline-block; max-width: 100%;
+  }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .badge.good { background: rgba(74,222,128,0.15); color: var(--good); }
+  .badge.bad { background: rgba(248,113,113,0.15); color: var(--bad); }
+  .steps { display: flex; align-items: center; gap: 10px; margin: 14px 0; }
+  button.ctrl {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 14px; cursor: pointer; font-family: inherit; font-size: 0.85rem;
+  }
+  button.ctrl:hover { border-color: var(--accent); }
+  button.ctrl:disabled { opacity: 0.4; cursor: default; }
+  .step-label { color: var(--muted); font-size: 0.85rem; min-width: 90px; text-align: center; }
+  svg { display: block; margin: 0 auto; }
+  .vertex-label { fill: var(--text); font-size: 13px; font-family: var(--mono); }
+  .member-grid { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .member-card {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; width: 150px; font-family: var(--mono); font-size: 0.72rem;
+  }
+  .member-card .idx { color: var(--accent-2); font-weight: 700; font-size: 0.85rem; margin-bottom: 4px; }
+  table.branches { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 0.72rem; }
+  table.branches th, table.branches td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; word-break: break-all; }
+  table.branches th { color: var(--muted); font-weight: 600; }
+  footer { color: var(--muted); font-size: 0.8rem; margin-top: 30px; text-align: center; }
+  code { color: var(--accent); }
+</style>
+</head>
+<body>
+  <h1>Veil</h1>
+  <p class="subtitle">A from-scratch zero-knowledge proof toolkit — every number below came from a real, seeded run of the actual library code, not scripted output.</p>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="schnorr">Schnorr identification</button>
+    <button class="tab" data-tab="orproof">Anonymous OR-proof</button>
+    <button class="tab" data-tab="coloring">Graph 3-coloring</button>
+  </div>
+
+  <!-- SCHNORR -->
+  <div class="panel active" id="panel-schnorr">
+    <div class="card">
+      <h3>Setup</h3>
+      <p>The prover's secret <code>x</code> is shown here only because this is a demo — in a real proof it never leaves the prover.</p>
+      <div class="row">
+        <div class="kv"><span class="k">secret x = </span><span class="v" id="s-x"></span></div>
+      </div>
+      <div class="kv" style="margin-top:8px"><span class="k">public y = g^x mod p = </span><span class="v" id="s-y"></span></div>
+    </div>
+
+    <div class="card">
+      <h3>Honest interactive proof <span id="s-honest-badge"></span></h3>
+      <div class="steps">
+        <button class="ctrl" id="s-prev">◀ prev</button>
+        <span class="step-label" id="s-step-label">step 0/3</span>
+        <button class="ctrl" id="s-next">next ▶</button>
+      </div>
+      <div id="s-step-content"></div>
+    </div>
+
+    <div class="card">
+      <h3>Cheating prover (wrong secret) <span id="s-cheat-badge"></span></h3>
+      <p>Same protocol, but the prover uses <code>x+1</code> instead of the real secret.</p>
+      <div class="num" id="s-cheat-values"></div>
+    </div>
+
+    <div class="card">
+      <h3>Special-soundness witness extraction</h3>
+      <p>Two accepting transcripts sharing one commitment <code>t</code>, with different challenges — enough to recover <code>x</code> directly, with no other information.</p>
+      <div class="num" id="s-extract-values"></div>
+      <p style="margin-top:10px">Extracted x = <span class="badge" id="s-extract-badge"></span></p>
+    </div>
+
+    <div class="card">
+      <h3>Zero-knowledge simulator</h3>
+      <p>This transcript was produced with <b>no knowledge of x at all</b> — the simulator picked the challenge and response first, then solved for the commitment. It verifies exactly the same way a real proof does.</p>
+      <div class="num" id="s-sim-values"></div>
+    </div>
+  </div>
+
+  <!-- OR PROOF -->
+  <div class="panel" id="panel-orproof">
+    <div class="card">
+      <h3>Registered members <span class="badge good" id="or-verified-badge"></span></h3>
+      <p>One of these <span id="or-n"></span> members anonymously authorized the message below. The proof verifies that it was <i>some</i> registered member — the transcript below gives no hint which one.</p>
+      <div class="member-grid" id="or-members"></div>
+    </div>
+    <div class="card">
+      <h3>Message: <code id="or-message"></code></h3>
+      <p>Each row below is one branch of the OR-proof (one per member). Every row is an independently-accepting Schnorr transcript for that member's key — real branches and simulated branches are indistinguishable by inspection.</p>
+      <table class="branches">
+        <thead><tr><th>#</th><th>t (commitment)</th><th>c (challenge)</th><th>s (response)</th></tr></thead>
+        <tbody id="or-branch-table"></tbody>
+      </table>
+      <p style="margin-top:10px">Sum of all challenges mod q equals the Fiat-Shamir hash of every commitment + the message — that single global constraint is what makes the proof sound, without ever singling out a branch.</p>
+    </div>
+  </div>
+
+  <!-- COLORING -->
+  <div class="panel" id="panel-coloring">
+    <div class="card">
+      <h3>The graph (a proper 3-coloring is known to the prover, hidden from you)</h3>
+      <svg id="graph-svg" width="320" height="260" viewBox="0 0 320 260"></svg>
+    </div>
+    <div class="card">
+      <h3>Round <span id="c-round-num"></span> of <span id="c-round-total"></span> <span class="badge" id="c-round-badge"></span></h3>
+      <p>Every round: a fresh random relabeling of the 3 colors, fresh commitments to all 5 vertices, then the verifier challenges ONE random edge and the prover opens only its two endpoints.</p>
+      <div class="steps">
+        <button class="ctrl" id="c-prev">◀ prev round</button>
+        <span class="step-label" id="c-step-label"></span>
+        <button class="ctrl" id="c-next">next round ▶</button>
+        <button class="ctrl" id="c-play">▶ autoplay</button>
+      </div>
+      <div id="c-detail"></div>
+    </div>
+    <div class="card">
+      <h3>Soundness</h3>
+      <p id="c-soundness-text"></p>
+    </div>
+  </div>
+
+  <footer>Generated by <code>veil/viz_export.py</code> from a real, seeded protocol run — no fabricated numbers.</footer>
+
+<script>
+const DATA = {
+  "seed": 20260913,
+  "group": {
+    "p": "67528887603418471877165710178429639045379787470699331399636686642782433274979",
+    "q": "33764443801709235938582855089214819522689893735349665699818343321391216637489",
+    "g": "4",
+    "bits": 256
+  },
+  "schnorr": {
+    "secret_x": "19236870274471429591605687769301708955565153024453979148192270476460602984026",
+    "public_y": "26592068741046416490474243071540065007642157496142951598700187782745148312224",
+    "honest": {
+      "t": "20978052510716922743038665973335826312284491280050764516499051655824695061180",
+      "c": "14920328022380729971987343163072839799420327323275441740294447360194633376837",
+      "s": "25207843277475812975555594768712477641808674284277452097703974934722224817190",
+      "accepted": true
+    },
+    "cheat": {
+      "t": "14901588657741908629463881858382617768643330675228100884803985247578896563737",
+      "c": "4707734923770854412359265431575408121097432948867170535970130274227332738074",
+      "s": "21959050472249748548980483813261382209327279505975268944216224995672675005019",
+      "accepted": false
+    },
+    "extraction": {
+      "t": "7361312476107262510012856783071974618215866745489302980812745942406010818396",
+      "c1": "32968006339150406349968064700354766315768251465897479196353046134273483536299",
+      "s1": "23516360124080973965946772427760309101452470423751747375142597205679472778666",
+      "c2": "957457394023420343826549509095894344624171222809176866592304745957703257697",
+      "s2": "32330383448773345254147361312783806177970194893440371562650799425824786670551",
+      "extracted_x": "19236870274471429591605687769301708955565153024453979148192270476460602984026",
+      "matches": true
+    },
+    "simulated": {
+      "t": "45167997116419886940110683387199652692768386535400572960003401275457108410423",
+      "c": "22932251606647533299451225546321421503338866633068941057426588419310536508110",
+      "s": "28046327068975113922205003904295489697856753470750758717738133718192665814957",
+      "note": "produced with NO knowledge of x, by picking c and s first"
+    }
+  },
+  "coloring": {
+    "num_vertices": 5,
+    "edges": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        0
+      ],
+      [
+        0,
+        4
+      ],
+      [
+        1,
+        4
+      ]
+    ],
+    "num_edges": 6,
+    "rounds": [
+      {
+        "commitments": [
+          "dcd9b2a389661f45\u2026",
+          "092420a6716d47a2\u2026",
+          "afeb35020f4dc805\u2026",
+          "0023852e2a1cb51b\u2026",
+          "aaccc46ede5b6d83\u2026"
+        ],
+        "challenged_edge": [
+          1,
+          4
+        ],
+        "revealed_color_u": 1,
+        "revealed_color_v": 0,
+        "accepted": true
+      },
+      {
+        "commitments": [
+          "4906a541312ae449\u2026",
+          "85ef1f031beec7c1\u2026",
+          "27457bc4fcd03c26\u2026",
+          "40e340a2fc9dd1d1\u2026",
+          "400ecdd3f98813c7\u2026"
+        ],
+        "challenged_edge": [
+          1,
+          4
+        ],
+        "revealed_color_u": 1,
+        "revealed_color_v": 2,
+        "accepted": true
+      },
+      {
+        "commitments": [
+          "e14b3f040e629129\u2026",
+          "df6d7281447b8b8b\u2026",
+          "c9fc2df0d5fceb57\u2026",
+          "feac9e87875fa194\u2026",
+          "91e12286b6227f48\u2026"
+        ],
+        "challenged_edge": [
+          0,
+          1
+        ],
+        "revealed_color_u": 0,
+        "revealed_color_v": 1,
+        "accepted": true
+      },
+      {
+        "commitments": [
+          "4415daf9db424d32\u2026",
+          "86b519b1b9ccd06f\u2026",
+          "4edf2b15be795940\u2026",
+          "eabc134160dab9d7\u2026",
+          "7bf82e6a5a9586d6\u2026"
+        ],
+        "challenged_edge": [
+          3,
+          0
+        ],
+        "revealed_color_u": 2,
+        "revealed_color_v": 1,
+        "accepted": true
+      },
+      {
+        "commitments": [
+          "60479793066d28e2\u2026",
+          "c0567c0754862ebb\u2026",
+          "9032a7f05f3fc937\u2026",
+          "c726e8362fb659bc\u2026",
+          "ffb71b54556dd2f5\u2026"
+        ],
+        "challenged_edge": [
+          2,
+          3
+        ],
+        "revealed_color_u": 1,
+        "revealed_color_v": 0,
+        "accepted": true
+      },
+      {
+        "commitments": [
+          "4b57cf5520ec82bd\u2026",
+          "515d92be40414535\u2026",
+          "dd6c789627174980\u2026",
+          "8d31239591a3f156\u2026",
+          "ec6035f3f7895ad4\u2026"
+        ],
+        "challenged_edge": [
+          0,
+          1
+        ],
+        "revealed_color_u": 2,
+        "revealed_color_v": 0,
+        "accepted": true
+      },
+      {
+        "commitments": [
+          "d14126bef9f227b5\u2026",
+          "dd42e93a500bb345\u2026",
+          "857d9d5e303f8bef\u2026",
+          "7b10d7bda9ed2e69\u2026",
+          "c701dffe70383a93\u2026"
+        ],
+        "challenged_edge": [
+          0,
+          1
+        ],
+        "revealed_color_u": 0,
+        "revealed_color_v": 1,
+        "accepted": true
+      },
+      {
+        "commitments": [
+          "9a433406d08321f1\u2026",
+          "a69e7942a2d3296f\u2026",
+          "d5b6492c228b5877\u2026",
+          "64f9ef03b8cbc0e3\u2026",
+          "30001cbb4d69f150\u2026"
+        ],
+        "challenged_edge": [
+          1,
+          2
+        ],
+        "revealed_color_u": 0,
+        "revealed_color_v": 2,
+        "accepted": true
+      }
+    ],
+    "soundness_bound": 0.23256803936137793
+  },
+  "orproof": {
+    "n_members": 5,
+    "public_keys": [
+      "13859470485131171945677818512956556046303035293711980911910678170581477389871",
+      "36120598490133376406559215065389066852173299953495699201940692056260632348926",
+      "25286287718835401177208014622892250326820206976191631223589097888597147490433",
+      "46159519807558146677950382649736858645638369033385771465659130911060503508206",
+      "10297664521955218255549690544979751611047904776398743678461744356711313988196"
+    ],
+    "message": "anon vote: yes",
+    "t_list": [
+      "61152165320706962299595329017739747795800293724644421128250922058608712872774",
+      "58308387785567579914177393705048843936809684512684648438822291504807601547306",
+      "45587297485992322069959650725886742443025910637098086927599583844686705985584",
+      "4657435421311484939445005856906445080526808982558164541190214449239150162550",
+      "46402767672024979380137567017159281281931580299675607651170851259684816440233"
+    ],
+    "c_list": [
+      "19090670439594580711772891411396180675190722235638709571735839428916054593303",
+      "30725755034833420363345418426236545968104128320728412120838997962493449512967",
+      "7852519904940126238141549260722837688429172273809262074895161071098594722926",
+      "9784325034368474115949798717295112865677880240457098183631681928589715235077",
+      "8413728148631085844697935707406548827531394136411851963654740121695765610451"
+    ],
+    "s_list": [
+      "11610943251297684961609454178944226648863230220366346185145535440434532821659",
+      "23504702700367480030033022804705927015984079795732624259786579347482297737698",
+      "29037976439406686482471147574138517623260883970583250373306564892607769172041",
+      "30819267321118353557416466016640210723403656098857350258561427534207590015503",
+      "1412180792745446199562749915847564101146242593248624189425522743612597215846"
+    ],
+    "verified": true,
+    "note": "the real signer's index is NOT in this payload on purpose \u2014 that's the point"
+  }
+};
+
+// ---- tabs ----
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+function badge(ok, yes = "accepted", no = "rejected") {
+  const span = document.createElement("span");
+  span.className = "badge " + (ok ? "good" : "bad");
+  span.textContent = ok ? yes : no;
+  return span;
+}
+function setBadge(id, ok, yes, no) {
+  const el = document.getElementById(id);
+  el.innerHTML = "";
+  el.appendChild(badge(ok, yes, no));
+}
+function short(s, n = 28) {
+  s = String(s);
+  return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+// ---- Schnorr tab ----
+const sc = DATA.schnorr;
+document.getElementById("s-x").textContent = short(sc.secret_x, 40);
+document.getElementById("s-y").textContent = short(sc.public_y, 40);
+setBadge("s-honest-badge", sc.honest.accepted);
+setBadge("s-cheat-badge", !sc.cheat.accepted, "correctly rejected", "BUG: accepted");
+
+const schnorrSteps = [
+  () => `<p>Prover picks random nonce <code>r</code>, sends commitment:</p><div class="num">t = ${short(sc.honest.t,40)}</div>`,
+  () => `<p>Verifier picks a random challenge:</p><div class="num">c = ${short(sc.honest.c,40)}</div>`,
+  () => `<p>Prover responds:</p><div class="num">s = r + c·x mod q = ${short(sc.honest.s,40)}</div>`,
+  () => `<p>Verifier checks g^s == t · y^c mod p:</p><div class="num">result: ${sc.honest.accepted ? "MATCH — proof accepted" : "mismatch — rejected"}</div>`,
+];
+let sStep = 0;
+function renderSchnorrStep() {
+  document.getElementById("s-step-content").innerHTML = schnorrSteps[sStep]();
+  document.getElementById("s-step-label").textContent = `step ${sStep + 1}/${schnorrSteps.length}`;
+  document.getElementById("s-prev").disabled = sStep === 0;
+  document.getElementById("s-next").disabled = sStep === schnorrSteps.length - 1;
+}
+document.getElementById("s-prev").onclick = () => { sStep = Math.max(0, sStep - 1); renderSchnorrStep(); };
+document.getElementById("s-next").onclick = () => { sStep = Math.min(schnorrSteps.length - 1, sStep + 1); renderSchnorrStep(); };
+renderSchnorrStep();
+
+document.getElementById("s-cheat-values").textContent =
+  `t=${short(sc.cheat.t)}  c=${short(sc.cheat.c)}  s=${short(sc.cheat.s)}  →  verify() = ${sc.cheat.accepted}`;
+
+document.getElementById("s-extract-values").textContent =
+  `t=${short(sc.extraction.t)}\nc1=${short(sc.extraction.c1)}  s1=${short(sc.extraction.s1)}\nc2=${short(sc.extraction.c2)}  s2=${short(sc.extraction.s2)}`;
+setBadge("s-extract-badge", sc.extraction.matches, "matches real secret x", "MISMATCH");
+
+document.getElementById("s-sim-values").textContent =
+  `t=${short(sc.simulated.t)}  c=${short(sc.simulated.c)}  s=${short(sc.simulated.s)}`;
+
+// ---- OR-proof tab ----
+const or_ = DATA.orproof;
+document.getElementById("or-n").textContent = or_.n_members;
+document.getElementById("or-message").textContent = or_.message;
+setBadge("or-verified-badge", or_.verified, "proof verifies", "BUG: rejected");
+const membersDiv = document.getElementById("or-members");
+or_.public_keys.forEach((y, i) => {
+  const d = document.createElement("div");
+  d.className = "member-card";
+  d.innerHTML = `<div class="idx">member ${i}</div>y = ${short(y, 22)}`;
+  membersDiv.appendChild(d);
+});
+const tbody = document.getElementById("or-branch-table");
+or_.t_list.forEach((t, i) => {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td>${i}</td><td>${short(t,24)}</td><td>${short(or_.c_list[i],24)}</td><td>${short(or_.s_list[i],24)}</td>`;
+  tbody.appendChild(tr);
+});
+
+// ---- Coloring tab ----
+const col = DATA.coloring;
+document.getElementById("c-round-total").textContent = col.rounds.length;
+document.getElementById("c-soundness-text").innerHTML =
+  `The house graph has ${col.num_edges} edges. If the prover had no valid coloring, ` +
+  `each round independently catches them with probability at least 1/${col.num_edges}. ` +
+  `Across all ${col.rounds.length} rounds shown here, the probability of escaping detection throughout ` +
+  `is at most <code>(1 − 1/${col.num_edges})<sup>${col.rounds.length}</sup> ≈ ${col.soundness_bound.toFixed(6)}</code>.`;
+
+// simple layout: square base (0,1,2,3) + peak (4)
+const positions = [ [80,190], [240,190], [240,90], [80,90], [160,30] ];
+const svg = document.getElementById("graph-svg");
+function vertexColor(round, vIdx) {
+  const [u, v] = round.challenged_edge;
+  if (vIdx === u) return round.revealed_color_u;
+  if (vIdx === v) return round.revealed_color_v;
+  return null; // hidden
+}
+const COLOR_HEX = ["#f87171", "#4ade80", "#7dd3fc"];
+function renderGraph(roundIdx) {
+  const round = col.rounds[roundIdx];
+  svg.innerHTML = "";
+  const ns = "http://www.w3.org/2000/svg";
+  col.edges.forEach(([a, b]) => {
+    const line = document.createElementNS(ns, "line");
+    const isChallenged = (round.challenged_edge[0] === a && round.challenged_edge[1] === b) ||
+                          (round.challenged_edge[0] === b && round.challenged_edge[1] === a);
+    line.setAttribute("x1", positions[a][0]); line.setAttribute("y1", positions[a][1]);
+    line.setAttribute("x2", positions[b][0]); line.setAttribute("y2", positions[b][1]);
+    line.setAttribute("stroke", isChallenged ? "#7dd3fc" : "#33395a");
+    line.setAttribute("stroke-width", isChallenged ? "3" : "1.5");
+    svg.appendChild(line);
+  });
+  positions.forEach((pos, i) => {
+    const c = vertexColor(round, i);
+    const circle = document.createElementNS(ns, "circle");
+    circle.setAttribute("cx", pos[0]); circle.setAttribute("cy", pos[1]); circle.setAttribute("r", 18);
+    circle.setAttribute("fill", c === null ? "#1a2033" : COLOR_HEX[c]);
+    circle.setAttribute("stroke", "#8892b0"); circle.setAttribute("stroke-width", "1.5");
+    svg.appendChild(circle);
+    const label = document.createElementNS(ns, "text");
+    label.setAttribute("x", pos[0]); label.setAttribute("y", pos[1] - 26);
+    label.setAttribute("text-anchor", "middle"); label.setAttribute("class", "vertex-label");
+    label.textContent = c === null ? `v${i} (committed)` : `v${i} = ${c}`;
+    svg.appendChild(label);
+  });
+}
+let cRound = 0;
+let playing = null;
+function renderColoringRound() {
+  const round = col.rounds[cRound];
+  document.getElementById("c-round-num").textContent = cRound + 1;
+  setBadge("c-round-badge", round.accepted);
+  document.getElementById("c-step-label").textContent = `edge (${round.challenged_edge[0]},${round.challenged_edge[1]}) challenged`;
+  document.getElementById("c-detail").innerHTML =
+    `<p>Commitments sent for all 5 vertices (hash prefixes shown):</p>` +
+    `<div class="num">${round.commitments.join("  ")}</div>` +
+    `<p style="margin-top:10px">Verifier challenges edge (${round.challenged_edge[0]}, ${round.challenged_edge[1]}). Prover opens just those two:</p>` +
+    `<div class="num">color(v${round.challenged_edge[0]}) = ${round.revealed_color_u},  color(v${round.challenged_edge[1]}) = ${round.revealed_color_v}  →  ${round.revealed_color_u !== round.revealed_color_v ? "different, round accepted" : "SAME — should never happen for a real coloring"}</div>`;
+  document.getElementById("c-prev").disabled = cRound === 0;
+  document.getElementById("c-next").disabled = cRound === col.rounds.length - 1;
+  renderGraph(cRound);
+}
+document.getElementById("c-prev").onclick = () => { cRound = Math.max(0, cRound - 1); renderColoringRound(); };
+document.getElementById("c-next").onclick = () => { cRound = Math.min(col.rounds.length - 1, cRound + 1); renderColoringRound(); };
+document.getElementById("c-play").onclick = (e) => {
+  if (playing) {
+    clearInterval(playing); playing = null; e.target.textContent = "▶ autoplay";
+    return;
+  }
+  e.target.textContent = "⏸ stop";
+  playing = setInterval(() => {
+    if (cRound >= col.rounds.length - 1) { cRound = 0; } else { cRound++; }
+    renderColoringRound();
+  }, 1100);
+};
+renderColoringRound();
+</script>
+</body>
+</html>
