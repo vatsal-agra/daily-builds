@@ -2,14 +2,15 @@
 
 > A from-scratch Zero-Knowledge Proof toolkit.
 
-**Status: Phase 4 (stretch features + polish) complete.** All 6 planned
-features are implemented (4 required + both stretch): the core protocols,
-a hostile self-review with 6 fixed findings ([REVIEW.md](REVIEW.md)), real
-zero-knowledge simulators with a from-scratch statistical
-indistinguishability test, the flagship anonymous membership/auth system,
-and an interactive HTML visualizer built from a real protocol run. See
-[PLAN.md](PLAN.md) for the concept and architecture. Verification (tests +
-demo script) and the final polished usage docs land in the next phases.
+**Status: Phase 5 (verification) complete.** All 6 planned features are
+implemented and verified: 72 pytest tests (`tests/`) plus an 11-step
+`demo.sh` exercising every CLI command, the ZK simulators' statistical
+test, the flagship anonymous-auth flow with a live replay attack, a
+headless-Chromium smoke test of the visualizer, and a live regression
+check that the critical soundness bug from adversarial review stays fixed
+— all green. See [PLAN.md](PLAN.md) for the concept/architecture and
+[REVIEW.md](REVIEW.md) for the adversarial review. The final polished
+usage docs and "where a human could take this" writeup land in Phase 6.
 
 ## Quick look (works today)
 
