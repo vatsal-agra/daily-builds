@@ -111,6 +111,20 @@ the *symptom* each produced is itself instructive.
    demultiplexing by source address into per-peer `Connection` objects,
    which is out of scope here.
 
+## Finding from Phase 4 polish
+
+10. **MEDIUM — the visualizer's y-axis labels were clipped against the
+    canvas edge for larger values, corrupting the leading digit (e.g.
+    "168.0 KB" rendered as "68.0 KB").** Not caught by the headless-browser
+    smoke test (which only checks for console errors, not visual
+    correctness) — only by actually looking at a rendered screenshot, per
+    the dataviz skill's own "render it and look at it" step. The fixed
+    46px left padding was sized for small values seen during quick manual
+    testing and simply wasn't wide enough once a chart's peak value needed
+    a wider label. **Fix:** the left padding is now computed from the
+    actual widest label text (via `ctx.measureText`) instead of a fixed
+    guess.
+
 ## Finding from Phase 5 verification
 
 9. **HIGH — a fixed 1-second TIME_WAIT could expire before the peer's own
