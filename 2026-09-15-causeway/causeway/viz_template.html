@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Causeway Transfer Visualizer</title>
+<style>
+  :root {
+    color-scheme: light;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    --page:            #f9f9f7;
+    --surface:         #fcfcfb;
+    --text-primary:    #0b0b0b;
+    --text-secondary:  #52514e;
+    --text-muted:      #898781;
+    --grid:            #e1e0d9;
+    --axis:            #c3c2b7;
+    --border:          rgba(11,11,11,0.10);
+    --good:            #0ca30c;
+    --critical:        #d03b3b;
+    --warning:         #c98500;
+    --s-blue:          #2a78d6;
+    --s-orange:        #eb6834;
+    --s-aqua:          #1baf7a;
+    --s-yellow:        #eda100;
+    --s-violet:        #4a3aa7;
+    --s-magenta:       #e87ba4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page:            #0d0d0d;
+      --surface:         #1a1a19;
+      --text-primary:    #ffffff;
+      --text-secondary:  #c3c2b7;
+      --text-muted:      #898781;
+      --grid:            #2c2c2a;
+      --axis:            #383835;
+      --border:          rgba(255,255,255,0.10);
+      --good:            #0ca30c;
+      --critical:        #e66767;
+      --warning:         #c98500;
+      --s-blue:          #3987e5;
+      --s-orange:        #d95926;
+      --s-aqua:          #199e70;
+      --s-yellow:        #c98500;
+      --s-violet:        #9085e9;
+      --s-magenta:       #d55181;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page:            #0d0d0d;
+    --surface:         #1a1a19;
+    --text-primary:    #ffffff;
+    --text-secondary:  #c3c2b7;
+    --text-muted:      #898781;
+    --grid:            #2c2c2a;
+    --axis:            #383835;
+    --border:          rgba(255,255,255,0.10);
+    --good:            #0ca30c;
+    --critical:        #e66767;
+    --warning:         #c98500;
+    --s-blue:          #3987e5;
+    --s-orange:        #d95926;
+    --s-aqua:          #199e70;
+    --s-yellow:        #c98500;
+    --s-violet:        #9085e9;
+    --s-magenta:       #d55181;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 20px 16px 40px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 2px; letter-spacing: -0.01em; }
+  .subtitle { color: var(--text-secondary); font-size: 0.9rem; margin: 0 0 20px; }
+  .subtitle code { background: var(--grid); border-radius: 4px; padding: 1px 5px; font-size: 0.85em; }
+
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    margin-bottom: 22px;
+  }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .stat .label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat .value { font-size: 1.35rem; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .stat .value.good { color: var(--good); }
+  .stat .value.critical { color: var(--critical); }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px 10px;
+    margin-bottom: 18px;
+  }
+  .panel h2 { font-size: 0.95rem; margin: 0 0 2px; }
+  .panel .desc { color: var(--text-secondary); font-size: 0.8rem; margin: 0 0 8px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 6px; }
+  .legend .item { display: flex; align-items: center; gap: 6px; }
+  .swatch { width: 12px; height: 3px; border-radius: 2px; display: inline-block; }
+  .swatch.dashed { background: repeating-linear-gradient(to right, currentColor 0 4px, transparent 4px 7px); height: 2px; }
+
+  .chart-wrap { position: relative; }
+  canvas { display: block; width: 100%; height: 220px; touch-action: none; }
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+    transform: translate(-50%, -110%);
+    white-space: nowrap;
+    z-index: 5;
+  }
+  .tooltip .t { color: var(--text-muted); margin-bottom: 3px; }
+  .tooltip .row { display: flex; gap: 6px; align-items: center; }
+  .tooltip .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  .footer-note { color: var(--text-muted); font-size: 0.75rem; margin-top: 24px; text-align: center; }
+
+  @media (max-width: 480px) {
+    .stat .value { font-size: 1.15rem; }
+    canvas { height: 180px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Causeway Transfer Visualizer</h1>
+  <p class="subtitle" id="subtitle">loading…</p>
+
+  <div class="stat-row" id="stats"></div>
+
+  <div class="panel">
+    <h2>Congestion window &amp; slow-start threshold</h2>
+    <p class="desc">The Reno sawtooth: slow start / congestion avoidance growth, halved by loss. Markers show fast retransmits and timeouts.</p>
+    <div class="legend">
+      <span class="item"><span class="swatch" style="background:var(--s-blue)"></span>cwnd</span>
+      <span class="item"><span class="swatch dashed" style="color:var(--s-orange)"></span>ssthresh</span>
+      <span class="item"><span class="swatch" style="background:var(--warning);border-radius:50%;width:8px;height:8px"></span>fast retransmit</span>
+      <span class="item"><span class="swatch" style="background:var(--critical);border-radius:50%;width:8px;height:8px"></span>timeout</span>
+    </div>
+    <div class="chart-wrap"><canvas id="chart-cwnd"></canvas><div class="tooltip" id="tip-cwnd" hidden></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>RTT estimate &amp; retransmission timeout</h2>
+    <p class="desc">Jacobson/Karels smoothed RTT (SRTT) and the adaptive RTO derived from it.</p>
+    <div class="legend">
+      <span class="item"><span class="swatch" style="background:var(--s-aqua)"></span>srtt</span>
+      <span class="item"><span class="swatch dashed" style="color:var(--s-yellow)"></span>rto</span>
+    </div>
+    <div class="chart-wrap"><canvas id="chart-rtt"></canvas><div class="tooltip" id="tip-rtt" hidden></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Bytes in flight vs. peer's advertised window</h2>
+    <p class="desc">Flow control, independent of congestion control: the sender never exceeds what the receiver's buffer can hold.</p>
+    <div class="legend">
+      <span class="item"><span class="swatch" style="background:var(--s-violet)"></span>in flight</span>
+      <span class="item"><span class="swatch dashed" style="color:var(--s-magenta)"></span>peer window</span>
+    </div>
+    <div class="chart-wrap"><canvas id="chart-flow"></canvas><div class="tooltip" id="tip-flow" hidden></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Cumulative bytes acknowledged</h2>
+    <p class="desc">Overall transfer progress over simulated time.</p>
+    <div class="legend">
+      <span class="item"><span class="swatch" style="background:var(--s-blue)"></span>bytes acked</span>
+    </div>
+    <div class="chart-wrap"><canvas id="chart-throughput"></canvas><div class="tooltip" id="tip-throughput" hidden></div></div>
+  </div>
+
+  <p class="footer-note">Generated by <code>causeway viz</code> from a real captured connection event log.</p>
+</div>
+
+<script>
+const LOG = __CAUSEWAY_EVENTS_JSON__;
+
+function fmtBytes(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + ' MB';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + ' KB';
+  return Math.round(n) + ' B';
+}
+function fmtSeconds(s) {
+  if (s == null) return '—';
+  if (s < 1) return (s * 1000).toFixed(0) + ' ms';
+  return s.toFixed(2) + ' s';
+}
+
+function render() {
+  const events = (LOG.events && LOG.events.client) || [];
+  const result = LOG.result || {};
+  const params = LOG.params || {};
+
+  document.getElementById('subtitle').innerHTML =
+    `<code>${result.bytes_sent ?? '?'} bytes</code> · loss=<code>${params.loss}</code> ` +
+    `dup=<code>${params.dup}</code> reorder=<code>${params.reorder}</code> mss=<code>${params.mss}</code> ` +
+    `seed=<code>${params.seed}</code>`;
+
+  const statsEl = document.getElementById('stats');
+  const success = !!result.success;
+  const throughput = result.virtual_time > 0 ? result.bytes_sent / result.virtual_time : 0;
+  const cs = result.client_stats || {};
+  const stats = [
+    ['Byte-exact', success ? 'MATCH' : 'MISMATCH', success ? 'good' : 'critical'],
+    ['Transferred', fmtBytes(result.bytes_sent || 0), ''],
+    ['Sim. time', fmtSeconds(result.virtual_time), ''],
+    ['Throughput', fmtBytes(throughput) + '/s', ''],
+    ['Retransmits', cs.retransmits ?? 0, ''],
+    ['Timeouts', cs.timeouts ?? 0, ''],
+    ['Fast retransmits', cs.fast_retransmits ?? 0, ''],
+  ];
+  statsEl.innerHTML = stats.map(([label, value, cls]) =>
+    `<div class="stat"><div class="label">${label}</div><div class="value ${cls}">${value}</div></div>`
+  ).join('');
+
+  if (events.length === 0) {
+    document.querySelectorAll('.panel').forEach(p => p.innerHTML = '<p class="desc">No event log captured for this run (pass --log-json to `causeway demo`).</p>');
+    return;
+  }
+
+  const css = getComputedStyle(document.documentElement);
+  const color = name => css.getPropertyValue(name).trim();
+
+  const cwndSeries = events.map(e => [e.t, e.cwnd]);
+  const ssthreshSeries = events.map(e => [e.t, Math.min(e.ssthresh, Math.max(...cwndSeries.map(p => p[1])) * 1.4)]);
+  const srttSeries = events.filter(e => e.srtt != null).map(e => [e.t, e.srtt]);
+  const rtoSeries = events.map(e => [e.t, e.rto]);
+  const inFlightSeries = events.map(e => [e.t, e.in_flight]);
+  const rwndSeries = events.map(e => [e.t, e.peer_rwnd]);
+  const throughputSeries = events.map(e => [e.t, e.snd_una]);
+
+  const timeouts = events.filter(e => e.type === 'timeout').map(e => e.t);
+  const fastRetransmits = events.filter(e => e.type === 'fast_retransmit').map(e => e.t);
+
+  drawChart('chart-cwnd', 'tip-cwnd', [
+    { label: 'cwnd', points: cwndSeries, color: color('--s-blue'), unit: 'bytes' },
+    { label: 'ssthresh', points: ssthreshSeries, color: color('--s-orange'), unit: 'bytes', dashed: true },
+  ], {
+    markers: [
+      ...fastRetransmits.map(t => ({ t, color: color('--warning') })),
+      ...timeouts.map(t => ({ t, color: color('--critical') })),
+    ],
+  });
+
+  drawChart('chart-rtt', 'tip-rtt', [
+    { label: 'srtt', points: srttSeries, color: color('--s-aqua'), unit: 'seconds' },
+    { label: 'rto', points: rtoSeries, color: color('--s-yellow'), unit: 'seconds', dashed: true },
+  ], {});
+
+  drawChart('chart-flow', 'tip-flow', [
+    { label: 'in flight', points: inFlightSeries, color: color('--s-violet'), unit: 'bytes' },
+    { label: 'peer window', points: rwndSeries, color: color('--s-magenta'), unit: 'bytes', dashed: true },
+  ], {});
+
+  drawChart('chart-throughput', 'tip-throughput', [
+    { label: 'bytes acked', points: throughputSeries, color: color('--s-blue'), unit: 'bytes' },
+  ], {});
+}
+
+function fmtValue(v, unit) {
+  if (v == null) return '—';
+  if (unit === 'bytes') return fmtBytes(v);
+  if (unit === 'seconds') return fmtSeconds(v);
+  return String(Math.round(v * 1000) / 1000);
+}
+
+// A small dependency-free canvas line-chart with a hover crosshair+tooltip,
+// shared by all four panels above.
+function drawChart(canvasId, tipId, series, opts) {
+  const canvas = document.getElementById(canvasId);
+  const tip = document.getElementById(tipId);
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--grid').trim();
+  const axisColor = getComputedStyle(document.documentElement).getPropertyValue('--axis').trim();
+  const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
+  const markers = opts.markers || [];
+
+  const allPoints = series.flatMap(s => s.points);
+  const allT = allPoints.map(p => p[0]);
+  const allV = allPoints.map(p => p[1]).filter(v => v != null);
+  const tMin = Math.min(...allT, 0), tMax = Math.max(...allT, 0.001);
+  const vMax = Math.max(...allV, 1) * 1.12;
+
+  // Left padding is sized to whatever the widest y-axis label actually is
+  // (e.g. "168.0 KB" needs more room than "8 B") rather than a fixed guess
+  // -- a fixed pad clipped larger labels' leading digit against the
+  // canvas edge, caught by actually looking at a rendered screenshot.
+  const AXIS_FONT = '10px system-ui, sans-serif';
+  ctx.font = AXIS_FONT;
+  const widestLabel = Math.max(
+    ctx.measureText(fmtValue(vMax, series[0].unit)).width,
+    ctx.measureText(fmtValue(0, series[0].unit)).width,
+  );
+  const pad = { l: Math.max(40, widestLabel + 16), r: 22, t: 10, b: 22 };
+
+  function layout() {
+    const cssWidth = canvas.clientWidth || canvas.parentElement.clientWidth;
+    const cssHeight = canvas.clientHeight || 220;
+    canvas.width = cssWidth * dpr;
+    canvas.height = cssHeight * dpr;
+    return { w: cssWidth, h: cssHeight };
+  }
+
+  function x(t, w) { return pad.l + (t - tMin) / (tMax - tMin || 1) * (w - pad.l - pad.r); }
+  function y(v, h) { return h - pad.b - (v / (vMax || 1)) * (h - pad.t - pad.b); }
+
+  function draw(hoverT) {
+    const { w, h } = layout();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    // gridlines + y-axis labels
+    ctx.strokeStyle = gridColor;
+    ctx.fillStyle = mutedColor;
+    ctx.font = AXIS_FONT;
+    ctx.lineWidth = 1;
+    const steps = 4;
+    for (let i = 0; i <= steps; i++) {
+      const v = vMax * i / steps;
+      const yy = y(v, h);
+      ctx.beginPath();
+      ctx.moveTo(pad.l, yy + 0.5);
+      ctx.lineTo(w - pad.r, yy + 0.5);
+      ctx.stroke();
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(fmtValue(v, series[0].unit), pad.l - 6, yy);
+    }
+    // x-axis labels
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (let i = 0; i <= 4; i++) {
+      const t = tMin + (tMax - tMin) * i / 4;
+      ctx.fillText(fmtSeconds(t), x(t, w), h - pad.b + 5);
+    }
+    ctx.strokeStyle = axisColor;
+    ctx.beginPath();
+    ctx.moveTo(pad.l, pad.t);
+    ctx.lineTo(pad.l, h - pad.b);
+    ctx.lineTo(w - pad.r, h - pad.b);
+    ctx.stroke();
+
+    // event markers (timeouts / fast retransmits)
+    for (const m of markers) {
+      const mx = x(m.t, w);
+      ctx.fillStyle = m.color;
+      ctx.beginPath();
+      ctx.arc(mx, h - pad.b, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // series lines
+    for (const s of series) {
+      if (s.points.length === 0) continue;
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 2;
+      if (s.dashed) ctx.setLineDash([5, 4]); else ctx.setLineDash([]);
+      ctx.beginPath();
+      s.points.forEach((p, i) => {
+        if (p[1] == null) return;
+        const px = x(p[0], w), py = y(p[1], h);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // hover crosshair
+    if (hoverT != null) {
+      const hx = x(hoverT, w);
+      ctx.strokeStyle = mutedColor;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(hx, pad.t);
+      ctx.lineTo(hx, h - pad.b);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function nearestIndex(points, t) {
+    let lo = 0, hi = points.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (points[mid][0] < t) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  }
+
+  function onMove(clientX, rect) {
+    const w = rect.width;
+    const relX = clientX - rect.left;
+    const t = tMin + Math.max(0, Math.min(1, (relX - pad.l) / (w - pad.l - pad.r))) * (tMax - tMin);
+    draw(t);
+    const idx = nearestIndex(series[0].points, t);
+    const point = series[0].points[Math.max(0, Math.min(series[0].points.length - 1, idx))];
+    if (!point) { tip.hidden = true; return; }
+    const actualT = point[0];
+    const rows = series.map(s => {
+      const i = nearestIndex(s.points, actualT);
+      const p = s.points[Math.max(0, Math.min(s.points.length - 1, i))];
+      return `<div class="row"><span class="dot" style="background:${s.color}"></span>${s.label}: <b>${fmtValue(p ? p[1] : null, s.unit)}</b></div>`;
+    }).join('');
+    tip.innerHTML = `<div class="t">t = ${fmtSeconds(actualT)}</div>${rows}`;
+    tip.style.left = (relX) + 'px';
+    tip.style.top = '0px';
+    tip.hidden = false;
+  }
+
+  canvas.addEventListener('mousemove', e => onMove(e.clientX, canvas.getBoundingClientRect()));
+  canvas.addEventListener('mouseleave', () => { tip.hidden = true; draw(null); });
+  canvas.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    onMove(t.clientX, canvas.getBoundingClientRect());
+  }, { passive: true });
+  canvas.addEventListener('touchmove', e => {
+    const t = e.touches[0];
+    onMove(t.clientX, canvas.getBoundingClientRect());
+    e.preventDefault();
+  }, { passive: false });
+
+  draw(null);
+  window.addEventListener('resize', () => draw(null));
+}
+
+render();
+</script>
+</body>
+</html>

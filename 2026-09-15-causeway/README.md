@@ -5,16 +5,10 @@ congestion control, Jacobson/Karels adaptive retransmission, decoupled
 flow control, and real byte-exact file transfer through a real lossy
 network proxy. See [PLAN.md](PLAN.md) for the full concept and design.
 
-**Status: Phase 3 (Adversarial review) complete** — see
-[REVIEW.md](REVIEW.md) for every bug found (2 during core build, 4 more
-from a dedicated hostile-reviewer pass: a permanent deadlock on `mss<=0`,
-several raw-traceback CLI failure modes, a dead/misleading CLI flag, and a
-latent thread-safety issue in the lossy proxy) and how each was fixed,
-with regression tests pinning all of them
-(`tests/test_adversarial_regressions.py`). 37 tests green.
+**Status: Phase 4 (Stretch + polish) complete.**
 
-All 4 required features are
-implemented and demonstrably working end-to-end:
+All 4 required features are implemented and demonstrably working
+end-to-end:
 
 1. **Reliable, ordered, exactly-once delivery** — proven both by a fuzz
    suite (`tests/test_fuzz_transfer.py`) running ~110+ seeded scenarios
@@ -32,12 +26,41 @@ implemented and demonstrably working end-to-end:
    cwnd, and a full zero-window/persist-timer cycle is exercised without
    deadlocking (`tests/test_flow_control.py`).
 
+Both stretch features are shipped:
+
+5. **Interactive visualizer** (`causeway viz`) — a self-contained
+   HTML/canvas dashboard (cwnd/ssthresh sawtooth with fast-retransmit and
+   timeout markers, RTT/RTO, in-flight-vs-window, cumulative throughput)
+   rendered from a real captured event log, with a hover crosshair +
+   tooltip, light/dark theming, and mobile-width responsiveness —
+   headless-Chromium verified with zero console errors
+   (`tests/browser_smoke_test.js`). One real bug was caught purely by
+   looking at a rendered screenshot rather than any automated test: the
+   y-axis labels for larger values (like "168.0 KB") were being clipped
+   against the canvas edge by a fixed left padding, corrupting the leading
+   digit; fixed by sizing the padding to the actual widest label.
+6. **Robust connection lifecycle + live two-process capstone** — graceful
+   FIN/FIN-ACK/TIME_WAIT-style close that survives a lost final ACK
+   (`tests/test_reassembly_and_teardown.py`), plus a real `causeway send` /
+   `causeway proxy` / `causeway recv` three-process demo: two independent
+   OS processes moving a real file over real UDP sockets through a real
+   lossy/reordering/duplicating relay process, byte-exact every time.
+
+See [REVIEW.md](REVIEW.md) for every bug found during adversarial review
+(2 during core build, 4 more from a dedicated hostile-reviewer pass, plus
+the visualizer clipping bug above) and how each was fixed, with regression
+tests pinning all of them. 37 unit/integration tests green.
+
 ## Quick start
 
 ```bash
 # Fast, seeded, in-process simulated transfer (milliseconds of wall time,
 # hundreds of seconds of *simulated* network time):
 python3 -m causeway.cli demo --bytes 200000 --loss 0.1 --dup 0.05 --reorder 0.1
+
+# The same, with an interactive visualizer of what happened:
+python3 -m causeway.cli demo --bytes 200000 --loss 0.08 --log-json log.json
+python3 -m causeway.cli viz --log-json log.json --out viz.html   # open viz.html
 
 # Real two-process transfer over real UDP, through a real lossy proxy:
 python3 -m causeway.cli recv --bind 127.0.0.1:9091 --out received.bin &
@@ -52,5 +75,10 @@ python3 -m causeway.cli send myfile.bin --peer 127.0.0.1:9090
 python3 -m unittest discover -s tests
 ```
 
-Remaining phases (adversarial review, stretch features/polish, verification,
-ship) follow in subsequent commits.
+Or run `./demo.sh` for the full narrated walkthrough (unit suite, fuzz
+suite, real two-process transfer, real lossy-proxy transfer, visualizer +
+headless-browser check, and the adversarial-regression checks) — this is
+what Phase 5 verification runs.
+
+Remaining phase (ship: full README, LEDGER.md entry) follows in the final
+commit.
