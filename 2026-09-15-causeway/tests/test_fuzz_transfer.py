@@ -63,6 +63,18 @@ class TestFuzzTransfer(unittest.TestCase):
                               base_delay=0.01, jitter=0.005, max_virtual_time=300)
             self.assertTrue(r["success"], f"failed at mss={mss}")
 
+    def test_time_wait_survives_sustained_extreme_loss(self):
+        # Regression test for a real orphaned-connection bug found by Phase
+        # 5 verification: this exact (size, loss, seed) combination used to
+        # blow through a 6000-simulated-second budget because a fixed
+        # 1-second TIME_WAIT let the client go fully unresponsive before
+        # the server's own retried FIN ever got another chance to be
+        # acknowledged. See REVIEW.md finding #9.
+        data = os.urandom(20_000)
+        r = run_transfer(data, mss=536, loss=0.4, seed=4, base_delay=0.02, jitter=0.01,
+                          max_virtual_time=1500, max_iterations=1_000_000)
+        self.assertTrue(r["success"])
+
     def test_tiny_receiver_buffer_under_loss(self):
         # Forces flow control AND congestion control AND loss recovery to
         # all be exercised simultaneously.

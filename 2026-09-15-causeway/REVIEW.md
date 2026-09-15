@@ -111,6 +111,34 @@ the *symptom* each produced is itself instructive.
    demultiplexing by source address into per-peer `Connection` objects,
    which is out of scope here.
 
+## Finding from Phase 5 verification
+
+9. **HIGH — a fixed 1-second TIME_WAIT could expire before the peer's own
+   retransmission backoff ever got another chance to succeed, permanently
+   orphaning the peer.** `demo.sh`'s own network-condition matrix (40%
+   one-way loss, a genuinely extreme ~65% round-trip failure rate) caught
+   this directly: the client reached `CLOSED` and stopped responding to
+   anything at all (by design -- `Connection.step()` is a no-op once
+   closed) while the server's own un-acked FIN was still legitimately
+   retrying, with retry gaps that can reach `max_rto * 2**6` under the
+   existing exponential backoff -- far longer than a flat 1-second wait.
+   Once the client stopped listening, the server's FIN could never be
+   acknowledged again, so the server's side of the connection never
+   reached `CLOSED` either: a real orphaned-connection bug, not just a
+   slow one, reproduced deterministically with a fixed seed at 20,000
+   bytes / 40% loss (needed over 6,000 simulated seconds against a 1500s
+   budget -- i.e. it would never have finished). **Fix:** the default
+   TIME_WAIT duration now scales with `max_rto` (`4 * max_rto`, up from a
+   flat 1.0s) instead of being a magic constant untethered from the
+   protocol's own timing parameters. This is deliberately the same kind of
+   fix real TCP uses (a generous fixed 2*MSL) rather than a mathematical
+   guarantee: under sufficiently sustained, extreme loss a peer can in
+   principle still exhaust it, which is exactly why `run_transfer`'s own
+   `max_virtual_time` watchdog exists -- to surface that as a clear,
+   diagnosable `SimulationStalled` rather than a silent hang. With the fix,
+   the same 20,000-byte/40%-loss scenario that previously blew through a
+   6,000-second budget now completes in about 130 simulated seconds.
+
 ## Verification
 
 After the fixes above, the full test suite (29 tests) plus a fresh

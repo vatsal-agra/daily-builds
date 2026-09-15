@@ -5,7 +5,15 @@ congestion control, Jacobson/Karels adaptive retransmission, decoupled
 flow control, and real byte-exact file transfer through a real lossy
 network proxy. See [PLAN.md](PLAN.md) for the full concept and design.
 
-**Status: Phase 4 (Stretch + polish) complete.**
+**Status: Phase 5 (Verification) complete.** `./demo.sh` runs the full
+narrated walkthrough — 38 unit tests, a 4-scenario CLI demo matrix, a real
+direct two-process transfer, the real three-process lossy-proxy capstone,
+the visualizer + headless-browser check, and the adversarial regression
+checks — all 6 green. Verification itself caught one more real bug (see
+REVIEW.md finding #9): under sustained 40% loss, a fixed 1-second TIME_WAIT
+could expire before the peer's own retried FIN got another chance to be
+acknowledged, permanently orphaning it. Fixed by scaling TIME_WAIT with the
+connection's own `max_rto` instead of a disconnected magic constant.
 
 All 4 required features are implemented and demonstrably working
 end-to-end:

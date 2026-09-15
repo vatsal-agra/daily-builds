@@ -94,7 +94,7 @@ class Connection:
         initial_rto: float = 1.0,
         min_rto: float = 0.2,
         max_rto: float = 5.0,
-        time_wait_duration: float = 1.0,
+        time_wait_duration: Optional[float] = None,
         persist_base: float = 0.5,
         persist_max: float = 4.0,
         on_event: Optional[Callable[[dict], None]] = None,
@@ -151,8 +151,23 @@ class Connection:
         self.ooo = {}  # seq -> payload, for out-of-order buffering
         self.peer_fin_received = False
 
-        # Lifecycle.
-        self.time_wait_duration = time_wait_duration
+        # Lifecycle. TIME_WAIT needs real margin over the peer's own
+        # retransmission backoff, or we can close and stop responding
+        # *before* the peer's un-acked FIN gets another chance to succeed --
+        # orphaning it. Found by Phase 5 verification under sustained 40%
+        # loss: the previous fixed 1-second TIME_WAIT let the client vanish
+        # while the server kept retrying a FIN that could never be answered.
+        # Scaling with max_rto (a single retry gap can reach max_rto * 2**6,
+        # see _check_retransmit_timeout) meaningfully shrinks that window
+        # without taxing the common case -- like real TCP's fixed 2*MSL,
+        # this is a generous empirical margin, not a proof it can never
+        # happen: under sustained, extreme loss (see REVIEW.md) a peer can
+        # still in principle exhaust it, which is exactly what the
+        # simulation driver's own max_virtual_time watchdog exists to catch
+        # rather than hang forever.
+        self.time_wait_duration = (
+            time_wait_duration if time_wait_duration is not None else 4 * max_rto
+        )
         self.in_time_wait = False
         self.time_wait_deadline = 0.0
         self.closed = False
