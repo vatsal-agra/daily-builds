@@ -5,7 +5,15 @@ congestion control, Jacobson/Karels adaptive retransmission, decoupled
 flow control, and real byte-exact file transfer through a real lossy
 network proxy. See [PLAN.md](PLAN.md) for the full concept and design.
 
-**Status: Phase 2 (Core build) complete.** All 4 required features are
+**Status: Phase 3 (Adversarial review) complete** — see
+[REVIEW.md](REVIEW.md) for every bug found (2 during core build, 4 more
+from a dedicated hostile-reviewer pass: a permanent deadlock on `mss<=0`,
+several raw-traceback CLI failure modes, a dead/misleading CLI flag, and a
+latent thread-safety issue in the lossy proxy) and how each was fixed,
+with regression tests pinning all of them
+(`tests/test_adversarial_regressions.py`). 37 tests green.
+
+All 4 required features are
 implemented and demonstrably working end-to-end:
 
 1. **Reliable, ordered, exactly-once delivery** — proven both by a fuzz

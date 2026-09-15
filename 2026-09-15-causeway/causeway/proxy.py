@@ -56,6 +56,14 @@ class LossyProxy:
         self._stop = threading.Event()
 
     def _schedule(self, payload: bytes, dest: Addr) -> None:
+        # Every read of shared, mutable proxy state (rng, _pending_swap,
+        # stats) happens under one lock acquisition, including the actual
+        # swap. Only starting the Timer threads themselves -- which don't
+        # touch any of that state until they fire -- happens outside it.
+        # (In the current design `_schedule` is only ever called from the
+        # single main recv loop anyway, so this was never exploitable, but
+        # splitting the decision from the lock was a latent race waiting to
+        # happen the moment that assumption changed.)
         with self._lock:
             self.stats["received"] += 1
             if self.rng.random() < self.cfg.loss:
@@ -63,22 +71,25 @@ class LossyProxy:
                 return
             delay = max(0.0, (self.cfg.delay_ms + self.rng.random() * self.cfg.jitter_ms) / 1000.0)
             do_dup = self.rng.random() < self.cfg.dup
+            dup_delay = delay + self.rng.random() * max(self.cfg.jitter_ms, 1.0) / 1000.0
             do_swap = self._pending_swap is not None and self.rng.random() < self.cfg.reorder
+            swap_target = self._pending_swap
+            if do_swap:
+                self._pending_swap = None
+            else:
+                self._pending_swap = (delay, payload, dest)
+            if do_dup:
+                self.stats["duplicated"] += 1
 
         if do_swap:
-            prev_delay, prev_payload, prev_dest = self._pending_swap
+            prev_delay, prev_payload, prev_dest = swap_target
             # Force this packet to be sent first, the previously-queued one second.
             threading.Timer(min(delay, prev_delay), self._send, args=(payload, dest)).start()
             threading.Timer(max(delay, prev_delay), self._send, args=(prev_payload, prev_dest)).start()
-            self._pending_swap = None
         else:
             threading.Timer(delay, self._send, args=(payload, dest)).start()
-            self._pending_swap = (delay, payload, dest)
 
         if do_dup:
-            with self._lock:
-                self.stats["duplicated"] += 1
-            dup_delay = delay + self.rng.random() * max(self.cfg.jitter_ms, 1.0) / 1000.0
             threading.Timer(dup_delay, self._send, args=(payload, dest)).start()
 
     def _send(self, payload: bytes, dest: Addr) -> None:

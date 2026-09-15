@@ -100,6 +100,14 @@ class Connection:
         on_event: Optional[Callable[[dict], None]] = None,
     ):
         assert role in ("client", "server")
+        if mss < 1:
+            # mss <= 0 makes every send-side chunk size <= 0, which silently
+            # stops the sender from ever transmitting again -- caught by
+            # adversarial review as a permanent, hard-to-diagnose deadlock
+            # rather than an immediate, obvious error.
+            raise ValueError(f"mss must be >= 1, got {mss}")
+        if recv_capacity < 1:
+            raise ValueError(f"recv_capacity must be >= 1, got {recv_capacity}")
         self.role = role
         self.wire = wire
         self.clock = clock
@@ -351,7 +359,15 @@ class Connection:
                 self.ooo[s.seq] = s.payload
             self._send_ack(now)
             return
-        # In-order arrival.
+        # In-order arrival. Deliberately not capacity-checked (unlike the
+        # out-of-order path above): a compliant sender never exceeds our
+        # last-advertised window, and the zero-window persist probe (see
+        # _send_pending) specifically depends on a receiver accepting one
+        # more byte even when its buffer is nominally full -- that's what
+        # actually reveals a reopened window. A non-compliant/hostile
+        # sender could exceed our stated capacity this way; Causeway's
+        # threat model (its own demos, both ends cooperating) doesn't
+        # include that case, exactly like a real TCP receiver.
         self.ready.extend(s.payload)
         self.rcv_nxt += len(s.payload)
         if s.is_fin:

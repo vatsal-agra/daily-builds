@@ -11,14 +11,31 @@ import time
 
 from .clock import RealClock
 from .connection import Connection
-from .simdriver import run_transfer
+from .simdriver import SimulationStalled, run_transfer
 from .wire import RealUdpWire
 
 DEFAULT_MSS = 536
 
 
+def _validate_common(args) -> None:
+    """Shared input validation for every subcommand that takes these flags.
+    Raises ValueError with a clean, specific message; main() turns that into
+    a one-line CLI error instead of a raw traceback."""
+    for name in ("loss", "dup", "reorder"):
+        val = getattr(args, name, None)
+        if val is not None and not (0.0 <= val <= 1.0):
+            raise ValueError(f"--{name} must be between 0 and 1, got {val}")
+    mss = getattr(args, "mss", None)
+    if mss is not None and mss < 1:
+        raise ValueError(f"--mss must be >= 1, got {mss}")
+    num_bytes = getattr(args, "bytes", None)
+    if num_bytes is not None and num_bytes < 0:
+        raise ValueError(f"--bytes must be >= 0, got {num_bytes}")
+
+
 def _cmd_demo(args) -> int:
-    data = os.urandom(args.bytes) if args.random else (b"causeway " * (args.bytes // 9 + 1))[: args.bytes]
+    _validate_common(args)
+    data = os.urandom(args.bytes)
     events = {"client": [], "server": []}
 
     def on_event(who, e):
@@ -74,6 +91,7 @@ def _pump_realtime(conn: Connection, poll_interval: float = 0.002, on_tick=None,
 
 
 def _cmd_send(args) -> int:
+    _validate_common(args)
     with open(args.file, "rb") as f:
         data = f.read()
     sha = hashlib.sha256(data).hexdigest()
@@ -114,6 +132,7 @@ def _cmd_send(args) -> int:
 
 
 def _cmd_recv(args) -> int:
+    _validate_common(args)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(_parse_addr(args.bind))
     wire = RealUdpWire(sock, peer_addr=None)
@@ -169,7 +188,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     d = sub.add_parser("demo", help="run a fast, seeded, in-process simulated transfer")
     d.add_argument("--bytes", type=int, default=200_000)
-    d.add_argument("--random", action="store_true", default=True)
     d.add_argument("--mss", type=int, default=DEFAULT_MSS)
     d.add_argument("--loss", type=float, default=0.05)
     d.add_argument("--dup", type=float, default=0.02)
@@ -216,12 +234,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
-    if argv and argv[0] == "proxy":
-        from . import proxy as proxy_mod
-        return proxy_mod.main(argv[1:])
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        if argv and argv[0] == "proxy":
+            from . import proxy as proxy_mod
+            return proxy_mod.main(argv[1:])
+        parser = build_parser()
+        args = parser.parse_args(argv)
+        return args.func(args)
+    except (ValueError, OSError, SimulationStalled, TimeoutError) as e:
+        # Expected, "the user gave us something we can't work with" or "the
+        # network/filesystem didn't cooperate" failures: a clean one-line
+        # message and a non-zero exit, not a Python traceback. Anything
+        # else (an AssertionError, a genuine internal bug) is deliberately
+        # left to propagate with its full traceback.
+        print(f"error: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
