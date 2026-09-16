@@ -6,7 +6,7 @@ numbers, Jacobson/Karels RTO estimation with Karn's algorithm, selective
 ACKs, and genuine Reno-style congestion control (slow start → congestion
 avoidance → fast retransmit → fast recovery).
 
-**Status: Phase 4 (stretch + polish) complete.** All 4 required features
+**Status: Phase 5 (verification) complete — `./demo.sh` passes 12/12.** All 4 required features
 work end-to-end over real UDP sockets and a real lossy/reordering/
 duplicating network relay. Both stretch features shipped: an interactive
 HTML trace visualizer, and a second (delay-based) congestion controller
@@ -52,6 +52,19 @@ python3 transfer.py compare --trace-out /tmp/cmp   # then open viz/index.html an
 python3 -m unittest discover -s tests
 ```
 
+## Verify
+
+```
+./demo.sh
+```
+
+Runs the full test suite plus 8 more end-to-end checks through the real
+CLI: a clean-link transfer, a lossy-link transfer, sequence-number
+wraparound, the Reno/Vegas bottleneck comparison, a real two-*process*
+`send`/`serve` file transfer over actual OS sockets, CLI error-handling
+on realistic mistakes, an empty transfer, and a headless-browser check
+that the trace visualizer renders a real trace with zero console errors.
+
 ## Next
 
-Phase 5 (full verification), Phase 6 (ship).
+Phase 6 (ship).
