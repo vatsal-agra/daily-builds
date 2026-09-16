@@ -38,6 +38,7 @@ STATE_LAST_ACK = "LAST_ACK"
 RECV_WINDOW_CAP = 65535
 POLL_INTERVAL = 0.01
 LINGER = 0.3
+PERSIST_MIN_INTERVAL = 0.5
 
 
 @dataclass
@@ -88,8 +89,11 @@ class Connection:
         self._fin_seq: int | None = None
         self._peer_fin_seq: int | None = None
         self._peer_closed = False
+        self._aborted = False
         self._close_requested = False
         self._linger_until: float | None = None
+        self._last_advertised_window = RECV_WINDOW_CAP
+        self._last_persist_probe = 0.0
 
         self._lock = threading.RLock()
         self._cv = threading.Condition(self._lock)
@@ -148,6 +152,11 @@ class Connection:
             self.pending.extend(data)
 
     def recv(self, maxlen: int, timeout: float | None = None) -> bytes:
+        """Read up to `maxlen` bytes. Returns b'' once the peer has closed
+        and everything it sent has been delivered (EOF). Raises
+        ConnectionError_ if the connection was reset (RST) with nothing
+        left to deliver.
+        """
         deadline = None if timeout is None else time.monotonic() + timeout
         with self._cv:
             while not self.unread and not self._peer_closed:
@@ -155,11 +164,22 @@ class Connection:
                 if remaining is not None and remaining <= 0:
                     raise TimeoutError("recv() timed out")
                 self._cv.wait(timeout=remaining)
+            if not self.unread and self._aborted:
+                raise ConnectionError_("connection reset")
             chunk = bytes(self.unread[:maxlen])
             del self.unread[:maxlen]
+            self._maybe_send_window_update()
             return chunk
 
     def recv_all(self, timeout: float = 120.0) -> bytes:
+        """Read until the peer closes (EOF). Only meaningful once the peer
+        has called (or will soon call) close() -- if both ends call
+        recv_all() while waiting on each other's full stream and neither
+        has closed its own send side, this blocks forever on both sides,
+        the same way a blocking read on a socket that's open on both ends
+        would. For simultaneous bidirectional traffic of a known size, use
+        repeated recv(n) calls instead.
+        """
         out = bytearray()
         deadline = time.monotonic() + timeout
         while True:
@@ -184,6 +204,19 @@ class Connection:
             self._close_requested = True
         if not self._closed_event.wait(timeout):
             raise TimeoutError("close() timed out waiting for teardown")
+
+    def abort(self, reason: str = "") -> None:
+        """Abruptly reset the connection: sends one RST, then tears down
+        locally without waiting for any acknowledgment (RST isn't acked)."""
+        with self._lock:
+            if self.state not in (STATE_CLOSED,):
+                pkt = Packet(seq=self.send_next or 0, ack=self.recv_next or 0, flags=FLAG_RST)
+                try:
+                    self.transport.sendto(pkt.encode())
+                except OSError:
+                    pass
+            self._trace("abort_sent", reason=reason)
+        self._abort()
 
     @property
     def is_established(self) -> bool:
@@ -214,15 +247,48 @@ class Connection:
     def _abort(self) -> None:
         with self._lock:
             self._stop = True
+            self._aborted = True
+            self._peer_closed = True  # unblocks any blocked recv()/recv_all()
             self.state = STATE_CLOSED
         self._established_event.set()
         self._closed_event.set()
         with self._cv:
             self._cv.notify_all()
 
+    def _send_packet(self, pkt: Packet) -> None:
+        """The single choke point every outgoing packet goes through, so
+        window bookkeeping (for the zero-window recovery logic below) never
+        drifts out of sync with what was actually put on the wire."""
+        self.transport.sendto(pkt.encode())
+        self._last_advertised_window = pkt.window
+
     def _advertised_window(self) -> int:
         used = len(self.unread) + sum(len(v) for v in self.recv_buffer.values())
         return max(0, min(RECV_WINDOW_CAP, RECV_WINDOW_CAP - used))
+
+    def _maybe_send_window_update(self) -> None:
+        """Real TCP deadlocks if a sender that's been told "window: 0"
+        never learns the receiver's app drained its buffer, because an
+        ACK carrying that news is never re-sent on its own. Real stacks
+        fix this two ways: the receiver proactively announces a reopened
+        window (this method, called whenever the app calls recv()), and
+        the sender periodically probes with 1 byte in case that
+        announcement itself is lost (see the persist-probe logic in
+        _send_pending). Undertow does both, for the same reason.
+        """
+        if self.send_next is None or self.recv_next is None:
+            return
+        new_window = self._advertised_window()
+        if self._last_advertised_window < self.mss and new_window >= self.mss:
+            pkt = Packet(
+                seq=self.send_next,
+                ack=self.recv_next,
+                flags=FLAG_ACK,
+                window=new_window,
+                sack_blocks=self._compute_sack_blocks(),
+            )
+            self._send_packet(pkt)
+            self._trace("window_update", window=new_window)
 
     def _seg_len(self, seg: _Segment) -> int:
         return seg.seqlen()
@@ -232,7 +298,7 @@ class Connection:
         self.unacked[seq] = seg
         self.send_next = seq_add(seq, seg.seqlen())
         pkt = Packet(seq=seq, ack=self.recv_next or 0, flags=flags, window=self._advertised_window())
-        self.transport.sendto(pkt.encode())
+        self._send_packet(pkt)
         self._trace("send_ctrl", seq=seq, flags=flags)
 
     def _compute_sack_blocks(self) -> list[tuple[int, int]]:
@@ -301,7 +367,7 @@ class Connection:
         ):
             if self.state == STATE_SYN_SENT:
                 ack_pkt = Packet(seq=self.send_next, ack=self.recv_next, flags=FLAG_ACK, window=self._advertised_window())
-                self.transport.sendto(ack_pkt.encode())
+                self._send_packet(ack_pkt)
                 self._trace("send_final_handshake_ack")
             self.state = STATE_ESTABLISHED
             self._established_event.set()
@@ -346,7 +412,16 @@ class Connection:
 
         if pkt.payload:
             if seq_ge(pkt.seq, self.recv_next) and pkt.seq not in self.recv_buffer:
-                self.recv_buffer[pkt.seq] = pkt.payload
+                # Enforce our own advertised window defensively: a
+                # well-behaved sender already respects it, but nothing
+                # here should let out-of-order chunks accumulate past what
+                # we told the peer we could hold. Rejected data is simply
+                # never ACKed, so it's recovered exactly like ordinary
+                # packet loss -- the sender retransmits it later.
+                if len(pkt.payload) <= self._advertised_window():
+                    self.recv_buffer[pkt.seq] = pkt.payload
+                else:
+                    self._trace("recv_window_full_drop", seq=pkt.seq, len=len(pkt.payload))
             got_something = True
 
         if pkt.is_fin:
@@ -379,7 +454,7 @@ class Connection:
                 window=self._advertised_window(),
                 sack_blocks=self._compute_sack_blocks(),
             )
-            self.transport.sendto(ack_pkt.encode())
+            self._send_packet(ack_pkt)
             self._trace("recv_ack", ack=self.recv_next, sack=list(ack_pkt.sack_blocks))
 
     def _handle_timers(self, now: float) -> None:
@@ -412,7 +487,7 @@ class Connection:
             window=self._advertised_window(),
             payload=seg.data,
         )
-        self.transport.sendto(pkt.encode())
+        self._send_packet(pkt)
         self._trace("retransmit", seq=seg.seq, count=seg.retransmit_count)
 
     def _send_pending(self, now: float) -> None:
@@ -421,6 +496,26 @@ class Connection:
         while self.pending:
             in_flight = seq_diff(self.send_una, self.send_next)
             room = min(self.cc.cwnd, self.peer_window) - in_flight
+            if room <= 0:
+                # Zero-window persist probe: if we're stalled specifically
+                # because the peer advertised window 0 (not because cwnd is
+                # small) and nothing else is outstanding, force exactly one
+                # byte through periodically. This is the sender-side half
+                # of the deadlock fix described in _maybe_send_window_update
+                # -- it covers the case where the receiver's own window-
+                # reopened announcement gets lost, which would otherwise
+                # stall the connection forever since plain ACKs are never
+                # independently retransmitted.
+                if (
+                    self.peer_window == 0
+                    and in_flight == 0
+                    and now - self._last_persist_probe >= max(PERSIST_MIN_INTERVAL, self.rto.current())
+                ):
+                    room = 1
+                    self._last_persist_probe = now
+                    self._trace("persist_probe")
+                else:
+                    break
             chunk_len = min(self.mss, room, len(self.pending))
             if chunk_len <= 0:
                 break
@@ -430,14 +525,14 @@ class Connection:
             self.unacked[seq] = _Segment(seq=seq, data=chunk, flags=FLAG_ACK, send_time=now)
             self.send_next = seq_add(seq, chunk_len)
             pkt = Packet(seq=seq, ack=self.recv_next, flags=FLAG_ACK, window=self._advertised_window(), payload=chunk)
-            self.transport.sendto(pkt.encode())
+            self._send_packet(pkt)
             self._trace("send", seq=seq, len=chunk_len, cwnd=self.cc.cwnd)
 
         if self._close_requested and not self.pending and self._fin_seq is None and self.send_una == self.send_next:
             self._fin_seq = self.send_next
             self.unacked[self._fin_seq] = _Segment(seq=self._fin_seq, data=b"", flags=FLAG_FIN | FLAG_ACK, send_time=now)
             pkt = Packet(seq=self._fin_seq, ack=self.recv_next, flags=FLAG_FIN | FLAG_ACK, window=self._advertised_window())
-            self.transport.sendto(pkt.encode())
+            self._send_packet(pkt)
             self._trace("send_fin", seq=self._fin_seq)
             self.send_next = seq_add(self._fin_seq, 1)
             self.state = STATE_LAST_ACK if self.state == STATE_CLOSE_WAIT else STATE_FIN_WAIT

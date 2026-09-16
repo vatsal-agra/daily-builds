@@ -6,9 +6,13 @@ numbers, Jacobson/Karels RTO estimation with Karn's algorithm, selective
 ACKs, and genuine Reno-style congestion control (slow start → congestion
 avoidance → fast retransmit → fast recovery).
 
-**Status: Phase 2 (core build) complete.** All 4 required features are
-implemented and demonstrably work end-to-end over real UDP sockets and a
-real lossy/reordering/duplicating network relay — see below.
+**Status: Phase 3 (adversarial review) complete.** All 4 required features
+work end-to-end over real UDP sockets and a real lossy/reordering/
+duplicating network relay. Phase 3 found and fixed 6 real bugs, including
+two that were connection-breaking (a handshake that never completed on a
+perfectly clean link, and a cascading RTO-backoff bug that stalled bulk
+transfers under loss) and one deadlock (a slow-but-well-behaved receiver
+could stall the whole connection forever) — see [REVIEW.md](REVIEW.md).
 
 ## What's here so far
 
@@ -23,7 +27,8 @@ real lossy/reordering/duplicating network relay — see below.
   delays datagrams under a seeded RNG.
 - `undertow/socket_api.py` — the public `UndertowSocket` API.
 - `transfer.py` — a file-transfer CLI and demo harness.
-- `tests/` — unit + integration tests (50 passing).
+- `tests/` — unit + integration tests, including regressions for every
+  Phase 3 finding (55 passing).
 
 ## Try it
 
@@ -41,6 +46,5 @@ python3 -m unittest discover -s tests
 
 ## Next
 
-Phase 3 (adversarial review), Phase 4 (stretch features — HTML visualizer,
-a second congestion controller), Phase 5 (full verification), Phase 6
-(ship).
+Phase 4 (stretch features — HTML visualizer, a second congestion
+controller), Phase 5 (full verification), Phase 6 (ship).
