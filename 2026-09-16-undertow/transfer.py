@@ -56,7 +56,11 @@ def cmd_serve(args: argparse.Namespace) -> None:
 
 def cmd_send(args: argparse.Namespace) -> None:
     data = Path(args.in_file).read_bytes()
-    sock = UndertowSocket(congestion_controller_factory=_cc_factory(args.cc))
+    sock = UndertowSocket(
+        congestion_controller_factory=_cc_factory(args.cc),
+        bind_addr=("0.0.0.0", args.bind_port),
+    )
+    print(f"undertow: bound to {sock.local_address()}, connecting to {(args.host, args.port)}...", file=sys.stderr)
     conn = sock.connect((args.host, args.port), timeout=args.timeout)
     print(f"undertow: connected, sending {len(data)} bytes...", file=sys.stderr)
     t0 = time.monotonic()
@@ -78,6 +82,8 @@ def run_transfer(
     seed: int,
     cc_name: str,
     timeout: float = 60.0,
+    bottleneck_bps: float = 0.0,
+    bottleneck_buffer_bytes: int = 0,
 ) -> dict:
     """Runs one full send/receive over a fresh lossy simulator, in-process.
 
@@ -99,6 +105,8 @@ def run_transfer(
         min_delay=min_delay,
         max_delay=max_delay,
         seed=seed,
+        bottleneck_bps=bottleneck_bps,
+        bottleneck_buffer_bytes=bottleneck_buffer_bytes,
     )
     sim.start()
 
@@ -154,6 +162,8 @@ def cmd_demo(args: argparse.Namespace) -> None:
         seed=args.seed,
         cc_name=args.cc,
         timeout=args.timeout,
+        bottleneck_bps=args.bottleneck_bps,
+        bottleneck_buffer_bytes=args.bottleneck_buffer,
     )
 
     sent_hash = hashlib.sha256(outcome["sent"]).hexdigest()
@@ -171,7 +181,7 @@ def cmd_demo(args: argparse.Namespace) -> None:
         Path(args.trace_out).write_text(
             json.dumps(
                 {
-                    "params": vars(args),
+                    "params": {k: v for k, v in vars(args).items() if k != "func"},
                     "client_trace": outcome["client_trace"],
                     "server_trace": outcome["server_trace"],
                     "sim_stats": outcome["sim_stats"],
@@ -186,6 +196,70 @@ def cmd_demo(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cmd_compare(args: argparse.Namespace) -> None:
+    """Runs the *same* payload over the *same* real bottleneck link once
+    with Reno and once with Vegas, and reports the difference -- a real
+    A/B measured from two independent live transfers, not a narrated one.
+    """
+    import random
+
+    rng = random.Random(args.seed)
+    payload = bytes(rng.getrandbits(8) for _ in range(args.size))
+
+    print(
+        f"undertow compare: {args.size} bytes over a {args.bottleneck_bps:.0f} B/s "
+        f"bottleneck with a {args.bottleneck_buffer} byte queue (loss={args.loss})"
+    )
+    rows = []
+    for cc_name in ("reno", "vegas"):
+        outcome = run_transfer(
+            payload=payload,
+            loss=args.loss,
+            dup=args.dup,
+            reorder=args.reorder,
+            min_delay=args.min_delay,
+            max_delay=args.max_delay,
+            seed=args.seed,
+            cc_name=cc_name,
+            timeout=args.timeout,
+            bottleneck_bps=args.bottleneck_bps,
+            bottleneck_buffer_bytes=args.bottleneck_buffer,
+        )
+        ok = outcome["recv"] == outcome["sent"]
+        retransmits = len([e for e in outcome["client_trace"] if e["event"] == "retransmit"])
+        timeouts = len([e for e in outcome["client_trace"] if e["event"] == "rto_timeout"])
+        throughput_kbps = args.size / max(outcome["elapsed"], 1e-6) / 1024
+        rows.append((cc_name, ok, outcome["elapsed"], retransmits, timeouts, throughput_kbps))
+        print(
+            f"  {cc_name:>5}: ok={ok!s:<5} time={outcome['elapsed']:7.2f}s  "
+            f"throughput={throughput_kbps:7.1f} KB/s  retransmits={retransmits:3d}  rto_timeouts={timeouts:3d}"
+        )
+        if args.trace_out:
+            Path(f"{args.trace_out}.{cc_name}.json").write_text(
+                json.dumps(
+                    {
+                        "cc": cc_name,
+                        "params": {k: v for k, v in vars(args).items() if k != "func"},
+                        "client_trace": outcome["client_trace"],
+                        "server_trace": outcome["server_trace"],
+                        "sim_stats": outcome["sim_stats"],
+                    }
+                )
+            )
+
+    if not all(r[1] for r in rows):
+        print("COMPARE FAILED: at least one transfer did not complete correctly", file=sys.stderr)
+        sys.exit(1)
+
+    reno_t, vegas_t = rows[0][2], rows[1][2]
+    if vegas_t < reno_t:
+        print(f"  -> Vegas finished {reno_t / max(vegas_t, 1e-6):.1f}x faster than Reno on this bottleneck.")
+    elif reno_t < vegas_t:
+        print(f"  -> Reno finished {vegas_t / max(reno_t, 1e-6):.1f}x faster than Vegas on this bottleneck.")
+    else:
+        print("  -> both controllers finished in the same time.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="transfer.py", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="command", required=True)
@@ -198,12 +272,19 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--timeout", type=float, default=30.0)
     serve.set_defaults(func=cmd_serve)
 
-    send = sub.add_parser("send", help="send a file to a peer")
+    send = sub.add_parser(
+        "send",
+        help="send a file to a peer",
+        description="Send a file to a peer running `transfer.py serve`. Since Undertow is "
+        "point-to-point (no dynamic multi-client rendezvous), the receiver's `serve --peer-port` "
+        "must name this sender's own bind port, so pass --bind-port to pin it to something known.",
+    )
     send.add_argument("host")
     send.add_argument("port", type=int)
     send.add_argument("in_file")
     send.add_argument("--cc", choices=["reno", "vegas"], default="reno")
     send.add_argument("--timeout", type=float, default=30.0)
+    send.add_argument("--bind-port", type=int, default=0, help="local port to send from (must match the receiver's --peer-port)")
     send.set_defaults(func=cmd_send)
 
     demo = sub.add_parser("demo", help="run a full send/receive over a real lossy simulated network")
@@ -217,14 +298,48 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument("--cc", choices=["reno", "vegas"], default="reno")
     demo.add_argument("--timeout", type=float, default=60.0)
     demo.add_argument("--trace-out", default=None)
+    demo.add_argument("--bottleneck-bps", type=float, default=0.0, help="0 disables the bottleneck queue model")
+    demo.add_argument("--bottleneck-buffer", type=int, default=0)
     demo.set_defaults(func=cmd_demo)
+
+    compare = sub.add_parser(
+        "compare", help="run the same transfer over the same real bottleneck with Reno and with Vegas, side by side"
+    )
+    compare.add_argument("--loss", type=float, default=0.0)
+    compare.add_argument("--dup", type=float, default=0.0)
+    compare.add_argument("--reorder", type=float, default=0.0)
+    compare.add_argument("--min-delay", type=float, default=0.0)
+    compare.add_argument("--max-delay", type=float, default=0.0)
+    compare.add_argument("--size", type=int, default=60_000)
+    compare.add_argument("--seed", type=int, default=5)
+    compare.add_argument("--bottleneck-bps", type=float, default=60_000.0)
+    compare.add_argument("--bottleneck-buffer", type=int, default=20_000)
+    compare.add_argument("--timeout", type=float, default=60.0)
+    compare.add_argument("--trace-out", default=None)
+    compare.set_defaults(func=cmd_compare)
 
     return p
 
 
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
-    args.func(args)
+    try:
+        args.func(args)
+    except FileNotFoundError as e:
+        print(f"undertow: error: file not found: {e.filename}", file=sys.stderr)
+        sys.exit(1)
+    except IsADirectoryError as e:
+        print(f"undertow: error: expected a file, got a directory: {e.filename}", file=sys.stderr)
+        sys.exit(1)
+    except TimeoutError as e:
+        print(f"undertow: error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except ConnectionError as e:
+        print(f"undertow: error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except OSError as e:
+        print(f"undertow: error: {e.strerror or e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Undertow trace visualizer</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #121820;
+    --panel-border: #202b38;
+    --text: #dbe4ee;
+    --muted: #7c8a9c;
+    --accent: #4fd1c5;
+    --accent2: #f0a35c;
+    --slow-start: #4f8cf0;
+    --cong-avoid: #4fd17d;
+    --fast-recovery: #f0a35c;
+    --danger: #f0605c;
+    --grid: #1c2733;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f6f9;
+      --panel: #ffffff;
+      --panel-border: #dbe2ea;
+      --text: #1b2531;
+      --muted: #5c6b7c;
+      --grid: #e7ecf2;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 24px 16px 64px;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .sub {
+    color: var(--muted);
+    margin: 0 0 20px;
+    font-size: 13px;
+  }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .dropzone {
+    border: 1.5px dashed var(--panel-border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    background: var(--panel);
+    transition: border-color .15s ease;
+  }
+  .dropzone:hover, .dropzone.drag { border-color: var(--accent); color: var(--text); }
+  .dropzone input { display: none; }
+  .legend-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .legend-chip .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 16px 18px 10px;
+  }
+  .panel h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    margin: 0 0 10px;
+    font-weight: 600;
+  }
+  .stat-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    margin-bottom: 14px;
+  }
+  .stat {
+    min-width: 90px;
+  }
+  .stat .v { font-size: 18px; font-weight: 600; }
+  .stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .axis-label { fill: var(--muted); font-size: 10px; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 80px 20px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .empty b { color: var(--text); }
+  tspan.title { font-weight: 600; }
+  .tooltip-dot { cursor: pointer; }
+</style>
+</head>
+<body>
+  <h1>Undertow trace visualizer</h1>
+  <p class="sub">Load one or two trace files produced by <code>transfer.py demo --trace-out FILE</code> or <code>transfer.py compare --trace-out FILE</code> (reads <code>FILE.reno.json</code> / <code>FILE.vegas.json</code>).</p>
+
+  <div class="toolbar">
+    <label class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept=".json" multiple>
+      Click or drop trace JSON file(s) here — up to two, to compare controllers
+    </label>
+  </div>
+
+  <div id="content">
+    <div class="empty">
+      No trace loaded yet.<br><br>
+      Generate one with<br>
+      <code>python3 transfer.py demo --trace-out trace.json</code><br>
+      or<br>
+      <code>python3 transfer.py compare --trace-out cmp</code>
+    </div>
+  </div>
+
+<script>
+const COLORS = {
+  slow_start: 'var(--slow-start)',
+  congestion_avoidance: 'var(--cong-avoid)',
+  fast_recovery: 'var(--fast-recovery)',
+  send: '#4fd1c5',
+  retransmit: '#f0a35c',
+  rto_timeout: '#f0605c',
+  recv_ack: '#5c6b7c',
+  persist_probe: '#b97ce8',
+  window_update: '#e8c37c',
+  acked: '#3fae8f',
+};
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const content = document.getElementById('content');
+
+dropzone.addEventListener('click', () => fileInput.click());
+['dragover'].forEach(evt => dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave', 'drop'].forEach(evt => dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone.addEventListener('drop', e => {
+  const files = [...e.dataTransfer.files].slice(0, 2);
+  if (files.length) loadFiles(files);
+});
+fileInput.addEventListener('change', () => {
+  const files = [...fileInput.files].slice(0, 2);
+  if (files.length) loadFiles(files);
+});
+
+async function loadFiles(files) {
+  const traces = [];
+  for (const f of files) {
+    try {
+      const text = await f.text();
+      const data = JSON.parse(text);
+      data._filename = f.name;
+      traces.push(data);
+    } catch (e) {
+      alert(`Could not parse ${f.name}: ${e}`);
+    }
+  }
+  if (traces.length) render(traces);
+}
+
+function niceLabel(t) {
+  return t && t.cc ? t.cc : (t._filename || 'trace');
+}
+
+function render(traces) {
+  content.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  content.appendChild(grid);
+
+  for (const t of traces) {
+    const events = t.client_trace || [];
+    grid.appendChild(statsPanel(t, events));
+    grid.appendChild(cwndPanel(t, events));
+    grid.appendChild(rttPanel(t, events));
+    grid.appendChild(timelinePanel(t, events));
+  }
+}
+
+function panel(title) {
+  const p = document.createElement('div');
+  p.className = 'panel';
+  const h = document.createElement('h2');
+  h.textContent = title;
+  p.appendChild(h);
+  return p;
+}
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+function statsPanel(t, events) {
+  const p = panel(`${niceLabel(t)} — summary`);
+  const row = document.createElement('div');
+  row.className = 'stat-row';
+  const counts = {};
+  for (const e of events) counts[e.event] = (counts[e.event] || 0) + 1;
+  const sim = t.sim_stats || {};
+  const stats = [
+    ['sent bytes', t.params && t.params.size ? t.params.size.toLocaleString() : (t.sent ? t.sent.length : '—')],
+    ['segments sent', counts.send || 0],
+    ['retransmits', counts.retransmit || 0],
+    ['rto timeouts', counts.rto_timeout || 0],
+    ['fast retransmits', counts.fast_retransmit || 0],
+    ['persist probes', counts.persist_probe || 0],
+    ['network drops', sim.dropped ?? '—'],
+  ];
+  for (const [k, v] of stats) {
+    const s = document.createElement('div');
+    s.className = 'stat';
+    s.innerHTML = `<div class="v">${v}</div><div class="k">${k}</div>`;
+    row.appendChild(s);
+  }
+  p.appendChild(row);
+  return p;
+}
+
+function extentTime(events) {
+  let max = 0;
+  for (const e of events) if (e.t > max) max = e.t;
+  return Math.max(max, 0.001);
+}
+
+function cwndPanel(t, events) {
+  const p = panel(`${niceLabel(t)} — congestion window`);
+  const pts = events.filter(e => e.event === 'cwnd');
+  if (!pts.length) { p.appendChild(textNote('no cwnd events in this trace')); return p; }
+
+  const W = 1000, H = 220, padL = 46, padR = 12, padT = 10, padB = 24;
+  const tMax = extentTime(events);
+  const cwndMax = Math.max(...pts.map(p => p.cwnd), 1) * 1.08;
+
+  const x = t => padL + (t / tMax) * (W - padL - padR);
+  const y = c => H - padB - (c / cwndMax) * (H - padT - padB);
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}` });
+
+  // gridlines + y labels
+  for (let i = 0; i <= 4; i++) {
+    const val = (cwndMax / 4) * i;
+    const yy = y(val);
+    svg.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: yy, y2: yy, class: 'gridline' }));
+    const lbl = svgEl('text', { x: 4, y: yy + 3, class: 'axis-label' });
+    lbl.textContent = Math.round(val / 1000) + 'k';
+    svg.appendChild(lbl);
+  }
+  const xt = svgEl('text', { x: W - padR, y: H - 4, class: 'axis-label', 'text-anchor': 'end' });
+  xt.textContent = tMax.toFixed(1) + 's';
+  svg.appendChild(xt);
+
+  // path, colored per-segment by cc_state
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const seg = svgEl('line', {
+      x1: x(a.t), y1: y(a.cwnd), x2: x(b.t), y2: y(b.cwnd),
+      stroke: COLORS[b.cc_state] || COLORS.slow_start, 'stroke-width': 1.6, 'stroke-linecap': 'round',
+    });
+    svg.appendChild(seg);
+  }
+  // ssthresh dashed line (last known value drawn flat isn't meaningful over time, so plot as points)
+  for (const p2 of pts) {
+    if (p2.ssthresh && p2.ssthresh < cwndMax * 2) {
+      svg.appendChild(svgEl('circle', { cx: x(p2.t), cy: y(Math.min(p2.ssthresh, cwndMax)), r: 0.9, fill: 'var(--muted)', opacity: 0.5 }));
+    }
+  }
+  // markers for loss events
+  for (const e of events) {
+    if (e.event === 'rto_timeout' || e.event === 'fast_retransmit') {
+      const near = pts.reduce((best, p2) => Math.abs(p2.t - e.t) < Math.abs(best.t - e.t) ? p2 : best, pts[0]);
+      const c = svgEl('circle', {
+        cx: x(e.t), cy: y(near.cwnd), r: 3,
+        fill: e.event === 'rto_timeout' ? COLORS.rto_timeout : COLORS.fast_recovery,
+        class: 'tooltip-dot',
+      });
+      c.appendChild(svgEl('title')).textContent = `${e.event} @ ${e.t.toFixed(3)}s`;
+      svg.appendChild(c);
+    }
+  }
+  p.appendChild(svg);
+  p.appendChild(legendRow([
+    ['slow start', COLORS.slow_start], ['congestion avoidance', COLORS.cong_avoid || COLORS.congestion_avoidance],
+    ['fast recovery', COLORS.fast_recovery], ['RTO timeout', COLORS.rto_timeout], ['fast retransmit', COLORS.fast_recovery],
+  ]));
+  return p;
+}
+
+function rttPanel(t, events) {
+  const p = panel(`${niceLabel(t)} — RTO estimate`);
+  const pts = events.filter(e => e.event === 'cwnd' && typeof e.rto === 'number');
+  if (!pts.length) { p.appendChild(textNote('no RTO samples in this trace')); return p; }
+
+  const W = 1000, H = 140, padL = 46, padR = 12, padT = 10, padB = 20;
+  const tMax = extentTime(events);
+  const rMax = Math.max(...pts.map(p => p.rto), 0.2) * 1.1;
+  const x = tt => padL + (tt / tMax) * (W - padL - padR);
+  const y = r => H - padB - (r / rMax) * (H - padT - padB);
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}` });
+  for (let i = 0; i <= 3; i++) {
+    const val = (rMax / 3) * i;
+    const yy = y(val);
+    svg.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: yy, y2: yy, class: 'gridline' }));
+    const lbl = svgEl('text', { x: 4, y: yy + 3, class: 'axis-label' });
+    lbl.textContent = val.toFixed(2) + 's';
+    svg.appendChild(lbl);
+  }
+  let path = '';
+  pts.forEach((pt, i) => { path += (i === 0 ? 'M' : 'L') + x(pt.t).toFixed(1) + ',' + y(pt.rto).toFixed(1) + ' '; });
+  svg.appendChild(svgEl('path', { d: path, fill: 'none', stroke: 'var(--accent2)', 'stroke-width': 1.6 }));
+  p.appendChild(svg);
+  return p;
+}
+
+const ROWS = ['send', 'retransmit', 'rto_timeout', 'fast_retransmit', 'persist_probe', 'window_update', 'recv_ack'];
+const ROW_LABEL = {
+  send: 'data sent', retransmit: 'retransmit', rto_timeout: 'RTO timeout', fast_retransmit: 'fast retransmit',
+  persist_probe: 'persist probe', window_update: 'window update', recv_ack: 'ACK received',
+};
+
+function timelinePanel(t, events) {
+  const p = panel(`${niceLabel(t)} — packet timeline`);
+  const present = ROWS.filter(r => events.some(e => e.event === r));
+  if (!present.length) { p.appendChild(textNote('no packet events in this trace')); return p; }
+
+  const W = 1000, rowH = 22, padL = 130, padR = 12, padT = 8;
+  const H = padT * 2 + present.length * rowH;
+  const tMax = extentTime(events);
+  const x = tt => padL + (tt / tMax) * (W - padL - padR);
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}` });
+  present.forEach((row, i) => {
+    const yy = padT + i * rowH + rowH / 2;
+    const label = svgEl('text', { x: padL - 10, y: yy + 3, class: 'axis-label', 'text-anchor': 'end' });
+    label.textContent = ROW_LABEL[row] || row;
+    svg.appendChild(label);
+    svg.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: yy, y2: yy, class: 'gridline' }));
+    for (const e of events.filter(e => e.event === row)) {
+      const dot = svgEl('circle', { cx: x(e.t), cy: yy, r: 2.6, fill: COLORS[row] || 'var(--accent)', class: 'tooltip-dot' });
+      dot.appendChild(svgEl('title')).textContent = `${row} @ ${e.t.toFixed(3)}s` + (e.seq !== undefined ? ` seq=${e.seq}` : '');
+      svg.appendChild(dot);
+    }
+  });
+  p.appendChild(svg);
+  return p;
+}
+
+function legendRow(items) {
+  const row = document.createElement('div');
+  row.style.display = 'flex';
+  row.style.flexWrap = 'wrap';
+  row.style.gap = '8px';
+  row.style.margin = '10px 0 4px';
+  for (const [label, color] of items) {
+    const chip = document.createElement('span');
+    chip.className = 'legend-chip';
+    chip.innerHTML = `<span class="dot" style="background:${color}"></span>${label}`;
+    row.appendChild(chip);
+  }
+  return row;
+}
+
+function textNote(msg) {
+  const d = document.createElement('div');
+  d.style.color = 'var(--muted)';
+  d.style.fontSize = '12px';
+  d.style.padding = '8px 0 4px';
+  d.textContent = msg;
+  return d;
+}
+</script>
+</body>
+</html>

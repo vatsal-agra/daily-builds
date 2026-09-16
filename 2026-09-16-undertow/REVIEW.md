@@ -106,6 +106,46 @@ half-close one direction first), not in the transport. Documented as a
 proper full-duplex regression test using the correct read-exact-N-bytes
 pattern (`TestFullDuplex`), which passes cleanly.
 
+## Phase 4 finding: Reno's real, well-known weakness recovering multiple losses in one window (documented, not "fixed")
+
+Building the Reno/Vegas head-to-head comparison (`transfer.py compare`)
+against a real bottleneck link surfaced something that looked at first like
+another stall bug: Reno taking ~40 seconds to move 150KB through a 150,000
+B/s link, with 9 separate `rto_timeout` events. Traced it end to end via
+the trace log rather than assuming a bug: slow start's uncontrolled
+exponential growth (cwnd more than doubling every few milliseconds on a
+near-zero-RTT localhost link) blew straight past the bottleneck's buffer
+before a single ACK could come back and constrain it, tail-dropping a
+*contiguous run* of ~24 segments in one shot. Because nothing arrives
+*after* a contiguous run of losses, the receiver has nothing to generate
+duplicate ACKs from, so fast retransmit (which needs 3 dup ACKs) never
+fires for any of them — each of the 24 lost segments can only be
+discovered and recovered one at a time, an RTO cycle apart, with Karn's
+algorithm correctly refusing to reset the backoff on any of them (they're
+all, correctly, retransmissions). This is a textbook, well-documented
+limitation of classic Reno without SACK-based multi-segment recovery — it
+is literally the reason SACK/NewReno exist in real TCP stacks. Undertow
+already generates real SACK blocks on the receive side (feature 2), but
+the sender doesn't yet act on them to recover more than one segment per
+RTT; that's a legitimate, scoped-out future extension (see README), not a
+bug in what shipped. Vegas sidesteps the whole failure mode by backing off
+from the queue *before* it overflows, which is exactly what a live,
+un-narrated 38x speed difference on the same link demonstrates.
+
+## Phase 4 polish finding: `send`/`serve` CLI had no way to actually connect
+
+`serve --peer-port N` expects the sender to be reachable at that exact
+port (Undertow is point-to-point with both addresses known up front, same
+as the simulator design — there's no dynamic rendezvous), but `send` never
+exposed a way to pin its own source port to `N`; it always bound an
+ephemeral one. Every real two-process `send`/`serve` run timed out on the
+handshake. Added `send --bind-port`, verified with two actual separate
+`transfer.py` processes (not the in-process `run_transfer` harness) moving
+a real 500KB file end to end with a matching SHA-256. Also wrapped `main()`
+in a clean error handler for the CLI's realistic failure modes (missing
+input file, connection timeout, a port already in use) — these used to
+dump a raw Python traceback instead of a one-line `undertow: error: ...`.
+
 ## What held up
 
 - Wraparound-safe sequence arithmetic: transferring data across the exact

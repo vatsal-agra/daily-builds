@@ -34,6 +34,12 @@ class CongestionController:
     def on_timeout(self) -> None:
         raise NotImplementedError
 
+    def on_rtt_sample(self, rtt: float) -> None:
+        """Optional hook: a fresh (non-retransmitted) RTT sample, in
+        seconds. Loss-based controllers like Reno have no use for this;
+        delay-based ones (see vegas.py) build their whole signal from it.
+        """
+
     @property
     def cwnd(self) -> int:
         raise NotImplementedError

@@ -6,13 +6,18 @@ numbers, Jacobson/Karels RTO estimation with Karn's algorithm, selective
 ACKs, and genuine Reno-style congestion control (slow start → congestion
 avoidance → fast retransmit → fast recovery).
 
-**Status: Phase 3 (adversarial review) complete.** All 4 required features
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features
 work end-to-end over real UDP sockets and a real lossy/reordering/
-duplicating network relay. Phase 3 found and fixed 6 real bugs, including
-two that were connection-breaking (a handshake that never completed on a
-perfectly clean link, and a cascading RTO-backoff bug that stalled bulk
-transfers under loss) and one deadlock (a slow-but-well-behaved receiver
-could stall the whole connection forever) — see [REVIEW.md](REVIEW.md).
+duplicating network relay. Both stretch features shipped: an interactive
+HTML trace visualizer, and a second (delay-based) congestion controller
+with a real head-to-head comparison against Reno over a genuine bottleneck
+link. See [PLAN.md](PLAN.md) for the design and [REVIEW.md](REVIEW.md) for
+everything the adversarial review and polish pass found and fixed —
+including two connection-breaking bugs (a handshake that never completed
+on a perfectly clean link, and a cascading RTO-backoff bug that stalled
+bulk transfers under loss), a zero-window deadlock, and a real, well-known
+Reno limitation (recovering multiple losses in one window without SACK)
+that the Reno/Vegas comparison surfaces live rather than just describing.
 
 ## What's here so far
 
@@ -21,30 +26,32 @@ could stall the whole connection forever) — see [REVIEW.md](REVIEW.md).
 - `undertow/rto.py` — Jacobson/Karels RTO estimator + Karn's algorithm.
 - `undertow/congestion.py` — Reno congestion controller (slow start, AIMD,
   fast retransmit, fast recovery).
+- `undertow/vegas.py` — a delay-based congestion controller (simplified
+  TCP Vegas).
 - `undertow/connection.py` — the actual protocol state machine: handshake,
-  sliding window, retransmission, graceful teardown.
+  sliding window, retransmission, zero-window recovery, graceful teardown.
 - `undertow/netsim.py` — a real UDP relay that drops/duplicates/reorders/
-  delays datagrams under a seeded RNG.
+  delays datagrams under a seeded RNG, plus an optional real bottleneck
+  queue model (rate + buffer, real queueing delay and tail-drop).
 - `undertow/socket_api.py` — the public `UndertowSocket` API.
-- `transfer.py` — a file-transfer CLI and demo harness.
+- `transfer.py` — CLI: `send`/`serve` a real file between two processes,
+  `demo` (single lossy-link transfer), `compare` (Reno vs. Vegas head to
+  head over the same bottleneck).
+- `viz/index.html` — a dependency-free interactive trace visualizer
+  (cwnd-over-time, RTO estimate, packet timeline) for `--trace-out` output.
 - `tests/` — unit + integration tests, including regressions for every
-  Phase 3 finding (55 passing).
+  Phase 3/4 finding (63 passing).
 
 ## Try it
 
 ```
 python3 transfer.py demo --size 500000 --loss 0.05 --dup 0.02 --reorder 0.05
-```
-
-Runs a real send/receive of random bytes through a real lossy simulated
-network in one process and verifies the received file is SHA-256-identical
-to what was sent.
-
-```
+python3 transfer.py compare                       # Reno vs. Vegas, same real bottleneck
+python3 transfer.py compare --trace-out /tmp/cmp   # then open viz/index.html and load
+                                                    # /tmp/cmp.reno.json + /tmp/cmp.vegas.json
 python3 -m unittest discover -s tests
 ```
 
 ## Next
 
-Phase 4 (stretch features — HTML visualizer, a second congestion
-controller), Phase 5 (full verification), Phase 6 (ship).
+Phase 5 (full verification), Phase 6 (ship).

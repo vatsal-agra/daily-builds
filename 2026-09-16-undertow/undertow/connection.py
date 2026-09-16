@@ -387,7 +387,9 @@ class Connection:
                 seg_end = seq_add(seq, self._seg_len(seg))
                 if seq_le(seg_end, pkt.ack):
                     if seg.retransmit_count == 0:
-                        self.rto.sample(max(1e-6, now - seg.send_time))
+                        rtt = max(1e-6, now - seg.send_time)
+                        self.rto.sample(rtt)
+                        self.cc.on_rtt_sample(rtt)
                     del self.unacked[seq]
                     self._trace("acked", seq=seg.seq, len=self._seg_len(seg))
             self.send_una = pkt.ack
