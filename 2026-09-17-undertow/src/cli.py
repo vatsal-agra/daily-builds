@@ -60,13 +60,25 @@ def _print_summary(scenario, result) -> None:
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="undertow", description="From-scratch TCP congestion-control simulator")
-    p.add_argument("scenario", choices=sorted(SCENARIOS))
-    p.add_argument("--algo", default="reno", choices=["reno", "cubic", "bbr"])
-    p.add_argument("--duration", type=float, default=30.0)
-    p.add_argument("--flows", type=int, default=2)
+    p = argparse.ArgumentParser(
+        prog="undertow",
+        description="From-scratch, packet-level TCP congestion-control simulator.",
+        epilog="Examples:\n"
+               "  undertow single --algo bbr --duration 20\n"
+               "  undertow fairness --algo reno --flows 3 --duration 40\n"
+               "  undertow rtt-unfairness --algo cubic\n"
+               "  undertow bufferbloat --algo reno --red\n"
+               "  undertow bbr-vs-loss --algo cubic --out result.json",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("scenario", choices=sorted(SCENARIOS),
+                    help="single | fairness | rtt-unfairness | bufferbloat | bbr-vs-loss")
+    p.add_argument("--algo", default="reno", choices=["reno", "cubic", "bbr"],
+                    help="congestion-control algorithm under test (default: reno)")
+    p.add_argument("--duration", type=float, default=30.0, help="simulated seconds to run (default: 30)")
+    p.add_argument("--flows", type=int, default=2, help="number of flows, fairness scenario only (default: 2)")
     p.add_argument("--red", action="store_true", help="use RED instead of drop-tail (bufferbloat scenario)")
-    p.add_argument("--out", type=str, default=None, help="write full JSON result to this path")
+    p.add_argument("--out", type=str, default=None, help="write the full JSON result to this path")
     args = p.parse_args(argv)
     if args.duration <= 0:
         p.error("--duration must be > 0")
