@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Undertow — TCP Congestion Control Visualizer</title>
+<style>
+  :root {
+    --bg: #0b1120;
+    --panel: #121a2e;
+    --panel-border: #24304d;
+    --text: #e6ecff;
+    --muted: #8fa0c9;
+    --accent-reno: #ff6b6b;
+    --accent-cubic: #4dd4ac;
+    --accent-bbr: #ffd166;
+    --accent-drop: #ff6b6b;
+    --accent-red: #4dd4ac;
+    --grid: #1e2a45;
+    --good: #4dd4ac;
+    --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px 60px;
+    background: radial-gradient(1200px 600px at 50% -10%, #17213a 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 8px; }
+  header h1 {
+    font-size: 2rem;
+    margin: 0 0 6px;
+    background: linear-gradient(90deg, #7dd3fc, #a78bfa 60%, #f0abfc);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: -0.02em;
+  }
+  header p { color: var(--muted); max-width: 640px; margin: 0 auto; line-height: 1.5; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 20px 22px 16px;
+    margin: 22px 0;
+    box-shadow: 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+  .panel h2 { margin: 0 0 4px; font-size: 1.15rem; }
+  .panel .sub { color: var(--muted); font-size: 0.88rem; margin-bottom: 14px; line-height: 1.45; }
+  .chart-row { display: flex; flex-wrap: wrap; gap: 16px; }
+  .chart-box { flex: 1 1 420px; min-width: 280px; }
+  canvas { width: 100%; height: 220px; display: block; background: #0d1526; border-radius: 8px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 0.82rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  .stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  .stat {
+    background: #0d1526;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    color: var(--muted);
+    flex: 1 1 140px;
+  }
+  .stat b { display: block; color: var(--text); font-size: 1.05rem; margin-top: 2px; }
+  .stat.good b { color: var(--good); }
+  .stat.bad b { color: var(--bad); }
+  footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 40px; }
+  a { color: #7dd3fc; }
+  @media (max-width: 600px) {
+    .panel { padding: 16px 14px 12px; }
+    header h1 { font-size: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Undertow</h1>
+    <p>A from-scratch, packet-level network simulator. Every chart below is real
+       simulator output — cumulative-ACK TCP running over a real discrete-event
+       bottleneck queue — not illustrative data.</p>
+  </header>
+
+  <section class="panel" id="panel-single">
+    <h2>1 — Slow start &amp; congestion avoidance</h2>
+    <div class="sub">A single bulk flow on a 2&nbsp;Mbps link, one run per algorithm. Reno and CUBIC
+      grow until a packet loss forces them back (the sawtooth); BBR estimates the
+      link's bandwidth-delay product directly and needs no loss to find it.</div>
+    <div class="chart-row">
+      <div class="chart-box"><canvas id="chart-single"></canvas></div>
+    </div>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--accent-reno)"></i>Reno</span>
+      <span><i class="swatch" style="background:var(--accent-cubic)"></i>CUBIC</span>
+      <span><i class="swatch" style="background:var(--accent-bbr)"></i>BBR</span>
+    </div>
+    <div class="stats" id="stats-single"></div>
+  </section>
+
+  <section class="panel" id="panel-fairness">
+    <h2>2 — AIMD fairness convergence</h2>
+    <div class="sub">Two Reno flows, identical RTT, sharing one bottleneck, started 50ms apart.
+      Chiu &amp; Jain's 1989 result: no matter which flow gets a head start, AIMD converges
+      the split toward fair. The right chart is Jain's fairness index measured over
+      rolling 0.5s windows.</div>
+    <div class="chart-row">
+      <div class="chart-box"><canvas id="chart-fairness-cwnd"></canvas>
+        <div class="legend"><span><i class="swatch" style="background:var(--accent-reno)"></i>flow 0</span>
+        <span><i class="swatch" style="background:var(--accent-cubic)"></i>flow 1</span></div>
+      </div>
+      <div class="chart-box"><canvas id="chart-fairness-index"></canvas>
+        <div class="legend"><span><i class="swatch" style="background:#a78bfa"></i>Jain's index (1.0 = perfectly fair)</span></div>
+      </div>
+    </div>
+    <div class="stats" id="stats-fairness"></div>
+  </section>
+
+  <section class="panel" id="panel-rtt">
+    <h2>3 — RTT unfairness: Reno vs CUBIC</h2>
+    <div class="sub">Same topology, two flows with a 4:1 RTT ratio sharing one bottleneck.
+      Reno's per-ACK-clocked growth favors the short-RTT flow; CUBIC's real-time-clocked
+      growth (RFC 8312) narrows that gap. Ratio pooled over 15 independent trials to
+      smooth out single-run RTO-timing noise (see REVIEW.md).</div>
+    <div class="chart-row">
+      <div class="chart-box"><canvas id="chart-rtt-bar"></canvas></div>
+      <div class="chart-box"><canvas id="chart-rtt-cwnd"></canvas>
+        <div class="legend"><span><i class="swatch" style="background:var(--accent-reno)"></i>short-RTT</span>
+        <span><i class="swatch" style="background:var(--accent-bbr)"></i>long-RTT</span></div>
+      </div>
+    </div>
+    <div class="stats" id="stats-rtt"></div>
+  </section>
+
+  <section class="panel" id="panel-bufferbloat">
+    <h2>4 — Bufferbloat, and RED's fix for it</h2>
+    <div class="sub">A bulk Reno flow shares a deep drop-tail queue with a latency-sensitive
+      "ping" flow (fixed 1-packet window). Drop-tail lets the bulk flow fill the whole
+      buffer before backing off, so the ping flow's RTT balloons. RED drops early and
+      probabilistically, keeping the queue — and the ping flow's RTT — shallow.</div>
+    <div class="chart-row">
+      <div class="chart-box"><canvas id="chart-bloat-rtt"></canvas>
+        <div class="legend"><span><i class="swatch" style="background:var(--accent-drop)"></i>drop-tail</span>
+        <span><i class="swatch" style="background:var(--accent-red)"></i>RED</span></div>
+      </div>
+      <div class="chart-box"><canvas id="chart-bloat-queue"></canvas>
+        <div class="legend"><span><i class="swatch" style="background:var(--accent-drop)"></i>drop-tail</span>
+        <span><i class="swatch" style="background:var(--accent-red)"></i>RED</span></div>
+      </div>
+    </div>
+    <div class="stats" id="stats-bloat"></div>
+  </section>
+
+  <section class="panel" id="panel-bbr">
+    <h2>5 — BBR vs CUBIC: queue depth at similar throughput</h2>
+    <div class="sub">Same generously-buffered bottleneck, both algorithms reach similar
+      link utilization — but CUBIC gets there by keeping the queue nearly full, while
+      BBR paces to the bandwidth-delay product and leaves the queue almost empty. This
+      is BBR's entire reason for existing.</div>
+    <div class="chart-row">
+      <div class="chart-box"><canvas id="chart-bbr-queue"></canvas></div>
+    </div>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--accent-cubic)"></i>CUBIC</span>
+      <span><i class="swatch" style="background:var(--accent-bbr)"></i>BBR</span>
+    </div>
+    <div class="stats" id="stats-bbr"></div>
+  </section>
+
+  <footer>
+    Generated from real simulator runs (<code>scripts/make_visualizer_data.py</code>).
+    See <a href="../README.md">README.md</a> for how to reproduce every number on this page.
+  </footer>
+</div>
+
+<script src="data.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  function dpr() { return window.devicePixelRatio || 1; }
+
+  function prepCanvas(canvas) {
+    const rect = canvas.getBoundingClientRect();
+    const ratio = dpr();
+    const w = Math.max(280, rect.width);
+    const h = canvas.height ? rect.height || 220 : 220;
+    canvas.width = Math.round(w * ratio);
+    canvas.height = Math.round((h || 220) * ratio);
+    canvas.style.height = (h || 220) + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    return { ctx, w, h: h || 220 };
+  }
+
+  function niceMax(v) {
+    if (v <= 0) return 1;
+    const mag = Math.pow(10, Math.floor(Math.log10(v)));
+    const norm = v / mag;
+    let step;
+    if (norm <= 1) step = 1; else if (norm <= 2) step = 2; else if (norm <= 5) step = 5; else step = 10;
+    return step * mag;
+  }
+
+  function drawAxes(ctx, w, h, pad, yMax, yLabel, xMax, xLabel) {
+    ctx.strokeStyle = "#1e2a45";
+    ctx.fillStyle = "#8fa0c9";
+    ctx.font = "11px -apple-system, sans-serif";
+    ctx.lineWidth = 1;
+    const gridLines = 4;
+    for (let i = 0; i <= gridLines; i++) {
+      const y = pad.top + (h - pad.top - pad.bottom) * (1 - i / gridLines);
+      ctx.beginPath();
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(w - pad.right, y);
+      ctx.stroke();
+      const val = (yMax * i / gridLines);
+      ctx.fillText(val >= 100 ? val.toFixed(0) : val.toFixed(1), 4, y + 3);
+    }
+    ctx.fillText(yLabel, 4, pad.top - 6);
+    ctx.fillText(xLabel + " →", w - pad.right - 60, h - 4);
+    ctx.fillText("0", pad.left - 2, h - pad.bottom + 14);
+    ctx.fillText(xMax.toFixed(0) + "s", w - pad.right - 14, h - pad.bottom + 14);
+  }
+
+  function lineChart(canvasId, series, opts) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const { ctx, w, h } = prepCanvas(canvas);
+    ctx.clearRect(0, 0, w, h);
+    const pad = { left: 34, right: 10, top: 18, bottom: 22 };
+    let xMax = 0, yMax = 0;
+    series.forEach(s => s.points.forEach(p => { xMax = Math.max(xMax, p[0]); yMax = Math.max(yMax, p[1]); }));
+    xMax = xMax || 1;
+    yMax = niceMax(yMax * 1.15);
+    drawAxes(ctx, w, h, pad, yMax, opts.yLabel || "", xMax, opts.xLabel || "time");
+    const plotW = w - pad.left - pad.right;
+    const plotH = h - pad.top - pad.bottom;
+    series.forEach(s => {
+      if (!s.points.length) return;
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      s.points.forEach((p, i) => {
+        const x = pad.left + (p[0] / xMax) * plotW;
+        const y = pad.top + plotH - (p[1] / yMax) * plotH;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    });
+  }
+
+  function barChart(canvasId, bars) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const { ctx, w, h } = prepCanvas(canvas);
+    ctx.clearRect(0, 0, w, h);
+    const pad = { left: 34, right: 10, top: 18, bottom: 34 };
+    const yMax = niceMax(Math.max(...bars.map(b => b.value), 1) * 1.25);
+    drawAxes(ctx, w, h, pad, yMax, "ratio", bars.length, "");
+    const plotW = w - pad.left - pad.right;
+    const plotH = h - pad.top - pad.bottom;
+    const slot = plotW / bars.length;
+    const barW = Math.min(70, slot * 0.5);
+    ctx.font = "12px -apple-system, sans-serif";
+    bars.forEach((b, i) => {
+      const cx = pad.left + slot * (i + 0.5);
+      const barH = (b.value / yMax) * plotH;
+      ctx.fillStyle = b.color;
+      ctx.fillRect(cx - barW / 2, pad.top + plotH - barH, barW, barH);
+      ctx.fillStyle = "#e6ecff";
+      ctx.textAlign = "center";
+      ctx.fillText(b.value.toFixed(2) + "x", cx, pad.top + plotH - barH - 6);
+      ctx.fillStyle = "#8fa0c9";
+      ctx.fillText(b.label, cx, h - 10);
+      ctx.textAlign = "left";
+    });
+    // fairness reference line at ratio=1
+    if (yMax > 1) {
+      const y = pad.top + plotH - (1 / yMax) * plotH;
+      ctx.strokeStyle = "#4dd4ac";
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(w - pad.right, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#4dd4ac";
+      ctx.fillText("perfectly fair (1.0x)", pad.left + 4, y - 4);
+    }
+  }
+
+  function stat(container, label, value, cls) {
+    const div = document.createElement("div");
+    div.className = "stat" + (cls ? " " + cls : "");
+    div.innerHTML = `${label}<b>${value}</b>`;
+    container.appendChild(div);
+  }
+
+  function render() {
+    if (typeof DEMO_DATA === "undefined") {
+      document.querySelector(".wrap").innerHTML =
+        '<p style="color:#ff6b6b">data.js failed to load — run scripts/make_visualizer_data.py first.</p>';
+      return;
+    }
+    // render() re-runs on every resize (charts must redraw at the new
+    // canvas size), so every stat panel must be cleared first — otherwise
+    // each resize appends a second copy of every stat next to the first.
+    document.querySelectorAll(".stats").forEach(el => { el.innerHTML = ""; });
+    const d = DEMO_DATA;
+
+    // Panel 1: single flow
+    lineChart("chart-single", [
+      { points: d.single_flow.reno.cwnd, color: "#ff6b6b" },
+      { points: d.single_flow.cubic.cwnd, color: "#4dd4ac" },
+      { points: d.single_flow.bbr.cwnd, color: "#ffd166" },
+    ], { yLabel: "cwnd (pkts)", xLabel: "time" });
+    const s1 = document.getElementById("stats-single");
+    ["reno", "cubic", "bbr"].forEach(a => {
+      const v = d.single_flow[a];
+      stat(s1, a.toUpperCase() + " utilization", (v.utilization * 100).toFixed(1) + "%", v.utilization > 0.9 ? "good" : "");
+      stat(s1, a.toUpperCase() + " drops", v.drops, v.drops === 0 ? "good" : "");
+    });
+
+    // Panel 2: fairness
+    lineChart("chart-fairness-cwnd", [
+      { points: d.fairness.cwnd[0], color: "#ff6b6b" },
+      { points: d.fairness.cwnd[1], color: "#4dd4ac" },
+    ], { yLabel: "cwnd (pkts)", xLabel: "time" });
+    lineChart("chart-fairness-index", [
+      { points: d.fairness.fairness_series, color: "#a78bfa" },
+    ], { yLabel: "Jain's index", xLabel: "time" });
+    const s2 = document.getElementById("stats-fairness");
+    stat(s2, "flow 0 delivered", d.fairness.delivered[0]);
+    stat(s2, "flow 1 delivered", d.fairness.delivered[1]);
+    const ratio2 = Math.max(...d.fairness.delivered) / Math.min(...d.fairness.delivered);
+    stat(s2, "split ratio", ratio2.toFixed(2) + "x", ratio2 < 1.5 ? "good" : "bad");
+
+    // Panel 3: RTT unfairness
+    barChart("chart-rtt-bar", [
+      { label: "Reno", value: d.rtt_unfairness.reno_pooled_ratio, color: "#ff6b6b" },
+      { label: "CUBIC", value: d.rtt_unfairness.cubic_pooled_ratio, color: "#4dd4ac" },
+    ]);
+    lineChart("chart-rtt-cwnd", [
+      { points: d.rtt_unfairness.reno_cwnd[0], color: "#ff6b6b" },
+      { points: d.rtt_unfairness.reno_cwnd[1], color: "#ffd166" },
+    ], { yLabel: "cwnd (pkts)", xLabel: "time" });
+    const s3 = document.getElementById("stats-rtt");
+    stat(s3, "RTT ratio (long/short)", d.rtt_unfairness.rtt_ratio.toFixed(2) + "x");
+    stat(s3, "Reno throughput ratio", d.rtt_unfairness.reno_pooled_ratio.toFixed(2) + "x",
+      d.rtt_unfairness.reno_pooled_ratio > 1.05 ? "bad" : "");
+    stat(s3, "CUBIC throughput ratio", d.rtt_unfairness.cubic_pooled_ratio.toFixed(2) + "x",
+      Math.abs(d.rtt_unfairness.cubic_pooled_ratio - 1) < Math.abs(d.rtt_unfairness.reno_pooled_ratio - 1) ? "good" : "");
+
+    // Panel 4: bufferbloat
+    lineChart("chart-bloat-rtt", [
+      { points: d.bufferbloat.drop_tail.ping_rtt_ms, color: "#ff6b6b" },
+      { points: d.bufferbloat.red.ping_rtt_ms, color: "#4dd4ac" },
+    ], { yLabel: "ping RTT (ms)", xLabel: "time" });
+    lineChart("chart-bloat-queue", [
+      { points: d.bufferbloat.drop_tail.queue, color: "#ff6b6b" },
+      { points: d.bufferbloat.red.queue, color: "#4dd4ac" },
+    ], { yLabel: "queue (pkts)", xLabel: "time" });
+    const s4 = document.getElementById("stats-bloat");
+    stat(s4, "base RTT", d.bufferbloat.base_rtt_ms.toFixed(1) + " ms");
+    stat(s4, "drop-tail bloat", d.bufferbloat.drop_tail.bloat_ratio.toFixed(1) + "x", "bad");
+    stat(s4, "RED bloat", d.bufferbloat.red.bloat_ratio.toFixed(1) + "x", "good");
+    stat(s4, "RED utilization", (d.bufferbloat.red.utilization * 100).toFixed(1) + "%",
+      d.bufferbloat.red.utilization > 0.85 ? "good" : "");
+
+    // Panel 5: bbr vs loss
+    lineChart("chart-bbr-queue", [
+      { points: d.bbr_vs_loss.cubic.queue, color: "#4dd4ac" },
+      { points: d.bbr_vs_loss.bbr.queue, color: "#ffd166" },
+    ], { yLabel: "queue (pkts)", xLabel: "time" });
+    const s5 = document.getElementById("stats-bbr");
+    stat(s5, "CUBIC mean queue", d.bbr_vs_loss.cubic.mean_queue.toFixed(1) + " pkts", "bad");
+    stat(s5, "BBR mean queue", d.bbr_vs_loss.bbr.mean_queue.toFixed(1) + " pkts", "good");
+    stat(s5, "CUBIC utilization", (d.bbr_vs_loss.cubic.utilization * 100).toFixed(1) + "%");
+    stat(s5, "BBR utilization", (d.bbr_vs_loss.bbr.utilization * 100).toFixed(1) + "%");
+  }
+
+  window.addEventListener("load", render);
+  window.addEventListener("resize", () => { render(); });
+})();
+</script>
+</body>
+</html>

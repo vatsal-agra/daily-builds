@@ -68,6 +68,10 @@ def main(argv=None) -> int:
     p.add_argument("--red", action="store_true", help="use RED instead of drop-tail (bufferbloat scenario)")
     p.add_argument("--out", type=str, default=None, help="write full JSON result to this path")
     args = p.parse_args(argv)
+    if args.duration <= 0:
+        p.error("--duration must be > 0")
+    if args.scenario == "fairness" and args.flows < 1:
+        p.error("--flows must be >= 1")
 
     result = SCENARIOS[args.scenario](args)
     _print_summary(args.scenario, result)

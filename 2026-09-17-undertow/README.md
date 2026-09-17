@@ -1,7 +1,10 @@
 # Undertow
 
-*Status: Phase 2 — core build complete. All 4 required features work
-end-to-end; both stretch features are also implemented. 24/24 tests green.*
+*Status: Phase 3 complete — adversarial review found and fixed 6 real
+bugs (see [REVIEW.md](./REVIEW.md)), including a runaway congestion-window
+bug and a determinism artifact that could let one flow permanently starve
+another. 24/24 tests green on the fresh run-through. Both stretch features
+(BBR-lite, bufferbloat+RED+visualizer) are implemented.*
 
 A from-scratch, packet-level network simulator implementing real TCP
 congestion-control algorithms (Reno, CUBIC, and a BBR-lite) to reproduce

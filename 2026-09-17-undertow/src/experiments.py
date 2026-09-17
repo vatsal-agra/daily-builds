@@ -19,6 +19,15 @@ from .network import EventQueue, Network, REDConfig
 BULK_PACKETS = 10 ** 7  # effectively-infinite bulk data; never exhausted in-run
 
 
+def _default_red(capacity, min_frac, max_frac, max_p=0.1):
+    """A RED config sized off the buffer capacity, clamped so it stays
+    valid (min_th < max_th) even for a tiny capacity where naive
+    percentages would collapse to the same integer or invert."""
+    min_th = max(1, int(capacity * min_frac))
+    max_th = max(min_th + 1, min(capacity, int(capacity * max_frac)))
+    return REDConfig(min_th=min_th, max_th=max_th, max_p=max_p)
+
+
 class _PingCC(CongestionControl):
     """A fixed-window (cwnd=1) 'controller' used only as a latency probe in
     the bufferbloat demo: it never grows its window, so its measured RTT is
@@ -142,8 +151,7 @@ def run_fairness_same_rtt(algo="reno", n_flows=2, duration_s=40.0, bandwidth_bps
     # determinism. Drop-tail is used deliberately instead in the
     # bufferbloat experiment, where reproducing exactly this kind of
     # queue-dominating behavior is the point.
-    red_cfg = REDConfig(min_th=max(1, int(capacity * 0.3)), max_th=int(capacity * 0.9), max_p=0.1) \
-        if red else None
+    red_cfg = _default_red(capacity, 0.3, 0.9) if red else None
     ev, network = _build_network(bandwidth_bps, capacity, core_prop_delay_s, red=red_cfg, seed=seed)
     flows = [
         _add_flow(ev, network, i, f"{algo}-{i}", algo, access_delay_s, start_delay=0.05 * i)
@@ -208,8 +216,7 @@ def run_rtt_unfairness(algo="reno", duration_s=60.0, bandwidth_bps=2_000_000, ca
     # comparison are measured against. See run_fairness_same_rtt for why
     # RED, not drop-tail, is the admission policy for a fairness
     # measurement in a fully deterministic simulator.
-    red_cfg_factory = (lambda: REDConfig(min_th=max(1, int(capacity * 0.3)),
-                                          max_th=int(capacity * 0.9), max_p=0.1)) if red else (lambda: None)
+    red_cfg_factory = (lambda: _default_red(capacity, 0.3, 0.9)) if red else (lambda: None)
     trials = [
         _run_rtt_unfairness_trial(algo, duration_s, bandwidth_bps, capacity, core_prop_delay_s,
                                    short_access_delay_s, long_access_delay_s, seed + i, red_cfg_factory())
@@ -250,8 +257,7 @@ def run_rtt_unfairness(algo="reno", duration_s=60.0, bandwidth_bps=2_000_000, ca
 
 def run_bufferbloat(algo="reno", use_red=False, duration_s=30.0, bandwidth_bps=2_000_000,
                      capacity=200, core_prop_delay_s=0.005, access_delay_s=0.005, seed=1):
-    red = REDConfig(min_th=max(1, int(capacity * 0.2)), max_th=int(capacity * 0.8), max_p=0.1) \
-        if use_red else None
+    red = _default_red(capacity, 0.2, 0.8) if use_red else None
     ev, network = _build_network(bandwidth_bps, capacity, core_prop_delay_s, red=red, seed=seed)
     bulk = _add_flow(ev, network, 0, f"bulk-{algo}", algo, access_delay_s)
     ping = _add_flow(ev, network, 1, "ping", None, access_delay_s, cc_override=_PingCC())
