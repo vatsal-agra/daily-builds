@@ -126,12 +126,3 @@ def memo_snapshot():
     computed so far. Used to export the full solved game tree once for the
     visualizer's client-side "play against a perfect opponent" mode."""
     return dict(_MEMO)
-
-
-def play(board, player):
-    """Convenience wrapper: apply the optimal move and return the new board.
-    Raises ValueError if `board` is already terminal (nothing to play)."""
-    action, _ = best_move(board, player)
-    if action is None:
-        raise ValueError("board is already terminal, no move to make")
-    return apply_move(board, action, player)

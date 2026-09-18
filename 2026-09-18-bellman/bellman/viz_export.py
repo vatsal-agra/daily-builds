@@ -7,6 +7,7 @@ human opens in a browser.
 import argparse
 import json
 import os
+import random
 
 from .envs.cliffwalking import (
     ACTION_NAMES, COLS, GOAL, ROWS, START, CliffWalking, is_cliff, to_rc,
@@ -165,8 +166,6 @@ def _play_greedy_game(agent):
 
 
 def _evaluate_vs_oracle(agent, agent_player, n_games, seed):
-    import random
-
     # Both the agent (greedy over its learned V) and the oracle (minimax)
     # are otherwise-deterministic; without randomized tie-breaking every
     # one of n_games would replay the exact same moves. Random tie-breaks
@@ -246,7 +245,7 @@ def build_tictactoe_section(train_episodes=60000, eval_games=300, seed=7):
     }
 
 
-def build_all(episodes=500, ttt_episodes=20000, seed=42):
+def build_all(episodes=500, ttt_episodes=60000, seed=42):
     return {
         "cliff": build_cliff_section(episodes=episodes, seed=seed),
         "tictactoe": build_tictactoe_section(train_episodes=ttt_episodes, seed=seed),
@@ -257,7 +256,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default=DEFAULT_OUT)
     parser.add_argument("--episodes", type=int, default=500)
-    parser.add_argument("--ttt-episodes", type=int, default=20000)
+    parser.add_argument("--ttt-episodes", type=int, default=60000)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 

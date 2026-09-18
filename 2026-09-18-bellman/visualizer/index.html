@@ -607,8 +607,7 @@
   }
 
   function wireBoard(ttt) {
-    var state = { board: " ".split("").join("").padEnd(9, " ").split(""), humanSide: "X", opponent: "agent", over: false, rng: mulberry32(12345) };
-    state.board = new Array(9).fill(" ");
+    var state = { board: new Array(9).fill(" "), humanSide: "X", opponent: "agent", over: false, rng: mulberry32(12345), gen: 0 };
 
     document.getElementById("opponent-toggle").addEventListener("click", function (e) {
       var btn = e.target.closest("button[data-opp]");
@@ -634,9 +633,26 @@
     function newGame() {
       state.board = new Array(9).fill(" ");
       state.over = false;
+      state.gen++; // invalidates any bot move already scheduled via setTimeout
       renderBoard();
       setStatus("", "");
-      if (state.humanSide === "O") { setTimeout(botMove, 250); }
+      if (state.humanSide === "O") { scheduleBotMove(); }
+    }
+
+    function scheduleBotMove() {
+      // Capture the generation this move was scheduled under. A reset
+      // (or opponent/side switch, which also calls newGame) bumps
+      // state.gen without cancelling this timer, so when it fires we can
+      // tell a stale callback from a live one instead of calling botMove()
+      // against a board that has since moved on (it can be empty, mid-game
+      // as a different matchup, or missing the exact board+player key the
+      // oracle table only ever populated for reachable, X-moves-first
+      // games -- any of which crashed this handler before this guard).
+      var gen = state.gen;
+      setTimeout(function () {
+        if (gen !== state.gen) return;
+        botMove();
+      }, 250);
     }
 
     function boardStr() { return state.board.join(""); }
@@ -723,7 +739,7 @@
         return;
       }
       var nextPlayer = player === "X" ? "O" : "X";
-      if (nextPlayer !== state.humanSide) { setTimeout(botMove, 250); }
+      if (nextPlayer !== state.humanSide) { scheduleBotMove(); }
     }
 
     function setStatus(text, cls) {

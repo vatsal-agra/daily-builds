@@ -113,10 +113,6 @@ class SelfPlayAgent:
             outcomes["draw" if w is None else w] += 1
         return outcomes
 
-    def greedy_action(self, board, player):
-        action, _ = self.choose_move_greedy(board, player)
-        return action
-
     def choose_move_greedy(self, board, player):
         old_epsilon = self.epsilon
         self.epsilon = 0.0

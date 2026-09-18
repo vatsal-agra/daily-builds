@@ -1,7 +1,7 @@
 # Bellman
 
-**Status: Phase 2 complete — all 4 required features implemented and
-verified end to end.** Adversarial review, stretch features, and final
+**Status: Phase 3 complete — adversarial review done, 2 real bugs found
+and fixed (see [REVIEW.md](REVIEW.md)).** Stretch features and final
 polish are still ahead.
 
 A from-scratch reinforcement learning laboratory in pure Python (no
@@ -50,3 +50,14 @@ python3 -m http.server 8000             # from the visualizer/ directory
 (Opening `index.html` directly by double-clicking also works — the data
 is inlined as a plain `.js` file specifically so there's no `fetch()` of
 local JSON to trip over `file://` CORS restrictions.)
+
+## Adversarial review
+
+[REVIEW.md](REVIEW.md) has the full writeup. The two real bugs it found
+and fixed: the documented `python -m bellman.viz_export` one-liner
+crashed on a stale default (a self-play hyperparameter had been tuned
+safe in one place but not two others that shared the same default), and
+the browser board could throw on a reset/opponent-switch race (a stale
+`setTimeout` firing a bot move against the wrong game). Both were
+reproduced first, then fixed, then re-verified with scripted regression
+repros.
