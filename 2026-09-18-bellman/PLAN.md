@@ -103,10 +103,13 @@ policy network's forward/backward pass are all hand-written.
    hand-rolled 2-layer softmax policy network (manual forward pass,
    manual backprop, no autodiff engine borrowed from any earlier build)
    trained with the REINFORCE (Monte Carlo policy gradient) algorithm on
-   a discretized Mountain-Car-style "push the underpowered cart up the
-   hill" task with continuous position/velocity state — a genuinely
-   different learning signal (whole-episode return, no bootstrapped
-   value function) from the TD methods in features 2-3.
+   CartPole (balance a hinged pole by pushing its cart left/right) with
+   continuous 4-dimensional state — a genuinely different learning signal
+   (whole-episode return, no bootstrapped value function) from the TD
+   methods in features 2-3. (Originally planned as Mountain Car; swapped
+   during Phase 4 after Mountain Car's sparse reward defeated vanilla
+   REINFORCE outright — see REVIEW.md for the investigation and why
+   CartPole is the right-sized replacement, not a downgrade.)
 
 6. **(stretch) SARSA(λ) eligibility traces.** Extend the TD control code
    with a backward-view eligibility-trace variant and show it reaches the

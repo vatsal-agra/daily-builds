@@ -13,8 +13,10 @@ from .envs.cliffwalking import (
     ACTION_NAMES, COLS, GOAL, ROWS, START, CliffWalking, is_cliff, to_rc,
 )
 from .envs.tictactoe import EMPTY_BOARD, apply_move, is_terminal, other_player, winner
-from . import convergence, dp, td, minimax
+from .envs.cartpole import CartPole
+from . import convergence, dp, gradcheck, td, minimax
 from .selfplay import SelfPlayAgent
+from .reinforce import evaluate as reinforce_evaluate, reinforce_train, run_episode as reinforce_run_episode
 from .utils import rollout_policy
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -245,10 +247,54 @@ def build_tictactoe_section(train_episodes=60000, eval_games=300, seed=7):
     }
 
 
-def build_all(episodes=500, ttt_episodes=60000, seed=42):
+def build_reinforce_section(train_episodes=5000, eval_games=200, seed=42):
+    n_checked, worst_grad_err = gradcheck.check()
+    assert worst_grad_err < 1e-4, (
+        f"REINFORCE gradient check failed: max analytic-vs-numeric error {worst_grad_err:.2e}"
+    )
+
+    env = CartPole(max_steps=200)
+    untrained_net_before = reinforce_train(env, episodes=0, seed=seed)[0]
+    baseline_eval = reinforce_evaluate(env, untrained_net_before, episodes=eval_games, seed=999)
+
+    net, returns, survived_flags, checkpoints = reinforce_train(
+        env, episodes=train_episodes, hidden_size=16, lr=0.02, gamma=0.99, seed=seed, batch_size=10
+    )
+    trained_eval = reinforce_evaluate(env, net, episodes=eval_games, seed=999)
+
+    assert trained_eval["success_rate"] > baseline_eval["success_rate"] + 0.3, (
+        "REINFORCE-trained CartPole policy did not clearly beat an untrained baseline: "
+        f"trained={trained_eval['success_rate']:.3f} baseline={baseline_eval['success_rate']:.3f}"
+    )
+
+    rng = random.Random(12345)
+    sample_trajectory, sample_survived = reinforce_run_episode(env, net, rng, greedy=True)
+    sample_states = []
+    state = env.reset(random.Random(12345))
+    for step in sample_trajectory:
+        state, _, _, _ = env.step(state, step["action"])
+        sample_states.append(list(state))
+
+    return {
+        "gradcheck": {"parameters_checked": n_checked, "max_error": worst_grad_err},
+        "training_episodes": train_episodes,
+        "returns": returns,
+        "moving_avg_return": _moving_average(returns, 50),
+        "survived_flags": survived_flags,
+        "eval_checkpoints": checkpoints,
+        "baseline_eval": baseline_eval,
+        "trained_eval": trained_eval,
+        "sample_trajectory": sample_states,
+        "sample_survived_full_episode": sample_survived,
+        "max_steps": env.max_steps,
+    }
+
+
+def build_all(episodes=500, ttt_episodes=60000, reinforce_episodes=5000, seed=42):
     return {
         "cliff": build_cliff_section(episodes=episodes, seed=seed),
         "tictactoe": build_tictactoe_section(train_episodes=ttt_episodes, seed=seed),
+        "reinforce": build_reinforce_section(train_episodes=reinforce_episodes, seed=seed),
     }
 
 
@@ -257,10 +303,34 @@ def main():
     parser.add_argument("--out", default=DEFAULT_OUT)
     parser.add_argument("--episodes", type=int, default=500)
     parser.add_argument("--ttt-episodes", type=int, default=60000)
+    parser.add_argument("--reinforce-episodes", type=int, default=5000)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    data = build_all(episodes=args.episodes, ttt_episodes=args.ttt_episodes, seed=args.seed)
+    # These aren't arbitrary floors: every one of these algorithms is
+    # verified (see REVIEW.md) at its *default* episode count and can
+    # legitimately fail its own correctness assertions -- lose real games,
+    # never reach the goal -- given too little training, same as a real ML
+    # training run given too small a budget. Rather than let that surface
+    # as an assertion stack trace from deep inside some section builder,
+    # fail fast here with a message that says which flag is the problem.
+    minimums = {
+        "--episodes": (args.episodes, 50),
+        "--ttt-episodes": (args.ttt_episodes, 1000),
+        "--reinforce-episodes": (args.reinforce_episodes, 100),
+    }
+    for flag, (value, minimum) in minimums.items():
+        if value < minimum:
+            parser.error(f"{flag} must be >= {minimum} (got {value}); "
+                         f"lower values are too little training for this pipeline's own "
+                         f"correctness checks to reliably pass")
+
+    data = build_all(
+        episodes=args.episodes,
+        ttt_episodes=args.ttt_episodes,
+        reinforce_episodes=args.reinforce_episodes,
+        seed=args.seed,
+    )
 
     out_dir = os.path.dirname(args.out)
     if out_dir:
@@ -290,6 +360,15 @@ def main():
         )
     )
     print("tictactoe: eval vs oracle", data["tictactoe"]["eval_vs_oracle"])
+    print(
+        "reinforce: baseline success_rate=%.2f -> trained success_rate=%.2f (avg_steps %.1f/%d)"
+        % (
+            data["reinforce"]["baseline_eval"]["success_rate"],
+            data["reinforce"]["trained_eval"]["success_rate"],
+            data["reinforce"]["trained_eval"]["avg_steps"],
+            data["reinforce"]["max_steps"],
+        )
+    )
 
 
 if __name__ == "__main__":

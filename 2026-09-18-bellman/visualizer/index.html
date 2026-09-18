@@ -136,6 +136,19 @@
   .badge.good { background: #123326; color: var(--good); }
   .badge.bad { background: #3a1919; color: var(--bad); }
   #load-error { display: none; padding: 40px; text-align: center; color: var(--bad); }
+
+  @media (max-width: 480px) {
+    header { padding: 20px 16px 12px; }
+    main { padding: 16px 16px 40px; }
+    header h1 { font-size: 21px; }
+    nav.tabs { padding: 0 16px; gap: 0; overflow-x: auto; }
+    nav.tabs button { padding: 10px 10px; white-space: nowrap; font-size: 13px; }
+    .algo-picker button, .toggle-group button { font-size: 12px; padding: 6px 10px; }
+    .ttt-board { grid-template-columns: repeat(3, 76px); grid-template-rows: repeat(3, 76px); }
+    .ttt-cell { font-size: 32px; }
+    .stat { min-width: 110px; padding: 8px 10px; }
+    .stat .value { font-size: 17px; }
+  }
 </style>
 </head>
 <body>
@@ -151,6 +164,7 @@
   <nav class="tabs">
     <button data-panel="cliff-panel" class="active">Cliff Walking</button>
     <button data-panel="ttt-panel">Tic-Tac-Toe</button>
+    <button data-panel="reinforce-panel">CartPole (REINFORCE)</button>
   </nav>
 </header>
 
@@ -162,6 +176,7 @@
 
   <section id="cliff-panel" class="panel active"></section>
   <section id="ttt-panel" class="panel"></section>
+  <section id="reinforce-panel" class="panel"></section>
 </main>
 
 <footer>
@@ -178,6 +193,7 @@
   function boot(data) {
     renderCliffPanel(data.cliff);
     renderTttPanel(data.tictactoe);
+    renderReinforcePanel(data.reinforce);
     wireTabs();
   }
 
@@ -785,8 +801,128 @@
     newGame();
   }
 
+  // ---------------------------------------------------------------------
+  // CartPole / REINFORCE panel
+  // ---------------------------------------------------------------------
+  function renderReinforcePanel(rf) {
+    var panel = document.getElementById("reinforce-panel");
+    function stat(label, value, good) {
+      var cls = good === true ? "good" : (good === false ? "bad" : "");
+      return '<div class="stat"><div class="label">' + label + '</div><div class="value ' + cls + '">' + value + "</div></div>";
+    }
+    panel.innerHTML =
+      '<div class="card">' +
+        '<h2>REINFORCE training <span class="n">&mdash; ' + rf.training_episodes.toLocaleString() + ' episodes, batched policy gradient</span></h2>' +
+        '<div class="stat-cards">' +
+          stat("Gradient check", rf.gradcheck.max_error < 1e-4 ? "PASS" : "FAIL", rf.gradcheck.max_error < 1e-4) +
+          stat("Params checked", rf.gradcheck.parameters_checked) +
+          stat("Untrained success rate", (rf.baseline_eval.success_rate * 100).toFixed(0) + "%", false) +
+          stat("Trained success rate", (rf.trained_eval.success_rate * 100).toFixed(0) + "%", rf.trained_eval.success_rate > 0.5) +
+          stat("Trained avg steps", rf.trained_eval.avg_steps.toFixed(0) + " / " + rf.max_steps, rf.trained_eval.avg_steps > rf.max_steps * 0.8) +
+        "</div>" +
+        '<div class="note">Untrained: a freshly-initialized policy network, evaluated the same way (greedy, ' + rf.baseline_eval.episodes + ' episodes) as the trained one below &mdash; not a hand-picked strawman, the literal first policy before any gradient step.</div>' +
+        '<h3 style="margin:18px 0 4px;font-size:13px;color:var(--text-dim);font-weight:600;">Real learning curve &mdash; periodic greedy evaluation (20 episodes every 250 training episodes)</h3>' +
+        '<div id="reinforce-eval-chart"></div>' +
+        '<div class="note" style="margin-top:2px;">This is what actually improved. The raw training-episode returns below stay noisy throughout (next chart) because they come from the still-exploring, still-sampling policy, not this confident greedy one.</div>' +
+        '<h3 style="margin:18px 0 4px;font-size:13px;color:var(--text-dim);font-weight:600;">Raw training-episode returns (50-episode moving average)</h3>' +
+        '<div id="reinforce-training-chart"></div>' +
+        '<div class="legend" id="reinforce-training-legend"></div>' +
+      "</div>" +
+      '<div class="card">' +
+        '<h2>Watch the trained policy balance it <span class="n">&mdash; greedy rollout, seed fixed for reproducibility</span></h2>' +
+        '<svg id="cartpole-svg" viewBox="0 0 720 220" style="width:100%;height:auto;display:block;"></svg>' +
+        '<div class="playback">' +
+          '<button id="cp-step-back" title="Step back">&#9664;</button>' +
+          '<button id="cp-play" title="Play">&#9654;</button>' +
+          '<button id="cp-step-fwd" title="Step forward">&#9654;&#9654;</button>' +
+          '<input type="range" id="cp-scrubber" min="0" max="0" value="0">' +
+          '<span class="step-label" id="cp-step-label">step 0 / 0</span>' +
+        "</div>" +
+        '<div class="note">' + (rf.sample_survived_full_episode ? "This rollout survived the full " + rf.max_steps + "-step episode without falling." : "This particular rollout fell before " + rf.max_steps + " steps (trained success rate is " + (rf.trained_eval.success_rate * 100).toFixed(0) + "%, not 100%).") + "</div>" +
+      "</div>";
+
+    var series = [{ label: "episode return (50-ep moving avg)", color: "#4fd1c5", points: rf.moving_avg_return.map(function (v, i) { return [i, v]; }) }];
+    document.getElementById("reinforce-training-chart").innerHTML = lineChart({ series: series, yMin: 0, yMax: rf.max_steps });
+    document.getElementById("reinforce-training-legend").innerHTML =
+      '<span><span class="swatch" style="background:#4fd1c5"></span>episode return</span>' +
+      '<span><span class="swatch" style="background:#93a2b8"></span>max possible (' + rf.max_steps + ")</span>";
+
+    var evalSeries = [{
+      label: "greedy avg steps survived",
+      color: "#b794f4",
+      points: rf.eval_checkpoints.map(function (c) { return [c.episode, c.avg_steps]; }),
+    }];
+    document.getElementById("reinforce-eval-chart").innerHTML = lineChart({
+      series: evalSeries, yMin: 0, yMax: rf.max_steps, showDots: true,
+    });
+
+    wireCartpolePlayback(rf);
+  }
+
+  function wireCartpolePlayback(rf) {
+    var traj = rf.sample_trajectory; // [[x, x_dot, theta, theta_dot], ...]
+    var state = { step: 0, playing: false, timer: null };
+
+    function draw() {
+      var s = traj[Math.min(state.step, traj.length - 1)];
+      var x = s[0], theta = s[2];
+      var w = 720, h = 220;
+      var trackY = 160;
+      var pxPerUnit = 130; // X_THRESHOLD=2.4 -> fits comfortably in 720 wide
+      var cx = w / 2 + x * pxPerUnit;
+      var cartW = 60, cartH = 30;
+      var poleLen = 90;
+      var tipX = cx + Math.sin(theta) * poleLen;
+      var tipY = trackY - cartH / 2 - Math.cos(theta) * poleLen;
+
+      var svg = [];
+      svg.push('<line x1="20" y1="' + trackY + '" x2="' + (w - 20) + '" y2="' + trackY + '" stroke="var(--border)" stroke-width="2"/>');
+      // failure bounds
+      var leftBound = w / 2 - 2.4 * pxPerUnit, rightBound = w / 2 + 2.4 * pxPerUnit;
+      svg.push('<line x1="' + leftBound + '" y1="' + (trackY - 10) + '" x2="' + leftBound + '" y2="' + (trackY + 10) + '" stroke="var(--bad)" stroke-width="2"/>');
+      svg.push('<line x1="' + rightBound + '" y1="' + (trackY - 10) + '" x2="' + rightBound + '" y2="' + (trackY + 10) + '" stroke="var(--bad)" stroke-width="2"/>');
+      svg.push('<rect x="' + (cx - cartW / 2) + '" y="' + (trackY - cartH / 2) + '" width="' + cartW + '" height="' + cartH + '" rx="4" fill="#1a2230" stroke="var(--accent)" stroke-width="2"/>');
+      svg.push('<line x1="' + cx + '" y1="' + (trackY - cartH / 2) + '" x2="' + tipX + '" y2="' + tipY + '" stroke="var(--accent-2)" stroke-width="5" stroke-linecap="round"/>');
+      svg.push('<circle cx="' + tipX + '" cy="' + tipY + '" r="6" fill="var(--accent-2)"/>');
+
+      document.getElementById("cartpole-svg").innerHTML = svg.join("");
+      document.getElementById("cp-scrubber").max = traj.length - 1;
+      document.getElementById("cp-scrubber").value = state.step;
+      document.getElementById("cp-step-label").textContent = "step " + state.step + " / " + (traj.length - 1);
+    }
+
+    function stopPlayback() {
+      state.playing = false;
+      document.getElementById("cp-play").innerHTML = "&#9654;";
+      if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    }
+    function startPlayback() {
+      state.playing = true;
+      document.getElementById("cp-play").innerHTML = "&#10073;&#10073;";
+      state.timer = setInterval(function () {
+        if (state.step >= traj.length - 1) { stopPlayback(); return; }
+        state.step++;
+        draw();
+      }, 30);
+    }
+
+    document.getElementById("cp-play").addEventListener("click", function () { state.playing ? stopPlayback() : startPlayback(); });
+    document.getElementById("cp-step-fwd").addEventListener("click", function () { stopPlayback(); state.step = Math.min(traj.length - 1, state.step + 1); draw(); });
+    document.getElementById("cp-step-back").addEventListener("click", function () { stopPlayback(); state.step = Math.max(0, state.step - 1); draw(); });
+    document.getElementById("cp-scrubber").addEventListener("input", function (e) { stopPlayback(); state.step = parseInt(e.target.value, 10); draw(); });
+
+    draw();
+  }
+
   if (typeof BELLMAN_DATA !== "undefined") {
-    boot(BELLMAN_DATA);
+    try {
+      boot(BELLMAN_DATA);
+    } catch (err) {
+      var el = document.getElementById("load-error");
+      el.textContent = "This page's data failed to render (" + err.message + "). " +
+        "Regenerate it with: python3 -m bellman.viz_export";
+      el.style.display = "block";
+    }
   } else {
     document.getElementById("load-error").style.display = "block";
   }

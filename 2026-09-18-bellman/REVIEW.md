@@ -123,3 +123,81 @@ doesn't reintroduce it by "optimizing" the search.
   algorithm-picker row wrapping to two lines under ~420px) is real but
   cosmetic, not a correctness or crash issue; addressed in Phase 4's
   polish pass, not here.
+
+## Phase 4 addendum: building the REINFORCE stretch feature
+
+Building `bellman/reinforce.py` (feature 5) surfaced enough real,
+reproduced problems that it's worth writing up here rather than only in
+code comments, in the same "investigated, not assumed" spirit as the rest
+of this document. Every claim below was directly measured, not guessed.
+
+### 7. Mountain Car defeated vanilla REINFORCE outright — swapped the task
+
+PLAN.md originally specified Mountain Car. Before writing any training
+code, I verified the physics were right: a hand-coded "push in the
+direction of current velocity" heuristic solves it in ~120 steps, every
+time. But a uniformly random policy gets **0 successes in 3000 tries**
+within a 200-step budget (measured directly) — the reward is -1/tick with
+nothing else, so an agent has to stumble into the correct two-phase
+swing-then-escape strategy purely by chance before REINFORCE has a single
+success to reinforce. I tried, in order: potential-based reward shaping
+(Ng, Harada & Russell 1999, height-as-potential, provably policy-
+invariant) — no measurable improvement, the shaping term mostly telescopes
+away over a 200-step trajectory and what's left is too small relative to
+the -1/tick term to matter. Dense (non-potential) height shaping — same
+result. Action-repeat / frame-skip (holding a sampled action for 8 ticks,
+Atari DQN's trick, to stop i.i.d.-per-tick sampling from cancelling into
+dithering) — this alone gave a random policy a real, if small, success
+rate (~1.5%, measured), but training on top of it still collapsed.
+
+That collapse turned out to be a real, separate bug, caught by directly
+inspecting the policy mid-training rather than only watching the success
+rate: a single scalar (EMA) baseline subtracted from every timestep's
+return-to-go is fine in theory (unbiased as long as it doesn't depend on
+the action taken) but is a *terrible* fit when almost every episode times
+out at the same fixed length — return-to-go is then dominated by "how
+many ticks are left," which is nearly the same curve shape in every
+episode regardless of quality, so the "advantage" ends up strongly
+positive late in *every* episode and strongly negative early in *every*
+episode, independent of success. Printed parameter L1 norms confirmed it:
+6979 after 1500 episodes (started under 10), with the policy collapsed to
+a single deterministic action. A later attempt at a proper fix (a
+per-timestep running baseline, plus an entropy bonus to stop the collapse
+outright — both still visible in this file's git history) still didn't
+produce a working policy within a few thousand pure-Python episodes.
+
+At that point the honest conclusion was that Mountain Car's hard-
+exploration property is genuinely famous in the RL literature for
+defeating vanilla policy gradient without materially more machinery
+(actor-critic, or far more compute) than a from-scratch pure-Python
+stretch feature can spend here — not a bug I hadn't found yet. Per
+PLAN.md's own rule for required features ("if truly infeasible, replace
+with one of equal size and say so"), I swapped the *task*, not the
+algorithm: CartPole is the standard first benchmark for policy-gradient
+methods for exactly the opposite reason (dense +1/tick reward, no
+exploration wall), same continuous-state / no-Q-table shape, same hand-
+rolled network and backward pass. `bellman/envs/mountaincar.py`'s
+physics were correct and are a legitimate implementation, but with
+nothing left in the package that uses it, it was removed rather than kept
+as unused code.
+
+### 8. CartPole itself needed batched updates, not just a task swap
+
+The first CartPole attempt (per-episode advantage normalization: subtract
+*that episode's own* mean/std return-to-go, one gradient step per
+episode) was unstable in a different way — not divergence, but genuine
+oscillation: average return climbing past 140, then collapsing back under
+20, repeatedly, over thousands of episodes (measured, several
+hyperparameter combinations). CartPole's episode lengths vary hugely
+(a lucky early episode can run 10x longer than an unlucky one right
+next to it), so a single episode's own mean/std is itself a noisy
+estimate, and a large step taken on a noisy estimate undoes several
+episodes' progress in one move. Pooling `batch_size=10` episodes' return-
+to-go values before normalizing, and averaging their gradients into one
+update per batch, fixed it directly: 5 training seeds, 5000 episodes
+each, greedy-evaluated over 200 held-out episodes after training —
+82.5%-100% success rate, 197-200 average steps survived out of a 200
+maximum, every seed. `viz_export.py` additionally checks this against a
+freshly-initialized (0% success) baseline and asserts the trained policy
+clearly beats it, so a future regression here fails loudly instead of
+quietly shipping a worse chart.
