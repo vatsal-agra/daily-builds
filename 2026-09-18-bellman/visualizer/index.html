@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bellman — a from-scratch RL lab</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #121821;
+    --panel-2: #161d29;
+    --border: #232c3a;
+    --text: #e7edf5;
+    --text-dim: #93a2b8;
+    --accent: #4fd1c5;
+    --accent-2: #f6ad55;
+    --accent-3: #f56565;
+    --accent-4: #b794f4;
+    --good: #48bb78;
+    --bad: #f56565;
+    --cliff: #2a1418;
+    --cliff-stripe: #4a2026;
+    --goal: #d4af37;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    padding: 28px 32px 16px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #101620, #0b0f14);
+  }
+  header h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: -0.01em; }
+  header h1 .accent { color: var(--accent); }
+  header p { margin: 0; color: var(--text-dim); font-size: 14px; max-width: 900px; line-height: 1.5; }
+  nav.tabs {
+    display: flex; gap: 4px; padding: 0 32px; margin-top: 18px;
+  }
+  nav.tabs button {
+    background: transparent; border: none; color: var(--text-dim);
+    font-size: 14px; font-weight: 600; padding: 10px 18px; cursor: pointer;
+    border-bottom: 2px solid transparent; transition: color .15s, border-color .15s;
+  }
+  nav.tabs button:hover { color: var(--text); }
+  nav.tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  main { padding: 24px 32px 60px; max-width: 1280px; margin: 0 auto; }
+  section.panel { display: none; }
+  section.panel.active { display: block; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 20px;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 15px; letter-spacing: .02em; text-transform: uppercase; color: var(--text-dim); }
+  .card h2 .n { color: var(--text); text-transform: none; letter-spacing: normal; font-size: 17px; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .row > .col { flex: 1 1 320px; min-width: 280px; }
+
+  .algo-picker { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
+  .algo-picker button {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
+    padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: all .15s;
+  }
+  .algo-picker button:hover { border-color: var(--accent); color: var(--text); }
+  .algo-picker button.active { background: var(--accent); border-color: var(--accent); color: #06201d; }
+
+  .stat-cards { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+  .stat {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; min-width: 130px;
+  }
+  .stat .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+  .stat .value { font-size: 20px; font-weight: 700; margin-top: 2px; }
+  .stat .value.good { color: var(--good); }
+  .stat .value.bad { color: var(--bad); }
+
+  #cliff-grid-svg { width: 100%; height: auto; display: block; }
+  .cliff-cell-label { font-size: 9px; fill: rgba(255,255,255,.55); font-family: monospace; }
+  .cliff-arrow { font-size: 20px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+  .cliff-tag { font-size: 11px; font-weight: 800; text-anchor: middle; dominant-baseline: central; letter-spacing: .03em; }
+
+  .playback { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .playback button {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 14px;
+  }
+  .playback button:hover { border-color: var(--accent); }
+  .playback input[type=range] { flex: 1; min-width: 160px; accent-color: var(--accent); }
+  .playback .step-label { font-size: 12px; color: var(--text-dim); min-width: 90px; text-align: right; }
+
+  svg.chart text { fill: var(--text-dim); font-size: 11px; font-family: inherit; }
+  svg.chart .axis-line { stroke: var(--border); stroke-width: 1; }
+  svg.chart .gridline { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 4; opacity: .6; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--text-dim); }
+  .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+
+  .ttt-board {
+    display: grid; grid-template-columns: repeat(3, 84px); grid-template-rows: repeat(3, 84px);
+    gap: 6px; margin: 14px 0;
+  }
+  .ttt-cell {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; font-size: 38px; font-weight: 800;
+    cursor: pointer; user-select: none; transition: border-color .15s, background .15s;
+  }
+  .ttt-cell.x { color: var(--accent); }
+  .ttt-cell.o { color: var(--accent-2); }
+  .ttt-cell.empty:hover { border-color: var(--accent); background: #1a2230; }
+  .ttt-cell.disabled { cursor: default; }
+  .ttt-cell.win { background: #163024; border-color: var(--good); }
+
+  select, .toggle-group { font-size: 13px; }
+  .toggle-group { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+  .toggle-group button {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
+    padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;
+  }
+  .toggle-group button.active { border-color: var(--accent); color: var(--text); background: #12241f; }
+
+  #ttt-status { font-size: 14px; font-weight: 600; min-height: 20px; margin-top: 8px; }
+  #ttt-status.win { color: var(--good); }
+  #ttt-status.lose { color: var(--bad); }
+  #ttt-status.draw { color: var(--accent-2); }
+
+  table.eval-table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 8px; }
+  table.eval-table th, table.eval-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+  table.eval-table th { color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 11px; }
+
+  footer { padding: 20px 32px 40px; color: var(--text-dim); font-size: 12px; text-align: center; }
+  footer a { color: var(--accent); }
+  code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .note { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; margin-top: 8px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .badge.good { background: #123326; color: var(--good); }
+  .badge.bad { background: #3a1919; color: var(--bad); }
+  #load-error { display: none; padding: 40px; text-align: center; color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bellman <span class="accent">/</span> a from-scratch reinforcement learning lab</h1>
+  <p>
+    Every algorithm here exploits the same recursive identity — the value of a state is the
+    immediate reward plus the discounted value of wherever you land next — a different way each
+    time: exact dynamic programming, sampled temporal-difference control, and self-play. Data on
+    this page is not staged: it is the literal output of <code>viz_export.py</code> re-running
+    every algorithm end to end.
+  </p>
+  <nav class="tabs">
+    <button data-panel="cliff-panel" class="active">Cliff Walking</button>
+    <button data-panel="ttt-panel">Tic-Tac-Toe</button>
+  </nav>
+</header>
+
+<main>
+  <div id="load-error">Could not load <code>data/bellman_data.json</code>. If you opened this file
+    directly (<code>file://</code>), most browsers block local JSON fetches for security reasons —
+    serve this folder instead, e.g. <code>python3 -m http.server</code> from
+    <code>visualizer/</code>, then open <code>http://localhost:8000</code>.</div>
+
+  <section id="cliff-panel" class="panel active"></section>
+  <section id="ttt-panel" class="panel"></section>
+</main>
+
+<footer>
+  Bellman — <a href="../PLAN.md">PLAN.md</a> · <a href="../REVIEW.md">REVIEW.md</a> ·
+  <a href="../README.md">README.md</a>. Every number on this page comes from
+  <code>bellman/viz_export.py</code>; nothing here is hand-authored sample data.
+</footer>
+
+<script src="data/bellman_data.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  function boot(data) {
+    renderCliffPanel(data.cliff);
+    renderTttPanel(data.tictactoe);
+    wireTabs();
+  }
+
+  function wireTabs() {
+    var tabs = document.querySelectorAll("nav.tabs button");
+    tabs.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        tabs.forEach(function (b) { b.classList.remove("active"); });
+        document.querySelectorAll("section.panel").forEach(function (p) { p.classList.remove("active"); });
+        btn.classList.add("active");
+        document.getElementById(btn.dataset.panel).classList.add("active");
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // small shared SVG chart helper: multiple {label, color, points:[[x,y]]}
+  // series on one linear-scaled chart, with optional clamp + threshold line
+  // ---------------------------------------------------------------------
+  function lineChart(opts) {
+    var w = opts.width || 640, h = opts.height || 220;
+    var pad = { l: 46, r: 16, t: 14, b: 30 };
+    var innerW = w - pad.l - pad.r, innerH = h - pad.t - pad.b;
+
+    var allX = [], allY = [];
+    opts.series.forEach(function (s) {
+      s.points.forEach(function (p) { allX.push(p[0]); allY.push(opts.clampMin !== undefined ? Math.max(p[1], opts.clampMin) : p[1]); });
+    });
+    var xMin = Math.min.apply(null, allX), xMax = Math.max.apply(null, allX);
+    var yMin = opts.yMin !== undefined ? opts.yMin : Math.min.apply(null, allY);
+    var yMax = opts.yMax !== undefined ? opts.yMax : Math.max.apply(null, allY);
+    if (yMin === yMax) { yMax = yMin + 1; }
+    if (xMin === xMax) { xMax = xMin + 1; }
+
+    function sx(x) { return pad.l + ((x - xMin) / (xMax - xMin)) * innerW; }
+    function sy(y) {
+      var yy = opts.clampMin !== undefined ? Math.max(y, opts.clampMin) : y;
+      return pad.t + innerH - ((yy - yMin) / (yMax - yMin)) * innerH;
+    }
+
+    var svg = ['<svg class="chart" viewBox="0 0 ' + w + ' ' + h + '" width="100%" height="' + h + '">'];
+
+    // gridlines (4 horizontal)
+    var gridN = 4;
+    for (var i = 0; i <= gridN; i++) {
+      var gy = pad.t + (innerH / gridN) * i;
+      var val = yMax - ((yMax - yMin) / gridN) * i;
+      svg.push('<line class="gridline" x1="' + pad.l + '" x2="' + (w - pad.r) + '" y1="' + gy + '" y2="' + gy + '"/>');
+      svg.push('<text x="' + (pad.l - 8) + '" y="' + (gy + 3) + '" text-anchor="end">' + val.toFixed(0) + '</text>');
+    }
+    svg.push('<line class="axis-line" x1="' + pad.l + '" x2="' + pad.l + '" y1="' + pad.t + '" y2="' + (pad.t + innerH) + '"/>');
+    svg.push('<line class="axis-line" x1="' + pad.l + '" x2="' + (w - pad.r) + '" y1="' + (pad.t + innerH) + '" y2="' + (pad.t + innerH) + '"/>');
+
+    // x-axis ticks: first, middle, last
+    [xMin, (xMin + xMax) / 2, xMax].forEach(function (xv) {
+      svg.push('<text x="' + sx(xv) + '" y="' + (pad.t + innerH + 20) + '" text-anchor="middle">' + Math.round(xv) + '</text>');
+    });
+
+    if (opts.threshold !== undefined) {
+      var ty = sy(opts.threshold);
+      svg.push('<line x1="' + pad.l + '" x2="' + (w - pad.r) + '" y1="' + ty + '" y2="' + ty + '" stroke="' + (opts.thresholdColor || "#888") + '" stroke-width="1" stroke-dasharray="5 4" opacity=".8"/>');
+    }
+
+    opts.series.forEach(function (s) {
+      var pts = s.points.map(function (p) { return sx(p[0]) + "," + sy(p[1]); }).join(" ");
+      svg.push('<polyline points="' + pts + '" fill="none" stroke="' + s.color + '" stroke-width="2" opacity=".95"/>');
+      if (opts.showDots) {
+        s.points.forEach(function (p) {
+          var clamped = opts.clampMin !== undefined && p[1] < opts.clampMin;
+          svg.push('<circle cx="' + sx(p[0]) + '" cy="' + sy(p[1]) + '" r="3.5" fill="' + (clamped ? "#f56565" : s.color) + '"><title>' + s.label + " @ " + p[0] + ": " + p[1].toFixed(1) + (clamped ? " (off-chart)" : "") + '</title></circle>');
+        });
+      }
+    });
+
+    svg.push("</svg>");
+    return svg.join("");
+  }
+
+  // ---------------------------------------------------------------------
+  // Cliff Walking panel
+  // ---------------------------------------------------------------------
+  function renderCliffPanel(cliff) {
+    var panel = document.getElementById("cliff-panel");
+    var algos = [
+      { key: "optimal", label: "Optimal (DP)" },
+      { key: "sarsa", label: "SARSA (on-policy)" },
+      { key: "qlearning", label: "Q-learning (off-policy)" },
+      { key: "sarsa_lambda", label: cliff.sarsa_lambda.name },
+    ];
+    var state = { algo: "qlearning", step: 0, playing: false, timer: null };
+
+    panel.innerHTML =
+      '<div class="card">' +
+        '<h2>Value function &amp; greedy policy</h2>' +
+        '<div class="algo-picker" id="algo-picker">' +
+          algos.map(function (a) { return '<button data-algo="' + a.key + '">' + a.label + "</button>"; }).join("") +
+        "</div>" +
+        '<div class="row">' +
+          '<div class="col" style="flex-basis:640px;">' +
+            '<svg id="cliff-grid-svg" viewBox="0 0 720 260"></svg>' +
+            '<div class="playback">' +
+              '<button id="cliff-step-back" title="Step back">&#9664;</button>' +
+              '<button id="cliff-play" title="Play">&#9654;</button>' +
+              '<button id="cliff-step-fwd" title="Step forward">&#9654;&#9654;</button>' +
+              '<input type="range" id="cliff-scrubber" min="0" max="0" value="0">' +
+              '<span class="step-label" id="cliff-step-label">step 0 / 0</span>' +
+            "</div>" +
+          "</div>" +
+          '<div class="col">' +
+            '<div class="stat-cards" id="cliff-stats"></div>' +
+            '<div class="note">Cliff cells (red) cost -100 and reset to Start; every other step costs -1; reaching Goal ends the episode. The trajectory scrubber replays the greedy path this policy actually takes.</div>' +
+          "</div>" +
+        "</div>" +
+      "</div>" +
+      '<div class="card">' +
+        '<h2>Training curves <span class="n">&mdash; episode return (20-episode moving average)</span></h2>' +
+        '<div id="training-curve-chart"></div>' +
+        '<div class="legend" id="training-curve-legend"></div>' +
+      "</div>" +
+      '<div class="card">' +
+        "<h2>SARSA(&lambda;) vs 1-step SARSA <span class=\"n\">&mdash; episodes to a working policy, matched &alpha;=" +
+          cliff.convergence_speed.alpha + ", &epsilon;=" + cliff.convergence_speed.epsilon + "</span></h2>" +
+        '<div id="convergence-chart"></div>' +
+        '<div class="legend" id="convergence-legend"></div>' +
+        '<div class="note" id="convergence-note"></div>' +
+      "</div>";
+
+    document.getElementById("algo-picker").addEventListener("click", function (e) {
+      var btn = e.target.closest("button[data-algo]");
+      if (!btn) return;
+      stopPlayback();
+      state.algo = btn.dataset.algo;
+      state.step = 0;
+      renderAll();
+    });
+
+    document.getElementById("cliff-play").addEventListener("click", function () {
+      state.playing ? stopPlayback() : startPlayback();
+    });
+    document.getElementById("cliff-step-fwd").addEventListener("click", function () { stopPlayback(); stepOnce(1); });
+    document.getElementById("cliff-step-back").addEventListener("click", function () { stopPlayback(); stepOnce(-1); });
+    document.getElementById("cliff-scrubber").addEventListener("input", function (e) {
+      stopPlayback();
+      state.step = parseInt(e.target.value, 10);
+      drawGrid();
+      updateScrubberLabel();
+    });
+
+    function currentBundle() {
+      return state.algo === "optimal" ? cliff.optimal : cliff[state.algo];
+    }
+    function currentTrajectory() {
+      var b = currentBundle();
+      return b.trajectory || rolloutFromPolicy(b.policy);
+    }
+    function rolloutFromPolicy(policy) {
+      // "optimal" bundle has no precomputed trajectory (it's a policy
+      // table, not a trained run) -- walk it client-side the same way
+      // utils.rollout_policy does in Python.
+      var pos = cliff.meta.start.slice();
+      var path = [pos.slice()];
+      var seen = {};
+      for (var i = 0; i < 200; i++) {
+        var s = pos[0] * cliff.meta.cols + pos[1];
+        if (pos[0] === cliff.meta.goal[0] && pos[1] === cliff.meta.goal[1]) break;
+        var entry = policy[s];
+        if (!entry) break;
+        var a = entry.action;
+        var next = pos.slice();
+        if (a === 0) next[0] = Math.max(0, next[0] - 1);
+        else if (a === 1) next[0] = Math.min(cliff.meta.rows - 1, next[0] + 1);
+        else if (a === 2) next[1] = Math.max(0, next[1] - 1);
+        else if (a === 3) next[1] = Math.min(cliff.meta.cols - 1, next[1] + 1);
+        var isCliff = cliff.meta.cliff_cells.some(function (c) { return c[0] === next[0] && c[1] === next[1]; });
+        pos = isCliff ? cliff.meta.start.slice() : next;
+        path.push(pos.slice());
+        var key = pos.join(",");
+        if (isCliff) { if (seen[key + ":cliff"]) break; seen[key + ":cliff"] = true; }
+      }
+      return path;
+    }
+
+    function stepOnce(delta) {
+      var traj = currentTrajectory();
+      state.step = Math.max(0, Math.min(traj.length - 1, state.step + delta));
+      drawGrid();
+      updateScrubberLabel();
+    }
+    function startPlayback() {
+      state.playing = true;
+      document.getElementById("cliff-play").innerHTML = "&#10073;&#10073;";
+      state.timer = setInterval(function () {
+        var traj = currentTrajectory();
+        if (state.step >= traj.length - 1) { stopPlayback(); return; }
+        state.step++;
+        drawGrid();
+        updateScrubberLabel();
+      }, 260);
+    }
+    function stopPlayback() {
+      state.playing = false;
+      document.getElementById("cliff-play").innerHTML = "&#9654;";
+      if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    }
+    function updateScrubberLabel() {
+      var traj = currentTrajectory();
+      var scrub = document.getElementById("cliff-scrubber");
+      scrub.max = traj.length - 1;
+      scrub.value = state.step;
+      document.getElementById("cliff-step-label").textContent = "step " + state.step + " / " + (traj.length - 1);
+    }
+
+    var ARROWS = { 0: "↑", 1: "↓", 2: "←", 3: "→" };
+    var ACTION_NAMES = { optimal: "value_iteration_iterations", };
+
+    function valueColor(v, vMin, vMax) {
+      // vMin (deep red, worst) -> vMax (teal, best); clamp outliers (-100 cliff cost) softly
+      var t = Math.max(0, Math.min(1, (v - vMin) / (vMax - vMin)));
+      var r1 = 60, g1 = 20, b1 = 30;   // worst
+      var r2 = 20, g2 = 120, b2 = 110; // best
+      var r = Math.round(r1 + (r2 - r1) * t);
+      var g = Math.round(g1 + (g2 - g1) * t);
+      var b = Math.round(b1 + (b2 - b1) * t);
+      return "rgb(" + r + "," + g + "," + b + ")";
+    }
+
+    function drawGrid() {
+      var bundle = currentBundle();
+      var V = bundle.V;
+      var vals = Object.keys(V).map(function (k) { return V[k]; });
+      // Clip the color scale at a floor so a handful of very negative
+      // learned-but-rarely-visited cells (a Q-value that only ever got
+      // hit by the initial -100 cliff penalty and never corrected) don't
+      // wash out the color contrast across the whole grid.
+      var vMin = Math.max(-30, Math.min.apply(null, vals));
+      var vMax = Math.max.apply(null, vals);
+
+      var cell = 58, gap = 3;
+      var svg = [];
+      var rows = cliff.meta.rows, cols = cliff.meta.cols;
+      var traj = currentTrajectory();
+      var tokenPos = traj[Math.min(state.step, traj.length - 1)];
+
+      for (var r = 0; r < rows; r++) {
+        for (var c = 0; c < cols; c++) {
+          var x = c * (cell + gap), y = r * (cell + gap);
+          var isCliff = cliff.meta.cliff_cells.some(function (cc) { return cc[0] === r && cc[1] === c; });
+          var isStart = r === cliff.meta.start[0] && c === cliff.meta.start[1];
+          var isGoal = r === cliff.meta.goal[0] && c === cliff.meta.goal[1];
+          var fill;
+          if (isCliff) fill = "var(--cliff)";
+          else if (isGoal) fill = "#3a2f0e";
+          else if (V) fill = valueColor(V[r * cols + c], vMin, vMax);
+          else fill = "#171f2b";
+
+          svg.push('<rect x="' + x + '" y="' + y + '" width="' + cell + '" height="' + cell + '" rx="6" fill="' + fill + '" stroke="' + (isCliff ? "var(--cliff-stripe)" : "var(--border)") + '" stroke-width="1"/>');
+
+          if (isCliff) {
+            svg.push('<text class="cliff-tag" x="' + (x + cell / 2) + '" y="' + (y + cell / 2) + '" fill="#c05a63">☠</text>');
+          } else if (isGoal) {
+            svg.push('<text class="cliff-tag" x="' + (x + cell / 2) + '" y="' + (y + cell / 2) + '" fill="var(--goal)">GOAL</text>');
+          } else {
+            var s = r * cols + c;
+            var entry = (bundle.policy || cliff.optimal.policy)[s];
+            if (entry) {
+              svg.push('<text class="cliff-arrow" x="' + (x + cell / 2) + '" y="' + (y + cell / 2 - 2) + '" fill="#f4f7fb">' + ARROWS[entry.action] + "</text>");
+            }
+            if (V) {
+              svg.push('<text class="cliff-cell-label" x="' + (x + cell / 2) + '" y="' + (y + cell - 8) + '" text-anchor="middle">' + V[s].toFixed(0) + "</text>");
+            }
+            if (isStart) {
+              svg.push('<text class="cliff-cell-label" x="' + (x + 6) + '" y="' + (y + 12) + '" fill="#9fb2c9">START</text>');
+            }
+          }
+        }
+      }
+
+      // trajectory path + animated token
+      if (traj.length > 1) {
+        var pathPts = traj.map(function (p) { return (p[1] * (cell + gap) + cell / 2) + "," + (p[0] * (cell + gap) + cell / 2); }).join(" ");
+        svg.push('<polyline points="' + pathPts + '" fill="none" stroke="#e7edf5" stroke-width="2" stroke-dasharray="4 4" opacity=".5"/>');
+      }
+      if (tokenPos) {
+        var tx = tokenPos[1] * (cell + gap) + cell / 2, ty = tokenPos[0] * (cell + gap) + cell / 2;
+        svg.push('<circle cx="' + tx + '" cy="' + ty + '" r="9" fill="var(--accent)" stroke="#06201d" stroke-width="2"/>');
+      }
+
+      var svgEl = document.getElementById("cliff-grid-svg");
+      svgEl.setAttribute("viewBox", "0 0 " + (cols * (cell + gap)) + " " + (rows * (cell + gap)));
+      svgEl.innerHTML = svg.join("");
+    }
+
+    function drawStats() {
+      var bundle = currentBundle();
+      var wrap = document.getElementById("cliff-stats");
+      var cards = [];
+      if (state.algo === "optimal") {
+        cards.push(stat("Value at start", cliff.optimal.value_at_start.toFixed(1), true));
+        cards.push(stat("Value iteration", cliff.optimal.value_iteration_iterations + " sweeps"));
+        cards.push(stat("Policy iteration", cliff.optimal.policy_iteration_iterations + " sweeps"));
+        cards.push(stat("Agrees with policy iteration", "yes", true));
+      } else {
+        var optimalV = cliff.optimal.value_at_start;
+        var gap = bundle.exact_policy_value_at_start - optimalV;
+        cards.push(stat("Exact policy value", bundle.exact_policy_value_at_start.toFixed(1), Math.abs(gap) < 1e-6));
+        cards.push(stat("vs. optimal (" + optimalV.toFixed(0) + ")", (gap === 0 ? "optimal" : gap.toFixed(1) + " worse"), gap === 0));
+        cards.push(stat("Reaches goal (rollout)", bundle.rollout_reached_goal ? "yes" : "no", bundle.rollout_reached_goal));
+        cards.push(stat("Path length", (bundle.trajectory.length - 1) + " steps"));
+      }
+      wrap.innerHTML = cards.join("");
+    }
+    function stat(label, value, good) {
+      var cls = good === true ? "good" : (good === false ? "bad" : "");
+      return '<div class="stat"><div class="label">' + label + '</div><div class="value ' + cls + '">' + value + "</div></div>";
+    }
+
+    function renderTrainingCurves() {
+      var series = [
+        { label: "SARSA", color: "var(--accent-2)".replace("var(--accent-2)", "#f6ad55"), points: cliff.sarsa.moving_avg_return.map(function (v, i) { return [i, v]; }) },
+        { label: "Q-learning", color: "#4fd1c5", points: cliff.qlearning.moving_avg_return.map(function (v, i) { return [i, v]; }) },
+        { label: cliff.sarsa_lambda.name, color: "#b794f4", points: cliff.sarsa_lambda.moving_avg_return.map(function (v, i) { return [i, v]; }) },
+      ];
+      document.getElementById("training-curve-chart").innerHTML = lineChart({ series: series, clampMin: -150, yMin: -150, yMax: 0 });
+      document.getElementById("training-curve-legend").innerHTML = series.map(function (s) {
+        return '<span><span class="swatch" style="background:' + s.color + '"></span>' + s.label + "</span>";
+      }).join("");
+    }
+
+    function renderConvergenceChart() {
+      var speed = cliff.convergence_speed;
+      var clampMin = speed.threshold - 20;
+      var series = [
+        { label: "SARSA", color: "#f6ad55", points: speed.sarsa_curve },
+        { label: cliff.sarsa_lambda.name, color: "#b794f4", points: speed.sarsa_lambda_curve },
+      ];
+      document.getElementById("convergence-chart").innerHTML = lineChart({
+        series: series, clampMin: clampMin, yMin: clampMin, yMax: 0, threshold: speed.threshold, thresholdColor: "#93a2b8", showDots: true,
+      });
+      document.getElementById("convergence-legend").innerHTML = series.map(function (s) {
+        return '<span><span class="swatch" style="background:' + s.color + '"></span>' + s.label + "</span>";
+      }).join("") + '<span><span class="swatch" style="background:#93a2b8"></span>threshold (' + speed.threshold + ")</span>";
+
+      var note = cliff.sarsa_lambda.name + " first reached a working policy (value ≥ " + speed.threshold + ") after <b>" +
+        speed.sarsa_lambda_crossing_episode + "</b> episodes; 1-step SARSA needed " +
+        (speed.sarsa_crossing_episode === null ? "more than " + speed.checkpoints[speed.checkpoints.length - 1] : speed.sarsa_crossing_episode) +
+        " episodes at the same &alpha;/&epsilon;. Points plotted at the dashed floor (in red) mean that checkpoint's greedy policy doesn't reliably reach the goal at all (its exact value is far below the chart, not just below threshold).";
+      document.getElementById("convergence-note").innerHTML = note;
+    }
+
+    function renderAll() {
+      document.querySelectorAll("#algo-picker button").forEach(function (b) {
+        b.classList.toggle("active", b.dataset.algo === state.algo);
+      });
+      drawGrid();
+      drawStats();
+      updateScrubberLabel();
+    }
+
+    renderAll();
+    renderTrainingCurves();
+    renderConvergenceChart();
+  }
+
+  // ---------------------------------------------------------------------
+  // Tic-Tac-Toe panel
+  // ---------------------------------------------------------------------
+  function renderTttPanel(ttt) {
+    var panel = document.getElementById("ttt-panel");
+    panel.innerHTML =
+      '<div class="row">' +
+        '<div class="col" style="flex-basis:380px;">' +
+          '<div class="card">' +
+            '<h2>Play against it</h2>' +
+            '<div class="toggle-group" id="opponent-toggle">' +
+              '<button data-opp="agent" class="active">Self-play agent</button>' +
+              '<button data-opp="oracle">Perfect oracle</button>' +
+            "</div>" +
+            '<div class="toggle-group" id="side-toggle">' +
+              '<button data-side="X" class="active">Play as X (you go first)</button>' +
+              '<button data-side="O">Play as O</button>' +
+            "</div>" +
+            '<div class="ttt-board" id="ttt-board"></div>' +
+            '<div id="ttt-status"></div>' +
+            '<div class="playback"><button id="ttt-reset" title="New game">&#8635;</button>' +
+            '<span class="note">The oracle never loses (Tic-Tac-Toe is a solved draw). The self-play agent learned purely from ' + ttt.training_episodes.toLocaleString() + ' games against itself &mdash; no minimax knowledge was ever given to it.</span></div>' +
+          "</div>" +
+        "</div>" +
+        '<div class="col">' +
+          '<div class="card">' +
+            "<h2>Self-play training outcomes <span class=\"n\">&mdash; " + ttt.training_episodes.toLocaleString() + " games, X moves first every game</span></h2>" +
+            '<div id="ttt-training-bar"></div>' +
+          "</div>" +
+          '<div class="card">' +
+            "<h2>Evaluation vs. the perfect oracle <span class=\"n\">&mdash; " + ttt.eval_vs_oracle.games_each + " randomized games each side</span></h2>" +
+            '<table class="eval-table"><thead><tr><th>Agent plays</th><th>Agent wins</th><th>Draws</th><th>Agent losses</th></tr></thead><tbody>' +
+              '<tr><td>X</td><td>' + ttt.eval_vs_oracle.as_X.agent_win + '</td><td>' + ttt.eval_vs_oracle.as_X.draw + '</td><td><span class="badge ' + (ttt.eval_vs_oracle.as_X.oracle_win === 0 ? "good" : "bad") + '">' + ttt.eval_vs_oracle.as_X.oracle_win + '</span></td></tr>' +
+              '<tr><td>O</td><td>' + ttt.eval_vs_oracle.as_O.agent_win + '</td><td>' + ttt.eval_vs_oracle.as_O.draw + '</td><td><span class="badge ' + (ttt.eval_vs_oracle.as_O.oracle_win === 0 ? "good" : "bad") + '">' + ttt.eval_vs_oracle.as_O.oracle_win + '</span></td></tr>' +
+            "</tbody></table>" +
+            '<div class="note">' + ttt.states_learned.toLocaleString() + ' distinct board states learned a value estimate (' + Math.round(100 * ttt.states_learned / 5478) + '% of all 5478 reachable states).</div>' +
+          "</div>" +
+        "</div>" +
+      "</div>";
+
+    renderTrainingBar(ttt.training_outcomes, ttt.training_episodes);
+    wireBoard(ttt);
+  }
+
+  function renderTrainingBar(outcomes, total) {
+    var order = [["X", "#4fd1c5"], ["draw", "#93a2b8"], ["O", "#f6ad55"]];
+    var w = 640, h = 46;
+    var x = 0;
+    var svg = ['<svg class="chart" viewBox="0 0 ' + w + ' ' + h + '" width="100%" height="' + h + '">'];
+    order.forEach(function (pair) {
+      var frac = outcomes[pair[0]] / total;
+      var bw = frac * w;
+      svg.push('<rect x="' + x + '" y="8" width="' + bw + '" height="24" fill="' + pair[1] + '"><title>' + pair[0] + ": " + outcomes[pair[0]] + " (" + (frac * 100).toFixed(1) + "%)</title></rect>");
+      if (bw > 46) {
+        svg.push('<text x="' + (x + bw / 2) + '" y="24" text-anchor="middle" fill="#06201d" font-weight="700">' + (frac * 100).toFixed(0) + "%</text>");
+      }
+      x += bw;
+    });
+    svg.push("</svg>");
+    document.getElementById("ttt-training-bar").innerHTML = svg.join("") +
+      '<div class="legend">' + order.map(function (p) {
+        return '<span><span class="swatch" style="background:' + p[1] + '"></span>' + p[0] + " wins: " + outcomes[p[0]].toLocaleString() + "</span>";
+      }).join("") + "</div>";
+  }
+
+  function wireBoard(ttt) {
+    var state = { board: " ".split("").join("").padEnd(9, " ").split(""), humanSide: "X", opponent: "agent", over: false, rng: mulberry32(12345) };
+    state.board = new Array(9).fill(" ");
+
+    document.getElementById("opponent-toggle").addEventListener("click", function (e) {
+      var btn = e.target.closest("button[data-opp]");
+      if (!btn) return;
+      setActive("#opponent-toggle button", btn);
+      state.opponent = btn.dataset.opp;
+      newGame();
+    });
+    document.getElementById("side-toggle").addEventListener("click", function (e) {
+      var btn = e.target.closest("button[data-side]");
+      if (!btn) return;
+      setActive("#side-toggle button", btn);
+      state.humanSide = btn.dataset.side;
+      newGame();
+    });
+    document.getElementById("ttt-reset").addEventListener("click", newGame);
+
+    function setActive(sel, btn) {
+      document.querySelectorAll(sel).forEach(function (b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+    }
+
+    function newGame() {
+      state.board = new Array(9).fill(" ");
+      state.over = false;
+      renderBoard();
+      setStatus("", "");
+      if (state.humanSide === "O") { setTimeout(botMove, 250); }
+    }
+
+    function boardStr() { return state.board.join(""); }
+
+    function winnerOf(board) {
+      var lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+      for (var i = 0; i < lines.length; i++) {
+        var l = lines[i];
+        if (board[l[0]] !== " " && board[l[0]] === board[l[1]] && board[l[1]] === board[l[2]]) return { player: board[l[0]], line: l };
+      }
+      return null;
+    }
+    function isFull(board) { return board.indexOf(" ") === -1; }
+
+    function botMove() {
+      if (state.over) return;
+      var player = state.humanSide === "X" ? "O" : "X";
+      var action;
+      if (state.opponent === "oracle") {
+        var entry = ttt.oracle_table[boardStr() + player];
+        var best = entry.score;
+        var candidates = [];
+        // ties: recompute which actions share the memoized best score
+        for (var i = 0; i < 9; i++) {
+          if (state.board[i] !== " ") continue;
+          var child = state.board.slice(); child[i] = player;
+          var opp = player === "X" ? "O" : "X";
+          var childEntry = ttt.oracle_table[child.join("") + opp];
+          var childScore = childEntry ? -scoreFromChildPerspective(childEntry, child, opp, player) : 0;
+          candidates.push([i, childScore]);
+        }
+        var bestScore = Math.max.apply(null, candidates.map(function (c) { return c[1]; }));
+        var tied = candidates.filter(function (c) { return c[1] === bestScore; }).map(function (c) { return c[0]; });
+        action = tied[Math.floor(state.rng() * tied.length)];
+      } else {
+        action = agentMove(player);
+      }
+      applyMove(action, player);
+    }
+
+    function scoreFromChildPerspective(childEntry, childBoard, childToMove, rootPlayer) {
+      // oracle_table stores (score, action) from the perspective of the
+      // player-to-move at that node; category (win>0/draw=0/loss<0) is
+      // sign-comparable across nodes regardless of search depth baseline
+      // (see bellman/minimax.py _category docstring) so we only need the
+      // sign here, not the exact magnitude.
+      var w = winnerOf(childBoard);
+      if (w) return w.player === rootPlayer ? 1 : -1;
+      if (isFull(childBoard)) return 0;
+      var s = childEntry.score;
+      return s > 0 ? 1 : (s < 0 ? -1 : 0);
+    }
+
+    function agentMove(player) {
+      var candidates = [];
+      var bestVal = null;
+      for (var i = 0; i < 9; i++) {
+        if (state.board[i] !== " ") continue;
+        var child = state.board.slice(); child[i] = player;
+        var key = child.join("");
+        var w = winnerOf(child);
+        var v = w ? (w.player === "X" ? 1 : 0) : (isFull(child) ? 0.5 : (ttt.value_table[key] !== undefined ? ttt.value_table[key] : 0.5));
+        var better = bestVal === null || (player === "X" ? v > bestVal : v < bestVal);
+        if (better) { bestVal = v; candidates = [i]; }
+        else if (v === bestVal) { candidates.push(i); }
+      }
+      return candidates[Math.floor(state.rng() * candidates.length)];
+    }
+
+    function applyMove(action, player) {
+      state.board[action] = player;
+      renderBoard();
+      var w = winnerOf(state.board);
+      if (w) {
+        state.over = true;
+        var humanWon = w.player === state.humanSide;
+        setStatus(humanWon ? "You win!" : "You lose — " + w.player + " wins.", humanWon ? "win" : "lose");
+        highlightLine(w.line);
+        return;
+      }
+      if (isFull(state.board)) {
+        state.over = true;
+        setStatus("Draw.", "draw");
+        return;
+      }
+      var nextPlayer = player === "X" ? "O" : "X";
+      if (nextPlayer !== state.humanSide) { setTimeout(botMove, 250); }
+    }
+
+    function setStatus(text, cls) {
+      var el = document.getElementById("ttt-status");
+      el.textContent = text;
+      el.className = cls;
+    }
+    function highlightLine(line) {
+      line.forEach(function (i) {
+        document.querySelectorAll(".ttt-cell")[i].classList.add("win");
+      });
+    }
+
+    function renderBoard() {
+      var wrap = document.getElementById("ttt-board");
+      wrap.innerHTML = "";
+      for (var i = 0; i < 9; i++) {
+        var v = state.board[i];
+        var cell = document.createElement("div");
+        cell.className = "ttt-cell " + (v === " " ? "empty" : v.toLowerCase()) + (state.over || v !== " " ? " disabled" : "");
+        cell.textContent = v === " " ? "" : v;
+        (function (idx) {
+          cell.addEventListener("click", function () {
+            if (state.over || state.board[idx] !== " ") return;
+            var turn = state.board.filter(function (c) { return c !== " "; }).length % 2 === 0 ? "X" : "O";
+            if (turn !== state.humanSide) return;
+            applyMove(idx, state.humanSide);
+          });
+        })(i);
+        wrap.appendChild(cell);
+      }
+    }
+
+    function mulberry32(seed) {
+      return function () {
+        seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+        var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    newGame();
+  }
+
+  if (typeof BELLMAN_DATA !== "undefined") {
+    boot(BELLMAN_DATA);
+  } else {
+    document.getElementById("load-error").style.display = "block";
+  }
+})();
+</script>
+</body>
+</html>

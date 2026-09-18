@@ -44,7 +44,7 @@ bellman/
     tictactoe.py       # 2-player MDP, terminal win/draw/loss reward
   dp.py                 # Policy Iteration + Value Iteration -> V*, Q*, pi*
   td.py                 # tabular SARSA (on-policy) + Q-learning (off-policy)
-  minimax.py            # negamax + alpha-beta perfect tic-tac-toe oracle
+  minimax.py            # memoized negamax perfect tic-tac-toe oracle
   selfplay.py           # TD(0) self-play control for tic-tac-toe
   reinforce.py           # REINFORCE policy gradient, hand-rolled softmax net
   viz_export.py          # runs every algorithm, writes JSON for the viewer
@@ -83,7 +83,7 @@ policy network's forward/backward pass are all hand-written.
    not just eyeballed from a picture.
 
 3. **(required) Perfect-play oracle + TD(0) self-play for Tic-Tac-Toe.**
-   A from-scratch negamax/alpha-beta solver that plays provably optimal
+   A from-scratch memoized negamax solver that plays provably optimal
    Tic-Tac-Toe (the game is a solved draw with correct play). A separate
    TD(0) value-function agent trains purely by playing itself for
    thousands of games with no minimax knowledge injected, then is
