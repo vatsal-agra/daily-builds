@@ -272,7 +272,7 @@ def build_reinforce_section(train_episodes=5000, eval_games=200, seed=42):
     sample_states = []
     state = env.reset(random.Random(12345))
     for step in sample_trajectory:
-        state, _, _, _ = env.step(state, step["action"])
+        state, _, _ = env.step(state, step["action"])
         sample_states.append(list(state))
 
     return {

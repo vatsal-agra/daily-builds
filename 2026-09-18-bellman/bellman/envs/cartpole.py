@@ -8,6 +8,16 @@ pole is still up).
 Physics constants and the update equations match the standard reference
 implementation (Euler integration of the classic single-pole cart-pole
 dynamics) rather than anything tuned to be easy.
+
+step() is a pure function of (state, action), same as CliffWalking's --
+it does not track how many ticks have elapsed on `self`. An earlier
+version did (an instance counter set by reset() and incremented by every
+step()), which meant step() before reset() crashed, and two interleaved
+episodes sharing one CartPole instance would corrupt each other's step
+count; a test calling step() directly (to check the falling-over case at
+a specific hand-built state) caught it. The episode-length cutoff is the
+*caller's* concern (bellman/reinforce.py's run_episode loops at most
+`env.max_steps` times), not the environment's.
 """
 import math
 
@@ -33,10 +43,14 @@ class CartPole:
         self.n_actions = len(ACTIONS)
 
     def reset(self, rng):
-        self._t = 0
         return tuple(rng.uniform(-0.05, 0.05) for _ in range(4))
 
     def step(self, state, action):
+        """Return (next_state, reward, fell). `fell` means the pole
+        dropped past the angle threshold or the cart left the track --
+        the *only* failure this environment itself knows about. Running
+        out of time is not a failure of the physics, so it is not this
+        function's job to report it; see the module docstring."""
         x, x_dot, theta, theta_dot = state
         force = FORCE_MAG if action == 1 else -FORCE_MAG
         costheta = math.cos(theta)
@@ -53,12 +67,9 @@ class CartPole:
         theta = theta + TAU * theta_dot
         theta_dot = theta_dot + TAU * theta_acc
 
-        self._t += 1
         fell = x < -X_THRESHOLD or x > X_THRESHOLD or theta < -THETA_THRESHOLD or theta > THETA_THRESHOLD
-        timed_out = self._t >= self.max_steps
-        done = fell or timed_out
         reward = 1.0  # every tick the pole was still up when this step was taken
-        return (x, x_dot, theta, theta_dot), reward, done, timed_out and not fell
+        return (x, x_dot, theta, theta_dot), reward, fell
 
     @staticmethod
     def normalize(state):

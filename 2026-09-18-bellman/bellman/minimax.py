@@ -96,6 +96,9 @@ def best_moves(board, player):
     unambiguously reflects which one of the three outcomes is forced --
     which is the only thing "equally optimal" needs to mean here.
     """
+    if winner(board) is not None or is_full(board):
+        return None, []  # nothing to move: matches best_move's action=None
+
     opponent = other_player(player)
     best_cat = None
     tied_actions = []

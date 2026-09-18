@@ -133,20 +133,25 @@ class PolicyNet:
 
 
 def run_episode(env, net, rng, greedy=False):
+    """The episode-length cutoff lives here, not in env.step() (see
+    envs/cartpole.py's module docstring for why): an episode ends either
+    when the pole falls or after env.max_steps ticks, whichever comes
+    first, and "survived the full episode" means the latter."""
     state = env.reset(rng)
     trajectory = []
-    done = False
-    survived_full_episode = False
-    while not done:
+    fell = False
+    for _ in range(env.max_steps):
         norm = env.normalize(state)
         if greedy:
             action = net.greedy_action(norm)
             cache = None
         else:
             action, cache = net.sample_action(norm, rng)
-        state, reward, done, survived_full_episode = env.step(state, action)
+        state, reward, fell = env.step(state, action)
         trajectory.append({"cache": cache, "action": action, "reward": reward})
-    return trajectory, survived_full_episode
+        if fell:
+            break
+    return trajectory, not fell
 
 
 def reinforce_train(env=None, episodes=5000, hidden_size=16, lr=0.02, gamma=0.99, seed=0,

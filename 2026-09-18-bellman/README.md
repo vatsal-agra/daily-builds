@@ -1,8 +1,7 @@
 # Bellman
 
-**Status: Phase 4 complete — stretch feature (REINFORCE on CartPole)
-shipped and verified, plus a round of UX/input-validation polish.**
-Final verification (tests + demo script) is next.
+**Status: Phase 5 complete — 37 unit tests + a 7-check browser suite, all
+green via `./demo.sh`.** Final README/LEDGER write-up is next.
 
 A from-scratch reinforcement learning laboratory in pure Python (no
 numpy, no gym, no RL/ML framework). See [PLAN.md](PLAN.md) for the full
@@ -96,3 +95,33 @@ a small-screen pass (a `max-width: 480px` media query — tab bar becomes
 horizontally scrollable, stat cards and the Tic-Tac-Toe board shrink
 slightly) verified with Playwright at a 390px viewport (no horizontal
 overflow, all three tabs).
+
+## Verification
+
+`./demo.sh` runs everything and prints a final PASS/FAIL summary (green
+as of this commit): 37 `unittest` tests across every module
+(`tests/`), the REINFORCE gradient check standalone, a full production
+run of `viz_export.py` (the real episode counts, not a fast/fake test
+config), and a 7-check headless-Chromium suite (`browser_checks.py`)
+against the actual `visualizer/index.html` — every tab, the two
+regression scenarios from the adversarial review, a naive-human-vs-oracle
+game, a 10-game mixed randomized stress test, the mobile layout, and the
+malformed-data error path.
+
+Writing the tests found two more real bugs beyond Phase 3's adversarial
+review (both fixed, both now have a regression test):
+
+- `minimax.best_moves()` didn't check whether the board was already
+  terminal before searching it, so `best_move_random_tiebreak()` on a
+  won-but-not-full board returned a bogus "next move" instead of `None`.
+  Unreachable from any shipped code path (every caller already checks
+  `is_terminal()` first) but still a real bug for any future caller
+  that trusts the documented contract.
+- `CartPole` tracked its own step count on `self`, set by `reset()` and
+  read by `step()` — so `step()` before `reset()` crashed with
+  `AttributeError`, and two interleaved episodes sharing one instance
+  would have corrupted each other's counts. Refactored to a fully
+  stateless `step(state, action)` (matching `CliffWalking`'s pattern);
+  the episode-length cutoff moved to the caller
+  (`reinforce.py`'s `run_episode`), which already knows how many steps
+  have elapsed.
