@@ -1,127 +1,166 @@
 # Bellman
 
-**Status: Phase 5 complete — 37 unit tests + a 7-check browser suite, all
-green via `./demo.sh`.** Final README/LEDGER write-up is next.
+A from-scratch reinforcement learning laboratory in pure Python — no
+numpy, no `gym`/`gymnasium`, no RL or ML framework of any kind. Every
+algorithm, every environment's physics, and every neural network's
+forward *and* backward pass is hand-written and independently verified
+(exact dynamic-programming oracles, finite-difference gradient checks, a
+perfect game-tree search, and a 37-test suite).
 
-A from-scratch reinforcement learning laboratory in pure Python (no
-numpy, no gym, no RL/ML framework). See [PLAN.md](PLAN.md) for the full
-concept, architecture, and feature list.
+## What it is
 
-## What's working right now
+Three genuinely different ways of exploiting the same recursive identity
+— **the value of a state is the immediate reward plus the discounted
+value of wherever you land next** (the Bellman equation, the project's
+namesake) — applied to three different problems:
 
-- `bellman/envs/cliffwalking.py` + `bellman/dp.py` — the classic 4x12
-  Cliff Walking MDP solved exactly by Policy Iteration and Value
-  Iteration (both agree: optimal value at the start state is -13).
-- `bellman/td.py` — tabular SARSA and Q-learning. Reproduces the textbook
-  Sutton & Barto result: Q-learning's greedy policy hugs the cliff edge
-  (value -13, matches DP optimum exactly), SARSA's takes the longer safe
-  route (value -17). A SARSA(λ) variant (replacing eligibility traces) is
-  also implemented and demonstrably reaches a working policy in far fewer
-  episodes than 1-step SARSA at matched hyperparameters.
-- `bellman/envs/tictactoe.py` + `bellman/minimax.py` — a memoized negamax
-  solver that plays provably optimal Tic-Tac-Toe (5478 reachable states,
-  200/200 draws when it plays itself).
-- `bellman/selfplay.py` — a TD(0) self-play value-learning agent (no
-  minimax knowledge injected) that, after training, beats the perfect
-  oracle 0 times and draws every remaining game across 300 randomized
-  games as both X and O.
-- `bellman/viz_export.py` — runs everything above and exports the results
-  (values, policies, trajectories, training curves, the full learned
-  value table and the full solved game tree) to
-  `visualizer/data/bellman_data.js`.
-- `visualizer/index.html` — a self-contained interactive dashboard: value
-  heatmaps with policy arrows and a trajectory scrubber/playback for
-  every Cliff Walking algorithm, training curves, a SARSA vs SARSA(λ)
-  convergence-speed chart, and a live Tic-Tac-Toe board you can play
-  against either the self-play agent or the perfect oracle (entirely
-  client-side, no server needed once the data is generated). Verified
-  with a headless-Chromium run: zero console errors, correct oracle
-  counter-play, correct win/loss/draw detection.
+1. **Cliff Walking** (a 4x12 gridworld): solved exactly by dynamic
+   programming (Policy Iteration and Value Iteration, which independently
+   agree on the optimal value), and separately *learned* by two flavors
+   of tabular temporal-difference control, SARSA and Q-learning, from raw
+   trial-and-error experience alone.
+2. **Tic-Tac-Toe**: solved exactly by a memoized negamax game-tree search
+   (a provably perfect, never-losing opponent), and separately *learned*
+   by a TD(0) self-play agent that trains purely by playing itself
+   thousands of times, with no minimax knowledge ever injected.
+3. **CartPole**: a continuous 4-dimensional control task with no tabular
+   representation possible, learned by REINFORCE — a Monte Carlo policy
+   gradient method that trains a small neural network (hand-derived
+   forward and backward pass, gradient-checked against finite
+   differences) directly from whole-episode returns.
 
-## Run it yourself
+Every learned result has a ground-truth or an adversarial check to prove
+it isn't just "looks plausible": Q-learning's greedy policy is checked to
+match the DP-computed optimum *exactly*; SARSA's is checked to reproduce
+the textbook Sutton & Barto safe-vs-risky-path split; the self-play agent
+is checked to never lose a single game (across 600 randomized games as
+both sides) to the perfect minimax oracle; REINFORCE's trained policy is
+checked against a freshly-initialized baseline on the same evaluation.
 
+## How to run it
+
+```bash
+cd 2026-09-18-bellman
+
+# Regenerate every result from scratch (DP, TD control, self-play,
+# REINFORCE) and export it for the visualizer. Takes about 15 seconds.
+python3 -m bellman.viz_export
+
+# Open the interactive dashboard. Opening visualizer/index.html directly
+# (double-click) also works -- the data is inlined as a plain .js file so
+# there's no fetch()-of-local-JSON to trip over file:// CORS blocks.
+python3 -m http.server 8000
+# then open http://localhost:8000/visualizer/
+
+# Run everything end to end (unit tests, gradient check, the full
+# production pipeline, and a 7-check headless-browser suite against the
+# real dashboard) with a final PASS/FAIL summary:
+./demo.sh
 ```
-python3 -m bellman.viz_export           # regenerates visualizer/data/*
-python3 -m http.server 8000             # from the visualizer/ directory
-# open http://localhost:8000
-```
 
-(Opening `index.html` directly by double-clicking also works — the data
-is inlined as a plain `.js` file specifically so there's no `fetch()` of
-local JSON to trip over `file://` CORS restrictions.)
+No dependencies beyond Python 3's standard library for anything under
+`bellman/`. `demo.sh`'s browser checks use Playwright (already available
+in this environment) to drive real headless Chromium against the actual
+HTML artifact — not a mock.
 
-## Adversarial review
+## Feature list
 
-[REVIEW.md](REVIEW.md) has the full writeup. The two real bugs it found
-and fixed: the documented `python -m bellman.viz_export` one-liner
-crashed on a stale default (a self-play hyperparameter had been tuned
-safe in one place but not two others that shared the same default), and
-the browser board could throw on a reset/opponent-switch race (a stale
-`setTimeout` firing a bot move against the wrong game). Both were
-reproduced first, then fixed, then re-verified with scripted regression
-repros.
+**Required (all four fully working, cross-verified):**
 
-## Stretch feature: REINFORCE on CartPole
+1. Cliff Walking MDP + exact DP oracle (Policy Iteration and Value
+   Iteration, independently agreeing: V\*(start) = -13).
+2. Tabular SARSA vs Q-learning, reproducing the textbook on-policy/
+   off-policy split (Q-learning matches the DP optimum exactly; SARSA
+   takes the longer, safer route) plus a SARSA(λ) eligibility-trace
+   variant that reaches a working policy in far fewer episodes than
+   1-step SARSA at matched hyperparameters.
+3. A memoized negamax perfect Tic-Tac-Toe oracle (5478 reachable states,
+   always draws against itself) plus a TD(0) self-play learner that
+   never loses to it.
+4. `viz_export.py` + `visualizer/index.html`: a real, self-contained,
+   interactive dashboard (value heatmaps, policy arrows, trajectory
+   playback, training curves, and a live Tic-Tac-Toe board you can play
+   against either learned agent) — not a static screenshot.
 
-`bellman/reinforce.py` trains a hand-rolled 2-layer softmax policy
-network (manual forward pass, manual backpropagation, no autodiff engine
-of any kind — verified against finite differences in
-`bellman/gradcheck.py`) with the REINFORCE Monte Carlo policy-gradient
-algorithm. A freshly-initialized policy survives ~10-20 of CartPole's 200
-possible steps; after 5000 episodes of batched REINFORCE it survives the
-full 200 in 94% of 200 held-out greedy evaluation episodes (avg 199.3/200
-steps), verified stable across 5 independent training seeds (82.5%-100%
-success rate each). The visualizer's third tab plays back a real trained
-rollout and shows the actual learning curve (periodic greedy evaluation,
-not the noisy training-episode returns, which stay flat even after the
-policy has secretly converged — see the chart's own caption).
+**Stretch:**
 
-This replaced an original attempt at Mountain Car, which turned out to
-defeat vanilla REINFORCE outright (sparse reward, 0 random-policy
-successes in 3000 tries, verified directly) — the full investigation,
-including a real divergence bug caught by inspecting weight norms
-mid-training, is in [REVIEW.md](REVIEW.md)'s Phase 4 addendum.
+5. REINFORCE policy gradient on CartPole, with a hand-rolled, gradient-
+   checked policy network (see below — this replaced an original Mountain
+   Car attempt that turned out to defeat vanilla REINFORCE outright).
+6. SARSA(λ) (folded into required feature 2 above once built, since it
+   shares the same TD control module and Cliff Walking oracle).
 
-## Polish
+## Why this, today
 
-Input validation: `viz_export.py`'s CLI now rejects too-low episode
-counts with a clear `argparse` error instead of an assertion stack trace
-several calls deep (those episode counts are real minimums — this
-pipeline's own correctness checks, like "the self-play agent never loses
-to the oracle," can legitimately fail given too little training, same as
-underfitting any other ML model). The browser dashboard now catches and
-reports a rendering failure instead of a blank page, and the layout has
-a small-screen pass (a `max-width: 480px` media query — tab bar becomes
-horizontally scrollable, stat cards and the Tic-Tac-Toe board shrink
-slightly) verified with Playwright at a 390px viewport (no horizontal
-overflow, all three tabs).
+Every prior "learns" build in this repo's history has been supervised
+(nine from-scratch Transformers trained on a fixed labeled corpus,
+Cotangent's scalar-autodiff MLP fit to a dataset) or population-based
+search (Kinesis's genetic algorithm evolving creatures). None had an
+agent that acts in an environment with no labeled right answer, gets a
+reward that may arrive many steps after the decision that earned it, and
+has to learn purely from that trial-and-error signal while balancing
+exploration against exploitation. Reinforcement learning is that missing
+shape, and the Bellman equation is an unusually well-verified spine to
+build it on: dynamic programming gives a *provably optimal* value
+function to check learned methods against, not just a "looks plausible"
+result, and Cliff Walking additionally has a famous, precisely documented
+qualitative result (the SARSA/Q-learning path split) to reproduce on
+purpose as a strong correctness signal no amount of "it ran without
+crashing" can fake.
 
-## Verification
+## What actually happened building it (short version — full detail in [REVIEW.md](REVIEW.md))
 
-`./demo.sh` runs everything and prints a final PASS/FAIL summary (green
-as of this commit): 37 `unittest` tests across every module
-(`tests/`), the REINFORCE gradient check standalone, a full production
-run of `viz_export.py` (the real episode counts, not a fast/fake test
-config), and a 7-check headless-Chromium suite (`browser_checks.py`)
-against the actual `visualizer/index.html` — every tab, the two
-regression scenarios from the adversarial review, a naive-human-vs-oracle
-game, a 10-game mixed randomized stress test, the mobile layout, and the
-malformed-data error path.
+Phase 3's adversarial review found and fixed two real, reproduced bugs:
+the documented `python -m bellman.viz_export` one-liner crashed on a
+stale hyperparameter default that had been tuned safe in one place but
+not two others sharing it, and the browser board could throw on a
+reset-mid-turn race (a stale `setTimeout` firing a bot move against the
+wrong game).
 
-Writing the tests found two more real bugs beyond Phase 3's adversarial
-review (both fixed, both now have a regression test):
+Phase 4's stretch feature took a real detour: Mountain Car (the original
+plan) turned out to defeat vanilla REINFORCE outright — its sparse -1/tick
+reward gives a random policy 0 successes in 3000 tries (verified
+directly), so there was never a single success for REINFORCE to
+reinforce. Reward shaping, action-repeat, and a from-scratch entropy
+bonus all failed to fix it, and the process caught a genuine gradient
+divergence bug along the way (parameter norms into the thousands,
+directly measured) before concluding the task itself, not the algorithm,
+needed to change. CartPole — the standard first benchmark for
+policy-gradient methods for exactly the opposite reason (dense reward,
+no exploration wall) — replaced it and works well: 94% greedy success
+rate after training (0% untrained), stable across 5 independent seeds.
 
-- `minimax.best_moves()` didn't check whether the board was already
-  terminal before searching it, so `best_move_random_tiebreak()` on a
-  won-but-not-full board returned a bogus "next move" instead of `None`.
-  Unreachable from any shipped code path (every caller already checks
-  `is_terminal()` first) but still a real bug for any future caller
-  that trusts the documented contract.
-- `CartPole` tracked its own step count on `self`, set by `reset()` and
-  read by `step()` — so `step()` before `reset()` crashed with
-  `AttributeError`, and two interleaved episodes sharing one instance
-  would have corrupted each other's counts. Refactored to a fully
-  stateless `step(state, action)` (matching `CliffWalking`'s pattern);
-  the episode-length cutoff moved to the caller
-  (`reinforce.py`'s `run_episode`), which already knows how many steps
-  have elapsed.
+Phase 5's test suite then found two *more* real bugs beyond the Phase 3
+review: `minimax.best_moves()` didn't check for an already-terminal board
+before searching it (unreachable from any shipped code path, but a real
+contract violation), and `CartPole` carried a hidden step-counter on
+`self` that crashed if `step()` was ever called before `reset()` —
+refactored to a fully stateless `step(state, action)`, matching
+`CliffWalking`'s pattern, with the episode-length cutoff moved to the
+caller where it belongs.
+
+## Where a human could take this next
+
+- **Actor-Critic / a learned baseline.** REINFORCE's biggest remaining
+  weakness is variance; a from-scratch value-function critic (even a
+  small linear one) would cut training time and likely make Mountain
+  Car tractable after all, closing the loop this build's REVIEW.md left
+  open.
+- **Function approximation for Cliff Walking / Tic-Tac-Toe.** Both are
+  currently tabular; swapping the Q-table or self-play value table for a
+  small neural network (reusing `reinforce.py`'s hand-rolled network
+  machinery) would be a natural bridge to the "deep RL" literature.
+- **A harder game for self-play.** Tic-Tac-Toe's 5478-state space is
+  small enough to fully memoize; Connect Four or a small-board Go variant
+  would force genuine generalization instead of eventually memorizing
+  (almost) the whole state space, as this build's agent does (99% of all
+  reachable states).
+- **Multi-agent Cliff Walking or a predator-prey gridworld**, extending
+  this repo's Matchbook/Concord/Vein lineage of multi-agent systems into
+  one where the agents themselves are learning, not just interacting
+  under fixed rules.
+- **True Nakamoto-style adversarial self-play** — an opponent that
+  actively tries to exploit weaknesses in the learned Tic-Tac-Toe agent's
+  value estimates (rather than the randomized-but-still-optimal oracle
+  used here) to find the worst-case remaining gaps in its ~99% state
+  coverage.
