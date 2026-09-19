@@ -25,6 +25,17 @@ implemented and manually verified end-to-end:
   keeps its anchor-to-bob distance within 0.3% over a full swing; a
   distance-jointed body oscillates like a pendulum.
 
+**Status: Phase 3 (adversarial review) complete.** See
+[REVIEW.md](./REVIEW.md) for the full hostile-review pass. It found and
+fixed two real, confirmed-by-trace bugs: sleeping bodies that never
+actually stayed asleep (a static neighbor's permanently-`false`
+`isSleeping` flag kept re-waking them every frame), and jointed bodies
+silently fighting their own joint through the contact solver whenever
+their shapes overlapped at the anchor (the default case for any chain or
+pendulum) -- confirmed by hand-deriving the expected pendulum physics and
+finding the engine produced ~0.001° of rotation where ~57° was expected,
+then tracing it to the missing `collideConnected` exclusion every other
+engine with this problem has.
+
 See [PLAN.md](./PLAN.md) for the full architecture and feature list.
-Next: adversarial review (Phase 3), then the stretch features and canvas
-playground (Phase 4).
+Next: stretch features and the canvas playground (Phase 4).

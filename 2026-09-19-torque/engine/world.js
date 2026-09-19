@@ -52,6 +52,14 @@
     // drop any joints that referenced it -- a dangling joint on a removed
     // body would crash the next prepare() call.
     this.joints = this.joints.filter((j) => j.bodyA !== body && j.bodyB !== body);
+    // and any cached contact impulses for it -- ids are never reused, so
+    // a leftover entry would just sit in the Map forever otherwise (the
+    // interactive demo spawns/removes bodies continuously).
+    for (const key of this._contactCache.keys()) {
+      if (key.startsWith(body.id + '_') || key.endsWith('_' + body.id)) {
+        this._contactCache.delete(key);
+      }
+    }
   };
 
   World.prototype.addJoint = function (joint) {
@@ -71,6 +79,7 @@
 
     const pairs = computeBroadPhasePairs(this.bodies);
     const manifoldEntries = this._narrowPhase(pairs);
+    this._wakeJointedSleepers();
 
     const constraints = prepareContacts(manifoldEntries, dt);
     for (let j = 0; j < this.joints.length; j++) this.joints[j].prepare(dt);
@@ -119,8 +128,24 @@
     return a.id < b.id ? a.id + '_' + b.id : b.id + '_' + a.id;
   }
 
+  // Bodies linked by a joint with collideConnected=false (the default --
+  // see joints.js) must never generate a contact with each other, or the
+  // contact solver's penetration-correction and the joint's own
+  // constraint fight each other every step. Rebuilt each step since
+  // joints can be added/removed between steps; the joint list is small
+  // enough that this is cheap.
+  World.prototype._buildNoCollideSet = function () {
+    const set = new Set();
+    for (let j = 0; j < this.joints.length; j++) {
+      const joint = this.joints[j];
+      if (!joint.collideConnected) set.add(pairKey(joint.bodyA, joint.bodyB));
+    }
+    return set;
+  };
+
   World.prototype._narrowPhase = function (pairs) {
     const entries = [];
+    const noCollide = this._buildNoCollideSet();
     for (let p = 0; p < pairs.length; p++) {
       let [b1, b2] = pairs[p];
       // canonicalize order by id so the manifold's A->B normal convention
@@ -128,6 +153,8 @@
       // otherwise warm-start impulse signs could flip and inject energy.
       const bodyA = b1.id < b2.id ? b1 : b2;
       const bodyB = b1.id < b2.id ? b2 : b1;
+
+      if (noCollide.has(pairKey(bodyA, bodyB))) continue;
 
       // "active" = actually capable of having moved since last step. If
       // neither body is active, nothing changed and nothing needs waking
@@ -170,6 +197,23 @@
       }
     }
     entries.push({ bodyA: bodyA, bodyB: bodyB, manifold: manifold, key: key });
+  };
+
+  // A joint gives two bodies a hard velocity relationship even when
+  // they're never touching (e.g. a chain link two segments apart), so a
+  // sleeping body jointed to an actively moving one must wake up the same
+  // way a sleeping body newly touched by a moving one does in
+  // _narrowPhase -- otherwise the joint solver below would have nothing
+  // to act on (applyImpulse is now a no-op on sleeping bodies) and the
+  // constraint would silently go unsolved for that body.
+  World.prototype._wakeJointedSleepers = function () {
+    for (let j = 0; j < this.joints.length; j++) {
+      const joint = this.joints[j];
+      const aActive = !joint.bodyA.isStatic && !joint.bodyA.isSleeping;
+      const bActive = !joint.bodyB.isStatic && !joint.bodyB.isSleeping;
+      if (joint.bodyA.isSleeping && bActive) joint.bodyA.setAwake(true);
+      if (joint.bodyB.isSleeping && aActive) joint.bodyB.setAwake(true);
+    }
   };
 
   World.prototype._updateContactCache = function (constraints) {

@@ -70,7 +70,6 @@
           bias: Math.max(restitutionBias, baumgarteBias),
           normalImpulse: mp.warmNormalImpulse || 0,
           tangentImpulse: mp.warmTangentImpulse || 0,
-          id: mp.id,
         });
       }
 

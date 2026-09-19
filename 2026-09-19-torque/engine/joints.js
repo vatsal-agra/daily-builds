@@ -19,7 +19,14 @@
 
   // localAnchorA/B are in each body's local frame. length defaults to the
   // initial world distance between the anchors if not given.
-  function DistanceJoint(bodyA, bodyB, localAnchorA, localAnchorB, length) {
+  //
+  // collideConnected defaults to false: two bodies linked by a joint
+  // almost always share or overlap geometry at their anchor point (a
+  // chain link's neighbor, a pendulum bob and its anchor), so letting the
+  // contact solver *also* push them apart would fight the joint's own
+  // constraint every step -- a real instability, not a cosmetic one (see
+  // REVIEW.md).
+  function DistanceJoint(bodyA, bodyB, localAnchorA, localAnchorB, length, collideConnected) {
     this.bodyA = bodyA;
     this.bodyB = bodyB;
     this.localAnchorA = localAnchorA.clone();
@@ -31,6 +38,7 @@
     }
     this.length = length;
     this.impulse = 0;
+    this.collideConnected = !!collideConnected;
   }
 
   DistanceJoint.prototype.prepare = function (dt) {
@@ -73,12 +81,15 @@
   };
 
   // Point-to-point (pin) joint: forces anchorWorld(A) == anchorWorld(B).
-  function RevoluteJoint(bodyA, bodyB, worldAnchor) {
+  // See the DistanceJoint comment above -- collideConnected also defaults
+  // to false here, for the same reason.
+  function RevoluteJoint(bodyA, bodyB, worldAnchor, collideConnected) {
     this.bodyA = bodyA;
     this.bodyB = bodyB;
     this.localAnchorA = Vec2.rotate(Vec2.sub(worldAnchor, bodyA.position), -bodyA.angle);
     this.localAnchorB = Vec2.rotate(Vec2.sub(worldAnchor, bodyB.position), -bodyB.angle);
     this.impulse = new Vec2(0, 0);
+    this.collideConnected = !!collideConnected;
   }
 
   RevoluteJoint.prototype.prepare = function (dt) {

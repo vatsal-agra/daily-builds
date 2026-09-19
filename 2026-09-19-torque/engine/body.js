@@ -77,8 +77,12 @@
 
   // Directly changes velocity/angularVelocity -- used by the contact and
   // joint solvers (impulses resolve instantaneously, not over a timestep).
+  // Sleeping bodies must never be silently perturbed here: World wakes a
+  // body explicitly (setAwake) before any solver touches it, so a solver
+  // impulse reaching a still-sleeping body would corrupt its velocity
+  // without the position integrator ever picking that velocity up.
   Body.prototype.applyImpulse = function (impulse, worldPoint) {
-    if (this.isStatic) return;
+    if (this.isStatic || this.isSleeping) return;
     this.velocity.x += impulse.x * this.invMass;
     this.velocity.y += impulse.y * this.invMass;
     if (worldPoint) {
