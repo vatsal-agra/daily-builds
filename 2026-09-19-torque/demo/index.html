@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Torque — 2D physics playground</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <h1>Torque<span>2D rigid-body physics, from scratch</span></h1>
+      <div id="stats">
+        <span id="stat-bodies">0 bodies</span>
+        <span id="stat-sleeping">0 asleep</span>
+        <span id="stat-fps">0 fps</span>
+      </div>
+    </header>
+
+    <main>
+      <canvas id="canvas"></canvas>
+
+      <aside id="panel">
+        <section>
+          <h2>Spawn</h2>
+          <div class="btn-row">
+            <button data-spawn="circle" class="tool active">● Circle</button>
+            <button data-spawn="box" class="tool">■ Box</button>
+            <button data-spawn="triangle" class="tool">▲ Triangle</button>
+            <button data-spawn="pentagon" class="tool">⬠ Pentagon</button>
+          </div>
+          <p class="hint">Click the canvas to spawn the selected shape. Drag
+          any shape to throw it around.</p>
+        </section>
+
+        <section>
+          <h2>Presets</h2>
+          <div class="btn-row">
+            <button data-preset="stack">Box stack</button>
+            <button data-preset="cradle">Newton's cradle</button>
+            <button data-preset="pendulum">Pendulum</button>
+            <button data-preset="chain">Hanging chain</button>
+            <button data-preset="dominoes">Domino run</button>
+          </div>
+        </section>
+
+        <section>
+          <h2>Material</h2>
+          <label>Restitution <span id="val-restitution">0.30</span>
+            <input type="range" id="restitution" min="0" max="1" step="0.01" value="0.3" />
+          </label>
+          <label>Friction <span id="val-friction">0.40</span>
+            <input type="range" id="friction" min="0" max="1" step="0.01" value="0.4" />
+          </label>
+          <label>Gravity <span id="val-gravity">-10.0</span>
+            <input type="range" id="gravity" min="-30" max="0" step="0.5" value="-10" />
+          </label>
+        </section>
+
+        <section>
+          <h2>World</h2>
+          <div class="btn-row">
+            <button id="btn-pause">Pause</button>
+            <button id="btn-step" title="Advance one physics step while paused">Step</button>
+            <button id="btn-clear">Clear</button>
+          </div>
+          <label class="checkbox">
+            <input type="checkbox" id="show-debug" />
+            Show contacts &amp; joints
+          </label>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <script src="../engine/vec2.js"></script>
+  <script src="../engine/shapes.js"></script>
+  <script src="../engine/body.js"></script>
+  <script src="../engine/aabb.js"></script>
+  <script src="../engine/collision.js"></script>
+  <script src="../engine/solver.js"></script>
+  <script src="../engine/joints.js"></script>
+  <script src="../engine/world.js"></script>
+  <script src="demo.js"></script>
+</body>
+</html>

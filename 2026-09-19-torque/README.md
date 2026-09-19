@@ -37,5 +37,31 @@ finding the engine produced ~0.001° of rotation where ~57° was expected,
 then tracing it to the missing `collideConnected` exclusion every other
 engine with this problem has.
 
-See [PLAN.md](./PLAN.md) for the full architecture and feature list.
-Next: stretch features and the canvas playground (Phase 4).
+**Status: Phase 4 (stretch features + polish) complete.** Both stretch
+features are shipped:
+
+- **Sleeping bodies** (built during Phase 2/3, exercised hard by this
+  phase's presets): resting stacks and settled pendulums measurably stop
+  costing CPU.
+- **Interactive canvas playground** (`demo/index.html`): spawn
+  circles/boxes/triangles/pentagons by clicking, drag any shape around
+  with the mouse via a real mouse-joint (not a teleport hack), five
+  one-click presets (box stack, Newton's cradle, pendulum, hanging chain,
+  domino run), live gravity/restitution/friction sliders, pause/step/clear,
+  and a debug overlay that draws the actual contact points and joints the
+  solver is using.
+
+Verified live in headless Chromium (Playwright), not just by reading the
+code: every preset, all four spawnable shapes, drag-and-drop, pause/step/
+clear, the debug overlay, and a narrow mobile viewport were each
+screenshotted and checked for console/page errors (zero found after
+fixes). That pass caught and fixed three real UI-layer bugs the engine
+tests below wouldn't have: the side panel rendering fully off-screen (a
+flexbox `min-width` issue with `<canvas>`'s intrinsic size), the pendulum
+preset's joint anchor being 4 units from the bob instead of at its center,
+and the domino preset's first tile toppling away from the row instead of
+into it (a rotation-direction sign error).
+
+See [PLAN.md](./PLAN.md) for architecture/feature list and
+[REVIEW.md](./REVIEW.md) for the adversarial review. Next: the automated
+test suite and `demo.sh` (Phase 5).

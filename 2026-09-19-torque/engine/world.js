@@ -62,6 +62,17 @@
     }
   };
 
+  // Removes every body and joint, resetting the world to empty (keeps
+  // gravity/settings). The public counterpart to constructing a fresh
+  // World, for callers (like the demo's "Clear" button and presets) that
+  // want to reuse the same instance rather than discard it.
+  World.prototype.clear = function () {
+    this.bodies.length = 0;
+    this.joints.length = 0;
+    this.contacts = [];
+    this._contactCache.clear();
+  };
+
   World.prototype.addJoint = function (joint) {
     this.joints.push(joint);
     return joint;

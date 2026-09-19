@@ -12,6 +12,24 @@
   const Vec2 = dep.Vec2;
 
   const BAUMGARTE = 0.2;
+  // Caps how fast a joint is allowed to try to close a positional error in
+  // one step, same idea as the contact solver's MAX_BAUMGARTE_BIAS: at a
+  // fine timestep BAUMGARTE/dt is large (e.g. 24 at 1/120s), so an
+  // uncapped position error -- like a user yanking a mouse-dragged body
+  // several units in one frame -- would otherwise produce a single violent
+  // impulse instead of a fast-but-bounded pull.
+  const MAX_CORRECTION_SPEED = 10;
+
+  function clampVectorLength(v, maxLen) {
+    const lenSq = v.x * v.x + v.y * v.y;
+    if (lenSq <= maxLen * maxLen) return v;
+    const scale = maxLen / Math.sqrt(lenSq);
+    return new Vec2(v.x * scale, v.y * scale);
+  }
+
+  function clamp(v, lo, hi) {
+    return v < lo ? lo : v > hi ? hi : v;
+  }
 
   function anchorWorld(body, localAnchor) {
     return Vec2.add(body.position, Vec2.rotate(localAnchor, body.angle));
@@ -57,7 +75,8 @@
     this.mass = k > 0 ? 1 / k : 0;
 
     const C = dist - this.length;
-    this.bias = (BAUMGARTE / dt) * C;
+    const rawBias = (BAUMGARTE / dt) * C;
+    this.bias = clamp(rawBias, -MAX_CORRECTION_SPEED, MAX_CORRECTION_SPEED);
     this._pA = pA;
     this._pB = pB;
   };
@@ -110,7 +129,7 @@
     this.K = { k11: k11, k12: k12, k22: k22 };
 
     const C = Vec2.sub(pB, pA);
-    this.bias = Vec2.scale(C, BAUMGARTE / dt);
+    this.bias = clampVectorLength(Vec2.scale(C, BAUMGARTE / dt), MAX_CORRECTION_SPEED);
   };
 
   RevoluteJoint.prototype.warmStart = function () {
