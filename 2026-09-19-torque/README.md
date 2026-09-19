@@ -62,6 +62,25 @@ preset's joint anchor being 4 units from the bob instead of at its center,
 and the domino preset's first tile toppling away from the row instead of
 into it (a rotation-direction sign error).
 
+**Status: Phase 5 (verification) complete.** Run `./demo.sh` to execute
+everything below in one shot:
+
+- `tests/run-all.js` — 21 hand-rolled Node tests (zero test-framework
+  dependency, matching the engine) across four suites (`shapes`,
+  `dynamics`, `solver`, `joints`), checking analytical mass/inertia
+  formulas, momentum/energy conservation, the restitution-predicted bounce
+  height, friction bringing a slide to a stop, a measured pendulum period
+  against `2*pi*sqrt(L/g)` within 3%, input validation, and dedicated
+  regression tests for both bugs found in Phase 3 (sleep/wake, and
+  `collideConnected`).
+- `tests/smoke-demo.js` — drives the actual `demo/index.html` in headless
+  Chromium via Playwright: all 4 shapes, all 5 presets, a real mouse drag,
+  pause/step/clear, the debug overlay, and a mobile viewport, failing on
+  any console/page error. `demo.sh` runs this too and skips it with a
+  clear message (not a failure) if Playwright/Chromium isn't present.
+
+Current result: **21/21 physics tests, 13/13 smoke checks, all green.**
+
 See [PLAN.md](./PLAN.md) for architecture/feature list and
-[REVIEW.md](./REVIEW.md) for the adversarial review. Next: the automated
-test suite and `demo.sh` (Phase 5).
+[REVIEW.md](./REVIEW.md) for the adversarial review. Next: final polish
+and shipping (Phase 6).
