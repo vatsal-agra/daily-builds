@@ -161,34 +161,48 @@ class InlineBox:
 # ---------------------------------------------------------------------
 
 class FloatContext:
-    """Tracks active floats within one block formatting context. Same-side
-    floats stack strictly vertically (a documented scope simplification —
-    see PLAN.md); left and right floats are independent, so text can flow
-    in the gap between a left float and a right float, which is the
-    visually-important case this feature is about."""
+    """Tracks active floats within one block formatting context (BFC).
 
-    def __init__(self, left_edge, right_edge):
-        self.left_edge = left_edge
-        self.right_edge = right_edge
+    Per CSS2.1 9.4.1, an ordinary block box does *not* establish a new BFC
+    -- it shares its ancestor's, which is exactly why a floated image
+    wrapped by several levels of plain `<div>`s still lets far-away
+    sibling text reflow around it. Only specific things establish a new
+    BFC; the only one this engine models is a float itself (9.5, "since a
+    float is not in the flow, ... floating boxes ... establish a new block
+    formatting context"). So there is exactly one FloatContext per BFC,
+    threaded down through every ordinary block's `layout_block` call, and
+    a *new* one is created only when descending into a float's own
+    children. `place`/`available_range` take the *caller's own* content-box
+    edges explicitly (rather than storing one fixed pair) since the same
+    shared context is queried by boxes of different widths/positions at
+    different nesting depths.
+
+    Same-side floats stack strictly vertically (a documented scope
+    simplification -- see PLAN.md); left and right floats are independent,
+    so text can flow in the gap between a left float and a right float,
+    which is the visually-important case this feature is about.
+    """
+
+    def __init__(self):
         self.left_floats = []
         self.right_floats = []
 
-    def place(self, side, width, height, min_y):
+    def place(self, side, width, height, min_y, left_edge, right_edge):
         stack = self.left_floats if side == "left" else self.right_floats
         y = min_y
         if stack:
             y = max(y, stack[-1]["bottom"])
         if side == "left":
-            x = self.left_edge
+            x = left_edge
             stack.append({"top": y, "bottom": y + height, "edge": x + width})
         else:
-            x = self.right_edge - width
+            x = right_edge - width
             stack.append({"top": y, "bottom": y + height, "edge": x})
         return x, y
 
-    def available_range(self, y, height):
-        left = self.left_edge
-        right = self.right_edge
+    def available_range(self, y, height, left_edge, right_edge):
+        left = left_edge
+        right = right_edge
         for f in self.left_floats:
             if f["top"] < y + height and f["bottom"] > y:
                 left = max(left, f["edge"])
@@ -385,11 +399,12 @@ def layout_document(document, styles, viewport_width=DEFAULT_VIEWPORT_WIDTH):
         root_box = Box(None, tree.style, "block")
 
     layout_block(root_box, tree, containing_block_width=viewport_width,
-                 containing_block_height=None, x=0, y=0)
+                 containing_block_height=None, x=0, y=0, float_ctx=FloatContext())
     return root_box
 
 
-def layout_block(box, tnode, containing_block_width, containing_block_height, x, y):
+def layout_block(box, tnode, containing_block_width, containing_block_height, x, y,
+                  float_ctx):
     """Lay out `box` (already created, with .node/.style/.box_type set) as
     a block-level box whose border-box top-left is (x, y)."""
     style = tnode.style
@@ -439,11 +454,16 @@ def layout_block(box, tnode, containing_block_width, containing_block_height, x,
         box.margin["right"] = used_right
 
     box.width = content_box_left + width + content_box_right
-    box.x = x
+    # `x` is the containing block's content edge; margin-left shifts this
+    # box's own border-box inward from it (a horizontal analogue of how the
+    # vertical sibling-stacking loop below adds each child's top margin to
+    # the flow cursor -- there's no "cursor" for horizontal position since
+    # block boxes don't stack side by side, so margin-left has to be baked
+    # in here instead).
+    box.x = x + box.margin["left"]
     box.y = y
 
     content_width = width
-    float_ctx = FloatContext(box.content_x, box.content_x + content_width)
 
     cursor = box.content_y
     prev_margin_bottom = 0
@@ -486,6 +506,7 @@ def layout_block(box, tnode, containing_block_width, containing_block_height, x,
             containing_block_width=content_width,
             containing_block_height=None,
             x=box.content_x, y=cursor + gap,
+            float_ctx=float_ctx,
         )
         box.children.append(child_box)
         cursor = child_box.y + child_box.height
@@ -527,15 +548,18 @@ def _layout_float_child(child_box, child_tnode, containing_block_width, min_y, f
     child_box.width = box_width
 
     side = style.get("float")
-    outer_x, outer_y = float_ctx.place(side, box_width + child_box.margin["left"] + child_box.margin["right"], 1, min_y)
+    outer_x, outer_y = float_ctx.place(
+        side, box_width + child_box.margin["left"] + child_box.margin["right"], 1,
+        min_y, cb_left, cb_left + cb_width,
+    )
     child_box.x = outer_x + child_box.margin["left"]
     child_box.y = outer_y + child_box.margin["top"]
     child_box.float_side = side
 
-    # Lay out the float's own children against its resolved width, then
-    # correct its placement height in the float context (a float's height
-    # depends on its content, discovered only after layout).
-    inner_ctx = FloatContext(child_box.content_x, child_box.content_x + width)
+    # Lay out the float's own children in a fresh float context: per
+    # CSS2.1 9.5, a float establishes its own new block formatting context,
+    # so floats/text *inside* it are independent of the page's floats.
+    inner_ctx = FloatContext()
     cursor = child_box.content_y
     prev_margin_bottom = 0
     first = True
@@ -555,7 +579,8 @@ def _layout_float_child(child_box, child_tnode, containing_block_width, min_y, f
         gap = top_m if first else max(top_m, prev_margin_bottom)
         grandchild_box = Box(payload.node, grandchild_style, "block")
         layout_block(grandchild_box, payload, containing_block_width=width,
-                     containing_block_height=None, x=child_box.content_x, y=cursor + gap)
+                     containing_block_height=None, x=child_box.content_x, y=cursor + gap,
+                     float_ctx=inner_ctx)
         child_box.children.append(grandchild_box)
         cursor = grandchild_box.y + grandchild_box.height
         prev_margin_bottom = 0 if gmargin["bottom"] == "auto" else gmargin["bottom"]
@@ -665,7 +690,9 @@ def layout_inline_children(payload, x, y, available_width, float_ctx, container_
         probe_height = line_height_px(
             parse_length(items[idx][2].get("font-size"), None) or 16
         )
-        left_bound, right_bound = float_ctx.available_range(line_y, probe_height)
+        left_bound, right_bound = float_ctx.available_range(
+            line_y, probe_height, x, x + available_width
+        )
         line_available = max(0, right_bound - left_bound)
 
         run_items = []

@@ -1,5 +1,10 @@
 # Phase 3 — Adversarial review
 
+(Findings 8-9 were caught during Phase 4's float-layout stretch feature
+work, not the original Phase 3 pass — logged here rather than left out,
+since this file is meant to be the project's honest bug log, not a record
+of exactly which phase happened to be running when a bug was found.)
+
 Methodology: instead of only re-reading the code, every finding below was
 reproduced by actually running the pipeline (`folio.engine.render_html`)
 against a hostile or unusual input and inspecting either the raised
@@ -152,6 +157,81 @@ rather than going negative. This matches how a real browser would treat
 the same extreme, synthetic input (it is not a realistic page in the first
 place), so no fix was made; documented as a scope note rather than "fixed"
 so it isn't confused with the actual defects above.
+
+### 8. CRITICAL — `margin-left` was computed but never actually used to position a box
+
+Found while building the float stretch feature (a shared float context
+needs boxes to actually be where their margins say they are). `layout_block`
+resolved `box.margin["left"]` to a correct pixel value for every case
+(explicit, auto-fill, auto-centered) but then set `box.x = x` — the
+containing block's own content edge, completely ignoring the just-computed
+margin-left. Vertical positioning threads each child's top margin through
+the sibling-stacking cursor correctly; the horizontal equivalent was
+simply never wired up. The result: **every block-level box with a nonzero
+`margin-left` rendered flush against its container's left edge instead of
+indented**, and `margin: 0 auto` centering — which computes a correct,
+non-zero `margin-left` to center the box — silently had no visual effect
+at all, always rendering flush left.
+
+Reproduced two ways: `<div style="margin-left:50px; width:100px">` rendered
+with its left edge at x=0, not x=50; `<div style="margin:0 auto;
+width:100px">` in a 300px viewport rendered flush left instead of centered
+(expected x=100 for a 100px box in a 300px container).
+
+This is a significant finding precisely because it passed Phase 2's manual
+smoke tests and Phase 3's adversarial review undetected: every example
+tested through Phase 3 happened to use `margin: <n>px 0` (top/bottom only)
+or symmetric margins on already-flush-left content, so the missing
+horizontal offset was never visually exercised. It was only caught because
+building float layout (stretch feature 5) required reasoning precisely
+about absolute box edges, which made the discrepancy between "the margin
+number is right" and "the box is in the right place" impossible to miss.
+Logged here as a reminder that Phase 5's regression suite (below) needs to
+specifically assert `box.x`, not just `box.margin["left"]`, for exactly
+this reason.
+
+Fix: `box.x = x + box.margin["left"]` (previously `box.x = x`), with a
+comment explaining why horizontal margin needs this explicit application
+where vertical margin gets it "for free" from the sibling cursor. Verified
+both reproductions above now position correctly (x=50 and x=100
+respectively).
+
+### 9. CRITICAL — floats never affected any sibling's inline content, only their own
+
+`layout_block` created a brand-new `FloatContext` at the top of *every*
+single call, including for perfectly ordinary block boxes like `<p>`. Per
+CSS2.1 9.4.1, an ordinary block does not establish a new block formatting
+context (BFC) — it shares its ancestor's — which is exactly what makes a
+floated image affect a paragraph of text several containers away. Because
+this engine gave every block its own private float context, a float
+placed as one sibling was invisible to any other sibling's own
+`layout_block` call: floats only ever narrowed line boxes *inside the
+same block* that contained them, never a sibling's.
+
+Reproduced: two floats (`float:left`/`float:right`) followed by a sibling
+`<p>` in the same `<body>` — instrumented `FloatContext.place()` and
+`layout_inline_children()` with object-identity logging and confirmed the
+`<p>`'s own `layout_block` call constructed a fresh, empty `FloatContext`
+rather than reusing the one the two floats had just populated; the
+paragraph's lines all reported the full container width, uninset by
+either float.
+
+Fix: `FloatContext` no longer stores fixed containing-block edges at
+construction; `place()`/`available_range()` now take the caller's own
+content-box edges as explicit arguments instead, so one shared instance
+can correctly serve boxes of different widths/positions at different
+nesting depths. `layout_block()` now takes `float_ctx` as a required
+parameter — the *only* place a fresh `FloatContext()` is constructed is
+`layout_document()`'s root call and `_layout_float_child()`'s `inner_ctx`
+(a float genuinely does establish its own new BFC per spec, so its own
+descendants correctly get an independent context that doesn't leak into,
+or see, the page's ambient floats). Every ordinary block-to-block-child
+`layout_block` call now threads the same ambient `float_ctx` through.
+Verified with the two-float-plus-paragraph reproduction above: the
+paragraph's first three lines (overlapping the floats' vertical span) now
+correctly report `x=90, width=120` (exactly the gap between the two 80px
+floats in a 280px content area), and subsequent lines below both floats'
+bottom edge correctly report the full container width again.
 
 ## Verification after fixes
 

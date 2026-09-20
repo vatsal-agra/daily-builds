@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+<title>Floats</title>
+<style>
+  body { margin: 16px; font-size: 16px; }
+  .float-left {
+    float: left; width: 100px; height: 80px;
+    background-color: lightgreen; border: 2px solid darkgreen;
+    padding: 6px; margin: 0 12px 8px 0;
+  }
+  .float-right {
+    float: right; width: 100px; height: 80px;
+    background-color: lightblue; border: 2px solid navy;
+    padding: 6px; margin: 0 0 8px 12px;
+  }
+  .clear-both { clear: both; background-color: khaki; padding: 6px; }
+</style>
+</head>
+<body>
+<div class="float-left">A left-floated box</div>
+<div class="float-right">A right-floated box</div>
+<p>This paragraph's text should wrap in the gap between the two floated
+boxes above while their vertical span lasts, and then flow at the full
+container width once both floats have ended -- real CSS float layout,
+computed from scratch, not just two repositioned rectangles.</p>
+<div class="clear-both">This box clears both floats and sits below them.</div>
+</body>
+</html>
