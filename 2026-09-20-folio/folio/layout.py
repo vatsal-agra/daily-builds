@@ -9,6 +9,7 @@ guess at real glyph metrics.
 
 import re
 
+from .cascade import INITIAL_VALUES, ComputedStyle
 from .dom import Element, Text
 
 CHAR_WIDTH_RATIO = 0.6
@@ -31,8 +32,11 @@ def line_height_px(font_size_px):
 def parse_length(value, percent_base):
     """Resolve a CSS length/percentage/auto string to a pixel int, or the
     string 'auto'. `percent_base` may be None if percentages can't resolve
-    here yet (treated as 0, the same conservative fallback real browsers use
-    for an indefinite containing block)."""
+    against a definite size here (most commonly: this engine never tracks a
+    definite ancestor *height* the way it does width, so a percentage
+    height always lands here) -- per CSS2.1 10.5, a percentage against an
+    indefinite containing block computes to 'auto', not 0, so a `height:
+    50%` box still sizes to its content instead of silently collapsing."""
     if value is None:
         return 0
     value = value.strip()
@@ -44,8 +48,9 @@ def parse_length(value, percent_base):
     number = float(m.group(1))
     unit = m.group(2)
     if unit == "%":
-        base = percent_base or 0
-        return round(base * number / 100)
+        if percent_base is None:
+            return "auto"
+        return round(percent_base * number / 100)
     return round(number)
 
 
@@ -234,8 +239,9 @@ def _display_of(node, styles):
     return "none"
 
 
-def build_tree_node(element, styles):
-    style = styles[element]
+def build_tree_node(element, styles, style=None):
+    if style is None:
+        style = styles[element]
     tnode = TreeBuildState(element, style)
     for child in element.children:
         if isinstance(child, Text):
@@ -355,30 +361,32 @@ def _resolve_width(style, containing_block_width, border, padding):
 
 
 def layout_document(document, styles, viewport_width=DEFAULT_VIEWPORT_WIDTH):
-    """Entry point: lay out the whole document. Returns the root Box (for
-    <html>), positioned with (0, 0) at the top-left of the viewport."""
+    """Entry point: lay out the whole document. Returns the root Box.
+
+    Looks specifically for a top-level <html> element to use as the root.
+    Plenty of real HTML snippets skip the boilerplate entirely (no <html>/
+    <body> wrapper, sometimes multiple top-level elements) -- rejecting
+    those or silently keeping only the first top-level element would throw
+    away real content, so when there's no <html>, every top-level node is
+    laid out under one synthetic block root instead.
+    """
     html_element = None
     for child in document.children:
-        if isinstance(child, Element):
+        if isinstance(child, Element) and child.tag == "html":
             html_element = child
             break
-    if html_element is None:
-        root = Box(None, None, "block")
-        root.width = viewport_width
-        return root
 
-    tree = build_tree_node(html_element, styles)
-    root_box = Box(tree.node, tree.style, "block")
+    if html_element is not None:
+        tree = build_tree_node(html_element, styles)
+        root_box = Box(html_element, tree.style, "block")
+    else:
+        synthetic_style = ComputedStyle(dict(INITIAL_VALUES, display="block"))
+        tree = build_tree_node(document, styles, style=synthetic_style)
+        root_box = Box(None, tree.style, "block")
+
     layout_block(root_box, tree, containing_block_width=viewport_width,
                  containing_block_height=None, x=0, y=0)
     return root_box
-
-
-def _default_anon_style(parent_style):
-    """Anonymous boxes (inline-wrapper blocks) have no own style, but their
-    box model is all-zero and they inherit text properties from the parent
-    for their line boxes to use."""
-    return parent_style
 
 
 def layout_block(box, tnode, containing_block_width, containing_block_height, x, y):
@@ -653,8 +661,6 @@ def layout_inline_children(payload, x, y, available_width, float_ctx, container_
         if items[idx][0] == "space":
             idx += 1
             continue
-        if idx >= n:
-            break
 
         probe_height = line_height_px(
             parse_length(items[idx][2].get("font-size"), None) or 16

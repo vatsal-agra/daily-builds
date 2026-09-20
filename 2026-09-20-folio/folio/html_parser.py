@@ -156,6 +156,16 @@ def tokenize(html):
                 i += 2
             continue
 
+        # A '<' that didn't match any tag/comment/doctype/close-tag shape
+        # above (e.g. "<3d>", "< span>", a lone trailing "<") is not the
+        # start of anything real -- emit it as one literal character so we
+        # always make forward progress, instead of re-finding the same '<'
+        # at the same position forever.
+        if html[i] == "<":
+            yield Token("text", "<")
+            i += 1
+            continue
+
         # Plain text run up to the next '<'.
         next_lt = html.find("<", i)
         if next_lt == -1:

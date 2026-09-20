@@ -153,7 +153,7 @@ class ComputedStyle:
 
     def resolved_color(self, prop):
         value = self.get(prop)
-        if value == "currentColor" or value == "currentcolor":
+        if isinstance(value, str) and value.lower() == "currentcolor":
             return self.get("color")
         return value
 

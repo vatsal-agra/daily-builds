@@ -5,11 +5,15 @@ Parses real HTML into a DOM, real CSS into a cascade, runs a real block/
 inline box-model layout algorithm, and paints the result to both an
 independently-decodable PNG and an interactive DOM/box-model inspector.
 
-**Status: Phase 2 (core build) complete.** All 4 required features work
-end to end: HTML parsing to a real DOM, CSS parsing + cascade to computed
-styles, block/inline box-model layout with real text wrapping, and paint
-to an independently-decodable PNG. See [PLAN.md](PLAN.md) for the full
-architecture and feature list.
+**Status: Phase 3 (adversarial review) complete.** All 4 required features
+work end to end: HTML parsing to a real DOM, CSS parsing + cascade to
+computed styles, block/inline box-model layout with real text wrapping,
+and paint to an independently-decodable PNG. A hostile self-review found
+and fixed 3 critical bugs (a tokenizer infinite loop on malformed tags, a
+multi-root HTML fragment silently dropping all but the first element, and
+percentage heights silently clipping content off the canvas) plus 2 more
+real bugs — see [REVIEW.md](REVIEW.md) for the full write-up. See
+[PLAN.md](PLAN.md) for the architecture and feature list.
 
 ## Why this project
 
