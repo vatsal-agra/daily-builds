@@ -5,9 +5,11 @@ Parses real HTML into a DOM, real CSS into a cascade, runs a real block/
 inline box-model layout algorithm, and paints the result to both an
 independently-decodable PNG and an interactive DOM/box-model inspector.
 
-**Status: Phase 1 (plan) complete.** See [PLAN.md](PLAN.md) for the full
-architecture, feature list, and verification strategy. Implementation
-starts in Phase 2.
+**Status: Phase 2 (core build) complete.** All 4 required features work
+end to end: HTML parsing to a real DOM, CSS parsing + cascade to computed
+styles, block/inline box-model layout with real text wrapping, and paint
+to an independently-decodable PNG. See [PLAN.md](PLAN.md) for the full
+architecture and feature list.
 
 ## Why this project
 
@@ -28,5 +30,17 @@ testing as its correctness oracle.
 
 ## How to run
 
-Not yet runnable — this is the plan-only commit. Instructions will be
-filled in as each phase lands.
+```
+python3 -m folio.cli render examples/basic.html -o out.png -w 500
+python3 -m folio.cli info examples/basic.html
+```
+
+`render` runs the full pipeline (HTML → DOM → cascade → layout → paint)
+and writes a real PNG, viewable in any image viewer. `info` prints DOM/CSS/
+layout stats without writing a file. Try it on `examples/basic.html`, which
+exercises the box model, inline styling (bold/italic/links), and list
+layout in one page.
+
+Stretch features (float layout, the interactive inspector), tests, and a
+`demo.sh` are not implemented yet — see PLAN.md's feature list for what's
+still to come.
