@@ -195,3 +195,12 @@ layout to check against — the same role `gcc`/`objdump` played for Ember,
   sibling/comma-lists/`!important`, not the full CSS3 selector grammar
   (no `:nth-child()`, no attribute selectors) — deliberately enough to
   express real specificity/cascade conflicts without an open-ended grammar.
+- Margin collapsing implements only the *sibling* case (adjacent block
+  boxes' touching margins collapse to their max, not their sum). Real
+  CSS2.1 8.3.1 also collapses a block's own top/bottom margin through into
+  its parent's when nothing (no border/padding/content) separates them --
+  intentionally not implemented, since it interacts with clearance and
+  empty blocks in ways that would roughly double the margin-collapsing
+  logic for a case that, unlike the sibling case, doesn't change *whether*
+  two boxes' content visibly touches, only exactly how far the outermost
+  box's edge sits from its own container.

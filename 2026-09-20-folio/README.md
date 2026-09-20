@@ -6,16 +6,25 @@ inline box-model layout algorithm (including float layout), and paints the
 result to both an independently-decodable PNG and an interactive DOM/
 box-model inspector.
 
-**Status: Phase 4 (stretch + polish) complete.** All 4 required features
-and both stretch features work end to end. A hostile self-review (Phase 3,
-extended into Phase 4 while building float layout) found and fixed 9 real
-bugs, including 5 critical ones — a tokenizer infinite loop on malformed
-tags, a multi-root HTML fragment silently dropping all but its first
-element, percentage heights silently clipping content off the canvas,
-`margin-left` being computed but never actually applied to a box's
-position, and floats never affecting any sibling's layout, only their own
-children's. See [REVIEW.md](REVIEW.md) for the full write-up and
-[PLAN.md](PLAN.md) for the architecture.
+**Status: shipped.** All 4 required features and both stretch features
+work end to end, backed by 103 unit/integration tests plus an 8-scenario
+differential test suite against real headless Chromium (Folio's computed
+box geometry matches Chromium's `getBoundingClientRect()` exactly, to
+rounding, across box-sizing, percentages, auto-margin centering, sibling
+margin collapsing, over-constrained margins, and float placement/clear).
+A hostile self-review (Phase 3, extended into Phase 4 while building float
+layout) found and fixed 9 real bugs, including 5 critical ones — a
+tokenizer infinite loop on malformed tags, a multi-root HTML fragment
+silently dropping all but its first element, percentage heights silently
+clipping content off the canvas, `margin-left` being computed but never
+actually applied to a box's position, and floats never affecting any
+sibling's layout, only their own children's. See [REVIEW.md](REVIEW.md)
+for the full write-up and [PLAN.md](PLAN.md) for the architecture.
+
+Run `./demo.sh` for a full, real-CLI walkthrough of every feature (test
+suite, PNG rendering + independent `file`-utility validation, float
+layout, the interactive inspector including a real headless-Chromium
+click-through, the Chromium differential oracle, and CLI error handling).
 
 ## Why this project
 
@@ -67,7 +76,20 @@ python3 -m folio.cli info examples/basic.html
 Try `examples/basic.html` for the core box model + inline styling, and
 `examples/floats.html` for float layout with real text reflow.
 
-Automated tests and `demo.sh` land in Phase 5.
+## Testing
+
+```
+python3 -m unittest discover -s tests   # 103 tests: parser, cascade, layout, paint, PNG, integration
+python3 -m unittest tests.test_oracle   # 8 scenarios checked against real headless Chromium
+./demo.sh                                # everything above, plus the CLI + a real-browser click-through
+```
+
+`test_oracle.py` needs the `playwright` Python package (`pip install
+playwright`); this environment's Chromium is already pre-installed at
+`/opt/pw-browsers/chromium`, so no browser download is needed. Every other
+test file is pure stdlib. `demo.sh` detects whether `playwright` is
+importable and skips the Chromium-dependent checks (with a clear `[SKIP]`
+line) rather than failing if it isn't.
 
 ## Honest scope boundaries
 
