@@ -99,3 +99,32 @@ proportional font metrics — deliberate, so every layout number is exact,
 checkable arithmetic instead of a guess. No JavaScript execution, no
 network loading of images/stylesheets, and CSS selector support stops at
 type/class/id/combinators (no `:nth-child()`, no attribute selectors).
+Margin collapsing implements the sibling case only, not the parent-child
+case (also in PLAN.md).
+
+## Where a human could take this next
+
+- **Real proportional text.** Swap the fixed-pitch model for actual glyph
+  metrics (even a simple per-character width table for one real font)
+  and the Chromium oracle in `test_oracle.py` could be extended to assert
+  on text-driven geometry too, not just explicit-dimension boxes.
+- **Inline box model.** `<span>`/`<a>` currently carry no padding/border/
+  margin of their own (style-only). Giving inline elements real boxes
+  (including line-box height growing to fit a tall inline border) is the
+  next standard CSS visual-formatting-model chapter after this one.
+- **`display: table`/flexbox.** The layout tree already cleanly separates
+  "box generation" from "box positioning" (`layout.py`'s `TreeBuildState`
+  vs. `layout_block`/`layout_inline_children`), so a new formatting context
+  is a new sibling function, not a rewrite.
+- **Side-by-side float packing.** Floats on the same side currently stack
+  strictly vertically (PLAN.md's stated scope); real multi-column float
+  packing (several floats sharing a row) is a natural follow-up to
+  `FloatContext`.
+- **A live edit-and-reload loop.** `folio.cli`'s `render`/`inspect` are a
+  batch pipeline; wiring a `watch` subcommand (or the existing inspector's
+  page) up to a file watcher would make Folio interactively usable as a
+  little CSS playground, not just a one-shot renderer.
+- **Serve it live.** Several other builds in this repo (Gambit, Formulate,
+  Torque) drive their interactive visualizer from a real running Python
+  server instead of a static export; Folio's inspector could do the same,
+  streaming a fresh render on every keystroke in a textarea.
