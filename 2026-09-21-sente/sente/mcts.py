@@ -48,6 +48,12 @@ class MCTS:
     def __init__(self, game, net, c_puct: float = 1.5, n_simulations: int = 200,
                  dirichlet_alpha: float = 0.3, dirichlet_eps: float = 0.25,
                  rng: Optional[np.random.Generator] = None):
+        # n_simulations == 0 would leave the root's visit-count dict all
+        # zeros; visit_policy() would then hand back an all-zero training
+        # target (a silent wrong-label bug, not a crash) and sample_action
+        # would divide by a zero total. Fail loudly instead.
+        if n_simulations < 1:
+            raise ValueError(f"n_simulations must be >= 1, got {n_simulations}")
         self.game = game
         self.net = net
         self.c_puct = c_puct

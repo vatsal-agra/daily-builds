@@ -62,11 +62,6 @@ class PolicyValueNet:
             else:
                 raise RuntimeError("unexpected layer param shape")
 
-    def copy(self):
-        clone = PolicyValueNet(self.input_dim, self.action_size, self.hidden_sizes, seed=0)
-        clone.set_state(self.get_state())
-        return clone
-
     # ---- forward / backward -----------------------------------------
     def forward(self, x: np.ndarray, legal_mask: np.ndarray):
         """x: (N, input_dim) float64. legal_mask: (N, action_size) bool.

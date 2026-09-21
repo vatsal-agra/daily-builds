@@ -61,7 +61,7 @@ def run_training(game, config: TrainConfig, log_fn=print):
     for gen in range(1, config.n_generations + 1):
         t0 = time.time()
         outcomes = {1: 0, -1: 0, 0: 0}
-        n_examples_before = len(buffer)
+        examples_generated_this_gen = 0
         for _ in range(config.games_per_generation):
             examples, winner = self_play_game(
                 game, net,
@@ -70,6 +70,7 @@ def run_training(game, config: TrainConfig, log_fn=print):
                 temp_moves=config.temp_moves, rng=rng, augment=True,
             )
             buffer.add_game(examples)
+            examples_generated_this_gen += len(examples)
             outcomes[winner] += 1
         selfplay_time = time.time() - t0
 
@@ -98,7 +99,7 @@ def run_training(game, config: TrainConfig, log_fn=print):
             "generation": gen,
             "selfplay_outcomes": dict(outcomes),
             "buffer_size": len(buffer),
-            "new_examples": len(buffer) - n_examples_before if len(buffer) < config.buffer_size else config.games_per_generation,
+            "new_examples": examples_generated_this_gen,
             "losses": losses,
             "selfplay_time_s": selfplay_time,
             "train_time_s": train_time,

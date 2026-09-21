@@ -43,8 +43,11 @@ class Adam:
                 # if `p` really is the same array object the layer holds.
                 # Linear.W/.b are plain attributes, so this is safe: no
                 # copy is made anywhere between params() and here.
-
-    def zero_grad(self):
-        for layer in self.layers:
-            for name, g in layer.grads().items():
-                g[...] = 0.0
+                #
+                # No zero_grad() here: every Layer.backward() call
+                # assigns a brand-new dW/db array from scratch (see
+                # Linear.backward) rather than accumulating into an
+                # existing one, so there is nothing to zero between
+                # steps -- an earlier version of this file had a
+                # zero_grad() method that was dead code for exactly that
+                # reason (removed in the Phase 3 review).

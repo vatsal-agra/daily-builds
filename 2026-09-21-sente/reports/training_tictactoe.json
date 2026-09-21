@@ -21,7 +21,7 @@
     "checkpoint_dir": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe",
     "log_every": 1
   },
-  "total_time_s": 19.810405492782593,
+  "total_time_s": 19.809163093566895,
   "history": [
     {
       "generation": 1,
@@ -37,8 +37,8 @@
         "policy": 1.330321051757173,
         "value": 0.26397329139856895
       },
-      "selfplay_time_s": 0.6747429370880127,
-      "train_time_s": 0.07645964622497559,
+      "selfplay_time_s": 0.6897778511047363,
+      "train_time_s": 0.08085989952087402,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen001.npz"
     },
     {
@@ -55,8 +55,8 @@
         "policy": 1.1497848000971969,
         "value": 0.12625804567838106
       },
-      "selfplay_time_s": 0.7305495738983154,
-      "train_time_s": 0.08786463737487793,
+      "selfplay_time_s": 0.7114987373352051,
+      "train_time_s": 0.08095240592956543,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen002.npz"
     },
     {
@@ -73,8 +73,8 @@
         "policy": 1.0754897473610434,
         "value": 0.09449401627540431
       },
-      "selfplay_time_s": 0.699451208114624,
-      "train_time_s": 0.08071565628051758,
+      "selfplay_time_s": 0.7376866340637207,
+      "train_time_s": 0.08321285247802734,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen003.npz"
     },
     {
@@ -91,8 +91,8 @@
         "policy": 1.0152531277443937,
         "value": 0.08211825509931475
       },
-      "selfplay_time_s": 0.6927340030670166,
-      "train_time_s": 0.07789492607116699,
+      "selfplay_time_s": 0.7158412933349609,
+      "train_time_s": 0.08899712562561035,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen004.npz"
     },
     {
@@ -109,8 +109,8 @@
         "policy": 0.9711277128311231,
         "value": 0.07209181882988926
       },
-      "selfplay_time_s": 0.7144465446472168,
-      "train_time_s": 0.0803062915802002,
+      "selfplay_time_s": 0.7240355014801025,
+      "train_time_s": 0.08190298080444336,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen005.npz"
     },
     {
@@ -121,14 +121,14 @@
         "0": 25
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1468,
       "losses": {
         "total": 0.9748083555289448,
         "policy": 0.911186616371535,
         "value": 0.04971925395629494
       },
-      "selfplay_time_s": 0.698279857635498,
-      "train_time_s": 0.08266901969909668,
+      "selfplay_time_s": 0.6954679489135742,
+      "train_time_s": 0.08196091651916504,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen006.npz"
     },
     {
@@ -139,14 +139,14 @@
         "0": 28
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1482,
       "losses": {
         "total": 0.8918736319853788,
         "policy": 0.8454432110251393,
         "value": 0.03204274025481113
       },
-      "selfplay_time_s": 0.730358362197876,
-      "train_time_s": 0.08296394348144531,
+      "selfplay_time_s": 0.7156240940093994,
+      "train_time_s": 0.0869293212890625,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen007.npz"
     },
     {
@@ -157,14 +157,14 @@
         "0": 25
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1481,
       "losses": {
         "total": 0.8567985882530806,
         "policy": 0.8128708924416105,
         "value": 0.029139743944078773
       },
-      "selfplay_time_s": 0.7230088710784912,
-      "train_time_s": 0.08283019065856934,
+      "selfplay_time_s": 0.697634220123291,
+      "train_time_s": 0.08427786827087402,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen008.npz"
     },
     {
@@ -175,14 +175,14 @@
         "0": 27
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1478,
       "losses": {
         "total": 0.8306815788376908,
         "policy": 0.7943006659262886,
         "value": 0.02119867398364867
       },
-      "selfplay_time_s": 0.6946408748626709,
-      "train_time_s": 0.0836031436920166,
+      "selfplay_time_s": 0.6995699405670166,
+      "train_time_s": 0.08423805236816406,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen009.npz"
     },
     {
@@ -193,14 +193,14 @@
         "0": 29
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1547,
       "losses": {
         "total": 0.8138711571712496,
         "policy": 0.7826857503253238,
         "value": 0.015747606465358707
       },
-      "selfplay_time_s": 0.7185964584350586,
-      "train_time_s": 0.08136415481567383,
+      "selfplay_time_s": 0.7269783020019531,
+      "train_time_s": 0.08380603790283203,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen010.npz"
     },
     {
@@ -211,14 +211,14 @@
         "0": 27
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1450,
       "losses": {
         "total": 0.7699177869944637,
         "policy": 0.7419123368801255,
         "value": 0.012451217496588127
       },
-      "selfplay_time_s": 0.7005181312561035,
-      "train_time_s": 0.0827329158782959,
+      "selfplay_time_s": 0.6989045143127441,
+      "train_time_s": 0.08469510078430176,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen011.npz"
     },
     {
@@ -229,14 +229,14 @@
         "0": 27
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1477,
       "losses": {
         "total": 0.7638514623021225,
         "policy": 0.7328819502096806,
         "value": 0.015358586881264777
       },
-      "selfplay_time_s": 0.6981639862060547,
-      "train_time_s": 0.08160853385925293,
+      "selfplay_time_s": 0.7129702568054199,
+      "train_time_s": 0.08548116683959961,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen012.npz"
     },
     {
@@ -247,14 +247,14 @@
         "0": 28
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1472,
       "losses": {
         "total": 0.7523642672188976,
         "policy": 0.7262811650348734,
         "value": 0.010401789198477677
       },
-      "selfplay_time_s": 0.7129001617431641,
-      "train_time_s": 0.08155441284179688,
+      "selfplay_time_s": 0.6977565288543701,
+      "train_time_s": 0.08569741249084473,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen013.npz"
     },
     {
@@ -265,14 +265,14 @@
         "0": 25
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1483,
       "losses": {
         "total": 0.7574888983403706,
         "policy": 0.7297933204611708,
         "value": 0.01197369213984067
       },
-      "selfplay_time_s": 0.7074775695800781,
-      "train_time_s": 0.08307981491088867,
+      "selfplay_time_s": 0.6917290687561035,
+      "train_time_s": 0.0860443115234375,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen014.npz"
     },
     {
@@ -283,14 +283,14 @@
         "0": 27
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1512,
       "losses": {
         "total": 0.7391549069754296,
         "policy": 0.7091066346440129,
         "value": 0.014219550355515906
       },
-      "selfplay_time_s": 0.707089900970459,
-      "train_time_s": 0.08468914031982422,
+      "selfplay_time_s": 0.6910321712493896,
+      "train_time_s": 0.08764219284057617,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen015.npz"
     },
     {
@@ -301,14 +301,14 @@
         "0": 25
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1469,
       "losses": {
         "total": 0.7535608405773644,
         "policy": 0.710411860256829,
         "value": 0.02722600627834338
       },
-      "selfplay_time_s": 0.714698314666748,
-      "train_time_s": 0.08190250396728516,
+      "selfplay_time_s": 0.6859877109527588,
+      "train_time_s": 0.08130908012390137,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen016.npz"
     },
     {
@@ -319,14 +319,14 @@
         "0": 27
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1555,
       "losses": {
         "total": 0.7593900174414852,
         "policy": 0.7122509079891285,
         "value": 0.031077524958195046
       },
-      "selfplay_time_s": 0.7162761688232422,
-      "train_time_s": 0.08160972595214844,
+      "selfplay_time_s": 0.6912710666656494,
+      "train_time_s": 0.08262467384338379,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen017.npz"
     },
     {
@@ -337,14 +337,14 @@
         "0": 25
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1506,
       "losses": {
         "total": 0.7596026065639827,
         "policy": 0.7112065286162026,
         "value": 0.03217269476544526
       },
-      "selfplay_time_s": 0.6899256706237793,
-      "train_time_s": 0.08379602432250977,
+      "selfplay_time_s": 0.6905984878540039,
+      "train_time_s": 0.08258867263793945,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen018.npz"
     },
     {
@@ -355,14 +355,14 @@
         "0": 28
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1516,
       "losses": {
         "total": 0.7445415686656696,
         "policy": 0.6950851587819766,
         "value": 0.033120484726262965
       },
-      "selfplay_time_s": 0.7057576179504395,
-      "train_time_s": 0.08443689346313477,
+      "selfplay_time_s": 0.7308862209320068,
+      "train_time_s": 0.08197259902954102,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen019.npz"
     },
     {
@@ -373,14 +373,14 @@
         "0": 29
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1571,
       "losses": {
         "total": 0.7283568575546291,
         "policy": 0.6825290039279063,
         "value": 0.02939992345790042
       },
-      "selfplay_time_s": 0.7163567543029785,
-      "train_time_s": 0.08120465278625488,
+      "selfplay_time_s": 0.6991801261901855,
+      "train_time_s": 0.09182572364807129,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen020.npz"
     },
     {
@@ -391,14 +391,14 @@
         "0": 26
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1493,
       "losses": {
         "total": 0.7178356684568165,
         "policy": 0.6835744322363689,
         "value": 0.017770917367041915
       },
-      "selfplay_time_s": 0.693671703338623,
-      "train_time_s": 0.08378028869628906,
+      "selfplay_time_s": 0.7052853107452393,
+      "train_time_s": 0.08259296417236328,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen021.npz"
     },
     {
@@ -409,14 +409,14 @@
         "0": 27
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1520,
       "losses": {
         "total": 0.6976722009520866,
         "policy": 0.6707497223823548,
         "value": 0.010382653588259905
       },
-      "selfplay_time_s": 0.7354397773742676,
-      "train_time_s": 0.08078360557556152,
+      "selfplay_time_s": 0.7245981693267822,
+      "train_time_s": 0.08480048179626465,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen022.npz"
     },
     {
@@ -427,14 +427,14 @@
         "0": 28
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1519,
       "losses": {
         "total": 0.6815380701630156,
         "policy": 0.6563185626369064,
         "value": 0.008701202166671352
       },
-      "selfplay_time_s": 0.7089471817016602,
-      "train_time_s": 0.08626246452331543,
+      "selfplay_time_s": 0.7097787857055664,
+      "train_time_s": 0.08154559135437012,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen023.npz"
     },
     {
@@ -445,14 +445,14 @@
         "0": 26
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1581,
       "losses": {
         "total": 0.6944671024814947,
         "policy": 0.6674891971870931,
         "value": 0.010470793124183374
       },
-      "selfplay_time_s": 0.7143890857696533,
-      "train_time_s": 0.08354496955871582,
+      "selfplay_time_s": 0.684626579284668,
+      "train_time_s": 0.08177614212036133,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen024.npz"
     },
     {
@@ -463,14 +463,14 @@
         "0": 28
       },
       "buffer_size": 8000,
-      "new_examples": 30,
+      "new_examples": 1543,
       "losses": {
         "total": 0.689238400467179,
         "policy": 0.6615531534694938,
         "value": 0.011163386424084558
       },
-      "selfplay_time_s": 0.7073800563812256,
-      "train_time_s": 0.08293509483337402,
+      "selfplay_time_s": 0.7373120784759521,
+      "train_time_s": 0.08273530006408691,
       "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen025.npz"
     }
   ],

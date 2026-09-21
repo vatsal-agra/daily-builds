@@ -141,9 +141,29 @@ purely from self-generated experience) but is population-based genetic
 search, not gradient RL, and has no tree search or neural policy/value
 function. Full detail and honesty notes in `PLAN.md`.
 
+## Phase 3 — adversarial review
+
+See `REVIEW.md` for the full hostile self-review. Highlights: a real
+value-backup sign/ordering bug in MCTS was caught (via a dedicated
+minimax-oracle-backed sign test) and fixed before it ever shipped; a
+metadata bug in the training report (`new_examples` conflating games with
+example tuples once the buffer filled) was found and fixed; two pieces of
+dead/misleading code (`PolicyValueNet.copy()`, `Adam.zero_grad()`) were
+removed; a missing guard against `n_simulations=0` silently corrupting
+training labels was added; and the brief's full self-play/MCTS/RL bug
+checklist (value-backup sign errors, terminal-detection gaps, tree-reuse
+corruption, replay-buffer staleness, Dirichlet-noise leakage into
+evaluation, symmetry bugs, policy/value collapse, temperature-schedule
+bugs, silent backprop shape/gradient bugs) was checked item-by-item with
+actual evidence, not just a code read. A dedicated regression suite
+(`tests/test_eval_purity.py`) spies on the real `MCTS.run` calls made by
+every evaluation player to prove Dirichlet noise never leaks into
+evaluation/tournament play. 25/25 unit tests green; a fresh training run
+with the same seed reproduces byte-identical numbers to the ones above.
+
 ## What's left
 
-Phase 3 (adversarial review), Phase 4 (stretch features -- Connect Four
-Jr training + a server-backed browser UI with live MCTS visualization),
-Phase 5 (full test suite + demo.sh), Phase 6 (final ship) are still to
-come; this README will be updated after each.
+Phase 4 (stretch features -- Connect Four Jr training + a server-backed
+browser UI with live MCTS visualization), Phase 5 (full test suite +
+demo.sh), Phase 6 (final ship) are still to come; this README will be
+updated after each.
