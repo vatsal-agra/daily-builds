@@ -1,0 +1,505 @@
+{
+  "game": "tictactoe",
+  "config": {
+    "n_generations": 25,
+    "games_per_generation": 30,
+    "n_simulations": 60,
+    "c_puct": 1.5,
+    "dirichlet_alpha": 0.6,
+    "dirichlet_eps": 0.25,
+    "temp_moves": 2,
+    "hidden_sizes": [
+      48,
+      48
+    ],
+    "buffer_size": 8000,
+    "batch_size": 64,
+    "train_steps_per_generation": 150,
+    "lr": 0.002,
+    "l2": 0.0001,
+    "seed": 0,
+    "checkpoint_dir": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe",
+    "log_every": 1
+  },
+  "total_time_s": 19.810405492782593,
+  "history": [
+    {
+      "generation": 1,
+      "selfplay_outcomes": {
+        "1": 13,
+        "-1": 1,
+        "0": 16
+      },
+      "buffer_size": 1493,
+      "new_examples": 1493,
+      "losses": {
+        "total": 1.6046276230456948,
+        "policy": 1.330321051757173,
+        "value": 0.26397329139856895
+      },
+      "selfplay_time_s": 0.6747429370880127,
+      "train_time_s": 0.07645964622497559,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen001.npz"
+    },
+    {
+      "generation": 2,
+      "selfplay_outcomes": {
+        "1": 6,
+        "-1": 0,
+        "0": 24
+      },
+      "buffer_size": 2979,
+      "new_examples": 1486,
+      "losses": {
+        "total": 1.2870280214605487,
+        "policy": 1.1497848000971969,
+        "value": 0.12625804567838106
+      },
+      "selfplay_time_s": 0.7305495738983154,
+      "train_time_s": 0.08786463737487793,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen002.npz"
+    },
+    {
+      "generation": 3,
+      "selfplay_outcomes": {
+        "1": 10,
+        "-1": 0,
+        "0": 20
+      },
+      "buffer_size": 4330,
+      "new_examples": 1351,
+      "losses": {
+        "total": 1.181834099286243,
+        "policy": 1.0754897473610434,
+        "value": 0.09449401627540431
+      },
+      "selfplay_time_s": 0.699451208114624,
+      "train_time_s": 0.08071565628051758,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen003.npz"
+    },
+    {
+      "generation": 4,
+      "selfplay_outcomes": {
+        "1": 8,
+        "-1": 0,
+        "0": 22
+      },
+      "buffer_size": 5707,
+      "new_examples": 1377,
+      "losses": {
+        "total": 1.1101074222967982,
+        "policy": 1.0152531277443937,
+        "value": 0.08211825509931475
+      },
+      "selfplay_time_s": 0.6927340030670166,
+      "train_time_s": 0.07789492607116699,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen004.npz"
+    },
+    {
+      "generation": 5,
+      "selfplay_outcomes": {
+        "1": 4,
+        "-1": 0,
+        "0": 26
+      },
+      "buffer_size": 7186,
+      "new_examples": 1479,
+      "losses": {
+        "total": 1.0566176988804137,
+        "policy": 0.9711277128311231,
+        "value": 0.07209181882988926
+      },
+      "selfplay_time_s": 0.7144465446472168,
+      "train_time_s": 0.0803062915802002,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen005.npz"
+    },
+    {
+      "generation": 6,
+      "selfplay_outcomes": {
+        "1": 5,
+        "-1": 0,
+        "0": 25
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.9748083555289448,
+        "policy": 0.911186616371535,
+        "value": 0.04971925395629494
+      },
+      "selfplay_time_s": 0.698279857635498,
+      "train_time_s": 0.08266901969909668,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen006.npz"
+    },
+    {
+      "generation": 7,
+      "selfplay_outcomes": {
+        "1": 2,
+        "-1": 0,
+        "0": 28
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.8918736319853788,
+        "policy": 0.8454432110251393,
+        "value": 0.03204274025481113
+      },
+      "selfplay_time_s": 0.730358362197876,
+      "train_time_s": 0.08296394348144531,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen007.npz"
+    },
+    {
+      "generation": 8,
+      "selfplay_outcomes": {
+        "1": 5,
+        "-1": 0,
+        "0": 25
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.8567985882530806,
+        "policy": 0.8128708924416105,
+        "value": 0.029139743944078773
+      },
+      "selfplay_time_s": 0.7230088710784912,
+      "train_time_s": 0.08283019065856934,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen008.npz"
+    },
+    {
+      "generation": 9,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 0,
+        "0": 27
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.8306815788376908,
+        "policy": 0.7943006659262886,
+        "value": 0.02119867398364867
+      },
+      "selfplay_time_s": 0.6946408748626709,
+      "train_time_s": 0.0836031436920166,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen009.npz"
+    },
+    {
+      "generation": 10,
+      "selfplay_outcomes": {
+        "1": 1,
+        "-1": 0,
+        "0": 29
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.8138711571712496,
+        "policy": 0.7826857503253238,
+        "value": 0.015747606465358707
+      },
+      "selfplay_time_s": 0.7185964584350586,
+      "train_time_s": 0.08136415481567383,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen010.npz"
+    },
+    {
+      "generation": 11,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 0,
+        "0": 27
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.7699177869944637,
+        "policy": 0.7419123368801255,
+        "value": 0.012451217496588127
+      },
+      "selfplay_time_s": 0.7005181312561035,
+      "train_time_s": 0.0827329158782959,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen011.npz"
+    },
+    {
+      "generation": 12,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 0,
+        "0": 27
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.7638514623021225,
+        "policy": 0.7328819502096806,
+        "value": 0.015358586881264777
+      },
+      "selfplay_time_s": 0.6981639862060547,
+      "train_time_s": 0.08160853385925293,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen012.npz"
+    },
+    {
+      "generation": 13,
+      "selfplay_outcomes": {
+        "1": 2,
+        "-1": 0,
+        "0": 28
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.7523642672188976,
+        "policy": 0.7262811650348734,
+        "value": 0.010401789198477677
+      },
+      "selfplay_time_s": 0.7129001617431641,
+      "train_time_s": 0.08155441284179688,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen013.npz"
+    },
+    {
+      "generation": 14,
+      "selfplay_outcomes": {
+        "1": 5,
+        "-1": 0,
+        "0": 25
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.7574888983403706,
+        "policy": 0.7297933204611708,
+        "value": 0.01197369213984067
+      },
+      "selfplay_time_s": 0.7074775695800781,
+      "train_time_s": 0.08307981491088867,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen014.npz"
+    },
+    {
+      "generation": 15,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 0,
+        "0": 27
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.7391549069754296,
+        "policy": 0.7091066346440129,
+        "value": 0.014219550355515906
+      },
+      "selfplay_time_s": 0.707089900970459,
+      "train_time_s": 0.08468914031982422,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen015.npz"
+    },
+    {
+      "generation": 16,
+      "selfplay_outcomes": {
+        "1": 5,
+        "-1": 0,
+        "0": 25
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.7535608405773644,
+        "policy": 0.710411860256829,
+        "value": 0.02722600627834338
+      },
+      "selfplay_time_s": 0.714698314666748,
+      "train_time_s": 0.08190250396728516,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen016.npz"
+    },
+    {
+      "generation": 17,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 0,
+        "0": 27
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.7593900174414852,
+        "policy": 0.7122509079891285,
+        "value": 0.031077524958195046
+      },
+      "selfplay_time_s": 0.7162761688232422,
+      "train_time_s": 0.08160972595214844,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen017.npz"
+    },
+    {
+      "generation": 18,
+      "selfplay_outcomes": {
+        "1": 5,
+        "-1": 0,
+        "0": 25
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.7596026065639827,
+        "policy": 0.7112065286162026,
+        "value": 0.03217269476544526
+      },
+      "selfplay_time_s": 0.6899256706237793,
+      "train_time_s": 0.08379602432250977,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen018.npz"
+    },
+    {
+      "generation": 19,
+      "selfplay_outcomes": {
+        "1": 2,
+        "-1": 0,
+        "0": 28
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.7445415686656696,
+        "policy": 0.6950851587819766,
+        "value": 0.033120484726262965
+      },
+      "selfplay_time_s": 0.7057576179504395,
+      "train_time_s": 0.08443689346313477,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen019.npz"
+    },
+    {
+      "generation": 20,
+      "selfplay_outcomes": {
+        "1": 1,
+        "-1": 0,
+        "0": 29
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.7283568575546291,
+        "policy": 0.6825290039279063,
+        "value": 0.02939992345790042
+      },
+      "selfplay_time_s": 0.7163567543029785,
+      "train_time_s": 0.08120465278625488,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen020.npz"
+    },
+    {
+      "generation": 21,
+      "selfplay_outcomes": {
+        "1": 4,
+        "-1": 0,
+        "0": 26
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.7178356684568165,
+        "policy": 0.6835744322363689,
+        "value": 0.017770917367041915
+      },
+      "selfplay_time_s": 0.693671703338623,
+      "train_time_s": 0.08378028869628906,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen021.npz"
+    },
+    {
+      "generation": 22,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 0,
+        "0": 27
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.6976722009520866,
+        "policy": 0.6707497223823548,
+        "value": 0.010382653588259905
+      },
+      "selfplay_time_s": 0.7354397773742676,
+      "train_time_s": 0.08078360557556152,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen022.npz"
+    },
+    {
+      "generation": 23,
+      "selfplay_outcomes": {
+        "1": 2,
+        "-1": 0,
+        "0": 28
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.6815380701630156,
+        "policy": 0.6563185626369064,
+        "value": 0.008701202166671352
+      },
+      "selfplay_time_s": 0.7089471817016602,
+      "train_time_s": 0.08626246452331543,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen023.npz"
+    },
+    {
+      "generation": 24,
+      "selfplay_outcomes": {
+        "1": 4,
+        "-1": 0,
+        "0": 26
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.6944671024814947,
+        "policy": 0.6674891971870931,
+        "value": 0.010470793124183374
+      },
+      "selfplay_time_s": 0.7143890857696533,
+      "train_time_s": 0.08354496955871582,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen024.npz"
+    },
+    {
+      "generation": 25,
+      "selfplay_outcomes": {
+        "1": 2,
+        "-1": 0,
+        "0": 28
+      },
+      "buffer_size": 8000,
+      "new_examples": 30,
+      "losses": {
+        "total": 0.689238400467179,
+        "policy": 0.6615531534694938,
+        "value": 0.011163386424084558
+      },
+      "selfplay_time_s": 0.7073800563812256,
+      "train_time_s": 0.08293509483337402,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen025.npz"
+    }
+  ],
+  "checkpoints": [
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen000.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen001.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen002.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen003.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen004.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen005.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen006.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen007.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen008.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen009.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen010.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen011.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen012.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen013.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen014.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen015.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen016.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen017.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen018.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen019.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen020.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen021.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen022.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen023.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen024.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen025.npz"
+  ]
+}

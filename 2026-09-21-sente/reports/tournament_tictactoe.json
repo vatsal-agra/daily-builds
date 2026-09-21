@@ -1,0 +1,124 @@
+{
+  "game": "tictactoe",
+  "games_per_pairing": 16,
+  "n_simulations": 50,
+  "summary": {
+    "random": {
+      "wins": 0,
+      "losses": 100,
+      "draws": 12,
+      "games": 112
+    },
+    "pure-mcts": {
+      "wins": 17,
+      "losses": 15,
+      "draws": 80,
+      "games": 112
+    },
+    "gen000": {
+      "wins": 17,
+      "losses": 2,
+      "draws": 93,
+      "games": 112
+    },
+    "gen005": {
+      "wins": 18,
+      "losses": 0,
+      "draws": 94,
+      "games": 112
+    },
+    "gen010": {
+      "wins": 18,
+      "losses": 0,
+      "draws": 94,
+      "games": 112
+    },
+    "gen015": {
+      "wins": 18,
+      "losses": 0,
+      "draws": 94,
+      "games": 112
+    },
+    "gen020": {
+      "wins": 15,
+      "losses": 0,
+      "draws": 97,
+      "games": 112
+    },
+    "gen025": {
+      "wins": 14,
+      "losses": 0,
+      "draws": 98,
+      "games": 112
+    }
+  },
+  "elo": {
+    "random": 851.8756441250113,
+    "pure-mcts": 1230.855413463646,
+    "gen000": 1244.2588034274554,
+    "gen005": 1268.8101056040582,
+    "gen010": 1262.5994012876731,
+    "gen015": 1248.1358643038693,
+    "gen020": 1255.070419552131,
+    "gen025": 1238.3943482361556
+  },
+  "n_games_total": 448,
+  "time_s": 7.9047019481658936,
+  "policy_only": {
+    "summary": {
+      "random": {
+        "wins": 7,
+        "losses": 72,
+        "draws": 17,
+        "games": 96
+      },
+      "gen000": {
+        "wins": 9,
+        "losses": 76,
+        "draws": 11,
+        "games": 96
+      },
+      "gen005": {
+        "wins": 21,
+        "losses": 0,
+        "draws": 75,
+        "games": 96
+      },
+      "gen010": {
+        "wins": 29,
+        "losses": 1,
+        "draws": 66,
+        "games": 96
+      },
+      "gen015": {
+        "wins": 29,
+        "losses": 1,
+        "draws": 66,
+        "games": 96
+      },
+      "gen020": {
+        "wins": 29,
+        "losses": 0,
+        "draws": 67,
+        "games": 96
+      },
+      "gen025": {
+        "wins": 27,
+        "losses": 1,
+        "draws": 68,
+        "games": 96
+      }
+    },
+    "elo": {
+      "random": 948.4814303332597,
+      "gen000": 951.4697214518069,
+      "gen005": 1286.8887263934741,
+      "gen010": 1302.2829457608748,
+      "gen015": 1309.5143805949906,
+      "gen020": 1307.24704122767,
+      "gen025": 1294.1157542379235
+    },
+    "n_games_total": 336,
+    "time_s": 0.10324263572692871
+  }
+}

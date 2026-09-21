@@ -1,0 +1,9 @@
+{
+  "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/tictactoe/tictactoe_gen025.npz",
+  "n_simulations": 80,
+  "passed": true,
+  "time_s": 0.7967524528503418,
+  "states_visited": 908,
+  "losing_lines_found": 0,
+  "example_losing_line": null
+}
