@@ -2,7 +2,7 @@
   "checkpoint": "checkpoints/tictactoe/tictactoe_gen025.npz",
   "n_simulations": 80,
   "passed": true,
-  "time_s": 0.7851982116699219,
+  "time_s": 0.7814555168151855,
   "states_visited": 908,
   "losing_lines_found": 0,
   "example_losing_line": null
