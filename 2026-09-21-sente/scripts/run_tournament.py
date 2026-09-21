@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
     report["policy_only"] = {"summary": summary2, "elo": elo2, "n_games_total": len(raw_results2), "time_s": dt2}
 
-    report_path = os.path.join(ROOT, "reports", "tournament_tictactoe.json")
+    report_path = os.environ.get("SENTE_REPORT_PATH", os.path.join(ROOT, "reports", "tournament_tictactoe.json"))
     with open(report_path, "w") as f:
         json.dump(report, f, indent=2)
     print(f"\nReport written to {report_path}")

@@ -86,7 +86,7 @@ if __name__ == "__main__":
             "vs_pure_mcts_summary": summary_m[final_name],
         },
     }
-    report_path = os.path.join(ROOT, "reports", "tournament_connect4jr.json")
+    report_path = os.environ.get("SENTE_REPORT_PATH", os.path.join(ROOT, "reports", "tournament_connect4jr.json"))
     with open(report_path, "w") as f:
         json.dump(report, f, indent=2)
     print(f"\nReport written to {report_path}")

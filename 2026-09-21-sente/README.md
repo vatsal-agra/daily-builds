@@ -207,6 +207,37 @@ the real running server, not mocks.
 
 Run it: `python3 scripts/run_server.py` then open `http://127.0.0.1:8765/`.
 
+## Phase 5 — verification (`demo.sh`, full test suite)
+
+`./demo.sh` exercises every shipped feature end-to-end in one run and
+prints a pass/fail summary:
+
+1. Gradient checks (all ops + both games' whole networks)
+2. A short, real, from-scratch self-play + training run in a scratch
+   checkpoint directory (proves the pipeline itself runs, independent of
+   the pre-baked checkpoints used by the later steps)
+3. The full unit test suite (38 tests: games, MCTS sign-convention,
+   Dirichlet-noise-leak regressions, server API against real HTTP calls)
+4. The exhaustive minimax-oracle "never loses to perfect play" check
+   against the committed, fully-trained Tic-Tac-Toe checkpoint
+5. The cross-generation Tic-Tac-Toe win-rate/Elo report (smaller sample
+   than README's headline numbers, for speed, written to a scratch path
+   so it never overwrites the authoritative `reports/*.json` files
+   quoted above)
+6. The Connect Four Jr stretch report (same scratch-path treatment)
+7. A real headless-Chromium smoke test of the server-backed UI (starts
+   the actual server on a throwaway port, drives it with Playwright,
+   confirms zero console errors and zero horizontal overflow at phone
+   width, shuts the server down)
+
+Latest run: **7/7 passed, 0 failed, ALL CHECKS GREEN.** Every reported
+number in this README (the training loss curves, the oracle-check
+result, both tournament tables) was regenerated from a clean run with
+the same seeds after every Phase 3/4/5 code change and reproduces
+byte-identical results (only wall-clock timing fields differ), which is
+itself evidence the pipeline is deterministic and the fixes in
+`REVIEW.md` didn't change training behavior.
+
 ## Phase 3 — adversarial review
 
 See `REVIEW.md` for the full hostile self-review. Highlights: a real
@@ -229,5 +260,4 @@ with the same seed reproduces byte-identical numbers to the ones above.
 
 ## What's left
 
-Phase 5 (full test suite + demo.sh) and Phase 6 (final ship) are still to
-come; this README will be updated after each.
+Phase 6 (final ship / LEDGER.md entry) is still to come.
