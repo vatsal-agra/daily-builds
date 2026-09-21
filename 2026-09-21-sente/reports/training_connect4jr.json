@@ -1,0 +1,980 @@
+{
+  "game": "connect4jr",
+  "config": {
+    "n_generations": 50,
+    "games_per_generation": 40,
+    "n_simulations": 60,
+    "c_puct": 1.5,
+    "dirichlet_alpha": 0.5,
+    "dirichlet_eps": 0.25,
+    "temp_moves": 6,
+    "hidden_sizes": [
+      64,
+      64
+    ],
+    "buffer_size": 30000,
+    "batch_size": 128,
+    "train_steps_per_generation": 200,
+    "lr": 0.0015,
+    "l2": 0.0001,
+    "seed": 0,
+    "checkpoint_dir": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr",
+    "log_every": 1
+  },
+  "total_time_s": 435.80985164642334,
+  "history": [
+    {
+      "generation": 1,
+      "selfplay_outcomes": {
+        "1": 15,
+        "-1": 9,
+        "0": 16
+      },
+      "buffer_size": 1337,
+      "new_examples": 1337,
+      "losses": {
+        "total": 1.5675595919038259,
+        "policy": 1.150458391891416,
+        "value": 0.4036699480039138
+      },
+      "selfplay_time_s": 7.469846487045288,
+      "train_time_s": 0.16460180282592773,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen001.npz"
+    },
+    {
+      "generation": 2,
+      "selfplay_outcomes": {
+        "1": 14,
+        "-1": 10,
+        "0": 16
+      },
+      "buffer_size": 2710,
+      "new_examples": 1373,
+      "losses": {
+        "total": 1.5570866436426771,
+        "policy": 1.1744290322597575,
+        "value": 0.3686102015333909
+      },
+      "selfplay_time_s": 7.383107900619507,
+      "train_time_s": 0.17169690132141113,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen002.npz"
+    },
+    {
+      "generation": 3,
+      "selfplay_outcomes": {
+        "1": 17,
+        "-1": 5,
+        "0": 18
+      },
+      "buffer_size": 4059,
+      "new_examples": 1349,
+      "losses": {
+        "total": 1.4972425517080938,
+        "policy": 1.1592065783055099,
+        "value": 0.3233961555612916
+      },
+      "selfplay_time_s": 7.229179382324219,
+      "train_time_s": 0.18376946449279785,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen003.npz"
+    },
+    {
+      "generation": 4,
+      "selfplay_outcomes": {
+        "1": 9,
+        "-1": 13,
+        "0": 18
+      },
+      "buffer_size": 5456,
+      "new_examples": 1397,
+      "losses": {
+        "total": 1.4699804407242576,
+        "policy": 1.1310108404590873,
+        "value": 0.32386300574593513
+      },
+      "selfplay_time_s": 7.733300685882568,
+      "train_time_s": 0.18738603591918945,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen004.npz"
+    },
+    {
+      "generation": 5,
+      "selfplay_outcomes": {
+        "1": 10,
+        "-1": 14,
+        "0": 16
+      },
+      "buffer_size": 6847,
+      "new_examples": 1391,
+      "losses": {
+        "total": 1.4735978243457128,
+        "policy": 1.1163493541338987,
+        "value": 0.3417120599087782
+      },
+      "selfplay_time_s": 7.963119268417358,
+      "train_time_s": 0.19927763938903809,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen005.npz"
+    },
+    {
+      "generation": 6,
+      "selfplay_outcomes": {
+        "1": 10,
+        "-1": 15,
+        "0": 15
+      },
+      "buffer_size": 8266,
+      "new_examples": 1419,
+      "losses": {
+        "total": 1.4585078903630506,
+        "policy": 1.1000185960937268,
+        "value": 0.342541445210438
+      },
+      "selfplay_time_s": 8.005702257156372,
+      "train_time_s": 0.19597291946411133,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen006.npz"
+    },
+    {
+      "generation": 7,
+      "selfplay_outcomes": {
+        "1": 11,
+        "-1": 17,
+        "0": 12
+      },
+      "buffer_size": 9684,
+      "new_examples": 1418,
+      "losses": {
+        "total": 1.465425244284079,
+        "policy": 1.08505551768227,
+        "value": 0.36405434612083387
+      },
+      "selfplay_time_s": 7.871131658554077,
+      "train_time_s": 0.19476556777954102,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen007.npz"
+    },
+    {
+      "generation": 8,
+      "selfplay_outcomes": {
+        "1": 9,
+        "-1": 17,
+        "0": 14
+      },
+      "buffer_size": 11081,
+      "new_examples": 1397,
+      "losses": {
+        "total": 1.4554602418137261,
+        "policy": 1.0776893748397907,
+        "value": 0.36108841335818503
+      },
+      "selfplay_time_s": 7.914821147918701,
+      "train_time_s": 0.1973590850830078,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen008.npz"
+    },
+    {
+      "generation": 9,
+      "selfplay_outcomes": {
+        "1": 9,
+        "-1": 20,
+        "0": 11
+      },
+      "buffer_size": 12535,
+      "new_examples": 1454,
+      "losses": {
+        "total": 1.4454221191208712,
+        "policy": 1.0607338474028658,
+        "value": 0.36763107751273255
+      },
+      "selfplay_time_s": 8.349772453308105,
+      "train_time_s": 0.20346856117248535,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen009.npz"
+    },
+    {
+      "generation": 10,
+      "selfplay_outcomes": {
+        "1": 10,
+        "-1": 20,
+        "0": 10
+      },
+      "buffer_size": 13875,
+      "new_examples": 1340,
+      "losses": {
+        "total": 1.4521184260804858,
+        "policy": 1.0557760221064598,
+        "value": 0.378962198559768
+      },
+      "selfplay_time_s": 7.5136871337890625,
+      "train_time_s": 0.21143722534179688,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen010.npz"
+    },
+    {
+      "generation": 11,
+      "selfplay_outcomes": {
+        "1": 8,
+        "-1": 14,
+        "0": 18
+      },
+      "buffer_size": 15276,
+      "new_examples": 1401,
+      "losses": {
+        "total": 1.4382033523324766,
+        "policy": 1.048252222886073,
+        "value": 0.3723197783797611
+      },
+      "selfplay_time_s": 7.996398448944092,
+      "train_time_s": 0.2236781120300293,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen011.npz"
+    },
+    {
+      "generation": 12,
+      "selfplay_outcomes": {
+        "1": 8,
+        "-1": 18,
+        "0": 14
+      },
+      "buffer_size": 16639,
+      "new_examples": 1363,
+      "losses": {
+        "total": 1.428086039222275,
+        "policy": 1.0394115340651566,
+        "value": 0.37081776302271197
+      },
+      "selfplay_time_s": 7.986041307449341,
+      "train_time_s": 0.21564817428588867,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen012.npz"
+    },
+    {
+      "generation": 13,
+      "selfplay_outcomes": {
+        "1": 14,
+        "-1": 15,
+        "0": 11
+      },
+      "buffer_size": 18047,
+      "new_examples": 1408,
+      "losses": {
+        "total": 1.4292031271661871,
+        "policy": 1.0419898603976094,
+        "value": 0.36911676571721946
+      },
+      "selfplay_time_s": 8.000826835632324,
+      "train_time_s": 0.2144908905029297,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen013.npz"
+    },
+    {
+      "generation": 14,
+      "selfplay_outcomes": {
+        "1": 14,
+        "-1": 11,
+        "0": 15
+      },
+      "buffer_size": 19434,
+      "new_examples": 1387,
+      "losses": {
+        "total": 1.4375382839025423,
+        "policy": 1.0316862222209116,
+        "value": 0.3875497659210071
+      },
+      "selfplay_time_s": 8.158499717712402,
+      "train_time_s": 0.2076892852783203,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen014.npz"
+    },
+    {
+      "generation": 15,
+      "selfplay_outcomes": {
+        "1": 13,
+        "-1": 11,
+        "0": 16
+      },
+      "buffer_size": 20831,
+      "new_examples": 1397,
+      "losses": {
+        "total": 1.416497237333808,
+        "policy": 1.0234186705821875,
+        "value": 0.3745888389761567
+      },
+      "selfplay_time_s": 8.297568798065186,
+      "train_time_s": 0.21277141571044922,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen015.npz"
+    },
+    {
+      "generation": 16,
+      "selfplay_outcomes": {
+        "1": 10,
+        "-1": 10,
+        "0": 20
+      },
+      "buffer_size": 22224,
+      "new_examples": 1393,
+      "losses": {
+        "total": 1.3990372157983204,
+        "policy": 1.0155121992190694,
+        "value": 0.3648277849137414
+      },
+      "selfplay_time_s": 8.384207248687744,
+      "train_time_s": 0.22357177734375,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen016.npz"
+    },
+    {
+      "generation": 17,
+      "selfplay_outcomes": {
+        "1": 9,
+        "-1": 21,
+        "0": 10
+      },
+      "buffer_size": 23603,
+      "new_examples": 1379,
+      "losses": {
+        "total": 1.402249225109185,
+        "policy": 1.0110739642139162,
+        "value": 0.37229569049174094
+      },
+      "selfplay_time_s": 7.851081132888794,
+      "train_time_s": 0.22848892211914062,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen017.npz"
+    },
+    {
+      "generation": 18,
+      "selfplay_outcomes": {
+        "1": 4,
+        "-1": 18,
+        "0": 18
+      },
+      "buffer_size": 25024,
+      "new_examples": 1421,
+      "losses": {
+        "total": 1.3897525338542982,
+        "policy": 1.0100281703954526,
+        "value": 0.36066407682712537
+      },
+      "selfplay_time_s": 8.310154914855957,
+      "train_time_s": 0.22233343124389648,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen018.npz"
+    },
+    {
+      "generation": 19,
+      "selfplay_outcomes": {
+        "1": 6,
+        "-1": 14,
+        "0": 20
+      },
+      "buffer_size": 26466,
+      "new_examples": 1442,
+      "losses": {
+        "total": 1.3836312280537044,
+        "policy": 1.0092675796041997,
+        "value": 0.35513799915967126
+      },
+      "selfplay_time_s": 8.555054903030396,
+      "train_time_s": 0.22055411338806152,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen019.npz"
+    },
+    {
+      "generation": 20,
+      "selfplay_outcomes": {
+        "1": 2,
+        "-1": 21,
+        "0": 17
+      },
+      "buffer_size": 27866,
+      "new_examples": 1400,
+      "losses": {
+        "total": 1.3675579130341782,
+        "policy": 1.001117800688537,
+        "value": 0.34702950990490644
+      },
+      "selfplay_time_s": 8.115962028503418,
+      "train_time_s": 0.2290949821472168,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen020.npz"
+    },
+    {
+      "generation": 21,
+      "selfplay_outcomes": {
+        "1": 2,
+        "-1": 16,
+        "0": 22
+      },
+      "buffer_size": 29328,
+      "new_examples": 1462,
+      "losses": {
+        "total": 1.3559362736014575,
+        "policy": 0.9989631394128439,
+        "value": 0.3374249892943259
+      },
+      "selfplay_time_s": 8.849536180496216,
+      "train_time_s": 0.22367501258850098,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen021.npz"
+    },
+    {
+      "generation": 22,
+      "selfplay_outcomes": {
+        "1": 2,
+        "-1": 27,
+        "0": 11
+      },
+      "buffer_size": 30000,
+      "new_examples": 1373,
+      "losses": {
+        "total": 1.331202389500642,
+        "policy": 0.9860525955385481,
+        "value": 0.32546493878708493
+      },
+      "selfplay_time_s": 7.779458284378052,
+      "train_time_s": 0.23481369018554688,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen022.npz"
+    },
+    {
+      "generation": 23,
+      "selfplay_outcomes": {
+        "1": 6,
+        "-1": 12,
+        "0": 22
+      },
+      "buffer_size": 30000,
+      "new_examples": 1413,
+      "losses": {
+        "total": 1.329522756595055,
+        "policy": 0.9817007825867843,
+        "value": 0.3280234742972689
+      },
+      "selfplay_time_s": 8.294877052307129,
+      "train_time_s": 0.22704792022705078,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen023.npz"
+    },
+    {
+      "generation": 24,
+      "selfplay_outcomes": {
+        "1": 6,
+        "-1": 17,
+        "0": 17
+      },
+      "buffer_size": 30000,
+      "new_examples": 1399,
+      "losses": {
+        "total": 1.300984229117147,
+        "policy": 0.9589527435151035,
+        "value": 0.3220736662796461
+      },
+      "selfplay_time_s": 8.01995849609375,
+      "train_time_s": 0.2130444049835205,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen024.npz"
+    },
+    {
+      "generation": 25,
+      "selfplay_outcomes": {
+        "1": 6,
+        "-1": 14,
+        "0": 20
+      },
+      "buffer_size": 30000,
+      "new_examples": 1372,
+      "losses": {
+        "total": 1.2715793412372138,
+        "policy": 0.9420265118400469,
+        "value": 0.30942849255711435
+      },
+      "selfplay_time_s": 8.046635866165161,
+      "train_time_s": 0.22325992584228516,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen025.npz"
+    },
+    {
+      "generation": 26,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 20,
+        "0": 17
+      },
+      "buffer_size": 30000,
+      "new_examples": 1367,
+      "losses": {
+        "total": 1.264374028145844,
+        "policy": 0.9388242504045664,
+        "value": 0.3052420782269494
+      },
+      "selfplay_time_s": 8.095160007476807,
+      "train_time_s": 0.21755337715148926,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen026.npz"
+    },
+    {
+      "generation": 27,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 22,
+        "0": 15
+      },
+      "buffer_size": 30000,
+      "new_examples": 1425,
+      "losses": {
+        "total": 1.24346401853781,
+        "policy": 0.9257148714307576,
+        "value": 0.2972654407539408
+      },
+      "selfplay_time_s": 8.50424575805664,
+      "train_time_s": 0.22657561302185059,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen027.npz"
+    },
+    {
+      "generation": 28,
+      "selfplay_outcomes": {
+        "1": 6,
+        "-1": 13,
+        "0": 21
+      },
+      "buffer_size": 30000,
+      "new_examples": 1420,
+      "losses": {
+        "total": 1.2167746221322067,
+        "policy": 0.9162029421240493,
+        "value": 0.27991253596825955
+      },
+      "selfplay_time_s": 8.589305877685547,
+      "train_time_s": 0.21684575080871582,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen028.npz"
+    },
+    {
+      "generation": 29,
+      "selfplay_outcomes": {
+        "1": 6,
+        "-1": 19,
+        "0": 15
+      },
+      "buffer_size": 30000,
+      "new_examples": 1372,
+      "losses": {
+        "total": 1.2047113721170646,
+        "policy": 0.9087445345004944,
+        "value": 0.2751426567901668
+      },
+      "selfplay_time_s": 8.131341934204102,
+      "train_time_s": 0.21821308135986328,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen029.npz"
+    },
+    {
+      "generation": 30,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 13,
+        "0": 24
+      },
+      "buffer_size": 30000,
+      "new_examples": 1446,
+      "losses": {
+        "total": 1.1798572209302385,
+        "policy": 0.8986361196667713,
+        "value": 0.26026910606678993
+      },
+      "selfplay_time_s": 8.832660675048828,
+      "train_time_s": 0.24852609634399414,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen030.npz"
+    },
+    {
+      "generation": 31,
+      "selfplay_outcomes": {
+        "1": 5,
+        "-1": 15,
+        "0": 20
+      },
+      "buffer_size": 30000,
+      "new_examples": 1418,
+      "losses": {
+        "total": 1.1716997626188381,
+        "policy": 0.8924970647746744,
+        "value": 0.2581188933615622
+      },
+      "selfplay_time_s": 8.702865839004517,
+      "train_time_s": 0.2433760166168213,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen031.npz"
+    },
+    {
+      "generation": 32,
+      "selfplay_outcomes": {
+        "1": 5,
+        "-1": 12,
+        "0": 23
+      },
+      "buffer_size": 30000,
+      "new_examples": 1435,
+      "losses": {
+        "total": 1.1530013547882296,
+        "policy": 0.8864999246118621,
+        "value": 0.24530003937269268
+      },
+      "selfplay_time_s": 8.874886989593506,
+      "train_time_s": 0.22283411026000977,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen032.npz"
+    },
+    {
+      "generation": 33,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 15,
+        "0": 22
+      },
+      "buffer_size": 30000,
+      "new_examples": 1401,
+      "losses": {
+        "total": 1.1361963736969447,
+        "policy": 0.8754513765332455,
+        "value": 0.2394229601323303
+      },
+      "selfplay_time_s": 8.642941236495972,
+      "train_time_s": 0.24599194526672363,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen033.npz"
+    },
+    {
+      "generation": 34,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 17,
+        "0": 20
+      },
+      "buffer_size": 30000,
+      "new_examples": 1444,
+      "losses": {
+        "total": 1.1180366290796422,
+        "policy": 0.87336196327202,
+        "value": 0.22325599895362658
+      },
+      "selfplay_time_s": 8.764859199523926,
+      "train_time_s": 0.21726584434509277,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen034.npz"
+    },
+    {
+      "generation": 35,
+      "selfplay_outcomes": {
+        "1": 1,
+        "-1": 14,
+        "0": 25
+      },
+      "buffer_size": 30000,
+      "new_examples": 1433,
+      "losses": {
+        "total": 1.091635171531186,
+        "policy": 0.86681818476599,
+        "value": 0.2032896528063501
+      },
+      "selfplay_time_s": 8.793373107910156,
+      "train_time_s": 0.2252335548400879,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen035.npz"
+    },
+    {
+      "generation": 36,
+      "selfplay_outcomes": {
+        "1": 1,
+        "-1": 10,
+        "0": 29
+      },
+      "buffer_size": 30000,
+      "new_examples": 1502,
+      "losses": {
+        "total": 1.0632129411103748,
+        "policy": 0.8524121229040439,
+        "value": 0.18914899548217776
+      },
+      "selfplay_time_s": 9.3173508644104,
+      "train_time_s": 0.2181715965270996,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen036.npz"
+    },
+    {
+      "generation": 37,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 14,
+        "0": 23
+      },
+      "buffer_size": 30000,
+      "new_examples": 1457,
+      "losses": {
+        "total": 1.0467821989468102,
+        "policy": 0.8446517536429987,
+        "value": 0.18037964183497712
+      },
+      "selfplay_time_s": 9.042578220367432,
+      "train_time_s": 0.23217463493347168,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen037.npz"
+    },
+    {
+      "generation": 38,
+      "selfplay_outcomes": {
+        "1": 1,
+        "-1": 12,
+        "0": 27
+      },
+      "buffer_size": 30000,
+      "new_examples": 1450,
+      "losses": {
+        "total": 1.0176799888100105,
+        "policy": 0.8297726369691618,
+        "value": 0.16605776008393153
+      },
+      "selfplay_time_s": 9.244530439376831,
+      "train_time_s": 0.22150802612304688,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen038.npz"
+    },
+    {
+      "generation": 39,
+      "selfplay_outcomes": {
+        "1": 5,
+        "-1": 10,
+        "0": 25
+      },
+      "buffer_size": 30000,
+      "new_examples": 1484,
+      "losses": {
+        "total": 1.013793747003988,
+        "policy": 0.8293672447576012,
+        "value": 0.1625193366438398
+      },
+      "selfplay_time_s": 9.109166145324707,
+      "train_time_s": 0.2250962257385254,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen039.npz"
+    },
+    {
+      "generation": 40,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 15,
+        "0": 22
+      },
+      "buffer_size": 30000,
+      "new_examples": 1456,
+      "losses": {
+        "total": 0.9929014044230491,
+        "policy": 0.8154301855458889,
+        "value": 0.15551224264901936
+      },
+      "selfplay_time_s": 9.735950469970703,
+      "train_time_s": 0.2459087371826172,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen040.npz"
+    },
+    {
+      "generation": 41,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 10,
+        "0": 27
+      },
+      "buffer_size": 30000,
+      "new_examples": 1460,
+      "losses": {
+        "total": 0.9946977049556368,
+        "policy": 0.8170187947841532,
+        "value": 0.15566992437860888
+      },
+      "selfplay_time_s": 9.788787603378296,
+      "train_time_s": 0.2215440273284912,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen041.npz"
+    },
+    {
+      "generation": 42,
+      "selfplay_outcomes": {
+        "1": 1,
+        "-1": 12,
+        "0": 27
+      },
+      "buffer_size": 30000,
+      "new_examples": 1485,
+      "losses": {
+        "total": 0.9809297125325582,
+        "policy": 0.8074681364775448,
+        "value": 0.1513738132105768
+      },
+      "selfplay_time_s": 9.206634759902954,
+      "train_time_s": 0.2245497703552246,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen042.npz"
+    },
+    {
+      "generation": 43,
+      "selfplay_outcomes": {
+        "1": 2,
+        "-1": 12,
+        "0": 26
+      },
+      "buffer_size": 30000,
+      "new_examples": 1506,
+      "losses": {
+        "total": 0.9730854309486293,
+        "policy": 0.798903705818325,
+        "value": 0.15206063709275525
+      },
+      "selfplay_time_s": 9.832809448242188,
+      "train_time_s": 0.24001479148864746,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen043.npz"
+    },
+    {
+      "generation": 44,
+      "selfplay_outcomes": {
+        "1": 6,
+        "-1": 11,
+        "0": 23
+      },
+      "buffer_size": 30000,
+      "new_examples": 1460,
+      "losses": {
+        "total": 0.9585421294251399,
+        "policy": 0.78754402686453,
+        "value": 0.14880436553675902
+      },
+      "selfplay_time_s": 9.136476993560791,
+      "train_time_s": 0.21906495094299316,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen044.npz"
+    },
+    {
+      "generation": 45,
+      "selfplay_outcomes": {
+        "1": 2,
+        "-1": 9,
+        "0": 29
+      },
+      "buffer_size": 30000,
+      "new_examples": 1485,
+      "losses": {
+        "total": 0.9533502205582514,
+        "policy": 0.7894463425006586,
+        "value": 0.14162665761467827
+      },
+      "selfplay_time_s": 9.489487409591675,
+      "train_time_s": 0.2309880256652832,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen045.npz"
+    },
+    {
+      "generation": 46,
+      "selfplay_outcomes": {
+        "1": 2,
+        "-1": 10,
+        "0": 28
+      },
+      "buffer_size": 30000,
+      "new_examples": 1473,
+      "losses": {
+        "total": 0.9474706813636266,
+        "policy": 0.7889161469225595,
+        "value": 0.13624289684983307
+      },
+      "selfplay_time_s": 9.335165023803711,
+      "train_time_s": 0.22706151008605957,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen046.npz"
+    },
+    {
+      "generation": 47,
+      "selfplay_outcomes": {
+        "1": 8,
+        "-1": 12,
+        "0": 20
+      },
+      "buffer_size": 30000,
+      "new_examples": 1395,
+      "losses": {
+        "total": 0.9459728067688111,
+        "policy": 0.787900349573914,
+        "value": 0.1356980407341316
+      },
+      "selfplay_time_s": 8.466392517089844,
+      "train_time_s": 0.21699190139770508,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen047.npz"
+    },
+    {
+      "generation": 48,
+      "selfplay_outcomes": {
+        "1": 3,
+        "-1": 14,
+        "0": 23
+      },
+      "buffer_size": 30000,
+      "new_examples": 1497,
+      "losses": {
+        "total": 0.9441551580979796,
+        "policy": 0.7862249284348709,
+        "value": 0.13550790035812668
+      },
+      "selfplay_time_s": 9.247692584991455,
+      "train_time_s": 0.22437071800231934,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen048.npz"
+    },
+    {
+      "generation": 49,
+      "selfplay_outcomes": {
+        "1": 4,
+        "-1": 15,
+        "0": 21
+      },
+      "buffer_size": 30000,
+      "new_examples": 1465,
+      "losses": {
+        "total": 0.9461475744263218,
+        "policy": 0.7886356607939001,
+        "value": 0.1350469524696544
+      },
+      "selfplay_time_s": 8.875784397125244,
+      "train_time_s": 0.23019886016845703,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen049.npz"
+    },
+    {
+      "generation": 50,
+      "selfplay_outcomes": {
+        "1": 2,
+        "-1": 14,
+        "0": 24
+      },
+      "buffer_size": 30000,
+      "new_examples": 1458,
+      "losses": {
+        "total": 0.9531836316875473,
+        "policy": 0.7980267289170362,
+        "value": 0.13265528025975276
+      },
+      "selfplay_time_s": 8.975826025009155,
+      "train_time_s": 0.2292170524597168,
+      "checkpoint": "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen050.npz"
+    }
+  ],
+  "checkpoints": [
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen000.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen001.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen002.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen003.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen004.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen005.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen006.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen007.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen008.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen009.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen010.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen011.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen012.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen013.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen014.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen015.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen016.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen017.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen018.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen019.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen020.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen021.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen022.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen023.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen024.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen025.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen026.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen027.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen028.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen029.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen030.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen031.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen032.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen033.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen034.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen035.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen036.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen037.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen038.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen039.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen040.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen041.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen042.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen043.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen044.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen045.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen046.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen047.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen048.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen049.npz",
+    "/home/user/daily-builds/2026-09-21-sente/scripts/../checkpoints/connect4jr/connect4jr_gen050.npz"
+  ]
+}

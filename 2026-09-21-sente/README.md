@@ -51,8 +51,20 @@ python3 scripts/run_oracle_check.py checkpoints/tictactoe/tictactoe_gen025.npz
 # 4. Cross-generation win-rate / Elo report
 python3 scripts/run_tournament.py
 
+# 5. (stretch) Train Connect Four Jr the same way
+python3 scripts/run_training_c4.py
+python3 scripts/run_tournament_c4.py
+
+# 6. (stretch) Play against a trained agent in the browser, with a live
+#    MCTS visit-count/value visualization
+python3 scripts/run_server.py            # then open http://127.0.0.1:8765/
+node scripts/playwright_smoke.js          # headless-Chromium verification
+
 # unit tests
 python3 -m unittest discover -s tests -v
+
+# everything at once
+./demo.sh
 ```
 
 ## Real, measured results (Phase 2 run, committed to this repo)
@@ -141,6 +153,60 @@ purely from self-generated experience) but is population-based genetic
 search, not gradient RL, and has no tree search or neural policy/value
 function. Full detail and honesty notes in `PLAN.md`.
 
+## Phase 4 — stretch features (both shipped)
+
+**5. Connect Four Jr, same pipeline, trained from scratch.** 50
+generations, 40 self-play games/generation (2,000 games total), 60 MCTS
+simulations/move, ~7.3 minutes on this sandbox's CPU. Loss falls
+1.57 -> 0.95 (`reports/training_connect4jr.json`). No minimax oracle
+exists for this game (even at the reduced size), so optimality is
+**not** claimed -- only a measured margin, from
+`scripts/run_tournament_c4.py`:
+
+```
+Cross-generation ladder (80 sims/move):
+  gen000  Elo 1084.4  (31.8% win rate)
+  gen010  Elo 1214.4  (45.7%)
+  gen020  Elo 1282.3  (60.7%)
+  gen030  Elo 1292.0  (61.1%)
+  gen040  Elo 1283.3  (63.9%)
+  gen050  Elo 1426.4  (78.6%)   <- final generation, clearly on top
+  pure-mcts (baseline)  Elo 1229.3
+  random    (baseline)  Elo  787.9
+
+Dedicated head-to-head, final generation (gen050), 60 games each side:
+  vs random:     97.5% win rate (57W / 0L / 3D)
+  vs pure-mcts:  81.7% win rate (38W / 0L / 22D)
+```
+
+A real, wide margin against both baselines, with a roughly monotonic
+(noisy but clearly upward) Elo trend across generations -- exactly what
+the honesty commitment in PLAN.md asked for: a measured margin, not an
+inflated one, and no claim of provable optimality since none is possible
+here.
+
+**6. Server-backed interactive browser UI with live MCTS visualization.**
+`sente/server.py` is a stdlib-only `http.server` process that holds the
+real trained network + runs real PUCT MCTS server-side; `static/index.html`
+only renders the board and the search's visit-count/Q-value bars and
+sends move choices over HTTP as JSON -- the same zero-client-logic
+pattern as this repo's Gambit/Impulse builds (the browser cannot even
+tell whether a move is legal without asking the server). Supports both
+games, a side selector, a "hint" endpoint that runs a read-only search on
+demand, and per-move visit-share/Q-value bars plus a win/lose value
+gauge. Verified for real in headless Chromium
+(`scripts/playwright_smoke.js`, Playwright pre-installed at
+`/opt/pw-browsers`): loads the page, plays real moves against the real
+server-backed agent in both games, confirms the visualization panel
+populates, and checks phone-width (375px) layout has zero horizontal
+overflow -- **zero console errors** in every run. 13 additional
+server-API unit tests (`tests/test_server.py`) cover the happy path and
+invalid input (unknown game, invalid side, missing/non-integer/out-of-
+range/occupied-cell moves, malformed JSON body, unknown routes) against
+the real running server, not mocks.
+
+Run it: `python3 scripts/run_server.py` then open `http://127.0.0.1:8765/`.
+
 ## Phase 3 — adversarial review
 
 See `REVIEW.md` for the full hostile self-review. Highlights: a real
@@ -163,7 +229,5 @@ with the same seed reproduces byte-identical numbers to the ones above.
 
 ## What's left
 
-Phase 4 (stretch features -- Connect Four Jr training + a server-backed
-browser UI with live MCTS visualization), Phase 5 (full test suite +
-demo.sh), Phase 6 (final ship) are still to come; this README will be
-updated after each.
+Phase 5 (full test suite + demo.sh) and Phase 6 (final ship) are still to
+come; this README will be updated after each.

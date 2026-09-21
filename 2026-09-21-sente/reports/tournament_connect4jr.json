@@ -1,0 +1,84 @@
+{
+  "game": "connect4jr",
+  "games_per_pairing": 20,
+  "n_simulations": 80,
+  "summary": {
+    "random": {
+      "wins": 2,
+      "losses": 131,
+      "draws": 7,
+      "games": 140
+    },
+    "pure-mcts": {
+      "wins": 62,
+      "losses": 50,
+      "draws": 28,
+      "games": 140
+    },
+    "gen000": {
+      "wins": 16,
+      "losses": 67,
+      "draws": 57,
+      "games": 140
+    },
+    "gen010": {
+      "wins": 36,
+      "losses": 48,
+      "draws": 56,
+      "games": 140
+    },
+    "gen020": {
+      "wins": 47,
+      "losses": 17,
+      "draws": 76,
+      "games": 140
+    },
+    "gen030": {
+      "wins": 49,
+      "losses": 18,
+      "draws": 73,
+      "games": 140
+    },
+    "gen040": {
+      "wins": 51,
+      "losses": 12,
+      "draws": 77,
+      "games": 140
+    },
+    "gen050": {
+      "wins": 82,
+      "losses": 2,
+      "draws": 56,
+      "games": 140
+    }
+  },
+  "elo": {
+    "random": 787.9222114300023,
+    "pure-mcts": 1229.2847080367333,
+    "gen000": 1084.3516013229776,
+    "gen010": 1214.438267822742,
+    "gen020": 1282.264539210443,
+    "gen030": 1291.9836090424553,
+    "gen040": 1283.3387412594907,
+    "gen050": 1426.4163218751564
+  },
+  "n_games_total": 560,
+  "time_s": 266.32150888442993,
+  "final_generation": "gen050",
+  "head_to_head": {
+    "vs_random_winrate_pct": 97.5,
+    "vs_pure_mcts_winrate_pct": 81.66666666666667,
+    "vs_random_summary": {
+      "wins": 57,
+      "losses": 0,
+      "draws": 3,
+      "games": 60
+    },
+    "vs_pure_mcts_summary": {
+      "wins": 38,
+      "losses": 0,
+      "draws": 22,
+      "games": 60
+    }
+  }
+}
