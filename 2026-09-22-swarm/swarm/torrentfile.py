@@ -38,6 +38,30 @@ class TorrentInfo:
     pieces: bytes  # concatenated 20-byte SHA-1 digests
     announce: str
 
+    def __post_init__(self) -> None:
+        # Validated once, here, rather than trusting every caller: a
+        # hand-crafted or corrupt .torrent loaded via parse_torrent/
+        # load_torrent must never reach the piece manager with numbers that
+        # don't add up -- e.g. `length` disagreeing with `piece_length` and
+        # the piece count would compute a negative last-piece size and crash
+        # deep inside choose_piece_for_peer() with a confusing traceback
+        # instead of a clear "this torrent is malformed" error up front.
+        if self.piece_length <= 0:
+            raise ValueError(f"piece_length must be positive, got {self.piece_length}")
+        if self.length <= 0:
+            raise ValueError(f"length must be positive, got {self.length}")
+        if len(self.pieces) % SHA1_LEN != 0:
+            raise ValueError(f"pieces field length {len(self.pieces)} is not a multiple of {SHA1_LEN}")
+        num_pieces = len(self.pieces) // SHA1_LEN
+        if num_pieces == 0:
+            raise ValueError("torrent has zero pieces")
+        last_piece_size = self.length - self.piece_length * (num_pieces - 1)
+        if not (1 <= last_piece_size <= self.piece_length):
+            raise ValueError(
+                f"length {self.length} is inconsistent with piece_length {self.piece_length} "
+                f"and {num_pieces} pieces (computed last piece size {last_piece_size})"
+            )
+
     @property
     def num_pieces(self) -> int:
         return len(self.pieces) // SHA1_LEN

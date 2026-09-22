@@ -128,6 +128,16 @@ class _TrackerHandler(BaseHTTPRequestHandler):
         if len(info_hash) != 20 or len(peer_id) != 20:
             self._send_bencoded({b"failure reason": b"info_hash/peer_id must be 20 bytes"}, status=400)
             return
+        if not (0 < port <= 65535):
+            # A bad/hostile port here would otherwise surface much later as
+            # an unhandled struct.error inside _pack_compact_peers when some
+            # *other* peer's announce tries to pack this one into a
+            # response -- reject it at the source instead.
+            self._send_bencoded({b"failure reason": b"port must be in 1..65535"}, status=400)
+            return
+        if left < 0:
+            self._send_bencoded({b"failure reason": b"left must be >= 0"}, status=400)
+            return
 
         client_ip = self.client_address[0]
         peers = self.server.swarm_table.announce(info_hash, peer_id, client_ip, port, left, event)

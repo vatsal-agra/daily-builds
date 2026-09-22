@@ -12,7 +12,7 @@ import threading
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from . import protocol
-from .piecemanager import PieceHashMismatch
+from .piecemanager import BLOCK_SIZE, PieceHashMismatch
 
 if TYPE_CHECKING:  # pragma: no cover
     from .node import Node
@@ -20,6 +20,7 @@ if TYPE_CHECKING:  # pragma: no cover
 log = logging.getLogger("swarm.peer")
 
 PIPELINE_DEPTH = 5
+MAX_HASH_FAILURES = 3
 
 
 class PeerConnection:
@@ -38,6 +39,7 @@ class PeerConnection:
         self.current_piece: Optional[int] = None
         self.in_flight: List[Tuple[int, int, int]] = []  # (index, begin, length)
         self._next_begin = 0
+        self.hash_failures = 0
         self._lock = threading.Lock()
         self._closed = False
 
@@ -56,6 +58,12 @@ class PeerConnection:
                 self._dispatch(msg)
         except (ConnectionError, OSError, protocol.ProtocolError) as exc:
             log.info("connection to %s (%s) ended: %s", self.remote_peer_id.hex(), self.remote_addr, exc)
+        except ValueError as exc:
+            # A peer sent structurally valid BEP-3 framing but semantically
+            # bogus contents (e.g. an out-of-range piece index) -- close the
+            # connection cleanly rather than let this leak as an unhandled
+            # traceback on this thread.
+            log.warning("closing connection to %s after malformed data: %s", self.remote_peer_id.hex(), exc)
         finally:
             self.close()
 
@@ -154,9 +162,14 @@ class PeerConnection:
         elif isinstance(msg, protocol.CancelMsg):
             pass  # uploads here are synchronous (see _handle_request), nothing queued to cancel
 
+    MAX_SERVED_BLOCK = 4 * BLOCK_SIZE  # generous headroom over our own 16 KiB requests, still bounded
+
     def _handle_request(self, msg: protocol.RequestMsg) -> None:
         if self.am_choking:
             return  # peer must respect choke state; silently drop rather than reward violation
+        if msg.length > self.MAX_SERVED_BLOCK:
+            log.warning("refusing oversized request (%d bytes) from %s", msg.length, self.remote_peer_id.hex())
+            return
         try:
             block = self.node.piece_manager.read_block_for_upload(msg.index, msg.begin, msg.length)
         except (ValueError, IndexError, OSError) as exc:
@@ -182,6 +195,20 @@ class PeerConnection:
             self.node.emit({"type": "hash_mismatch", "peer": self.remote_peer_id.hex(), "piece": msg.index})
             self.current_piece = None
             self.in_flight.clear()
+            self.hash_failures += 1
+            if self.hash_failures >= MAX_HASH_FAILURES:
+                # A peer that keeps handing us data that fails its own
+                # advertised hash is either broken or malicious. Without
+                # this, a single bad peer that happens to be the sole
+                # source for a piece would retry that same piece against
+                # that same peer forever, since choose_piece_for_peer has
+                # no other candidate to fall back to -- permanent
+                # thrashing with zero progress instead of a clean failure.
+                log.warning(
+                    "dropping %s after %d hash failures", self.remote_peer_id.hex(), self.hash_failures
+                )
+                self.close()
+                return
             self._fill_pipeline()
             return
         self.node.emit(

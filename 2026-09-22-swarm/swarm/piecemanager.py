@@ -89,6 +89,9 @@ class PieceManager:
         self.bytes_downloaded_from: Dict[bytes, int] = defaultdict(int)
         self.bytes_uploaded_to: Dict[bytes, int] = defaultdict(int)
 
+        if seed and (preseed_source or preseed_pieces):
+            raise ValueError("seed=True already implies every piece; preseed_source/preseed_pieces don't apply")
+
         os.makedirs(os.path.dirname(os.path.abspath(file_path)) or ".", exist_ok=True)
         if seed:
             actual = os.path.getsize(file_path)
@@ -206,7 +209,14 @@ class PieceManager:
     # -- receiving data -----------------------------------------------------
 
     def receive_block(self, piece_index: int, begin: int, data: bytes, peer_id: bytes) -> bool:
-        """Returns True iff this block completed and hash-verified the piece."""
+        """Returns True iff this block completed and hash-verified the piece.
+
+        `piece_index` is bounds-checked explicitly (raising ValueError, not
+        letting Python's `list[-1]`-wraps-around or IndexError-on-overflow
+        behavior decide what happens) because it comes straight off the wire
+        from a peer that has no obligation to send us anything sane."""
+        if not (0 <= piece_index < self.num_pieces):
+            raise ValueError(f"piece index {piece_index} out of range [0, {self.num_pieces})")
         with self.lock:
             if self._state[piece_index] != DOWNLOADING or self._assigned_peer[piece_index] != peer_id:
                 return False  # stale/duplicate/wrong-peer block; ignore silently
@@ -244,6 +254,13 @@ class PieceManager:
             f.write(data)
 
     def read_block_for_upload(self, piece_index: int, begin: int, length: int) -> bytes:
+        if not (0 <= piece_index < self.num_pieces):
+            raise ValueError(f"piece index {piece_index} out of range [0, {self.num_pieces})")
+        if length < 0:
+            # bytes.read(n) treats a negative n as "read to EOF": without this
+            # check a peer could request length=-1 and get sent the rest of
+            # the file, not one block -- an easy amplification/DoS footgun.
+            raise ValueError(f"requested length must be >= 0, got {length}")
         with self.lock:
             if self._state[piece_index] != HAVE:
                 raise ValueError(f"cannot serve piece {piece_index}: not HAVE")
