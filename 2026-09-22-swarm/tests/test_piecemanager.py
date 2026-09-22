@@ -128,6 +128,43 @@ class TestPieceManagerLeech(unittest.TestCase):
             pm.remove_peer(peer)
             self.assertEqual(pm.state_snapshot()[idx], piecemanager.MISSING)
 
+    def test_completed_piece_survives_its_supplying_peer_disconnecting(self):
+        # Regression test: a piece that finished downloading from peer P,
+        # verified and written to disk, must stay HAVE even after P later
+        # disconnects -- P having supplied it in the past is not a reason
+        # to un-count it. Found by watching the peer-to-peer demo scenario
+        # run repeatedly: L1 legitimately finished (is_complete() True,
+        # verify_full_file() True) but then, once its one and only source
+        # peer disconnected during the post-completion grace period,
+        # have_count() silently dropped back down -- the on-disk bytes were
+        # always fine, but remove_peer() was blindly resetting every piece
+        # ever assigned to the departing peer back to MISSING, regardless
+        # of whether it had since completed.
+        with tempfile.TemporaryDirectory() as tmp:
+            src_path, info = _make_torrent(tmp, size=900, piece_length=300, name="src.bin")
+            with open(src_path, "rb") as f:
+                original = f.read()
+            out_path = os.path.join(tmp, "out.bin")
+            pm = PieceManager(info, out_path, seed=False)
+            peer = b"P" * 20
+            for i in range(info.num_pieces):
+                pm.mark_peer_has(peer, i)
+            for i in range(info.num_pieces):
+                idx = pm.choose_piece_for_peer(peer)
+                size = info.piece_size(idx)
+                offset = idx * info.piece_length
+                piece_bytes = original[offset : offset + size]
+                for begin, length in pm.blocks_for_piece(idx):
+                    pm.receive_block(idx, begin, piece_bytes[begin : begin + length], peer)
+            self.assertTrue(pm.is_complete())
+            self.assertEqual(pm.have_count(), info.num_pieces)
+
+            pm.remove_peer(peer)  # the only source for every piece just disconnected
+
+            self.assertTrue(pm.is_complete(), "completing peer's later disconnect must not un-complete us")
+            self.assertEqual(pm.have_count(), info.num_pieces)
+            self.assertTrue(pm.verify_full_file())
+
     def test_block_from_wrong_peer_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             _, info = _make_torrent(tmp, size=900, piece_length=300, name="src.bin")

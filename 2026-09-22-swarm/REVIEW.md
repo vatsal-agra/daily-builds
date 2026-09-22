@@ -123,6 +123,50 @@ and confirmed further by 5 consecutive full `swarm demo` runs.
    quietly ignored with no signal anything was wrong. Fixed by rejecting
    the combination outright.
 
+## Found in Phase 4, wiring in the stretch features
+
+9. **CRITICAL — a completed piece could get silently un-counted when its
+   supplying peer later disconnected.** `receive_block()` set a piece's
+   state to `HAVE` on success but never cleared `_assigned_peer[piece_index]`
+   (whose only real meaning is "who this piece is currently *downloading*
+   from"). `remove_peer()` — called whenever any connection closes —
+   reset *every* piece still pointing at the departing peer_id back to
+   `MISSING`, with no check that the piece hadn't since completed. Caught
+   by re-running the Scenario B peer-to-peer demo (now reporting through
+   the new dashboard) repeatedly: L1 would finish (`is_complete()` true,
+   `verify_full_file()` true, every `piece_source()` correctly populated)
+   but then, during the post-completion grace period, its own
+   `have_count()` would drop from 13 back down to 6 the moment its one and
+   only source peer (L2) disconnected — even though the on-disk bytes were
+   always correct the whole time, since `verify_full_file()` re-reads and
+   re-hashes from disk independently of this in-memory bookkeeping and
+   never flagged a problem. This was purely a bookkeeping bug, not data
+   corruption, but a serious one: a node could end up honestly convinced
+   it was incomplete (and might re-request or misreport status) despite
+   already having everything, and in a case with no other peer left to
+   re-supply from, it would have no way to recover the "truth" it had
+   already earned. Fixed two ways: `receive_block()` now clears
+   `_assigned_peer[piece_index]` the moment a piece leaves `DOWNLOADING`
+   (success or hash-failure alike, matching what the hash-failure path
+   already did), and `remove_peer()` now only resets a piece that's still
+   actually `DOWNLOADING` — the same guard `release_piece()` already had,
+   applied consistently. Verified with a regression test that completes
+   every piece from one peer, disconnects that peer, and asserts
+   `is_complete()`/`have_count()`/`verify_full_file()` all still agree the
+   node is done (confirmed to fail without the fix); the demo now reports
+   `have=13/13` on every one of 6 consecutive runs, not just most of them.
+
+10. **`peer.py` had a `NameError` at import time** after adding
+    `MAX_SERVED_BLOCK = 4 * BLOCK_SIZE` to `PeerConnection` without
+    importing `BLOCK_SIZE` from `piecemanager`. `python3 -m py_compile`
+    passed (compiling to bytecode never executes a class body, so it can't
+    catch a name that's only missing once the class statement actually
+    runs at import time); caught immediately by the very next `swarm demo`
+    run failing to even start. A reminder that "it compiles" was never
+    treated as equivalent to "it runs" anywhere in this build — every fix
+    in this document was confirmed against the real demo and/or a targeted
+    test, not just a syntax check.
+
 ## What held up
 
 - The bencode decoder's strict-sorted-keys rule already rejected duplicate

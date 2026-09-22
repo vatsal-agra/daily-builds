@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Swarm — live dashboard</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #131722;
+    --panel-2: #1a2030;
+    --border: #232a3b;
+    --text: #e6e9f0;
+    --dim: #8891a7;
+    --accent: #4fd1c5;
+    --accent-2: #7c9dff;
+    --good: #33c17a;
+    --warn: #e8b84b;
+    --bad: #ef5a6f;
+    --grid-missing: #232a3b;
+    --grid-have: #2e9e6a;
+    --grid-flash: #74f2b8;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    padding: 18px 20px 10px;
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: 0.2px; }
+  header .sub { color: var(--dim); font-size: 13px; }
+  #status {
+    margin-left: auto; font-size: 12px; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--dim);
+  }
+  #status.live { color: var(--good); border-color: var(--good); }
+  #status.down { color: var(--bad); border-color: var(--bad); }
+  main {
+    padding: 16px 20px 40px;
+    display: grid; grid-template-columns: 1fr; gap: 16px;
+    max-width: 1100px; margin: 0 auto;
+  }
+  .swarm {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .swarm h2 {
+    font-size: 14px; margin: 0 0 10px; color: var(--accent-2);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .swarm h2 .hash { color: var(--dim); font-weight: 400; font-size: 11px; font-family: ui-monospace, monospace; }
+  .peer-row {
+    display: grid; grid-template-columns: 150px 1fr auto; align-items: center;
+    gap: 10px; padding: 8px 0; border-top: 1px solid var(--border);
+  }
+  .peer-row:first-of-type { border-top: none; }
+  .peer-id {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--dim);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .peer-id .role { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
+  .grid {
+    display: flex; flex-wrap: wrap; gap: 2px; align-content: center;
+  }
+  .cell {
+    width: 9px; height: 9px; border-radius: 2px; background: var(--grid-missing);
+    transition: background-color 0.25s ease;
+  }
+  .cell.have { background: var(--grid-have); }
+  .cell.flash { background: var(--grid-flash); }
+  .peer-meta { text-align: right; font-size: 11px; color: var(--dim); white-space: nowrap; }
+  .peer-meta .pct { color: var(--text); font-variant-numeric: tabular-nums; font-size: 13px; margin-right: 6px; }
+  .badge {
+    display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px;
+    border: 1px solid var(--border); margin-left: 4px;
+  }
+  .badge.unchoked { color: var(--good); border-color: var(--good); }
+  .badge.choked { color: var(--dim); }
+  #log {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+    color: var(--dim); max-height: 260px; overflow-y: auto;
+  }
+  #log h2 { font-size: 13px; margin: 0 0 8px; color: var(--text); font-family: inherit; }
+  #log .line { white-space: pre-wrap; word-break: break-all; padding: 1px 0; }
+  #log .line .t { color: var(--accent-2); }
+  #log .line.bad { color: var(--bad); }
+  #log .line.good { color: var(--good); }
+  #empty { color: var(--dim); text-align: center; padding: 40px 0; font-size: 13px; }
+  @media (max-width: 560px) {
+    .peer-row { grid-template-columns: 90px 1fr; }
+    .peer-meta { grid-column: 1 / -1; text-align: left; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Swarm</h1>
+  <div class="sub">live view of a real, decentralized multi-process swarm — this page only renders; it plays no part in the transfer</div>
+  <div id="status">connecting…</div>
+</header>
+<main>
+  <div id="swarms"></div>
+  <div id="empty">Waiting for a Node to report in… run <code>swarm seed</code> / <code>swarm leech</code> with <code>--dashboard</code> pointed at this hub.</div>
+  <div id="log"><h2>Event log</h2><div id="log-lines"></div></div>
+</main>
+<script>
+(function () {
+  "use strict";
+
+  // swarms: info_hash -> { name, numPieces, peers: { nodeId -> { pieces: Uint8Array, port, connections, unchoked: Set } } }
+  var swarms = Object.create(null);
+  var swarmsEl = document.getElementById("swarms");
+  var emptyEl = document.getElementById("empty");
+  var logEl = document.getElementById("log-lines");
+  var statusEl = document.getElementById("status");
+  var MAX_LOG_LINES = 200;
+  var dirty = new Set();
+
+  function shortId(id) { return id ? id.slice(0, 10) : "?"; }
+
+  function hexToBits(hex, numPieces) {
+    var bytes = [];
+    for (var i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.substr(i, 2), 16));
+    var bits = new Uint8Array(numPieces);
+    for (var p = 0; p < numPieces; p++) {
+      var byteIdx = p >> 3, bitIdx = p & 7;
+      bits[p] = byteIdx < bytes.length && (bytes[byteIdx] & (0x80 >> bitIdx)) ? 1 : 0;
+    }
+    return bits;
+  }
+
+  function getSwarm(infoHash, torrentName, numPieces) {
+    var s = swarms[infoHash];
+    if (!s) {
+      s = swarms[infoHash] = { name: torrentName, numPieces: numPieces, peers: Object.create(null), el: null };
+    }
+    return s;
+  }
+
+  function getPeer(swarm, nodeId) {
+    var p = swarm.peers[nodeId];
+    if (!p) {
+      p = swarm.peers[nodeId] = {
+        pieces: new Uint8Array(swarm.numPieces), port: null, connections: 0,
+        unchoked: new Set(), flashUntil: Object.create(null), role: "peer",
+      };
+    }
+    return p;
+  }
+
+  function log(evt, cls) {
+    var div = document.createElement("div");
+    div.className = "line" + (cls ? " " + cls : "");
+    var t = new Date((evt.ts || Date.now() / 1000) * 1000).toLocaleTimeString();
+    div.innerHTML = '<span class="t">' + t + "</span> " + describeEvent(evt);
+    logEl.insertBefore(div, logEl.firstChild);
+    while (logEl.childNodes.length > MAX_LOG_LINES) logEl.removeChild(logEl.lastChild);
+  }
+
+  function describeEvent(evt) {
+    var n = shortId(evt.node);
+    switch (evt.type) {
+      case "hello": return n + " joined (" + evt.num_pieces + " pieces, " + (evt.torrent_name || "") + ")";
+      case "peer_connected": return n + " connected to " + shortId(evt.peer) + (evt.outbound ? " (outbound)" : " (inbound)");
+      case "peer_disconnected": return n + " disconnected from " + shortId(evt.peer);
+      case "piece_complete": return n + " completed piece " + evt.piece + " (from " + shortId(evt.peer) + ")";
+      case "hash_mismatch": return n + " got a BAD piece " + evt.piece + " from " + shortId(evt.peer);
+      case "choke_update": return n + " unchoked [" + (evt.unchoked || []).map(shortId).join(", ") + "]";
+      case "tracker_announce": return n + " announced to tracker, " + evt.peers + " peer(s) known";
+      default: return n + " " + evt.type;
+    }
+  }
+
+  function render() {
+    if (dirty.size === 0) return;
+    dirty.forEach(function (infoHash) {
+      var swarm = swarms[infoHash];
+      if (!swarm) return;
+      if (!swarm.el) {
+        swarm.el = document.createElement("div");
+        swarm.el.className = "swarm";
+        swarmsEl.appendChild(swarm.el);
+        emptyEl.style.display = "none";
+      }
+      var html = "<h2>" + escapeHtml(swarm.name || "torrent") + ' <span class="hash">' + infoHash.slice(0, 16) + "…</span></h2>";
+      Object.keys(swarm.peers).forEach(function (nodeId) {
+        var peer = swarm.peers[nodeId];
+        var have = 0;
+        var cells = "";
+        var now = Date.now();
+        for (var i = 0; i < peer.pieces.length; i++) {
+          if (peer.pieces[i]) have++;
+          var flashing = peer.flashUntil[i] && peer.flashUntil[i] > now;
+          cells += '<div class="cell ' + (flashing ? "flash" : peer.pieces[i] ? "have" : "") + '"></div>';
+        }
+        var pct = peer.pieces.length ? Math.round((100 * have) / peer.pieces.length) : 0;
+        html +=
+          '<div class="peer-row"><div class="peer-id"><span class="role">' +
+          (pct === 100 ? "seed" : "peer") +
+          "</span>" +
+          nodeId +
+          '</div><div class="grid">' +
+          cells +
+          '</div><div class="peer-meta"><span class="pct">' +
+          pct +
+          "%</span>" +
+          have +
+          "/" +
+          peer.pieces.length +
+          " · " +
+          peer.connections +
+          " conn" +
+          "</div></div>";
+      });
+      swarm.el.innerHTML = html;
+    });
+    dirty.clear();
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function handle(evt) {
+    if (evt.type === "hello") {
+      var swarm = getSwarm(evt.info_hash, evt.torrent_name, evt.num_pieces);
+      var peer = getPeer(swarm, evt.node);
+      peer.pieces = hexToBits(evt.have_bitfield || "", evt.num_pieces);
+      peer.port = evt.port;
+      dirty.add(evt.info_hash);
+      log(evt);
+      return;
+    }
+    // every other event type carries "node" but not info_hash -- find which
+    // swarm(s) this node belongs to (a node speaks exactly one torrent in
+    // this build, so at most one match).
+    var infoHash = null;
+    for (var h in swarms) {
+      if (swarms[h].peers[evt.node]) { infoHash = h; break; }
+    }
+    if (!infoHash) return; // event arrived before this node's "hello" -- ignore, hello will backfill state
+    var swarm = swarms[infoHash];
+    var peer = getPeer(swarm, evt.node);
+    switch (evt.type) {
+      case "peer_connected":
+        peer.connections++;
+        break;
+      case "peer_disconnected":
+        peer.connections = Math.max(0, peer.connections - 1);
+        break;
+      case "piece_complete":
+        peer.pieces[evt.piece] = 1;
+        peer.flashUntil[evt.piece] = Date.now() + 900;
+        setTimeout(function () { dirty.add(infoHash); render(); }, 950);
+        log(evt, "good");
+        break;
+      case "hash_mismatch":
+        log(evt, "bad");
+        break;
+      case "choke_update":
+        log(evt);
+        break;
+      default:
+        log(evt);
+    }
+    dirty.add(infoHash);
+  }
+
+  function connect() {
+    var es = new EventSource("/stream");
+    es.onopen = function () {
+      statusEl.textContent = "live";
+      statusEl.className = "live";
+    };
+    es.onerror = function () {
+      statusEl.textContent = "reconnecting…";
+      statusEl.className = "down";
+    };
+    es.onmessage = function (e) {
+      try {
+        handle(JSON.parse(e.data));
+      } catch (err) {
+        /* ignore a single malformed event */
+      }
+    };
+  }
+
+  setInterval(render, 200);
+  connect();
+})();
+</script>
+</body>
+</html>

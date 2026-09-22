@@ -73,6 +73,7 @@ def _make_node(args: argparse.Namespace, seed: bool) -> Node:
         seed=seed,
         preseed_source=getattr(args, "preseed_source", None),
         preseed_pieces=preseed_pieces,
+        dashboard_url=getattr(args, "dashboard", None),
     )
 
 
@@ -122,6 +123,22 @@ def cmd_leech(args: argparse.Namespace) -> int:
     return 0 if (ok and result["verified"]) else 1
 
 
+def cmd_dashboard(args: argparse.Namespace) -> int:
+    from . import dashboard as dashboard_mod
+
+    server = dashboard_mod.run_dashboard(args.host, args.port)
+    print(f"dashboard listening on http://{args.host}:{server.server_port}/")
+    try:
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.shutdown()
+        server.server_close()
+    return 0
+
+
 def cmd_demo(args: argparse.Namespace) -> int:
     from . import demo as demo_mod
 
@@ -145,6 +162,11 @@ def build_parser() -> argparse.ArgumentParser:
     tr.add_argument("--interval", type=int, default=tracker_mod.DEFAULT_INTERVAL)
     tr.set_defaults(func=cmd_tracker)
 
+    db = sub.add_parser("dashboard", help="run a live SSE dashboard hub that Nodes can report events to")
+    db.add_argument("--host", default="127.0.0.1")
+    db.add_argument("--port", type=int, default=8642)
+    db.set_defaults(func=cmd_dashboard)
+
     sd = sub.add_parser("seed", help="seed a complete file for a torrent")
     sd.add_argument("torrent")
     sd.add_argument("file", help="path to the already-complete file to seed")
@@ -153,6 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
     sd.add_argument("--tracker", default=None, help="override the tracker URL in the .torrent")
     sd.add_argument("--preseed", default=None)
     sd.add_argument("--preseed-source", default=None)
+    sd.add_argument("--dashboard", default=None, help="dashboard hub URL, e.g. http://127.0.0.1:8642")
     sd.set_defaults(func=cmd_seed)
 
     lc = sub.add_parser("leech", help="download a torrent, optionally starting with some pieces already")
@@ -166,6 +189,7 @@ def build_parser() -> argparse.ArgumentParser:
     lc.add_argument("--status-file", default=None)
     lc.add_argument("--preseed", default=None, help='e.g. "0-4,7,9-10"')
     lc.add_argument("--preseed-source", default=None, help="file to copy preseeded pieces' real bytes from")
+    lc.add_argument("--dashboard", default=None, help="dashboard hub URL, e.g. http://127.0.0.1:8642")
     lc.set_defaults(func=cmd_leech)
 
     dm = sub.add_parser("demo", help="run the full end-to-end swarm demo")

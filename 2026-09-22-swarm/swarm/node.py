@@ -14,6 +14,7 @@ import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from . import protocol, tracker
+from .choking import TitForTatChokePolicy
 from .peer import PeerConnection
 from .piecemanager import PieceManager
 from .torrentfile import TorrentInfo
@@ -24,10 +25,10 @@ ChokePolicy = Callable[[Dict[bytes, PeerConnection], PieceManager], Set[bytes]]
 
 
 def default_choke_policy(connections: Dict[bytes, PeerConnection], piece_manager: PieceManager) -> Set[bytes]:
-    """Unchoke every peer that wants something from us. No reciprocity, no
-    scarcity handling -- fine when there's no contention, which is what
-    Phase 2's core demo exercises. Phase 4 replaces this with real
-    tit-for-tat (see choking.py)."""
+    """Unchoke every peer that wants something from us: no reciprocity, no
+    scarcity handling. This was Phase 2's core-build policy, kept around as
+    a simple baseline (and for choking.py's own tests to compare tit-for-tat
+    against) -- Node's real default is now TitForTatChokePolicy, below."""
     return {pid for pid, conn in connections.items() if conn.peer_interested}
 
 
@@ -45,12 +46,13 @@ class Node:
         port: int = 0,
         seed: bool = False,
         peer_id: Optional[bytes] = None,
-        choke_policy: ChokePolicy = default_choke_policy,
+        choke_policy: Optional[ChokePolicy] = None,
         choke_interval: float = 1.0,
         announce_interval: Optional[float] = None,
         on_event: Optional[Callable[[dict], None]] = None,
         preseed_source: Optional[str] = None,
         preseed_pieces: Optional[Set[int]] = None,
+        dashboard_url: Optional[str] = None,
     ):
         self.torrent = torrent
         self.info_hash = torrent.info_hash()
@@ -59,10 +61,15 @@ class Node:
         self.piece_manager = PieceManager(
             torrent, file_path, seed=seed, preseed_source=preseed_source, preseed_pieces=preseed_pieces
         )
-        self.choke_policy = choke_policy
+        self.choke_policy = choke_policy if choke_policy is not None else TitForTatChokePolicy()
         self.choke_interval = choke_interval
         self.announce_interval = announce_interval
         self._on_event = on_event or (lambda evt: None)
+        self._reporter = None
+        if dashboard_url:
+            from .dashboard import EventReporter
+
+            self._reporter = EventReporter(dashboard_url)
 
         self.connections: Dict[bytes, PeerConnection] = {}
         self._conn_lock = threading.RLock()
@@ -80,6 +87,16 @@ class Node:
     # -- lifecycle -------------------------------------------------------------
 
     def start(self) -> None:
+        self.emit(
+            {
+                "type": "hello",
+                "port": self.port,
+                "info_hash": self.info_hash.hex(),
+                "torrent_name": self.torrent.name,
+                "num_pieces": self.piece_manager.num_pieces,
+                "have_bitfield": self.piece_manager.have_bitfield_bytes().hex(),
+            }
+        )
         self._spawn(self._accept_loop, "accept")
         self._spawn(self._choke_loop, "choke")
         self._spawn(self._tracker_loop, "tracker")
@@ -105,6 +122,8 @@ class Node:
             conn.close()
         for t in self._threads:
             t.join(timeout=2)
+        if self._reporter is not None:
+            self._reporter.stop()
 
     def wait_until_complete(self, timeout: Optional[float] = None) -> bool:
         deadline = None if timeout is None else time.monotonic() + timeout
@@ -254,6 +273,8 @@ class Node:
             self._on_event(evt)
         except Exception:  # pragma: no cover - a dashboard bug must never break transfers
             log.exception("on_event callback raised")
+        if self._reporter is not None:
+            self._reporter.report(evt)
 
     def status(self) -> dict:
         with self._conn_lock:

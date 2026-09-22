@@ -153,7 +153,16 @@ class PieceManager:
         with self.lock:
             self.peer_bitfields.pop(peer_id, None)
             for i in range(self.num_pieces):
-                if self._assigned_peer[i] == peer_id:
+                # Only a piece still actively DOWNLOADING from this peer
+                # needs to be released back to MISSING. Without the state
+                # check, a piece this peer *finished* supplying a while ago
+                # would also get wiped back to MISSING here, because
+                # _assigned_peer isn't otherwise cleared once a piece
+                # completes -- silently uncounting a piece this node
+                # genuinely, verifiably already has correct bytes for on
+                # disk, purely because its original source later
+                # disconnected.
+                if self._assigned_peer[i] == peer_id and self._state[i] == DOWNLOADING:
                     self._assigned_peer[i] = None
                     self._state[i] = MISSING
                     self._in_progress.pop(i, None)
@@ -244,6 +253,13 @@ class PieceManager:
             self._write_piece_to_disk(piece_index, bytes(prog.buffer))
             self._state[piece_index] = HAVE
             self._piece_source[piece_index] = peer_id
+            # _assigned_peer's only meaning is "who this piece is currently
+            # DOWNLOADING from"; once HAVE, that's no longer true, and
+            # leaving the stale reference behind is exactly what let
+            # remove_peer() wipe a completed piece back to MISSING when its
+            # supplying peer later disconnected (see remove_peer's own
+            # comment) -- clear it the moment the piece leaves DOWNLOADING.
+            self._assigned_peer[piece_index] = None
             self._in_progress.pop(piece_index, None)
             return True
 

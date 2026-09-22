@@ -52,14 +52,16 @@ def sha256_of(path: str) -> str:
     return h.hexdigest()
 
 
-def _run_leech(python: str, torrent_path: str, out_path: str, status_path: str, timeout: float, preseed: str = None, preseed_source: str = None) -> subprocess.Popen:
+def _run_leech(python: str, torrent_path: str, out_path: str, status_path: str, timeout: float, preseed: str = None, preseed_source: str = None, dashboard_url: str = None) -> subprocess.Popen:
     cmd = [python, "-m", "swarm.cli", "leech", torrent_path, "--out", out_path, "--timeout", str(timeout), "--status-file", status_path]
     if preseed:
         cmd += ["--preseed", preseed, "--preseed-source", preseed_source]
+    if dashboard_url:
+        cmd += ["--dashboard", dashboard_url]
     return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
 
-def scenario_convergence(workdir: str, tracker_url: str, verbose: bool) -> bool:
+def scenario_convergence(workdir: str, tracker_url: str, verbose: bool, dashboard_url: str = None) -> bool:
     _log(verbose, "\n=== Scenario A: multi-peer convergence (1 seed + 3 leechers via tracker) ===")
     src = os.path.join(workdir, "sceneA_source.bin")
     make_synthetic_file(src, 300 * 1024, seed=42)
@@ -69,12 +71,10 @@ def scenario_convergence(workdir: str, tracker_url: str, verbose: bool) -> bool:
     _log(verbose, f"source: {info.length} bytes, {info.num_pieces} pieces, info_hash={info.info_hash().hex()}")
 
     python = sys.executable
-    seed_proc = subprocess.Popen(
-        [python, "-m", "swarm.cli", "seed", torrent_path, src, "--port", "0"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
+    seed_cmd = [python, "-m", "swarm.cli", "seed", torrent_path, src, "--port", "0"]
+    if dashboard_url:
+        seed_cmd += ["--dashboard", dashboard_url]
+    seed_proc = subprocess.Popen(seed_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     time.sleep(0.5)  # give the seeder a moment to bind + announce before leechers start hunting for peers
 
     leech_procs = []
@@ -83,7 +83,7 @@ def scenario_convergence(workdir: str, tracker_url: str, verbose: bool) -> bool:
         out_path = os.path.join(workdir, f"sceneA_leech{i}.bin")
         status_path = os.path.join(workdir, f"sceneA_leech{i}.json")
         status_paths.append(status_path)
-        leech_procs.append(_run_leech(python, torrent_path, out_path, status_path, timeout=45))
+        leech_procs.append(_run_leech(python, torrent_path, out_path, status_path, timeout=45, dashboard_url=dashboard_url))
 
     ok = True
     source_hash = sha256_of(src)
@@ -118,7 +118,7 @@ def scenario_convergence(workdir: str, tracker_url: str, verbose: bool) -> bool:
     return ok
 
 
-def scenario_peer_to_peer(workdir: str, tracker_url: str, verbose: bool) -> bool:
+def scenario_peer_to_peer(workdir: str, tracker_url: str, verbose: bool, dashboard_url: str = None) -> bool:
     _log(verbose, "\n=== Scenario B: peer-to-peer proof (2 disjoint half-holders, NO seed present) ===")
     src = os.path.join(workdir, "sceneB_source.bin")
     make_synthetic_file(src, 208 * 1024, seed=1337)
@@ -136,8 +136,8 @@ def scenario_peer_to_peer(workdir: str, tracker_url: str, verbose: bool) -> bool
     out2 = os.path.join(workdir, "sceneB_l2.bin")
     status1 = os.path.join(workdir, "sceneB_l1.json")
     status2 = os.path.join(workdir, "sceneB_l2.json")
-    p1 = _run_leech(python, torrent_path, out1, status1, timeout=45, preseed=first_half, preseed_source=src)
-    p2 = _run_leech(python, torrent_path, out2, status2, timeout=45, preseed=second_half, preseed_source=src)
+    p1 = _run_leech(python, torrent_path, out1, status1, timeout=45, preseed=first_half, preseed_source=src, dashboard_url=dashboard_url)
+    p2 = _run_leech(python, torrent_path, out2, status2, timeout=45, preseed=second_half, preseed_source=src, dashboard_url=dashboard_url)
 
     ok = True
     source_hash = sha256_of(src)
@@ -187,21 +187,34 @@ def scenario_peer_to_peer(workdir: str, tracker_url: str, verbose: bool) -> bool
     return ok
 
 
-def run_demo(verbose: bool = True) -> int:
+def run_demo(verbose: bool = True, with_dashboard: bool = True) -> int:
+    from . import dashboard as dashboard_mod
+
     workdir = tempfile.mkdtemp(prefix="swarm-demo-")
     keep = os.environ.get("SWARM_DEMO_KEEP") == "1"
     server = tracker_mod.run_tracker("127.0.0.1", 0)
     tracker_url = f"http://127.0.0.1:{server.server_port}/announce"
     _log(verbose, f"tracker: {tracker_url}")
+
+    dash_server = None
+    dashboard_url = None
+    if with_dashboard:
+        dash_server = dashboard_mod.run_dashboard("127.0.0.1", 0)
+        dashboard_url = f"http://127.0.0.1:{dash_server.server_port}"
+        _log(verbose, f"dashboard: {dashboard_url}/  (every seed/leech subprocess below reports its real events here live)")
+
     try:
-        a_ok = scenario_convergence(workdir, tracker_url, verbose)
-        b_ok = scenario_peer_to_peer(workdir, tracker_url, verbose)
+        a_ok = scenario_convergence(workdir, tracker_url, verbose, dashboard_url=dashboard_url)
+        b_ok = scenario_peer_to_peer(workdir, tracker_url, verbose, dashboard_url=dashboard_url)
         overall = a_ok and b_ok
         _log(verbose, f"\n=== demo {'PASSED' if overall else 'FAILED'} ===")
         return 0 if overall else 1
     finally:
         server.shutdown()
         server.server_close()
+        if dash_server is not None:
+            dash_server.shutdown()
+            dash_server.server_close()
         if keep:
             _log(verbose, f"workdir kept at {workdir}")
         else:
