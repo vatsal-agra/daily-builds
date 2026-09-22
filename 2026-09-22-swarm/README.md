@@ -1,6 +1,6 @@
 # Swarm
 
-**Status: Phase 4 — stretch features + polish complete.**
+**Status: Phase 5 — verification complete, `demo.sh` green.**
 
 A from-scratch BitTorrent-style peer-to-peer file-sharing system: bencode
 codec, `.torrent` metainfo files, a real HTTP tracker, the actual BEP-3 peer
@@ -55,6 +55,11 @@ Run the unit tests: `python3 -m unittest discover -s tests`
 Run the dashboard's headless-browser smoke test:
 `NODE_PATH=/opt/node22/lib/node_modules PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node tests/dashboard_browser_test.cjs`
 
+Run everything at once (unit suite, the flagship demo, a manual
+`make-torrent`/`tracker`/`seed`/`leech` CLI walkthrough as independent
+processes, CLI error-handling checks, and the headless-browser dashboard
+check): `bash demo.sh`
+
 ## Adversarial review
 
 Phase 3 attacked Swarm's own work as a hostile reviewer -- a malicious
@@ -70,5 +75,16 @@ have caught. Full writeup: [REVIEW.md](./REVIEW.md).
 scenarios consistently across repeated runs, now reliably reporting
 `13/13` pieces on both sides of Scenario B every time.
 
-Remaining work: a full verification pass (Phase 5) and final ship-ready
-polish (Phase 6).
+## Verification
+
+`demo.sh` runs the whole thing end to end in one shot and exits non-zero on
+the first failure: the 111-test unit suite, the flagship multi-process
+demo (both scenarios), a from-scratch manual walkthrough
+(`make-torrent` -> `tracker` -> `seed` -> `leech`, each a genuinely
+separate OS process, verified byte-for-byte against the original file),
+a CLI error-handling check (bad input produces `error: ...`, never a raw
+traceback), and a headless-Chromium pass over the live dashboard. Green on
+3 consecutive runs.
+
+Remaining work: final ship-ready polish and this README's last pass
+(Phase 6).
