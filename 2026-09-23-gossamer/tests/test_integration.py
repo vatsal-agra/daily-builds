@@ -101,31 +101,37 @@ class TestQuorumFaultTolerance(unittest.TestCase):
 class TestGossipFailureDetection(unittest.TestCase):
     def test_dead_node_is_eventually_marked_dead_by_peers(self):
         with Cluster(NODE_IDS, base_port=9650, n=3, r=2, w=2, vnodes=VNODES,
-                     gossip_interval=0.2, suspect_timeout=0.6, dead_timeout=1.5) as c:
+                     gossip_interval=0.2, suspect_timeout=1.0, dead_timeout=2.5) as c:
             c.kill_node("D")
 
             def check():
                 st = c.status("A")
                 return st["statuses"].get("D") == "dead"
 
-            self.assertTrue(wait_until(check, timeout=6.0))
+            self.assertTrue(wait_until(check, timeout=8.0))
 
     def test_gossip_marks_suspected_before_dead(self):
         with Cluster(NODE_IDS, base_port=9660, n=3, r=2, w=2, vnodes=VNODES,
-                     gossip_interval=0.2, suspect_timeout=0.6, dead_timeout=3.0) as c:
+                     gossip_interval=0.2, suspect_timeout=1.0, dead_timeout=4.0) as c:
             c.kill_node("D")
 
             def check_suspected():
                 st = c.status("A")
                 return st["statuses"].get("D") == "suspected"
 
-            self.assertTrue(wait_until(check_suspected, timeout=4.0))
+            self.assertTrue(wait_until(check_suspected, timeout=6.0))
 
 
 class TestHintedHandoffAndRecovery(unittest.TestCase):
     def test_hint_is_stored_while_owner_down_and_flushed_on_revival(self):
+        # suspect_timeout is kept well above a handful of gossip_interval
+        # rounds (not just 2-3x it) so a healthy peer's heartbeat merely
+        # arriving a little late under real system load -- the whole
+        # suite runs several concurrent real clusters -- never gets
+        # mistaken for that peer actually being down, which would make
+        # pick_substitute wrongly find no candidate at all.
         with Cluster(NODE_IDS, base_port=9670, n=3, r=2, w=2, vnodes=VNODES,
-                     gossip_interval=0.15, suspect_timeout=0.4, dead_timeout=1.0,
+                     gossip_interval=0.2, suspect_timeout=1.2, dead_timeout=3.0,
                      anti_entropy_interval=0.5) as c:
             key = find_key_with_owner("D", 3)
             c.kill_node("D")
@@ -133,7 +139,7 @@ class TestHintedHandoffAndRecovery(unittest.TestCase):
             def is_suspected_everywhere():
                 return all(c.status(n)["statuses"].get("D") in ("suspected", "dead")
                            for n in ["A", "B", "C", "E"])
-            self.assertTrue(wait_until(is_suspected_everywhere, timeout=4.0))
+            self.assertTrue(wait_until(is_suspected_everywhere, timeout=8.0))
 
             status, body = client.put(c, "A", key, "handoff-value", context=None)
             self.assertEqual(status, 200, body)
@@ -145,7 +151,7 @@ class TestHintedHandoffAndRecovery(unittest.TestCase):
                     if st["hints"].get("D", 0) > 0:
                         return True
                 return False
-            self.assertTrue(wait_until(any_hint_stored, timeout=3.0))
+            self.assertTrue(wait_until(any_hint_stored, timeout=5.0))
 
             # Reads must still work correctly while D is down, served via
             # the hint holder instead of D directly.
@@ -197,7 +203,7 @@ class TestConcurrentWritesAndVectorClocks(unittest.TestCase):
 class TestReadRepair(unittest.TestCase):
     def test_stale_replica_gets_repaired_by_a_read(self):
         with Cluster(NODE_IDS, base_port=9690, n=3, r=2, w=2, vnodes=VNODES,
-                     gossip_interval=0.2, suspect_timeout=0.6, dead_timeout=3.0,
+                     gossip_interval=0.2, suspect_timeout=1.5, dead_timeout=4.0,
                      anti_entropy_interval=100.0) as c:
             key = find_key_with_owner("D", 3)
             # D goes down, a write happens (D misses it), D comes back
@@ -217,7 +223,7 @@ class TestReadRepair(unittest.TestCase):
 
             def d_is_alive_everywhere():
                 return c.status("A")["statuses"].get("D") == "alive"
-            wait_until(d_is_alive_everywhere, timeout=5.0)
+            wait_until(d_is_alive_everywhere, timeout=8.0)
 
             # D is alive again but was never sent the write and holds no
             # hint for itself -- its own local store is empty for this key.
@@ -233,13 +239,13 @@ class TestReadRepair(unittest.TestCase):
             def d_store_has_key():
                 st = c.status("D")
                 return st["store_keys"] >= 1
-            self.assertTrue(wait_until(d_store_has_key, timeout=3.0))
+            self.assertTrue(wait_until(d_store_has_key, timeout=5.0))
 
 
 class TestAntiEntropy(unittest.TestCase):
     def test_stale_replica_heals_via_merkle_anti_entropy_without_any_read(self):
         with Cluster(NODE_IDS, base_port=9700, n=3, r=2, w=2, vnodes=VNODES,
-                     gossip_interval=0.2, suspect_timeout=0.6, dead_timeout=3.0,
+                     gossip_interval=0.2, suspect_timeout=1.5, dead_timeout=4.0,
                      anti_entropy_interval=0.3) as c:
             key = find_key_with_owner("D", 3)
             time.sleep(0.2)  # D still "alive" per membership -> no hint path

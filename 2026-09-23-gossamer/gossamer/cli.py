@@ -78,16 +78,39 @@ def cmd_cluster_kill(args):
     print(f"killed {args.node} (pid {pid})")
 
 
+def _resolve_coordinator(state, via):
+    if via is None:
+        return next(iter(state["peers"]))
+    if via not in state["peers"]:
+        known = ", ".join(sorted(state["peers"]))
+        print(f"unknown node {via!r} -- known nodes: {known}", file=sys.stderr)
+        sys.exit(1)
+    return via
+
+
+def _run_client_call(fn, *args):
+    from . import httpjson
+    try:
+        return fn(*args)
+    except httpjson.NodeUnreachable as e:
+        print(f"coordinator unreachable: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_put(args):
     state = _load_state()
     cluster = _StubCluster(state["peers"])
-    coordinator = args.via or next(iter(state["peers"]))
-    context = json.loads(args.context) if args.context else None
+    coordinator = _resolve_coordinator(state, args.via)
+    try:
+        context = json.loads(args.context) if args.context else None
+    except json.JSONDecodeError:
+        print(f"--context is not valid JSON: {args.context!r}", file=sys.stderr)
+        sys.exit(1)
     try:
         value = json.loads(args.value)
     except json.JSONDecodeError:
         value = args.value
-    status, body = client.put(cluster, coordinator, args.key, value, context=context)
+    status, body = _run_client_call(client.put, cluster, coordinator, args.key, value, context)
     print(json.dumps(body, indent=2))
     sys.exit(0 if status == 200 else 1)
 
@@ -95,8 +118,8 @@ def cmd_put(args):
 def cmd_get(args):
     state = _load_state()
     cluster = _StubCluster(state["peers"])
-    coordinator = args.via or next(iter(state["peers"]))
-    status, body = client.get(cluster, coordinator, args.key)
+    coordinator = _resolve_coordinator(state, args.via)
+    status, body = _run_client_call(client.get, cluster, coordinator, args.key)
     print(json.dumps(body, indent=2))
     sys.exit(0 if status == 200 else 1)
 

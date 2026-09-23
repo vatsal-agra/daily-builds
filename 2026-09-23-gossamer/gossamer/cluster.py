@@ -16,7 +16,7 @@ from . import httpjson
 DEFAULT_KWARGS = dict(
     n=3, r=2, w=2, vnodes=32,
     gossip_interval=0.3, suspect_timeout=1.2, dead_timeout=3.0,
-    anti_entropy_interval=1.0, request_timeout=1.5,
+    anti_entropy_interval=1.0, request_timeout=3.0,
 )
 
 

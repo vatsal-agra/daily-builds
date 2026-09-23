@@ -147,6 +147,33 @@ revived nodes fully recover their data. Documented here rather than
 "fixed" because there was nothing actually broken to fix — only a resilience
 trade-off worth being explicit about.
 
+## Addendum: test-suite flakiness found while polishing (Phase 4)
+
+Running the full suite repeatedly (not just once) surfaced a real, if
+narrow, flake: `test_hint_is_stored_while_owner_down_and_flushed_on_revival`
+failed roughly 1 run in 6-8 under the CPU load of running the whole suite
+back to back. Root cause: several integration tests configured
+`suspect_timeout` at only ~2-3x `gossip_interval` (e.g. `gossip_interval=
+0.15, suspect_timeout=0.4`) to keep the suite fast. Under real system load
+(many concurrent real clusters), a perfectly healthy node's heartbeat can
+legitimately arrive a little late without the node being down at all — and
+with that little slack, the coordinator's local failure detector would
+occasionally mark a healthy peer "suspected" by mistake, so `pick_substitute`
+found no candidate at all and no hint got stored, even though the write
+itself still succeeded via the two genuinely-alive primaries. This is a
+test-tuning bug, not a system bug — the underlying mechanism behaved
+correctly given what it was (falsely) told about liveness — but it made the
+suite unreliable, which is its own kind of defect. Fixed by widening
+`suspect_timeout` to a safer multiple of `gossip_interval` (roughly 6-7x
+instead of 2-3x) across the affected tests, bumping `request_timeout`'s
+cluster-wide default from 1.5s to 3.0s so a transient slow RPC under load
+isn't misread as an unreachable node, and rewriting
+`test_multi_failure.py`'s write/read assertions to retry over a short
+window — which is what a real client of a leaderless quorum store should do
+on a transient quorum shortfall anyway, not a test-only concession. Verified
+with 12 consecutive full-suite runs, all green (previously failing at
+roughly the 5th-8th run).
+
 ## Gate
 
 After all seven fixes: the suite grew from 49 to 64 tests (the new

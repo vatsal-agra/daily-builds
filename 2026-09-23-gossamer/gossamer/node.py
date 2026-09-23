@@ -7,6 +7,7 @@ runs its own local failure detector, and holds hinted-handoff data on
 behalf of a currently-unreachable peer.
 """
 import json
+import os
 import random
 import threading
 import time
@@ -264,15 +265,18 @@ class NodeServer:
             if sibs is not None:
                 responses[owner] = sibs
 
-        self.log_event("get", key=key, responded=list(responses.keys()), r=self.r)
-
         if len(responses) < self.r:
+            self.log_event("get", key=key, responded=list(responses.keys()), r=self.r,
+                            acks=len(responses))
             return {"error": "read did not reach R acks", "acks": len(responses),
                     "r": self.r}, 503
 
         flat = [item for sibs in responses.values() for item in sibs]
         merged = reduce_siblings(flat)
         merged_set = {_sibling_identity(v, vc) for v, vc, _ in merged}
+
+        self.log_event("get", key=key, responded=list(responses.keys()), r=self.r,
+                        siblings=len(merged), conflict=len(merged) > 1)
 
         # Read-repair: any replica whose view doesn't already equal the
         # merged frontier gets the winning value(s) pushed to it now, over
@@ -374,8 +378,10 @@ class NodeServer:
     def _monitor_loop(self):
         # Failure status is derived lazily (status_of() computes it from
         # elapsed time), but we still poll here so a stall-without-gossip
-        # eventually gets logged for the dashboard.
-        last_statuses = {}
+        # eventually gets logged for the dashboard. Seed the baseline from
+        # the current view rather than {} so startup doesn't log a burst of
+        # spurious "-> alive" events for every peer that was alive all along.
+        last_statuses = dict(self.membership.all_statuses())
         while not self._stop.is_set():
             time.sleep(0.25)
             statuses = self.membership.all_statuses()
@@ -524,6 +530,16 @@ def _make_handler(node: NodeServer):
                     with node._event_lock:
                         events = [e for e in node.event_log if e["ts"] > since]
                     self._send(200, {"events": events, "now": time.time()})
+                elif path == "/dashboard":
+                    body = _dashboard_html()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                elif path == "/favicon.ico":
+                    self.send_response(204)
+                    self.end_headers()
                 else:
                     self._send(404, {"error": "not found"})
             except Exception as e:  # noqa: BLE001 - surface as a clean 500
@@ -569,6 +585,18 @@ def _make_handler(node: NodeServer):
     return Handler
 
 
+_DASHBOARD_CACHE = None
+
+
+def _dashboard_html():
+    global _DASHBOARD_CACHE
+    if _DASHBOARD_CACHE is None:
+        path = os.path.join(os.path.dirname(__file__), "dashboard.html")
+        with open(path, "rb") as f:
+            _DASHBOARD_CACHE = f.read()
+    return _DASHBOARD_CACHE
+
+
 def node_status(node: NodeServer):
     with node._hints_lock:
         hint_counts = {owner: len(keys) for owner, keys in node.hints.items()}
@@ -580,4 +608,6 @@ def node_status(node: NodeServer):
         "hints": hint_counts,
         "read_repair_ops": node._read_repair_ops,
         "anti_entropy_ops": node._anti_entropy_ops,
+        "peers": {nid: list(addr) for nid, addr in node.peers.items()},
+        "ring_vnodes": node.ring.vnodes,
     }
