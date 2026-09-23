@@ -5,9 +5,9 @@ hashing with virtual nodes, vector clocks for causality, tunable N/R/W quorum
 reads/writes, and gossip-based failure detection — plus hinted handoff,
 Merkle-tree anti-entropy repair, and a live dashboard as stretch goals.
 
-**Status: Phase 4 (stretch features + polish) complete.** All 4 required
-features plus both stretch features are implemented and demonstrably working
-end-to-end against a real 5-node cluster of independent OS subprocesses:
+**Status: Phase 5 (verification) complete.** All 4 required features plus
+both stretch features are implemented and demonstrably working end-to-end
+against a real 5-node cluster of independent OS subprocesses:
 
 - Consistent hashing ring with virtual nodes
 - Vector clocks for causal conflict detection (real siblings, not LWW)
@@ -44,4 +44,8 @@ python3 -m gossamer.cli put mykey '"hello"'
 python3 -m gossamer.cli cluster stop
 ```
 
-Verification (Phase 5) and shipping (Phase 6) are next.
+**Final verification:** 64/64 unit + real multi-process integration tests
+green, the flagship 8-scenario demo green, and the headless-Chromium
+dashboard smoke test green, all in one `./demo.sh` run — plus the full test
+suite re-run 12 consecutive times back to back with zero flakes (see
+REVIEW.md's flakiness addendum). Shipping (Phase 6) is next.
