@@ -12,7 +12,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote, unquote
 
 from . import httpjson
 from .gossip import Membership, ALIVE
@@ -30,6 +30,24 @@ def wire_to_siblings(items):
     return [(it["value"], VectorClock.from_dict(it["vclock"]), it["ts"]) for it in items]
 
 
+def _validate_context(context):
+    """Returns an error message string if `context` isn't a valid vector-clock
+    context (a list of {node_id: int} dicts, exactly what a prior GET
+    returns), else None. PUT should reject a malformed context with a clean
+    400 instead of letting VectorClock.from_dict raise deep inside."""
+    if context is None:
+        return None
+    if not isinstance(context, list):
+        return f"context must be a list of vector-clock dicts, got {type(context).__name__}"
+    for entry in context:
+        if not isinstance(entry, dict):
+            return f"each context entry must be a dict, got {type(entry).__name__}"
+        for k, v in entry.items():
+            if not isinstance(k, str) or not isinstance(v, int) or isinstance(v, bool):
+                return f"context counters must be {{str: int}}, got {{{k!r}: {v!r}}}"
+    return None
+
+
 def _sibling_identity(value, vclock):
     """Hashable identity for a (value, vclock) pair -- values put through
     Gossamer are arbitrary JSON (lists/dicts included), which aren't
@@ -44,6 +62,13 @@ class NodeServer:
                  anti_entropy_interval=2.0, request_timeout=1.5,
                  event_log=None):
         """peers: dict node_id -> (host, port), including this node itself."""
+        if n < 1:
+            raise ValueError(f"n must be >= 1, got {n}")
+        if not (1 <= w <= n):
+            raise ValueError(f"w must satisfy 1 <= w <= n (n={n}), got w={w}")
+        if not (1 <= r <= n):
+            raise ValueError(f"r must satisfy 1 <= r <= n (n={n}), got r={r}")
+
         self.node_id = node_id
         self.host = host
         self.port = port
@@ -79,8 +104,17 @@ class NodeServer:
         self.event_log = event_log if event_log is not None else []
         self._event_lock = threading.RLock()
 
-        self._read_repair_bytes = 0
-        self._anti_entropy_bytes = 0
+        self._metrics_lock = threading.Lock()
+        self._read_repair_ops = 0
+        self._anti_entropy_ops = 0
+
+    def _incr_read_repair_ops(self, n=1):
+        with self._metrics_lock:
+            self._read_repair_ops += n
+
+    def _incr_anti_entropy_ops(self, n):
+        with self._metrics_lock:
+            self._anti_entropy_ops += n
 
     # ---------------------------------------------------------------- utils
     def log_event(self, kind, **fields):
@@ -130,7 +164,9 @@ class NodeServer:
         if target == self.node_id:
             return self._apply_get(key, hint_for)
         host, port = self._addr(target)
-        path = f"/internal/get?key={key}" + (f"&hint_for={hint_for}" if hint_for else "")
+        path = f"/internal/get?key={quote(key, safe='')}"
+        if hint_for:
+            path += f"&hint_for={quote(hint_for, safe='')}"
         status, body = httpjson.get_json(host, port, path, timeout=self.request_timeout)
         if status != 200:
             raise httpjson.NodeUnreachable(f"{target} returned {status}")
@@ -158,6 +194,9 @@ class NodeServer:
         replicas = self.preferred_replicas(key)
         if not replicas:
             return {"error": "no nodes available"}, 503
+        error = _validate_context(context)
+        if error:
+            return {"error": error}, 400
         base = VectorClock.merge_all([VectorClock.from_dict(c) for c in (context or [])])
         new_clock = base.increment(self.node_id)
 
@@ -251,11 +290,14 @@ class NodeServer:
         return {"siblings": siblings_to_wire(merged), "context": context}, 200
 
     def _repair_one(self, owner, key, value, vclock):
+        if self.membership.status_of(owner) != ALIVE:
+            # Nothing was sent -- don't log or count a repair that didn't
+            # happen. A later anti-entropy round (or a future read, if the
+            # replica comes back) will catch this up instead.
+            return
         try:
-            status = self.membership.status_of(owner)
-            if status == ALIVE:
-                self._local_or_remote_put(owner, key, value, vclock)
-            self._read_repair_bytes += len(json.dumps(value)) if not isinstance(value, str) else len(value)
+            self._local_or_remote_put(owner, key, value, vclock)
+            self._incr_read_repair_ops()
             self.log_event("read-repair", key=key, target=owner)
         except httpjson.NodeUnreachable:
             pass
@@ -269,10 +311,6 @@ class NodeServer:
             if not peer_ids:
                 continue
             target = random.choice(peer_ids)
-            if self.membership.status_of(target) != ALIVE and random.random() < 0.5:
-                # Still occasionally probe non-alive peers so a revived
-                # node gets noticed promptly, but bias towards live peers.
-                pass
             host, port = self._addr(target)
             try:
                 status, body = httpjson.post_json(
@@ -297,7 +335,18 @@ class NodeServer:
         if not bucket:
             return
         host, port = self._addr(owner)
+        # `remaining` starts as a full copy of everything we're about to
+        # attempt; a key is removed from it only once its flush is
+        # *confirmed* successful. If the owner goes back down mid-flush, we
+        # stop and merge the entire unprocessed remainder -- the failing
+        # key AND every key after it that hadn't been tried yet -- back
+        # into self.hints. Popping the key-by-key-successfully-flushed set
+        # (rather than putting back only the one key that failed) is what
+        # prevents not-yet-attempted keys from being silently dropped.
+        remaining = dict(bucket)
+        flushed_keys = []
         for key, siblings in bucket.items():
+            ok = True
             for value, vclock, _ in siblings:
                 try:
                     httpjson.post_json(host, port, "/internal/put",
@@ -305,14 +354,22 @@ class NodeServer:
                                          "vclock": vclock.to_dict(), "hint_for": None},
                                         timeout=self.request_timeout)
                 except httpjson.NodeUnreachable:
-                    # Owner went back down before we could flush; put the
-                    # hint back so a later revival retries it.
-                    with self._hints_lock:
-                        b = self.hints.setdefault(owner, {})
-                        existing = b.get(key, [])
-                        b[key] = reduce_siblings(existing + [(value, vclock, time.time())])
-                    return
-        self.log_event("hint-flushed", owner=owner, keys=list(bucket.keys()))
+                    ok = False
+                    break
+            if ok:
+                del remaining[key]
+                flushed_keys.append(key)
+            else:
+                break
+        if remaining:
+            with self._hints_lock:
+                b = self.hints.setdefault(owner, {})
+                for key, siblings in remaining.items():
+                    existing = b.get(key, [])
+                    b[key] = reduce_siblings(existing + list(siblings))
+            return
+        if flushed_keys:
+            self.log_event("hint-flushed", owner=owner, keys=flushed_keys)
 
     def _monitor_loop(self):
         # Failure status is derived lazily (status_of() computes it from
@@ -390,7 +447,7 @@ class NodeServer:
             transferred = 0
             for key in keys_to_check:
                 mine = self.store.get(key)
-                status3, body3 = httpjson.get_json(host, port, f"/internal/get?key={key}",
+                status3, body3 = httpjson.get_json(host, port, f"/internal/get?key={quote(key, safe='')}",
                                                     timeout=self.request_timeout)
                 theirs = wire_to_siblings(body3.get("siblings", [])) if status3 == 200 else []
                 merged = reduce_siblings(mine + theirs)
@@ -410,7 +467,7 @@ class NodeServer:
                         except httpjson.NodeUnreachable:
                             pass
                     transferred += 1
-            self._anti_entropy_bytes += transferred
+            self._incr_anti_entropy_ops(transferred)
             if transferred:
                 self.log_event("anti-entropy", peer=peer_id,
                                 buckets_checked=len(divergent_buckets),
@@ -452,7 +509,7 @@ def _make_handler(node: NodeServer):
             qs = parse_qs(parsed.query)
             try:
                 if path.startswith("/kv/"):
-                    key = path[len("/kv/"):]
+                    key = unquote(path[len("/kv/"):])
                     body, status = node.coordinate_get(key)
                     self._send(status, body)
                 elif path == "/internal/get":
@@ -477,7 +534,7 @@ def _make_handler(node: NodeServer):
             path = parsed.path
             try:
                 if path.startswith("/kv/"):
-                    key = path[len("/kv/"):]
+                    key = unquote(path[len("/kv/"):])
                     payload = self._read_json()
                     body, status = node.coordinate_put(key, payload.get("value"),
                                                          payload.get("context"))
@@ -521,6 +578,6 @@ def node_status(node: NodeServer):
         "statuses": node.membership.all_statuses(),
         "store_keys": len(node.store),
         "hints": hint_counts,
-        "read_repair_ops": node._read_repair_bytes,
-        "anti_entropy_ops": node._anti_entropy_bytes,
+        "read_repair_ops": node._read_repair_ops,
+        "anti_entropy_ops": node._anti_entropy_ops,
     }
