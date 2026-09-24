@@ -33,7 +33,13 @@ class Image:
     """A simple planar RGB image: width, height, and flat r/g/b byte lists."""
 
     def __init__(self, width, height, r, g, b):
-        assert len(r) == len(g) == len(b) == width * height
+        if width < 0 or height < 0:
+            raise ValueError(f"image dimensions must be non-negative, got {width}x{height}")
+        if not (len(r) == len(g) == len(b) == width * height):
+            raise ValueError(
+                f"pixel plane length mismatch for a {width}x{height} image: "
+                f"expected {width * height}, got r={len(r)} g={len(g)} b={len(b)}"
+            )
         self.width = width
         self.height = height
         self.r = r

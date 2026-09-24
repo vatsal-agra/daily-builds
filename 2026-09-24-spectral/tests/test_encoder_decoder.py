@@ -1,4 +1,5 @@
 import os
+import random
 import sys
 import unittest
 
@@ -113,6 +114,51 @@ class TestEncodeDecodeRoundTrip(unittest.TestCase):
         from spectral.colorspace import Image
         with self.assertRaises(ValueError):
             encoder.encode(Image(0, 0, [], [], []), quality=50)
+
+    def test_corrupt_chroma_sampling_factor_raises_clean_error_not_index_error(self):
+        # Regression: a corrupted SOF component list can claim a chroma
+        # component has a *larger* sampling factor than luma, so luma is
+        # no longer the frame's maximal-resolution component -- an
+        # invariant the plane-reconstruction code relies on without
+        # checking. That used to desync the whole MCU grid from what the
+        # entropy-coded bits actually contain and crash deep inside
+        # colorspace.py with an opaque IndexError. Found by a random
+        # bit-flip fuzz run, not by inspection.
+        img = testimages.gradient(40, 40)
+        data = bytearray(encoder.encode(img, quality=60, subsampling="422"))
+        sof_idx = data.index(bytes([0xFF, 0xC0]))
+        payload_start = sof_idx + 4
+        # payload: precision(1) height(2) width(2) ncomp(1) then 3x [id(1) hv(1) qid(1)]
+        cb_hv_offset = payload_start + 1 + 2 + 2 + 1 + 3 + 1  # component 2 (Cb)'s hv byte
+        data[cb_hv_offset] = (data[cb_hv_offset] & 0xF0) | 0x03  # Cb.v = 3 > Y.v
+        with self.assertRaises(JpegDecodeError):
+            decoder.decode(bytes(data))
+
+    def test_bit_flip_fuzz_never_raises_an_unhandled_exception(self):
+        # Broad regression sweep for the class of bug above: every
+        # single-bit corruption of a real encoded file must be rejected
+        # cleanly (JpegParseError/JpegDecodeError) or decode to *some*
+        # image, never propagate a raw struct.error/IndexError/etc.
+        # This is a bounded, seeded slice of the much larger sweep run
+        # during adversarial review (thousands of trials, zero crashes).
+        rng = random.Random(20260924)
+        for name, gen in list(testimages.ALL_GENERATORS.items())[:3]:
+            img = gen(37, 29)
+            for subsampling in ("444", "422", "420"):
+                data = encoder.encode(img, quality=55, subsampling=subsampling)
+                for _ in range(40):
+                    corrupted = bytearray(data)
+                    idx = rng.randrange(len(corrupted))
+                    corrupted[idx] ^= 1 << rng.randrange(8)
+                    try:
+                        decoder.decode(bytes(corrupted))
+                    except (JpegParseError, JpegDecodeError):
+                        pass
+                    except Exception as e:  # pragma: no cover - failure case
+                        self.fail(
+                            f"{name}/{subsampling} byte {idx} raised unhandled "
+                            f"{type(e).__name__}: {e}"
+                        )
 
     def test_decode_matches_own_encoder_bit_for_bit_stability(self):
         # Encoding and decoding twice from the same source must be fully

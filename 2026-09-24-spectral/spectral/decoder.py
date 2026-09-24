@@ -131,6 +131,25 @@ def decode(data):
         c["coeffs"] = [[0] * 64 for _ in range(c["blocks_x"] * c["blocks_y"])]
         comps_by_id[c["id"]] = c
 
+    # This decoder is the exact inverse of encoder.py, which always emits
+    # component 1 (Y) at the frame's maximal sampling factors and
+    # components 2/3 (Cb, Cr) at (1, 1) -- see layout.py. The plane
+    # reconstruction below relies on that: it crops component 1 directly
+    # to the full image size (no upsampling) and upsamples 2/3 from it.
+    # A corrupted or adversarial file can claim a different geometry (a
+    # bit-flip fuzz run found exactly this: a chroma component's `v`
+    # exceeding luma's, desyncing the whole MCU grid from what the
+    # entropy-coded bits actually contain and crashing deep inside plane
+    # reconstruction with an opaque IndexError). Reject that cleanly here
+    # instead of assuming it can't happen.
+    if set(comps_by_id) != {1, 2, 3}:
+        raise JpegDecodeError(f"expected components {{1, 2, 3}} (Y, Cb, Cr), found {sorted(comps_by_id)}")
+    if comps_by_id[1]["h"] != hmax or comps_by_id[1]["v"] != vmax:
+        raise JpegDecodeError("component 1 (Y) must have the frame's maximal sampling factors")
+    for cid in (2, 3):
+        if comps_by_id[cid]["h"] != 1 or comps_by_id[cid]["v"] != 1:
+            raise JpegDecodeError(f"component {cid} (chroma) must have sampling factors (1, 1)")
+
     if len(frame.scans) != 1:
         raise JpegDecodeError(f"baseline decoder expects exactly one scan, found {len(frame.scans)}")
     scan_components, ss, se, ah, al = frame.scans[0][:5]

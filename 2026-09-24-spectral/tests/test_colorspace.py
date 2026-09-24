@@ -76,6 +76,19 @@ class TestColorspace(unittest.TestCase):
             self.assertEqual(padded[y * 4 + 2], 9.0)
             self.assertEqual(padded[y * 4 + 3], 9.0)
 
+    def test_image_rejects_negative_dimensions_cleanly(self):
+        # Regression: negative width/height used to reach a bare `assert`
+        # in Image.__init__ (since `[0] * negative` silently produces an
+        # empty list in Python, so the length check tripped an opaque
+        # AssertionError instead of a clear, catchable error) -- found by
+        # probing the CLI with `--width -5` during adversarial review.
+        with self.assertRaises(ValueError):
+            colorspace.Image(-5, 10, [], [], [])
+
+    def test_image_rejects_mismatched_plane_lengths(self):
+        with self.assertRaises(ValueError):
+            colorspace.Image(2, 2, [1, 2, 3], [1, 2, 3, 4], [1, 2, 3, 4])
+
     def test_image_ycbcr_round_trip_near_identity(self):
         r = [10, 250, 128, 0]
         g = [200, 5, 128, 255]

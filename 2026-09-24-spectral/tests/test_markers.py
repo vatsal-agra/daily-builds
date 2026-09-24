@@ -50,6 +50,19 @@ class TestMarkers(unittest.TestCase):
         with self.assertRaises(JpegParseError):
             parse(bytes([0xFF, 0xD8, 0xFF, 0xD9]))
 
+    def test_corrupt_dqt_precision_nibble_raises_clean_error_not_struct_error(self):
+        # Regression: a corrupted DQT segment can claim 16-bit table
+        # precision (Pq=1) in a payload only sized for the real 8-bit
+        # table, which used to raise a raw struct.error trying to
+        # unpack 128 bytes from a ~65-byte payload. Found by a random
+        # bit-flip fuzz run, not by inspection.
+        data = bytearray(self.valid_jpeg)
+        dqt_idx = data.index(bytes([0xFF, 0xDB]))
+        precision_byte_offset = dqt_idx + 4  # marker(2) + length(2) + Pq/Tq byte
+        data[precision_byte_offset] |= 0x10  # set Pq=1 (16-bit) without resizing the segment
+        with self.assertRaises(JpegParseError):
+            parse(bytes(data))
+
     def test_flips_dont_crash_the_parser(self):
         # Adversarial fuzz: flip single bytes throughout a real file and
         # require every result to either parse or raise JpegParseError --

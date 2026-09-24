@@ -7,9 +7,12 @@ verified against a real, independent decoder: headless Chromium, via its
 own built-in `<img>` JPEG decoder, checked pixel-for-pixel against
 Spectral's own decoder.
 
-**Status: Phase 2 (core build) complete.** All 4 required features work
-end-to-end. See [PLAN.md](PLAN.md) for the architecture and full feature
-list.
+**Status: Phase 3 (adversarial review) complete.** All 4 required
+features work end-to-end and have survived a hostile review pass —
+9,600-trial bit-flip fuzzing, direct CLI probing, and mathematical
+bound-checking of the entropy coder — with every real bug found and
+fixed. See [PLAN.md](PLAN.md) for the architecture/feature list and
+[REVIEW.md](REVIEW.md) for the full review writeup.
 
 ## Quick start
 
@@ -43,5 +46,12 @@ Chromium with zero console errors, and its decoded pixels agree with
 Spectral's own decoder to within a few levels — see `demo.sh` section 6
 and `tests/browser_oracle_test.cjs`.
 
+**Chroma upsampling is bilinear** (upgraded from nearest-neighbor during
+review — smoother output and measurably closer to a real decoder's
+reconstruction). See [REVIEW.md](REVIEW.md) for what that comparison
+found and fixed, including a critical decoder bug (an unvalidated
+assumption about component geometry that a corrupted file could violate)
+caught by a 9,600-trial bit-flip fuzz sweep.
+
 Stretch features (progressive JPEG, interactive rate-distortion
-visualizer) and the adversarial review are next.
+visualizer) and final polish are next.

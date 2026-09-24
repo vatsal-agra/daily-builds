@@ -141,27 +141,44 @@ def parse(data):
         payload = data[pos + 2:pos + seg_len]
         pos += seg_len
 
-        if code == APP0 or (0xE1 <= code <= 0xEF) or code == 0xFE:
-            pass  # APPn / COM: not needed for decoding
-        elif code == DQT:
-            _parse_dqt(payload, frame)
-        elif code in (SOF0, SOF2):
-            frame.progressive = (code == SOF2)
-            _parse_sof(payload, frame)
-        elif code == DHT:
-            _parse_dht(payload, frame)
-        elif code == DRI:
-            frame.restart_interval = struct.unpack(">H", payload[:2])[0]
-        elif code == SOS:
-            scan_components, ss, se, ah, al = _parse_sos_header(payload)
-            entropy_start = pos
-            entropy_end, next_pos = _find_scan_end(data, entropy_start)
-            frame.scans.append((scan_components, ss, se, ah, al, data[entropy_start:entropy_end]))
-            pos = next_pos
-        elif 0xD0 <= code <= 0xD7:
-            pass  # bare restart marker outside a scan: ignore
-        else:
-            pass  # unknown/unsupported marker: skip, tolerant of extensions
+        # Every branch below reads fixed byte offsets out of a payload
+        # whose declared length is already validated, but a single
+        # corrupted bit (e.g. a garbled DQT precision nibble claiming
+        # 16-bit tables in an 8-bit-sized payload) can still make a
+        # length *implied by the payload's own content* disagree with
+        # what's actually there. struct.error/IndexError/ValueError from
+        # that disagreement are converted to a clean JpegParseError here
+        # rather than propagating as a raw traceback -- proven necessary,
+        # not just defensive, by a random-bit-flip fuzz run that hit
+        # exactly this path (see REVIEW.md).
+        try:
+            if code == APP0 or (0xE1 <= code <= 0xEF) or code == 0xFE:
+                pass  # APPn / COM: not needed for decoding
+            elif code == DQT:
+                _parse_dqt(payload, frame)
+            elif code in (SOF0, SOF2):
+                frame.progressive = (code == SOF2)
+                _parse_sof(payload, frame)
+            elif code == DHT:
+                _parse_dht(payload, frame)
+            elif code == DRI:
+                if len(payload) < 2:
+                    raise JpegParseError("truncated DRI segment")
+                frame.restart_interval = struct.unpack(">H", payload[:2])[0]
+            elif code == SOS:
+                scan_components, ss, se, ah, al = _parse_sos_header(payload)
+                entropy_start = pos
+                entropy_end, next_pos = _find_scan_end(data, entropy_start)
+                frame.scans.append((scan_components, ss, se, ah, al, data[entropy_start:entropy_end]))
+                pos = next_pos
+            elif 0xD0 <= code <= 0xD7:
+                pass  # bare restart marker outside a scan: ignore
+            else:
+                pass  # unknown/unsupported marker: skip, tolerant of extensions
+        except JpegParseError:
+            raise
+        except (struct.error, IndexError, ValueError) as e:
+            raise JpegParseError(f"corrupt JPEG: malformed marker 0x{code:02X} segment ({e})")
 
     if frame.width == 0:
         raise JpegParseError("no SOF (frame header) marker found")

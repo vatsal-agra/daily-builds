@@ -32,6 +32,14 @@ def _read_file(path):
         raise SystemExit(f"error: could not read {path!r}: {e}")
 
 
+def _write_file(path, data):
+    try:
+        with open(path, "wb") as f:
+            f.write(data)
+    except OSError as e:
+        raise SystemExit(f"error: could not write {path!r}: {e}")
+
+
 def cmd_encode(args):
     try:
         if args.test_image:
@@ -56,8 +64,7 @@ def cmd_encode(args):
     except ValueError as e:
         raise SystemExit(f"error: {e}")
 
-    with open(args.output, "wb") as f:
-        f.write(data)
+    _write_file(args.output, data)
     print(f"wrote {args.output}: {len(data)} bytes ({image.width}x{image.height}, quality={args.quality}, subsampling={args.subsampling})")
 
 
@@ -77,23 +84,29 @@ def cmd_decode(args):
 
     if not args.output.lower().endswith(".bmp"):
         raise SystemExit("error: decode output must be a .bmp path")
-    bmp.write_bmp(args.output, image)
+    try:
+        bmp.write_bmp(args.output, image)
+    except OSError as e:
+        raise SystemExit(f"error: could not write {args.output!r}: {e}")
     print(f"wrote {args.output}: {image.width}x{image.height}")
 
 
 def cmd_compare(args):
     if args.test_image not in testimages.ALL_GENERATORS:
         raise SystemExit(f"error: unknown test image {args.test_image!r}")
-    image = testimages.ALL_GENERATORS[args.test_image](args.width, args.height)
-    print(f"{'quality':>7} {'subsample':>9} {'bytes':>7} {'ratio':>7} {'psnr(dB)':>9}")
-    raw_size = image.width * image.height * 3
-    for q in args.qualities:
-        for ss in ("444", "422", "420"):
-            data = encoder.encode(image, quality=q, subsampling=ss)
-            out = decoder.decode(data)
-            p = metrics.psnr(image, out)
-            ratio = raw_size / len(data)
-            print(f"{q:7d} {ss:>9} {len(data):7d} {ratio:6.1f}x {p:9.2f}")
+    try:
+        image = testimages.ALL_GENERATORS[args.test_image](args.width, args.height)
+        print(f"{'quality':>7} {'subsample':>9} {'bytes':>7} {'ratio':>7} {'psnr(dB)':>9}")
+        raw_size = image.width * image.height * 3
+        for q in args.qualities:
+            for ss in ("444", "422", "420"):
+                data = encoder.encode(image, quality=q, subsampling=ss)
+                out = decoder.decode(data)
+                p = metrics.psnr(image, out)
+                ratio = raw_size / len(data)
+                print(f"{q:7d} {ss:>9} {len(data):7d} {ratio:6.1f}x {p:9.2f}")
+    except ValueError as e:
+        raise SystemExit(f"error: {e}")
 
 
 def cmd_dct_demo(args):
@@ -110,7 +123,10 @@ def cmd_dct_demo(args):
 
 
 def cmd_viz(args):
-    from . import viz
+    try:
+        from . import viz
+    except ImportError:
+        raise SystemExit("error: viz is not available yet")
     viz.build(args.output, seed=args.seed)
     print(f"wrote {args.output}")
 
