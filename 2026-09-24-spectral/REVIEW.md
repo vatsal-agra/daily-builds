@@ -141,13 +141,60 @@ would not decode correctly. This wasn't discovered as a bug in existing
 behavior; it's a real, intentional scope boundary being stated plainly
 rather than silently implied as "full JPEG decoding."
 
+## Phase 4 addendum
+
+Two more items surfaced while building the stretch features and are
+recorded here for the same reason as everything above: on the record,
+not silently absorbed.
+
+- **Scope note on progressive JPEG's stretch feature.** PLAN.md's
+  stretch feature 5 described "AC spectral-selection + successive-
+  approximation scans." What actually shipped is AC **spectral
+  selection only** (2 real, independently-decodable-by-Chromium bands
+  per component) — AC **successive approximation** (bit-refining
+  already-progressive AC coefficients, which needs a materially
+  different, notoriously fiddly correction-bit/run-interleaving
+  algorithm per T.81 G.1.2.3) was deliberately not implemented, to keep
+  the risk of a subtle, hard-to-catch spec bug bounded within this
+  phase's time. DC successive approximation *was* implemented in full
+  (2 scans: coarse + a literal raw-bit refinement pass, T.81 G.1.2.1)
+  and is real, tested, and independently verified against Chromium. This
+  is a real, working, materially progressive codec (SOF2, 8 scans, a
+  genuine coarse-to-fine visual reveal you can see in the visualizer's
+  section 4) — just narrower than the original one-line plan
+  description, and said so here rather than left to be discovered.
+  `spectral/progressive.py`'s own module docstring carries the same
+  disclosure for anyone reading the code directly.
+
+- **`--progressive --optimize` together silently dropped `--optimize`.**
+  `cmd_encode` accepted both flags but simply never passed
+  `optimize_huffman` through to `progressive.encode()` (which doesn't
+  support it), so the flag looked accepted but did nothing — the exact
+  "fake no-op parameter" class of bug this repo's own history (Galley,
+  2026-06-18) has flagged before. Found by directly probing the CLI with
+  both flags set, not by inspection. **Fix:** the CLI now rejects that
+  combination up front with a clear error, instead of silently
+  accepting and ignoring half of it. Regression test:
+  `test_progressive_and_optimize_together_rejected_cleanly` in the new
+  `tests/test_cli.py` (which also closed a real gap: the CLI itself had
+  zero automated test coverage before Phase 4, only manual probing and
+  `demo.sh`).
+
 ## Verification after fixes
 
-- 78/78 unit tests green (up from 73 pre-review), including 5 new
-  regression tests for the bugs above plus a permanent bounded fuzz
-  sweep that runs every invocation.
-- An expanded ad hoc fuzz run (9,600 random single-bit flips across 8
-  synthetic images × 3 subsampling modes × standard/optimized Huffman
-  tables) found zero unhandled exceptions post-fix.
-- `demo.sh` green end to end, including the 45-fixture independent
-  headless-Chromium oracle check.
+- 101/101 unit tests green (78 after Phase 3; 13 more added for
+  progressive, 9 for the previously-uncovered CLI, plus 1 more in
+  test_colorspace), including regression tests for every bug on this
+  page and permanent bounded fuzz sweeps (baseline and progressive) that
+  run every invocation.
+- Expanded ad hoc fuzz runs found zero unhandled exceptions post-fix:
+  9,600 random single-bit flips across baseline output (8 synthetic
+  images × 3 subsampling modes × standard/optimized Huffman tables) and
+  a further 3,600 against progressive output (4 images × 3 subsampling
+  modes).
+- `demo.sh` green end to end (8 sections), including a 65-fixture
+  independent headless-Chromium oracle check covering both baseline and
+  progressive output, and a browser-driven check of the visualizer
+  itself (every interactive element works, zero console errors, no
+  horizontal overflow at a 390px mobile viewport, verified in both light
+  and dark `prefers-color-scheme`).

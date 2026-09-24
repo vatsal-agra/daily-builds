@@ -68,6 +68,24 @@ def compute_layout(width, height, subsampling):
     }
 
 
+def noninterleaved_block_grid(width, height, hmax, vmax, comp):
+    """The block grid a *non-interleaved* (single-component) scan covers
+    -- required for progressive AC scans, which JPEG restricts to one
+    component at a time. This is generally *smaller* than the
+    interleaved grid (comp['blocks_x'/'blocks_y']): interleaved scans
+    always code the full MCU-rounded grid (padding blocks included) so
+    every component's block count stays in lockstep every MCU, but a
+    non-interleaved scan has no such constraint and the spec (T.81
+    A.2.4) defines it to cover only the component's own real (non-
+    padding) resolution, rounded up to whole 8x8 blocks. Getting this
+    wrong desyncs a real decoder's block count from what was actually
+    encoded.
+    """
+    comp_w = -(-(width * comp["h"]) // hmax)
+    comp_h = -(-(height * comp["v"]) // vmax)
+    return -(-comp_w // 8), -(-comp_h // 8)
+
+
 def iter_mcu_blocks(layout):
     """Yields (component_name, block_x, block_y) in MCU-interleaved order,
     matching JPEG's required scan order for an interleaved (multi-

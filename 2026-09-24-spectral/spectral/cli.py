@@ -41,6 +41,8 @@ def _write_file(path, data):
 
 
 def cmd_encode(args):
+    if args.progressive and args.optimize:
+        raise SystemExit("error: --optimize is not supported together with --progressive (progressive scans always use the standard Huffman tables)")
     try:
         if args.test_image:
             if args.test_image not in testimages.ALL_GENERATORS:

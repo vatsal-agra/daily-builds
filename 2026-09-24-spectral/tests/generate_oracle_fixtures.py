@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from spectral import testimages, encoder, decoder
+from spectral import testimages, encoder, decoder, progressive
 
 
 def main(out_dir):
@@ -39,6 +39,28 @@ def main(out_dir):
                     "subsampling": subsampling,
                     "r": out.r, "g": out.g, "b": out.b,
                 })
+
+    # A smaller sweep of the same images through the progressive (SOF2)
+    # encoder/decoder, so the independent-oracle check also covers the
+    # DC successive-approximation and AC spectral-selection bitstream,
+    # not just baseline.
+    for name, img in specs:
+        for quality in (30, 80):
+            for subsampling in ("444", "420"):
+                data = progressive.encode(img, quality=quality, subsampling=subsampling)
+                fname = f"prog_{name}_q{quality}_{subsampling}.jpg"
+                path = os.path.join(out_dir, fname)
+                with open(path, "wb") as f:
+                    f.write(data)
+                out = progressive.decode(data)
+                manifest.append({
+                    "file": fname,
+                    "width": img.width,
+                    "height": img.height,
+                    "subsampling": subsampling,
+                    "r": out.r, "g": out.g, "b": out.b,
+                })
+
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f)
     print(f"wrote {len(manifest)} fixture JPEGs + manifest.json to {out_dir}")

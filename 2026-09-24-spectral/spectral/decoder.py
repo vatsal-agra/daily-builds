@@ -103,25 +103,23 @@ def reconstruct_planes(frame, comps_by_id):
     return planes
 
 
-def decode(data):
-    """Decode JFIF bytes into a `colorspace.Image`. Raises
-    JpegDecodeError / JpegParseError with a clear message (never a raw
-    traceback) on malformed input.
+def setup_frame_geometry(frame):
+    """Compute (hmax, vmax, mcus_x, mcus_y, comps_by_id) for a parsed
+    frame, and validate the invariant every reconstruction step here and
+    in progressive.py relies on: component 1 (Y) always carries the
+    frame's maximal sampling factors and components 2/3 (Cb, Cr) are
+    (1, 1) -- exactly what encoder.py/layout.py always produce. A
+    corrupted or adversarial file can claim otherwise (a bit-flip fuzz
+    run found exactly this: a chroma component's `v` exceeding luma's,
+    desyncing the whole MCU grid from what the entropy-coded bits
+    actually contain and crashing deep inside plane reconstruction with
+    an opaque IndexError). Reject that cleanly here, once, for every
+    caller, instead of assuming it can't happen.
     """
-    if not isinstance(data, (bytes, bytearray)):
-        raise TypeError("decode() expects raw JPEG bytes")
-
-    frame = markers.parse(data)  # raises JpegParseError on malformed input
-    if frame.progressive:
-        raise JpegDecodeError("this is a progressive JPEG; use progressive.decode() instead")
-
-    width, height = frame.width, frame.height
     hmax = max(c["h"] for c in frame.components)
     vmax = max(c["v"] for c in frame.components)
-    mcu_w, mcu_h = 8 * hmax, 8 * vmax
-    mcus_x = -(-width // mcu_w)
-    mcus_y = -(-height // mcu_h)
-    frame._mcus_x, frame._mcus_y = mcus_x, mcus_y
+    mcus_x = -(-frame.width // (8 * hmax))
+    mcus_y = -(-frame.height // (8 * vmax))
 
     comps_by_id = {}
     for c in frame.components:
@@ -131,17 +129,6 @@ def decode(data):
         c["coeffs"] = [[0] * 64 for _ in range(c["blocks_x"] * c["blocks_y"])]
         comps_by_id[c["id"]] = c
 
-    # This decoder is the exact inverse of encoder.py, which always emits
-    # component 1 (Y) at the frame's maximal sampling factors and
-    # components 2/3 (Cb, Cr) at (1, 1) -- see layout.py. The plane
-    # reconstruction below relies on that: it crops component 1 directly
-    # to the full image size (no upsampling) and upsamples 2/3 from it.
-    # A corrupted or adversarial file can claim a different geometry (a
-    # bit-flip fuzz run found exactly this: a chroma component's `v`
-    # exceeding luma's, desyncing the whole MCU grid from what the
-    # entropy-coded bits actually contain and crashing deep inside plane
-    # reconstruction with an opaque IndexError). Reject that cleanly here
-    # instead of assuming it can't happen.
     if set(comps_by_id) != {1, 2, 3}:
         raise JpegDecodeError(f"expected components {{1, 2, 3}} (Y, Cb, Cr), found {sorted(comps_by_id)}")
     if comps_by_id[1]["h"] != hmax or comps_by_id[1]["v"] != vmax:
@@ -150,17 +137,15 @@ def decode(data):
         if comps_by_id[cid]["h"] != 1 or comps_by_id[cid]["v"] != 1:
             raise JpegDecodeError(f"component {cid} (chroma) must have sampling factors (1, 1)")
 
-    if len(frame.scans) != 1:
-        raise JpegDecodeError(f"baseline decoder expects exactly one scan, found {len(frame.scans)}")
-    scan_components, ss, se, ah, al = frame.scans[0][:5]
-    entropy_bytes = frame.scans[0][5]
-    if set(cid for cid, _, _ in scan_components) != set(comps_by_id):
-        raise JpegDecodeError("baseline scan does not cover every frame component")
+    return hmax, vmax, mcus_x, mcus_y, comps_by_id
 
-    decode_baseline_scan(frame, scan_components, entropy_bytes, comps_by_id)
 
-    planes = reconstruct_planes(frame, comps_by_id)
-
+def planes_to_image(frame, comps_by_id, planes, hmax, vmax):
+    """The shared final step for both the baseline and progressive
+    decoders: dequantized/IDCT'd padded planes -> crop -> chroma
+    upsample -> YCbCr -> RGB `colorspace.Image`.
+    """
+    width, height = frame.width, frame.height
     y_plane, y_pw, _ = planes[1]
     y_full = colorspace.crop_plane(y_plane, y_pw, width, height)
 
@@ -178,5 +163,31 @@ def decode(data):
 
     cb_full = chroma_full(2)
     cr_full = chroma_full(3)
-
     return colorspace.Image.from_ycbcr_planes(width, height, y_full, cb_full, cr_full)
+
+
+def decode(data):
+    """Decode JFIF bytes into a `colorspace.Image`. Raises
+    JpegDecodeError / JpegParseError with a clear message (never a raw
+    traceback) on malformed input.
+    """
+    if not isinstance(data, (bytes, bytearray)):
+        raise TypeError("decode() expects raw JPEG bytes")
+
+    frame = markers.parse(data)  # raises JpegParseError on malformed input
+    if frame.progressive:
+        raise JpegDecodeError("this is a progressive JPEG; use progressive.decode() instead")
+
+    hmax, vmax, mcus_x, mcus_y, comps_by_id = setup_frame_geometry(frame)
+    frame._mcus_x, frame._mcus_y = mcus_x, mcus_y
+
+    if len(frame.scans) != 1:
+        raise JpegDecodeError(f"baseline decoder expects exactly one scan, found {len(frame.scans)}")
+    scan_components, ss, se, ah, al = frame.scans[0][:5]
+    entropy_bytes = frame.scans[0][5]
+    if set(cid for cid, _, _ in scan_components) != set(comps_by_id):
+        raise JpegDecodeError("baseline scan does not cover every frame component")
+
+    decode_baseline_scan(frame, scan_components, entropy_bytes, comps_by_id)
+    planes = reconstruct_planes(frame, comps_by_id)
+    return planes_to_image(frame, comps_by_id, planes, hmax, vmax)
