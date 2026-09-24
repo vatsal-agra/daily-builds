@@ -29,6 +29,14 @@ print(f"  standard tables: {base} bytes, optimized tables: {opt} bytes ({100*(1-
 PY
 pass "encode/decode CLI round trip, optimized Huffman shrinks the file"
 
+python3 - <<'PY'
+from spectral import testimages, bmp
+bmp.write_bmp("/tmp/spectral_demo_input.bmp", testimages.synthetic_photo(48, 48, seed=77))
+PY
+python3 -m spectral.cli encode --input /tmp/spectral_demo_input.bmp --output /tmp/spectral_demo_from_bmp.jpg --quality 80
+python3 -m spectral.cli decode /tmp/spectral_demo_from_bmp.jpg --output /tmp/spectral_demo_from_bmp_out.bmp
+pass "CLI --input path round trips a real BMP file end to end (not just --test-image)"
+
 section "4/8 Rate-distortion sweep (quality/subsampling vs size/PSNR)"
 python3 -m spectral.cli compare --test-image photo --width 96 --height 96 --qualities 10 50 90
 pass "quality and subsampling trade off size against PSNR as expected"

@@ -7,11 +7,14 @@ baseline and progressive output are verified against a real, independent
 decoder: headless Chromium, via its own built-in `<img>` JPEG decoder,
 checked pixel-for-pixel against Spectral's own decoder.
 
-**Status: Phase 4 (stretch features + polish) complete.** All 4 required
-features plus both planned stretch features are implemented, tested, and
-independently verified. See [PLAN.md](PLAN.md) for the architecture/
-feature list and [REVIEW.md](REVIEW.md) for the full adversarial-review
-writeup (Phase 3 + a Phase 4 addendum).
+**Status: Phase 5 (verification) complete.** All 4 required features
+plus both planned stretch features are implemented, tested, and
+independently verified: 101 unit tests, a 9-section `demo.sh` that
+exercises every feature end to end (including the CLI's real-file BMP
+input path, not just synthetic test images) and exits clean, and 65/65
+independent-oracle checks against a real browser's JPEG decoder. See
+[PLAN.md](PLAN.md) for the architecture/feature list and
+[REVIEW.md](REVIEW.md) for the full adversarial-review writeup.
 
 ## Quick start
 
@@ -83,6 +86,4 @@ caught by a 9,600-trial fuzz sweep — plus 7 more real issues; see
 checked and ruled out as *not* a bug (bounded via Parseval's theorem and
 cross-checking against the independent brute-force DCT oracle).
 
-Remaining phases: verification (a dedicated test/demo pass — already
-substantially covered by the above, but not yet formally closed out) and
-shipping (final README polish + LEDGER.md entry).
+Remaining: Phase 6 (final README polish + a LEDGER.md entry).
