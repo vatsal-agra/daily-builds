@@ -1,9 +1,10 @@
 # Casement
 
-*Status: Phase 4 (stretch features + polish) complete — both stretch
-features shipped, and building the Chromium oracle found 3 more real bugs
-(one of them a cascade-ordering bug affecting nearly every page). See
-`REVIEW.md`. Verification (Phase 5) and final polish next.*
+*Status: Phase 5 (verification) complete — `demo.sh` exercises every
+required and stretch feature end-to-end (103 unit tests, a real render, a
+zero-console-error headless-Chromium inspector check, a real Chromium
+oracle comparison, CLI error-handling, and an independent manual
+walkthrough) and is green: 11/11 checks pass. Final write-up next.*
 
 A from-scratch HTML/CSS layout and rendering engine in pure Python: a
 hand-written HTML parser, a CSS parser + cascade engine, a block/inline +
@@ -66,7 +67,7 @@ it crash" — exact pixel/box-position assertions), CLI error handling, a
 generated output, and (when Node + Playwright are available, as they are
 in this environment) real headless-Chromium differential tests.
 
-Full feature list and verification results land in the remaining phases
-of this build; see `PLAN.md` for design/scope decisions and `REVIEW.md`
-for what adversarial review found and fixed (13 real bugs across Phases 3
-and 4, several of them structural).
+Run `./demo.sh` for the full verification pass. See `PLAN.md` for
+design/scope decisions and `REVIEW.md` for what adversarial review found
+and fixed (13 real bugs across Phases 3 and 4, several of them
+structural). The final feature list and write-up land in Phase 6.
