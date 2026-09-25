@@ -7,13 +7,29 @@ import sys
 from . import render as render_mod
 
 
+class CasementCLIError(Exception):
+    """A clean, user-facing CLI error (no Python traceback)."""
+
+
+def _read_text_file(path, label):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        raise CasementCLIError(f"{label} not found: {path}")
+    except IsADirectoryError:
+        raise CasementCLIError(f"{label} is a directory, not a file: {path}")
+    except UnicodeDecodeError:
+        raise CasementCLIError(f"{label} is not valid UTF-8 text: {path}")
+
+
 def cmd_render(args):
-    with open(args.input, "r", encoding="utf-8") as f:
-        html_text = f.read()
+    if args.width <= 0:
+        raise CasementCLIError(f"--width must be a positive integer, got {args.width}")
+    html_text = _read_text_file(args.input, "input HTML file")
     extra_css = ""
     if args.css:
-        with open(args.css, "r", encoding="utf-8") as f:
-            extra_css = f.read()
+        extra_css = _read_text_file(args.css, "--css file")
     result = render_mod.render(html_text, extra_css=extra_css, viewport_width=args.width)
     with open(args.output, "wb") as f:
         f.write(result.png_bytes)
@@ -44,7 +60,23 @@ def build_parser():
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except CasementCLIError as e:
+        print(f"casement: error: {e}", file=sys.stderr)
+        return 1
+    except RecursionError:
+        # The layout/paint/box-tree walks are recursive by DOM depth (this
+        # is disclosed, not silently caught-and-ignored -- see PLAN.md);
+        # a page nested many hundreds of elements deep hits Python's
+        # recursion limit rather than a Casement-specific one.
+        print(
+            "casement: error: this page is nested too deeply for Casement's "
+            "recursive layout engine to handle (Python's recursion limit). "
+            "This is a known scope limit, not a crash bug -- see PLAN.md.",
+            file=sys.stderr,
+        )
+        return 1
 
 
 if __name__ == "__main__":

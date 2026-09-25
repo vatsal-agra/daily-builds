@@ -1,7 +1,7 @@
 # Casement
 
-*Status: Phase 2 (core build) complete — all 4 required features working
-end-to-end. Adversarial review and stretch features next.*
+*Status: Phase 3 (adversarial review) complete — 10 real bugs found and
+fixed, see `REVIEW.md`. Stretch features next.*
 
 A from-scratch HTML/CSS layout and rendering engine in pure Python: a
 hand-written HTML parser, a CSS parser + cascade engine, a block/inline +
@@ -40,10 +40,12 @@ wrapping in one page.
   (backgrounds, borders, and an original hand-authored bitmap font), a
   from-scratch PNG chunk encoder.
 
-69 unit tests pass (`python3 -m unittest discover -s tests`), covering the
-parser's error-recovery rules, the cascade, and layout geometry (not just
-"did it crash" — exact pixel/box-position assertions).
+93 unit tests pass (`python3 -m unittest discover -s tests`), covering the
+parser's error-recovery rules, the cascade, layout geometry (not just "did
+it crash" — exact pixel/box-position assertions), CLI error handling, and
+a 19-case adversarial battery of hostile HTML/CSS input.
 
-Full feature list, stretch features, and the adversarial-review writeup
-land in later phases of this build; see `PLAN.md` and (once written)
-`REVIEW.md`.
+Full feature list, stretch features, and verification results land in
+later phases of this build; see `PLAN.md` for design/scope and `REVIEW.md`
+for what Phase 3's adversarial review found and fixed (10 real bugs,
+several of them structural).

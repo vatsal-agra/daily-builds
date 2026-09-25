@@ -120,3 +120,17 @@ against the CSS spec. Text line-breaking itself is verified by Casement's
 own unit tests against hand-computed expected wrap points, not the
 Chromium oracle. This restriction is decided up front, here, not
 discovered as a convenient excuse during review.
+
+`border-style` is parsed to its full CSS3 keyword set (`solid`/`dashed`/
+`dotted`/`double`/`none`) for layout purposes (any non-`none` value gets a
+border box at all, matching real browsers), but the rasterizer paints every
+non-`none` border as a solid line -- dash/dot patterns are a paint-time
+detail, not a layout one, and were traded for time spent on the box model
+and flexbox algorithms themselves.
+
+Every stage (box-tree building, layout, painting) recurses by DOM depth
+rather than using an explicit stack, so a page nested many hundreds of
+elements deep hits Python's own recursion limit. The CLI catches this and
+reports a clean "too deeply nested" error instead of a raw traceback, but
+it does not lift the limit — real-world HTML is essentially never nested
+this deep, so an iterative rewrite wasn't worth trading for engine clarity.
