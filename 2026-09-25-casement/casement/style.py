@@ -347,8 +347,15 @@ def compute_styles(document, stylesheet):
     dict {Element: ComputedStyle}."""
     ua_sheet = parse_stylesheet(UA_STYLESHEET_TEXT)
     all_rules = list(ua_sheet.rules)
+    # Each stylesheet was parsed independently, so both start their own
+    # `.order` numbering at 0 -- without this offset, an author rule could
+    # carry a *lower* order than a same-specificity UA rule appearing later
+    # in the UA sheet, letting the cascade's "later wins" tie-break pick the
+    # UA default over the author's own rule (e.g. `body { margin: 0 }`
+    # losing to the UA sheet's `body { margin: 8px }`).
     base_order = len(all_rules)
     for r in stylesheet.rules:
+        r.order += base_order
         all_rules.append(r)
 
     result = {}

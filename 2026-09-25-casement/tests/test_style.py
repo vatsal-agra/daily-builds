@@ -92,6 +92,18 @@ class TestCascade(unittest.TestCase):
         self.assertEqual(s.raw("border-top-style"), "solid")
         self.assertEqual(s.raw("border-top-color"), "red")
 
+    def test_author_rule_overrides_ua_default_at_equal_specificity(self):
+        # Regression: base_order wasn't applied when merging the UA and
+        # author stylesheets, so an author rule could carry a *lower*
+        # order than a same-specificity UA rule and lose the cascade tie.
+        doc, styles = styles_for(
+            "<html><body>x</body></html>",
+            "body { margin: 0; }",
+        )
+        body = find_first(doc, "body")
+        self.assertEqual(styles[body].raw("margin-top"), "0")
+        self.assertEqual(styles[body].raw("margin-left"), "0")
+
     def test_ua_stylesheet_defaults(self):
         doc, styles = styles_for("<html><body><div>x</div><span>y</span></body></html>", "")
         self.assertEqual(styles[find_first(doc, "div")].keyword("display"), "block")

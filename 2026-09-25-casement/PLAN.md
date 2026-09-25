@@ -121,6 +121,18 @@ own unit tests against hand-computed expected wrap points, not the
 Chromium oracle. This restriction is decided up front, here, not
 discovered as a convenient excuse during review.
 
+`display: inline-block` uses the CSS default `vertical-align: baseline`,
+which in a real browser reserves a little space below the inline-block for
+the surrounding text's font descent even when the inline-block itself has
+no text — the well-known "mystery ~3-4px gap" under inline-block elements.
+Casement's line boxes don't reserve that space, because doing so
+correctly needs real ascent/descent metrics that a monospace bitmap font
+(see the text-rendering scope note above) doesn't define. The Chromium
+oracle (`casement compare`) surfaces this as a small, consistent few-pixel
+height difference on any line containing an inline-block -- expected and
+understood, not a bug to chase down, and `examples/oracle_test.html`
+deliberately keeps it in-frame rather than avoiding it.
+
 `border-style` is parsed to its full CSS3 keyword set (`solid`/`dashed`/
 `dotted`/`double`/`none`) for layout purposes (any non-`none` value gets a
 border box at all, matching real browsers), but the rasterizer paints every

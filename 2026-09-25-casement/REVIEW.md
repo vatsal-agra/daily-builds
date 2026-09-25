@@ -165,6 +165,74 @@ fixed before Phase 4.
   bugs — verified against the CSS2.1 margin-collapsing algorithm by hand
   rather than assumed innocent.
 
+## Phase 4 addendum — what the Chromium oracle found
+
+Building stretch feature #6 (`casement compare`, a real headless-Chromium
+differential oracle) immediately paid for itself: pointed at
+`examples/oracle_test.html` (a page of explicitly-sized boxes, chosen so
+font-metric differences can't confound the comparison), it found three
+more real bugs that 93 passing unit tests had missed, because every one of
+them is invisible unless something *external* checks Casement's numbers
+against an independent implementation of the same spec:
+
+11. **CRITICAL — the cascade's own author-vs-user-agent ordering was
+    broken.** `compute_styles` merges the UA stylesheet's rules with the
+    page's own rules into one list for cascade sorting, computing
+    `base_order = len(all_rules)` to offset the author rules' `.order`
+    values above the UA ones -- and then never used it. Since each
+    stylesheet is parsed independently (each starting its own rule
+    ordering at 0), an author rule could carry a *lower* order number than
+    a same-specificity UA rule appearing later in the UA sheet, so
+    "later-wins" ties were sometimes decided in the UA stylesheet's favor
+    instead of the author's. Concretely: `body { margin: 0; }`, a
+    one-line reset every real stylesheet has, silently lost to the UA
+    sheet's `body { margin: 8px; }` and rendered with the default margin
+    anyway. First surfaced as a uniform, unexplained position offset
+    across *every* element the oracle compared; the fix is one line
+    (`r.order += base_order`).
+
+12. **CRITICAL — the exact same "resolve, then discard the answer"
+    bug as flex issue #4, in plain block flow.** `_resolve_edges` returns
+    left/right margin rather than assigning it (block layout decides
+    separately whether `auto` means centering); `layout_children_in_flow`
+    called it and discarded the result before using `child.dims.margin.left`
+    (still its `Dimensions()` default of `0.0`) to compute the child's `x`.
+    Any block-level element with a non-auto, non-zero `margin-left` (or
+    asymmetric `margin` shorthand) was positioned as if that margin were
+    zero -- its `dims.margin.left` was still *reported* correctly (assigned
+    for real a few lines later, inside `layout_block`), which is exactly
+    why the existing test suite missed it: every margin test checked the
+    final margin *value*, never the resulting `x` position it was supposed
+    to produce. `margin-left: 50px` on an 800px-viewport page positioned
+    the element at `x=8` (just the body margin) instead of `x=58`. Fixed
+    the same way as #4: assign the provisional margin immediately. The
+    `auto`-margin (centering) case needed the same placeholder-then-
+    `translate_box_tree` pattern flex already uses, since the real value
+    isn't known until `layout_block` resolves the child's width.
+
+13. **MEDIUM — `box-sizing: border-box` was applied to `width` but not
+    `height`.** An explicit `height` with `box-sizing: border-box` should
+    have padding/border subtracted from it to get the content height,
+    exactly like width already does two lines above it in the same
+    function -- the height branch just never had the equivalent
+    subtraction written. A 200×~54px nested bordered/padded box rendered
+    70px tall instead of 54, an exact +16px error traced straight to the
+    unadjusted 30px `height` on its `box-sizing: border-box` child eating
+    its own padding and border on top of, rather than out of, that 30px.
+
+## Verified against a genuine external oracle
+
+After fixes #11-13, `casement compare examples/oracle_test.html` -- a page
+of explicitly-sized boxes covering the box model, flexbox (row/wrap/
+justify/align), percentage widths, `position: absolute`, and
+`box-sizing: border-box` -- agrees with real headless Chromium exactly
+(0.0px diff) on 14 of 17 compared elements, with the remaining 3 all
+showing the same understood, disclosed ~3px inline-block baseline-strut
+difference (see PLAN.md) and nothing else. This is meaningfully stronger
+evidence than the unit suite alone: it's agreement with an independent
+implementation of the CSS box model and flexbox algorithm, not just
+self-consistency with Casement's own assumptions.
+
 ## Deliberately not fixed here (see PLAN.md's honesty note for the "why")
 
 - Bottom/last-child margin collapsing and empty-block self-collapsing.

@@ -465,10 +465,18 @@ def layout_block(box, cb, viewport, forced_width=None, forced_height=None):
         d.height = forced_height
     else:
         height_val = style.length("height")
+        edge_h = d.padding.top + d.padding.bottom + d.border.top + d.border.bottom
+        explicit_h = None
         if height_val.kind == "px":
-            d.height = height_val.data
+            explicit_h = height_val.data
         elif height_val.kind == "pct" and cb.height is not None:
-            d.height = height_val.data / 100.0 * cb.height
+            explicit_h = height_val.data / 100.0 * cb.height
+        if explicit_h is not None:
+            # box-sizing: border-box applies to height exactly as it does
+            # to width -- an explicit `height` then means the border-box
+            # height, so padding/border must come back out of it to get
+            # the content height this function actually assigns.
+            d.height = max(0.0, explicit_h - edge_h) if box_sizing == "border-box" else explicit_h
 
     resolve_absolute_children(box, viewport)
 
@@ -492,7 +500,17 @@ def layout_children_in_flow(box, viewport):
             first = False
             continue
 
-        _resolve_edges(child, d.width)
+        ml, mr = _resolve_edges(child, d.width)
+        # _resolve_edges only *returns* left/right margin (their 'auto'
+        # resolution depends on the child's own width, decided inside
+        # layout_block) -- assign a provisional value now so the position
+        # computed a few lines down uses the real margin instead of the
+        # Dimensions() default of 0. A block with a definite (non-auto)
+        # margin-left/right never revisits this value, so leaving it
+        # unassigned here silently mispositioned every such box exactly
+        # like flex's identical bug (see REVIEW.md).
+        child.dims.margin.left = ml if ml is not None else 0.0
+        child.dims.margin.right = mr if mr is not None else 0.0
         effective_margin_top = child.dims.margin.top
         collapsed_here = first and d.border.top == 0 and d.padding.top == 0
         if collapsed_here:
@@ -500,10 +518,22 @@ def layout_children_in_flow(box, viewport):
         gap = _collapse(prev_margin_bottom, effective_margin_top)
         border_box_top = flow_y + gap
 
-        child.dims.x = content_x + child.dims.margin.left + child.dims.border.left + child.dims.padding.left
+        provisional_x = content_x + child.dims.margin.left + child.dims.border.left + child.dims.padding.left
+        child.dims.x = provisional_x
         child.dims.y = border_box_top + child.dims.border.top + child.dims.padding.top
 
         layout_box(child, child_cb, viewport)
+
+        # An 'auto' margin-left/right (most commonly `margin: 0 auto`
+        # centering) can't be resolved until layout_block has resolved the
+        # child's own width, which happens *inside* the call above -- so
+        # the x used to position (and lay out the children of) `child`
+        # above was necessarily provisional. Shift the whole subtree now
+        # that the real margin is known, exactly like flex's identical
+        # provisional-origin-then-translate pattern.
+        real_x = content_x + child.dims.margin.left + child.dims.border.left + child.dims.padding.left
+        if real_x != provisional_x:
+            translate_box_tree(child, real_x - provisional_x, 0.0)
 
         # Relative offset is purely visual -- next-sibling flow position
         # must be computed from the pre-offset box, so this runs last.

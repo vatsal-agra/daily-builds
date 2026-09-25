@@ -265,3 +265,47 @@ def parse(source):
                     break
             # stray end tag with no match: ignore
     return doc
+
+
+def serialize(node):
+    """Serialize a DOM node (typically a Document) back to an HTML string.
+    Only needs to round-trip well enough for a real browser to parse it
+    identically to how Casement did -- not byte-identical to any original
+    source -- since it's used to feed the same (already-parsed, already
+    data-cid-tagged) structure to the Chromium differential oracle.
+    """
+    from .dom import Comment, Document, Element, Text
+
+    out = []
+
+    def esc_text(s):
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def esc_attr(s):
+        return s.replace("&", "&amp;").replace('"', "&quot;")
+
+    def visit(n):
+        if isinstance(n, Document):
+            for c in n.children:
+                visit(c)
+        elif isinstance(n, Text):
+            out.append(esc_text(n.data))
+        elif isinstance(n, Comment):
+            out.append(f"<!--{n.data}-->")
+        elif isinstance(n, Element):
+            attrs = "".join(f' {k}="{esc_attr(v)}"' for k, v in n.attrs.items())
+            out.append(f"<{n.tag}{attrs}>")
+            if n.tag in VOID_ELEMENTS:
+                return
+            if n.tag in RAW_TEXT_ELEMENTS:
+                for c in n.children:
+                    if isinstance(c, Text):
+                        out.append(c.data)
+                out.append(f"</{n.tag}>")
+                return
+            for c in n.children:
+                visit(c)
+            out.append(f"</{n.tag}>")
+
+    visit(node)
+    return "".join(out)

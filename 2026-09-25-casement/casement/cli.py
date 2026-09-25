@@ -4,6 +4,8 @@ import argparse
 import json
 import sys
 
+from . import inspector as inspector_mod
+from . import oracle as oracle_mod
 from . import render as render_mod
 
 
@@ -42,6 +44,50 @@ def cmd_render(args):
     return 0
 
 
+def cmd_inspect(args):
+    if args.width <= 0:
+        raise CasementCLIError(f"--width must be a positive integer, got {args.width}")
+    html_text = _read_text_file(args.input, "input HTML file")
+    extra_css = ""
+    if args.css:
+        extra_css = _read_text_file(args.css, "--css file")
+    html_out = inspector_mod.generate_inspector_html(html_text, extra_css=extra_css, viewport_width=args.width)
+    with open(args.output, "w", encoding="utf-8") as f:
+        f.write(html_out)
+    print(f"Inspector -> {args.output} (open it in a browser)")
+    return 0
+
+
+def cmd_compare(args):
+    if args.width <= 0:
+        raise CasementCLIError(f"--width must be a positive integer, got {args.width}")
+    html_text = _read_text_file(args.input, "input HTML file")
+    extra_css = ""
+    if args.css:
+        extra_css = _read_text_file(args.css, "--css file")
+    try:
+        diffs = oracle_mod.compare(html_text, extra_css=extra_css, viewport_width=args.width)
+    except (RuntimeError, FileNotFoundError, OSError) as e:
+        raise CasementCLIError(f"Chromium oracle unavailable: {e}")
+
+    if not diffs:
+        print("No tagged elements to compare.")
+        return 0
+
+    worst = max(diffs, key=lambda d: d.max_abs_diff)
+    print(f"{'cid':>4} {'tag':<10} {'dx':>8} {'dy':>8} {'dw':>8} {'dh':>8}")
+    for d in diffs:
+        print(f"{d.cid:>4} {d.tag:<10} {d.dx:8.1f} {d.dy:8.1f} {d.dw:8.1f} {d.dh:8.1f}")
+    print(f"\n{len(diffs)} elements compared; worst max-abs-diff = {worst.max_abs_diff:.2f}px (cid {worst.cid}, <{worst.tag}>)")
+    if args.tolerance is not None:
+        over = [d for d in diffs if d.max_abs_diff > args.tolerance]
+        if over:
+            print(f"FAIL: {len(over)} element(s) exceed tolerance {args.tolerance}px")
+            return 1
+        print(f"PASS: all elements within tolerance {args.tolerance}px")
+    return 0
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="casement", description="A from-scratch HTML/CSS layout engine.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -53,6 +99,20 @@ def build_parser():
     r.add_argument("--width", type=int, default=800, help="Viewport width in px")
     r.add_argument("--json", help="Also export the computed layout tree as JSON")
     r.set_defaults(func=cmd_render)
+
+    i = sub.add_parser("inspect", help="Render an HTML file to an interactive box-model inspector (HTML).")
+    i.add_argument("input", help="Path to an .html file")
+    i.add_argument("-o", "--output", default="inspector.html", help="Output HTML path")
+    i.add_argument("--css", help="Optional extra .css file to apply")
+    i.add_argument("--width", type=int, default=800, help="Viewport width in px")
+    i.set_defaults(func=cmd_inspect)
+
+    c = sub.add_parser("compare", help="Diff Casement's layout against real headless Chromium (a differential oracle).")
+    c.add_argument("input", help="Path to an .html file")
+    c.add_argument("--css", help="Optional extra .css file to apply")
+    c.add_argument("--width", type=int, default=800, help="Viewport width in px")
+    c.add_argument("--tolerance", type=float, default=None, help="Max allowed per-element px diff; exits 1 if exceeded")
+    c.set_defaults(func=cmd_compare)
 
     return p
 

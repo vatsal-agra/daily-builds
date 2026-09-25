@@ -34,6 +34,31 @@ class TestBlockLayout(unittest.TestCase):
         available = body.dims.width - 100
         self.assertAlmostEqual(box.dims.margin.left, available / 2.0, places=3)
         self.assertAlmostEqual(box.dims.margin.right, available / 2.0, places=3)
+        # Regression: the box's *position* (not just its reported margin
+        # value) must reflect the centering -- it was computed before the
+        # auto margin was resolved and never corrected.
+        self.assertAlmostEqual(box.dims.x, body.dims.x + available / 2.0, places=3)
+
+    def test_margin_left_affects_position_not_just_reported_value(self):
+        # Regression: _resolve_edges only *returns* left/right margin;
+        # layout_children_in_flow discarded that return value and computed
+        # the child's x using the still-zero Dimensions() default, so
+        # dims.margin.left ended up correct while dims.x quietly wasn't.
+        css = ".x { margin-left: 50px; }"
+        r = render("<html><body><div class='x'>hi</div></body></html>", extra_css=css, viewport_width=400)
+        box = find_box(r.root_box, cls="x")
+        body = find_box(r.root_box, tag="body")
+        self.assertAlmostEqual(box.dims.x, body.dims.x + 50, places=3)
+
+    def test_box_sizing_border_box_applies_to_height_too(self):
+        # Regression: box-sizing: border-box subtracted padding/border from
+        # an explicit width but not from an explicit height.
+        css = ".x { height: 30px; padding: 5px; border: 3px solid black; box-sizing: border-box; }"
+        r = render("<html><body><div class='x'>x</div></body></html>", extra_css=css, viewport_width=400)
+        box = find_box(r.root_box, cls="x")
+        _, _, _, border_box_h = box.dims.border_box()
+        self.assertAlmostEqual(border_box_h, 30, places=3)
+        self.assertAlmostEqual(box.dims.height, 30 - 2 * 5 - 2 * 3, places=3)
 
     def test_adjacent_sibling_margin_collapsing(self):
         css = ".a { margin-bottom: 30px; } .b { margin-top: 10px; }"
@@ -43,6 +68,20 @@ class TestBlockLayout(unittest.TestCase):
         b = find_box(r.root_box, cls="b")
         gap = b.dims.y - (a.dims.y + a.dims.height)
         self.assertAlmostEqual(gap, 30, places=3)  # max(30, 10), not 40
+
+    def test_root_level_margin_collapsing_shows_up_as_top_of_page_space(self):
+        # A first child's margin-top collapsing through a border/padding-
+        # free <body> has nowhere left to escape to -- real browsers still
+        # render it as blank space above the very first pixel of the page,
+        # rather than discarding it, once body's own margin is reset to 0
+        # (the extremely common `body { margin: 0 }` reset pattern).
+        css = "body { margin: 0; } .child { margin-top: 20px; }"
+        html = "<html><body><div class='child'>x</div></body></html>"
+        r = render(html, extra_css=css, viewport_width=400)
+        child = find_box(r.root_box, cls="child")
+        body = find_box(r.root_box, tag="body")
+        self.assertAlmostEqual(body.dims.y, 20, places=3)
+        self.assertAlmostEqual(child.dims.y, 20, places=3)
 
     def test_parent_first_child_margin_collapsing(self):
         css = ".parent { background: yellow; } .child { margin-top: 40px; }"
