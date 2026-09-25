@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Casement Showcase</title>
+<style>
+  body { font-family: monospace; background-color: white; }
+  h1 { color: #1a237e; text-align: center; }
+  h2 { color: #333; border-bottom: 2px solid #ccc; }
+  .card { background-color: #eef; border: 2px solid #557; padding: 12px; margin: 10px 0; }
+  .badge { display: inline-block; background-color: gold; padding: 2px 6px; margin-left: 6px; }
+  .nav { display: flex; justify-content: space-between; background-color: #333; padding: 10px; }
+  .nav .link { color: white; }
+  .cards { display: flex; flex-wrap: wrap; }
+  .cards .item { flex: 1 1 150px; margin: 5px; padding: 10px; background-color: #cfc; border: 1px solid green; min-width: 100px; }
+  .banner { position: relative; height: 60px; background-color: #333; }
+  .banner .tag { position: absolute; top: 10px; right: 10px; background-color: red; color: white; padding: 4px 8px; }
+  .center { text-align: center; }
+  .percent-row { width: 400px; background: #eee; }
+  .percent-row .half { width: 50%; display: inline-block; background: #9cf; }
+</style>
+</head>
+<body>
+<h1>Casement Feature Showcase</h1>
+<div class="nav">
+  <span class="link">Home</span>
+  <span class="link">About</span>
+  <span class="link">Contact</span>
+</div>
+
+<h2>Cards <span class="badge">new</span></h2>
+<div class="card">A simple bordered card with padding and margin.</div>
+
+<h2>Flexbox grid</h2>
+<div class="cards">
+  <div class="item">Alpha</div>
+  <div class="item">Beta</div>
+  <div class="item">Gamma</div>
+  <div class="item">Delta item with longer text that wraps</div>
+</div>
+
+<h2>Positioning</h2>
+<div class="banner">
+  <div class="tag">absolute</div>
+</div>
+
+<h2 class="center">Centered heading</h2>
+
+<h2>Percentage widths</h2>
+<div class="percent-row">
+  <div class="half">Left half</div><div class="half">Right half</div>
+</div>
+
+<h2>An image placeholder</h2>
+<img src="missing.png" width="80" height="50">
+</body>
+</html>
