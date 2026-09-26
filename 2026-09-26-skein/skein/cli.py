@@ -9,6 +9,7 @@ from .query.lexer import LexError
 from .query.parser import ParseError, parse
 from .query.executor import execute
 from . import algorithms
+from . import viz as viz_module
 
 
 def _open(path: str) -> Graph:
@@ -74,7 +75,7 @@ def cmd_query(args) -> int:
     try:
         if args.explain:
             rows, plan = _run_query(graph, args.text, explain=True)
-            print(f"plan: {plan}")
+            print(f"plan: {plan}" if plan is not None else "plan: (no MATCH clause -- nothing to plan)")
         else:
             rows = _run_query(graph, args.text)
         if rows is not None:
@@ -150,7 +151,7 @@ def cmd_import(args) -> int:
                         n_edges += 1
     finally:
         graph.close()
-    print(f"imported {len(id_map)} nodes and {n_edges if args.edges else 0} edges into {args.path}")
+    print(f"imported {len(id_map)} nodes and {n_edges} edges into {args.path}")
     return 0
 
 
@@ -211,6 +212,54 @@ def cmd_demo(args) -> int:
     return demo.run()
 
 
+def cmd_viz(args) -> int:
+    graph = _open(args.path)
+    try:
+        html = viz_module.render_html(graph, query_text=args.query)
+    finally:
+        graph.close()
+    out_path = args.out or (args.path + ".html")
+    with open(out_path, "w") as f:
+        f.write(html)
+    print(f"wrote {out_path} ({len(graph.nodes)} nodes, {len(graph.edges)} edges)")
+    return 0
+
+
+def cmd_crash_demo(args) -> int:
+    import random
+    import subprocess
+    import sys as _sys
+    import time
+
+    if args.rounds <= 0:
+        raise SkeinError("--rounds must be a positive integer")
+    if args.batch <= 0:
+        raise SkeinError("--batch must be a positive integer")
+
+    print(f"crash-demo: {args.rounds} rounds of kill -9 mid-write against {args.path}, batch size {args.batch}")
+    prior = 0
+    for i in range(args.rounds):
+        proc = subprocess.Popen([_sys.executable, "-m", "skein.crash_worker", args.path, str(args.batch)])
+        time.sleep(random.uniform(0.02, 0.2))
+        proc.kill()
+        proc.wait()
+        graph = Graph(args.path)
+        n = len(graph.nodes)
+        graph.close()
+        if n < prior:
+            raise SkeinError(f"round {i}: node count went backwards ({n} < {prior}) -- corruption after crash!")
+        if n % args.batch != 0:
+            raise SkeinError(
+                f"round {i}: {n} nodes present after recovery, not a multiple of batch size {args.batch} "
+                "-- a partial transaction became visible!"
+            )
+        print(f"  round {i}: killed worker mid-run; {n} nodes present after recovery (was {prior})")
+        prior = n
+    print("crash-demo: every reopen succeeded and the node count stayed an exact multiple of the "
+          "per-transaction batch size -- no partial transaction was ever visible after a real kill -9.")
+    return 0
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="skein", description="A from-scratch property-graph database.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -257,6 +306,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     p_demo = sub.add_parser("demo", help="run the built-in showcase")
     p_demo.set_defaults(func=cmd_demo)
+
+    p_viz = sub.add_parser("viz", help="generate an interactive HTML graph visualizer")
+    p_viz.add_argument("path")
+    p_viz.add_argument("--out", help="output HTML path (default: <path>.html)")
+    p_viz.add_argument("--query", help="a SkeinQL statement whose match is highlighted in the visualizer")
+    p_viz.set_defaults(func=cmd_viz)
+
+    p_crash = sub.add_parser("crash-demo", help="prove crash recovery with a real kill -9 mid-write")
+    p_crash.add_argument("path")
+    p_crash.add_argument("--rounds", type=int, default=5)
+    p_crash.add_argument("--batch", type=int, default=500, help="nodes per transaction in the worker")
+    p_crash.set_defaults(func=cmd_crash_demo)
 
     return p
 

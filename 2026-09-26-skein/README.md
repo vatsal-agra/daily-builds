@@ -6,9 +6,13 @@ pattern matching), an index-aware query planner, and a graph algorithms
 library (BFS, Dijkstra, PageRank, connected components) with independent
 correctness oracles. See [PLAN.md](PLAN.md) for the full design rationale.
 
-**Status: Phase 3 (adversarial review) complete — 8 real bugs found and
-fixed (see [REVIEW.md](REVIEW.md)), 84/84 tests green, `demo.sh` green.**
-Stretch features (visualizer, crash-recovery demo) come next.
+**Status: Phase 4 (stretch features + polish) complete.** Both planned
+stretch features are shipped: an interactive HTML graph visualizer and a
+crash-recovery demo that sends a real `SIGKILL` to a worker process
+mid-transaction and proves recovery. 8 real bugs were found and fixed in
+adversarial review (see [REVIEW.md](REVIEW.md)); 92/92 tests green,
+`demo.sh` green end-to-end including a real headless-Chromium pass over
+the visualizer.
 
 ## Quickstart
 
@@ -47,6 +51,15 @@ MATCH (a:Person {name: 'Grace'}) DETACH DELETE a
 - `skein import <path> --nodes nodes.csv [--edges edges.csv]` -- bulk load
 - `skein algo pagerank|shortest-path|components <path> ...`
 - `skein demo` -- narrated end-to-end showcase on a scratch database
+- `skein viz <path> [--out FILE] [--query "<SkeinQL>"]` -- generate an
+  interactive HTML graph visualizer (force-directed Canvas layout, click a
+  node to inspect its labels/properties, drag/zoom/pan); with `--query`,
+  the matched subgraph is highlighted and the result rows are listed
+- `skein crash-demo <path> [--rounds N] [--batch N]` -- spawns a real
+  worker process, sends it `SIGKILL` mid-transaction, reopens the
+  database, and proves the node count stays an exact multiple of the
+  per-transaction batch size across every round (no partial transaction
+  ever becomes visible)
 
 ## Known scope limits
 

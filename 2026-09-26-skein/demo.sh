@@ -74,5 +74,24 @@ python3 -m skein.cli algo pagerank "$IMPORT_DB" --top 4
 python3 -m skein.cli algo components "$IMPORT_DB"
 pass "import + BFS/Dijkstra/PageRank/components all run over the CLI"
 
+section "8. Interactive HTML graph visualizer"
+python3 -m skein.cli viz "$IMPORT_DB" --out "$TMPDIR/graph.html" --query "MATCH (a:Person)-[:KNOWS]->(b:Person) RETURN a.name, b.name"
+test -s "$TMPDIR/graph.html"
+grep -q "<canvas" "$TMPDIR/graph.html"
+grep -q "</script><script>" "$TMPDIR/graph.html" && { echo "unescaped </script> would break the page"; exit 1; } || true
+pass "visualizer HTML generated, script-injection guard verified"
+if command -v node >/dev/null 2>&1 && [ -f /opt/pw-browsers/chromium-1194/chrome-linux/chrome ]; then
+  python3 -m unittest tests.test_viz.TestVizGeneration.test_renders_with_zero_console_errors_in_light_and_dark -v
+  pass "visualizer verified in real headless Chromium, zero console errors, light+dark"
+else
+  echo "  (skipping live headless-Chromium check: browser not found in this environment)"
+fi
+
+section "9. Durability: crash recovery across a real kill -9 mid-write"
+CRASH_DB="$TMPDIR/crash_db"
+python3 -m skein.cli init "$CRASH_DB"
+python3 -m skein.cli crash-demo "$CRASH_DB" --rounds 5 --batch 400
+pass "5 rounds of a real SIGKILL mid-transaction, recovered cleanly every time"
+
 echo
 echo "=== demo.sh: all sections passed ==="
