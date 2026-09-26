@@ -20,9 +20,8 @@ def _pos_key(element, pos):
 
 def compute_var_kinds(stmt: Statement):
     kinds = {}
-    for pattern in (stmt.match, stmt.create):
-        if pattern is None:
-            continue
+    patterns = ([stmt.match] if stmt.match is not None else []) + (stmt.create or [])
+    for pattern in patterns:
         for pos, el in enumerate(pattern.elements):
             if el.var:
                 kind = "node" if pos % 2 == 0 else "edge"
@@ -313,8 +312,8 @@ def execute(graph, stmt: Statement, explain: bool = False):
     try:
         if has_mutation:
             for binding in bindings:
-                if stmt.create is not None:
-                    apply_create(graph, stmt.create, binding, var_kinds)
+                for create_pattern in stmt.create or []:
+                    apply_create(graph, create_pattern, binding, var_kinds)
                 if stmt.set_items:
                     for target, expr in stmt.set_items:
                         value = eval_expr(graph, expr, binding, var_kinds)

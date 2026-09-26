@@ -77,7 +77,7 @@ class Statement:
     match: Optional[PathPattern] = None
     where: Optional[Any] = None
     set_items: Optional[List[Any]] = None
-    create: Optional[PathPattern] = None
+    create: Optional[List[PathPattern]] = None  # applied in order; multiple CREATE clauses share bindings
     delete_vars: Optional[List[str]] = None
     detach: bool = False
     return_items: Optional[List[ReturnItem]] = None

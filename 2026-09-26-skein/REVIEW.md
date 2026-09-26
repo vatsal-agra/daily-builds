@@ -4,8 +4,10 @@ Approach: read every code path as a hostile user trying to break it --
 malformed queries, missing properties, boundary values, type confusion,
 and the specific crash-timing windows a WAL/checkpoint design opens up --
 then fix every real issue found and pin it down with a regression test.
-8 real issues found, all fixed below; a fresh run of `demo.sh` and the
-full test suite hits zero of them.
+9 real issues found (8 in Phase 3's review pass, 1 more in Phase 5 while
+actually executing this project's own README quickstart verbatim), all
+fixed below; a fresh run of `demo.sh` and the full test suite hits zero of
+them.
 
 ## 1. CRITICAL -- reusing a variable as both a node and a relationship
 silently corrupted results
@@ -157,9 +159,35 @@ importers, including `pandas.read_csv`, have by default) -- a real
 tradeoff for a bulk-import tool doing automatic type inference, not an
 oversight.
 
+## 9. CRITICAL, found during Phase 5 verification -- a second `CREATE`
+clause silently discarded the first
+
+Actually running this README's own quickstart commands verbatim (rather
+than trusting the hand-picked examples already in the test suite) surfaced
+a bug none of the above caught: `CREATE (a:Person {name: 'Alice'}) CREATE
+(a)-[:KNOWS]->(b:Person {name: 'Bob'})` -- two `CREATE` clauses in one
+statement, an entirely ordinary thing to write -- ran with no error but
+produced a labelless, propless ghost node instead of a real, named Alice
+connected to Bob. `Statement.create` was a single `Optional[PathPattern]`
+field, so the parser's clause loop simply overwrote it on the second
+`CREATE`, discarding the first pattern (and the labels/properties on `a`
+it carried) entirely; `apply_create` then found `a` unbound and created a
+brand-new, bare node for it instead of reusing the one the (silently
+dropped) first clause was supposed to create. Same failure class as
+finding #1: it runs, it looks plausible, it's wrong -- and this one shipped
+in the project's own documented quickstart, caught only by actually
+executing every command in README.md rather than trusting it. **Fix:**
+`Statement.create` is now a list of patterns, applied in order against a
+shared binding dict (so a variable bound by an earlier `CREATE` clause is
+correctly reused, not re-created, by a later one); `compute_var_kinds`
+updated to scan the whole list. Regression:
+`test_multiple_create_clauses_share_bindings_not_overwrite`.
+
 ## Verification
 
-All 8 fixes are covered by dedicated regression tests (in
+All 9 fixes are covered by dedicated regression tests (in
 `tests/test_query.py::TestAdversarialReviewRegressions`,
-`tests/test_storage.py`, and `tests/test_cli.py`). Full suite: 84/84
-green. `demo.sh` green end-to-end after every fix.
+`tests/test_storage.py`, and `tests/test_cli.py`). Full suite: 93/93
+green. `demo.sh` green end-to-end after every fix, including a real
+headless-Chromium pass over the visualizer and 5 rounds of a real
+`kill -9` mid-transaction against the crash-demo database.

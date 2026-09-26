@@ -294,7 +294,9 @@ class Parser:
                 saw_clause = True
             elif self.check("CREATE"):
                 self.advance()
-                stmt.create = self.parse_pattern()
+                if stmt.create is None:
+                    stmt.create = []
+                stmt.create.append(self.parse_pattern())
                 saw_clause = True
             elif self.check_any("DETACH", "DELETE"):
                 detach = False

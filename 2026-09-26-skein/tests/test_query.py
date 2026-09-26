@@ -264,6 +264,25 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
             with self.assertRaises(SkeinError, msg=text):
                 q(g, text)
 
+    def test_multiple_create_clauses_share_bindings_not_overwrite(self):
+        """A second CREATE clause used to silently replace the first
+        instead of both being applied in order -- the first clause's
+        labels/props vanished, and its variable was re-created from
+        scratch (bare, unlabeled) by the second clause instead of being
+        reused, corrupting exactly the kind of query this README's own
+        quickstart uses.
+        """
+        g = Graph()
+        q(g, "CREATE (a:Person {name: 'Alice'}) CREATE (a)-[:KNOWS]->(b:Person {name: 'Bob'})")
+        rows = q(g, "MATCH (a:Person)-[:KNOWS]->(b:Person) RETURN a.name, b.name")
+        self.assertEqual(rows, [{"a.name": "Alice", "b.name": "Bob"}])
+        # exactly two nodes total: 'a' must be the SAME node across both
+        # CREATE clauses, not silently re-created bare (unlabeled) by the
+        # second clause because the first clause's pattern was discarded.
+        all_people = q(g, "MATCH (p:Person) RETURN p.name")
+        self.assertEqual(sorted(r["p.name"] for r in all_people), ["Alice", "Bob"])
+        self.assertEqual(q(g, "MATCH (n) RETURN count(*) AS c"), [{"c": 2}])
+
     def test_count_star_mixed_with_other_columns_refused_not_faked(self):
         """count(*) alongside other RETURN items used to silently emit the
         literal 1 per row (never a real aggregate) instead of erroring --
