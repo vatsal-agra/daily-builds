@@ -156,6 +156,25 @@ class TestPropertyIndexMaintenance(unittest.TestCase):
         idx = g.prop_indexes[("Person", "age")]
         self.assertEqual(idx.eq(10), [])
 
+    def test_property_index_survives_double_apply_of_same_op(self):
+        """Regression: if a crash lands between a checkpoint's snapshot
+        write and its WAL truncation, recovery loads the snapshot (which
+        already reflects some ops) and then replays those *same* ops
+        again from the stale WAL. PropertyIndex.add must be idempotent,
+        or this doubles up entries and lookups start returning duplicate
+        node ids.
+        """
+        g = Graph()
+        with g.transaction():
+            g.create_index("Person", "age")
+            a = g.create_node(["Person"], {"age": 10})
+        # Re-apply the exact same create_node op, as a stale WAL replay
+        # would after an already-reflected checkpoint snapshot.
+        g._apply({"op": "create_node", "id": a, "labels": ["Person"], "props": {"age": 10}})
+        idx = g.prop_indexes[("Person", "age")]
+        self.assertEqual(idx.eq(10), [a])
+        self.assertEqual(len(idx), 1)
+
     def test_range_query(self):
         g = Graph()
         with g.transaction():

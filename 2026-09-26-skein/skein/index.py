@@ -33,6 +33,18 @@ class LabelIndex:
         return label in self._map
 
 
+def values_equal(a, b) -> bool:
+    """Equality consistent with PropertyIndex's ordering: bool, number,
+    and string form distinct rank groups (Python's `True == 1` does NOT
+    hold here). Used for pattern property-map filters so an index-backed
+    lookup and a full scan of the same filter always agree -- without
+    this, `{active: 1}` would match a `True` property under a scan
+    (Python equality) but not under an index (rank-separated), a silent
+    divergence between two supposedly-equivalent query plans.
+    """
+    return _rank_val(a) == _rank_val(b)
+
+
 def _rank_val(value):
     """A total order across heterogeneous property types: None < bool <
     number < string. Keeps a single sorted index usable for any column
@@ -64,7 +76,13 @@ class PropertyIndex:
         return (rank, val, node_id)
 
     def add(self, value, node_id):
-        bisect.insort(self._entries, self._key(value, node_id))
+        key = self._key(value, node_id)
+        i = bisect.bisect_left(self._entries, key)
+        if i < len(self._entries) and self._entries[i] == key:
+            return  # already present: keeps replay of an interrupted
+            # checkpoint (snapshot written, WAL not yet truncated before a
+            # crash) idempotent instead of inserting a ghost duplicate.
+        self._entries.insert(i, key)
 
     def remove(self, value, node_id):
         key = self._key(value, node_id)

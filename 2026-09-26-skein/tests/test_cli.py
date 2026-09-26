@@ -117,6 +117,15 @@ class TestCLI(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertNotIn("Traceback", r.stderr)
 
+    def test_pagerank_rejects_negative_top(self):
+        run_cli("init", self.path)
+        run_cli("query", self.path, "CREATE (a:Person {name: 'A'})")
+        run_cli("query", self.path, "CREATE (b:Person {name: 'B'})")
+        run_cli("query", self.path, "CREATE (c:Person {name: 'C'})")
+        r = run_cli("algo", "pagerank", self.path, "--top", "-1")
+        self.assertNotEqual(r.returncode, 0, "negative --top silently sliced from the end instead of erroring")
+        self.assertNotIn("Traceback", r.stderr)
+
     def test_demo_runs_clean(self):
         r = run_cli("demo")
         self.assertEqual(r.returncode, 0, r.stderr)

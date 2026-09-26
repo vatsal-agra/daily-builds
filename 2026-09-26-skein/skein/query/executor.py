@@ -25,7 +25,11 @@ def compute_var_kinds(stmt: Statement):
             continue
         for pos, el in enumerate(pattern.elements):
             if el.var:
-                kinds[el.var] = "node" if pos % 2 == 0 else "edge"
+                kind = "node" if pos % 2 == 0 else "edge"
+                existing = kinds.get(el.var)
+                if existing is not None and existing != kind:
+                    raise SkeinError(f"variable '{el.var}' is used as both a node and a relationship")
+                kinds[el.var] = kind
     return kinds
 
 
@@ -124,6 +128,15 @@ _BINOPS = {
 }
 
 
+def _safe_binop(op, a, b):
+    try:
+        return _BINOPS[op](a, b)
+    except TypeError:
+        raise SkeinError(f"cannot apply '{op}' to {a!r} and {b!r} (missing property or mismatched types?)")
+    except ZeroDivisionError:
+        raise SkeinError(f"division by zero evaluating {a!r} {op} {b!r}")
+
+
 def _resolve_element(graph, var, binding, var_kinds):
     if var not in binding:
         raise SkeinError(f"unbound variable '{var}'")
@@ -147,7 +160,11 @@ def eval_expr(graph, expr, binding, var_kinds):
         if expr.op == "NOT":
             return not _truthy(eval_expr(graph, expr.operand, binding, var_kinds))
         if expr.op == "-":
-            return -eval_expr(graph, expr.operand, binding, var_kinds)
+            value = eval_expr(graph, expr.operand, binding, var_kinds)
+            try:
+                return -value
+            except TypeError:
+                raise SkeinError(f"cannot negate {value!r}")
         raise SkeinError(f"unknown unary operator {expr.op}")
     if isinstance(expr, BinOp):
         if expr.op == "AND":
@@ -156,7 +173,7 @@ def eval_expr(graph, expr, binding, var_kinds):
             return _truthy(eval_expr(graph, expr.left, binding, var_kinds)) or _truthy(eval_expr(graph, expr.right, binding, var_kinds))
         left = eval_expr(graph, expr.left, binding, var_kinds)
         right = eval_expr(graph, expr.right, binding, var_kinds)
-        return _BINOPS[expr.op](left, right)
+        return _safe_binop(expr.op, left, right)
     if isinstance(expr, FuncCall):
         return _call_func(graph, expr, binding, var_kinds)
     raise SkeinError(f"cannot evaluate expression {expr!r}")
@@ -166,18 +183,38 @@ def _is_count_star(expr) -> bool:
     return isinstance(expr, FuncCall) and expr.name.lower() == "count" and len(expr.args) == 1 and isinstance(expr.args[0], VarRef) and expr.args[0].var == "*"
 
 
+def _single_var_arg(expr: FuncCall) -> str:
+    if len(expr.args) != 1 or not isinstance(expr.args[0], VarRef):
+        raise SkeinError(f"{expr.name}() expects a single variable argument, e.g. {expr.name}(a)")
+    return expr.args[0].var
+
+
 def _call_func(graph, expr: FuncCall, binding, var_kinds):
     name = expr.name.lower()
     if name == "id":
-        return binding.get(expr.args[0].var) if expr.args else None
+        var = _single_var_arg(expr)
+        if var not in binding:
+            raise SkeinError(f"unbound variable '{var}'")
+        return binding[var]
     if name == "labels":
-        _kind, elem = _resolve_element(graph, expr.args[0].var, binding, var_kinds)
+        var = _single_var_arg(expr)
+        kind, elem = _resolve_element(graph, var, binding, var_kinds)
+        if kind != "node":
+            raise SkeinError(f"labels() expects a node variable, but '{var}' is a relationship")
         return sorted(elem.labels)
     if name == "type":
-        _kind, elem = _resolve_element(graph, expr.args[0].var, binding, var_kinds)
+        var = _single_var_arg(expr)
+        kind, elem = _resolve_element(graph, var, binding, var_kinds)
+        if kind != "edge":
+            raise SkeinError(f"type() expects a relationship variable, but '{var}' is a node")
         return elem.type
     if name == "count":
-        return 1  # meaningful only in the COUNT(*) special-case handled by execute()
+        # Only meaningful as the sole top-level RETURN item, handled as a
+        # special case by execute() before any per-row projection runs.
+        # Reaching this branch means count() was used somewhere else (e.g.
+        # mixed with other RETURN items) -- returning a placeholder there
+        # would silently look like a real per-row count. Refuse instead.
+        raise SkeinError("count(*) is only supported as the sole RETURN expression, e.g. RETURN count(*)")
     raise SkeinError(f"unknown function {expr.name}()")
 
 

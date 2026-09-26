@@ -6,9 +6,9 @@ pattern matching), an index-aware query planner, and a graph algorithms
 library (BFS, Dijkstra, PageRank, connected components) with independent
 correctness oracles. See [PLAN.md](PLAN.md) for the full design rationale.
 
-**Status: Phase 2 (core build) complete — all 4 required features working
-end-to-end, 75/75 tests green, `demo.sh` green.** Adversarial review and
-stretch features (visualizer, crash-recovery demo) come next.
+**Status: Phase 3 (adversarial review) complete — 8 real bugs found and
+fixed (see [REVIEW.md](REVIEW.md)), 84/84 tests green, `demo.sh` green.**
+Stretch features (visualizer, crash-recovery demo) come next.
 
 ## Quickstart
 

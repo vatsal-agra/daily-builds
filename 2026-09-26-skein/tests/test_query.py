@@ -222,6 +222,79 @@ class TestMutationClauses(unittest.TestCase):
         self.assertEqual(rows, [{"n": 4}])
 
 
+class TestAdversarialReviewRegressions(unittest.TestCase):
+    """One test per bug found in Phase 3's adversarial review -- see
+    REVIEW.md for the full write-up of each.
+    """
+
+    def test_arithmetic_on_missing_property_raises_clean_error(self):
+        g, ids = make_social_graph()
+        with self.assertRaises(SkeinError):
+            q(g, "MATCH (a:Person) RETURN a.nickname + 1")
+
+    def test_division_by_zero_raises_clean_error(self):
+        g, ids = make_social_graph()
+        with self.assertRaises(SkeinError):
+            q(g, "MATCH (a:Person) RETURN 1 / 0")
+
+    def test_negating_a_string_raises_clean_error(self):
+        g, ids = make_social_graph()
+        with self.assertRaises(SkeinError):
+            q(g, "MATCH (a:Person) RETURN -a.name")
+
+    def test_comparing_incompatible_types_raises_clean_error(self):
+        g, ids = make_social_graph()
+        with self.assertRaises(SkeinError):
+            q(g, "MATCH (a:Person) WHERE a.name > a.age RETURN a")
+
+    def test_variable_reused_as_node_and_relationship_raises(self):
+        g, ids = make_social_graph()
+        with self.assertRaises(SkeinError):
+            q(g, "MATCH (a)-[a:KNOWS]->(b) RETURN a")
+
+    def test_function_call_arity_and_type_validated(self):
+        g, ids = make_social_graph()
+        for text in [
+            "MATCH (a:Person) RETURN labels()",
+            "MATCH (a:Person) RETURN type()",
+            "MATCH (a:Person) RETURN labels(a.name)",
+            "MATCH (a:Person)-[r:KNOWS]->(b) RETURN type(a)",
+            "MATCH (a:Person)-[r:KNOWS]->(b) RETURN labels(r)",
+        ]:
+            with self.assertRaises(SkeinError, msg=text):
+                q(g, text)
+
+    def test_count_star_mixed_with_other_columns_refused_not_faked(self):
+        """count(*) alongside other RETURN items used to silently emit the
+        literal 1 per row (never a real aggregate) instead of erroring --
+        a fake feature that looked like it worked.
+        """
+        g, ids = make_social_graph()
+        with self.assertRaises(SkeinError):
+            q(g, "MATCH (a:Person) RETURN count(*), a.name")
+        with self.assertRaises(SkeinError):
+            q(g, "MATCH (a:Person) RETURN count(a)")
+        # the one supported form still works:
+        self.assertEqual(q(g, "MATCH (a:Person) RETURN count(*) AS n"), [{"n": 4}])
+
+    def test_index_and_scan_agree_on_bool_vs_int(self):
+        """A property equal to `1` and one equal to `true` must match (or
+        not match) `{prop: 1}` identically whether or not an index exists
+        -- Python's `True == 1` must not leak into one code path only.
+        """
+        g = Graph()
+        with g.transaction():
+            a = g.create_node(["Person"], {"active": True})
+            b = g.create_node(["Person"], {"active": 1})
+        text = "MATCH (p:Person {active: 1}) RETURN id(p)"
+        before = sorted(r["id(p)"] for r in q(g, text))
+        with g.transaction():
+            g.create_index("Person", "active")
+        after = sorted(r["id(p)"] for r in q(g, text))
+        self.assertEqual(before, after)
+        self.assertEqual(before, [b])  # only the literal int 1 matches, not True
+
+
 class TestOrderByLimit(unittest.TestCase):
     def test_order_desc_and_limit(self):
         g, ids = make_social_graph()

@@ -155,6 +155,8 @@ def cmd_import(args) -> int:
 
 
 def cmd_algo_pagerank(args) -> int:
+    if args.top is not None and args.top <= 0:
+        raise SkeinError("--top must be a positive integer")
     graph = _open(args.path)
     try:
         scores = algorithms.pagerank(graph)

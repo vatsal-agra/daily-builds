@@ -3,6 +3,7 @@
 falling back to a full node scan only when the pattern gives the planner
 nothing to work with.
 """
+from ..index import values_equal
 from .ast import NodePattern
 
 
@@ -13,7 +14,7 @@ def node_matches(graph, node_pat: NodePattern, nid: int) -> bool:
     if node_pat.labels and not set(node_pat.labels).issubset(node.labels):
         return False
     for key, value in node_pat.props.items():
-        if node.props.get(key) != value:
+        if key not in node.props or not values_equal(node.props[key], value):
             return False
     return True
 
@@ -25,7 +26,7 @@ def rel_matches(graph, rel_pat, eid: int) -> bool:
     if rel_pat.types and edge.type not in rel_pat.types:
         return False
     for key, value in rel_pat.props.items():
-        if edge.props.get(key) != value:
+        if key not in edge.props or not values_equal(edge.props[key], value):
             return False
     return True
 
