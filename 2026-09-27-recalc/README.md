@@ -1,13 +1,14 @@
 # Recalc
 
 A from-scratch spreadsheet engine: formula language, dependency graph,
-incremental recalculation, and (coming next) a browser grid UI backed by
-the real Python engine.
+incremental recalculation, and a browser grid UI backed by the real
+Python engine.
 
-**Status: Phase 2 (core build) complete for the engine layer.** See
-[PLAN.md](PLAN.md) for the full architecture and feature list.
+**Status: Phase 2 (core build) complete — all 4 required features work
+end-to-end.** See [PLAN.md](PLAN.md) for the full architecture and
+feature list.
 
-## What's implemented so far
+## What's implemented
 
 - `engine/tokenizer.py`, `engine/parser.py`, `engine/evaluator.py` — a full
   Excel-like formula language: arithmetic, comparisons, string
@@ -25,20 +26,26 @@ the real Python engine.
   reference translation, and multi-level undo/redo.
 - `engine/csvio.py` — CSV import/export and a JSON workbook save/load
   format.
-- `tests/` — 75 unit tests, including a fuzz harness that, after every
+- `server.py` + `static/` — a stdlib-only HTTP server and a browser grid
+  UI (click/drag select, formula bar, keyboard nav, copy/paste, fill
+  handle, undo/redo, CSV import/export, save/load, a bar/line chart
+  panel) that renders only values the real Python engine computed.
+- `recalc.py` — CLI (`serve`, `run`, `demo`).
+- `demo.py` — a narrated, self-checking walkthrough of every feature.
+- `tests/` — 75 unit tests (tokenizer/parser/precedence, the full
+  function library, the dependency graph, copy/paste/fill translation,
+  undo/redo, CSV I/O) plus a real headless-Chromium browser test
+  (`tests/browser_smoke.js`), including a fuzz harness that, after every
   random edit to a random sheet, diffs the incremental engine's cell
-  values against a from-scratch full recompute (the core correctness
-  invariant this build is built around).
+  values against a from-scratch full recompute — the core correctness
+  invariant this build is built around.
 
-## Not yet built
-
-The browser grid UI and `server.py` backing it (required feature 4), plus
-the stretch features (charting) and the CLI entry point. Coming in the
-rest of Phase 2 and Phase 4.
-
-## Running the tests
+## Running it
 
 ```
 cd 2026-09-27-recalc
-python3 -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -v   # engine unit tests
+python3 recalc.py demo                     # narrated CLI walkthrough
+python3 recalc.py serve                    # then open http://127.0.0.1:8765
+node tests/browser_smoke.js                # headless-browser UI check (server must be running)
 ```

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recalc</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="titlebar">
+    <span id="logo">Recalc</span>
+    <span id="status" aria-live="polite"></span>
+  </header>
+
+  <div id="toolbar">
+    <button id="btn-new" title="New workbook">New</button>
+    <span class="sep"></span>
+    <button id="btn-undo" title="Undo (Ctrl+Z)">&#8630; Undo</button>
+    <button id="btn-redo" title="Redo (Ctrl+Y)">&#8631; Redo</button>
+    <span class="sep"></span>
+    <button id="btn-copy" title="Copy (Ctrl+C)">Copy</button>
+    <button id="btn-paste" title="Paste (Ctrl+V)">Paste</button>
+    <button id="btn-clear" title="Clear selection (Del)">Clear</button>
+    <span class="sep"></span>
+    <button id="btn-import-csv">Import CSV</button>
+    <button id="btn-export-csv">Export CSV</button>
+    <button id="btn-save">Save Workbook</button>
+    <button id="btn-load">Load Workbook</button>
+    <span class="sep"></span>
+    <button id="btn-chart">Insert Chart</button>
+    <input type="file" id="file-import-csv" accept=".csv" hidden>
+    <input type="file" id="file-load" accept=".json" hidden>
+  </div>
+
+  <div id="formula-bar">
+    <span id="cell-address">A1</span>
+    <input id="formula-input" type="text" autocomplete="off" spellcheck="false" placeholder="Enter a value or a formula starting with =">
+  </div>
+
+  <div id="grid-wrapper">
+    <div id="grid-scroll">
+      <table id="grid" role="grid"></table>
+    </div>
+    <input id="cell-editor" type="text" autocomplete="off" spellcheck="false" hidden>
+  </div>
+
+  <div id="chart-panel" hidden>
+    <div id="chart-header">
+      <span>Chart from current selection</span>
+      <div>
+        <select id="chart-type">
+          <option value="bar">Bar</option>
+          <option value="line">Line</option>
+        </select>
+        <button id="btn-close-chart">&times;</button>
+      </div>
+    </div>
+    <canvas id="chart-canvas" width="520" height="320"></canvas>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
