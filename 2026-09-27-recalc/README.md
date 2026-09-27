@@ -4,11 +4,21 @@ A from-scratch spreadsheet engine: formula language, dependency graph,
 incremental recalculation, and a browser grid UI backed by the real
 Python engine.
 
-**Status: Phase 3 (adversarial review) complete.** All 4 required
-features work end-to-end; 7 real bugs were found (2 of them only visible
-by driving an actual headless browser, one a process-crashing
-`RecursionError`) and fixed — see [REVIEW.md](REVIEW.md) for the full
-writeup. See [PLAN.md](PLAN.md) for the architecture and feature list.
+**Status: Phase 4 (stretch + polish) complete.** All 4 required features
+and all 4 planned stretch features (copy/paste+fill, undo/redo, CSV +
+workbook save/load, charting) work end-to-end. 8 real bugs were found
+across Phases 3–4 (3 of them only visible by driving an actual headless
+browser — including a keystroke-losing focus race that silently
+corrupted typed data — and one a process-crashing `RecursionError`) and
+fixed; see [REVIEW.md](REVIEW.md) for the full writeup. See
+[PLAN.md](PLAN.md) for the architecture and feature list.
+
+### Polish added in Phase 4
+- A leading apostrophe forces text (`'5`, `'TRUE`), matching real
+  spreadsheet convention, without needing `="5"`.
+- Scientific notation renders Excel-style (`1E+20`, not `1e+20`).
+- The active row/column headers highlight with the current selection.
+- The fixed keystroke-race bug above.
 
 ## What's implemented
 

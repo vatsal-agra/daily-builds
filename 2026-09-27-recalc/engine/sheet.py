@@ -21,7 +21,12 @@ class Cell:
 
 
 def _parse_literal(text):
-    """Non-formula raw text -> a literal Value (number, bool, or text)."""
+    """Non-formula raw text -> a literal Value (number, bool, or text). A
+    leading apostrophe forces text, exactly like a real spreadsheet: typing
+    `'5` or `'TRUE` stores (and displays) the literal text `5`/`TRUE`
+    rather than a number or boolean, without needing `=\"5\"`."""
+    if text.startswith("'"):
+        return text[1:]
     stripped = text.strip()
     if stripped == "":
         return None

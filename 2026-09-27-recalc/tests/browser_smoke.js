@@ -64,7 +64,20 @@ const BASE = process.argv[2] || "http://127.0.0.1:8765";
   const c1After = await page.textContent('td[data-col="3"][data-row="1"]');
   if (c1After !== "") throw new Error(`expected C1 blank after undo, got ${JSON.stringify(c1After)}`);
 
-  // 7. chart panel opens with no console errors
+  // 7. rapid Tab-then-type must not lose the first keystroke to the
+  // focus-restoration race that shipped in an earlier version of this
+  // file (see REVIEW.md) — type across a whole row without pausing
+  // between cells, the way a real fast typist fills one in.
+  await page.click('td[data-col="1"][data-row="5"]');
+  await page.keyboard.type("Gadget");
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("19.99");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(150);
+  const rapidEntry = await page.textContent('td[data-col="2"][data-row="5"]');
+  if (rapidEntry !== "19.99") throw new Error(`expected rapid Tab-then-type to land '19.99', got ${JSON.stringify(rapidEntry)} (lost keystroke race?)`);
+
+  // 8. chart panel opens with no console errors
   await page.click("#btn-chart");
   await page.waitForTimeout(150);
   const chartVisible = await page.isVisible("#chart-panel");

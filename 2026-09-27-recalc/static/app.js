@@ -119,8 +119,15 @@
     }
   }
 
+  const colHeadEls = {};
+  const rowHeadEls = {};
+  document.querySelectorAll("#grid thead th:not(.corner)").forEach((th, i) => { colHeadEls[i + 1] = th; });
+  document.querySelectorAll("#grid tbody th.row-head").forEach((th, i) => { rowHeadEls[i + 1] = th; });
+
   function updateSelectionVisuals() {
     for (const key in cellEls) cellEls[key].classList.remove("selected", "selected-range");
+    for (const key in colHeadEls) colHeadEls[key].classList.remove("head-active");
+    for (const key in rowHeadEls) rowHeadEls[key].classList.remove("head-active");
     const n = normSel();
     for (let r = n.r1; r <= n.r2; r++) {
       for (let c = n.c1; c <= n.c2; c++) {
@@ -129,6 +136,8 @@
         td.classList.add(c === sel.c2 && r === sel.r2 ? "selected" : "selected-range");
       }
     }
+    for (let c = n.c1; c <= n.c2; c++) { if (colHeadEls[c]) colHeadEls[c].classList.add("head-active"); }
+    for (let r = n.r1; r <= n.r2; r++) { if (rowHeadEls[r]) rowHeadEls[r].classList.add("head-active"); }
     // formula bar reflects the active (most-recently-touched) cell
     cellAddressEl.textContent = addr(sel.c2, sel.r2);
     const activeCell = data[addr(sel.c2, sel.r2)];
@@ -278,16 +287,27 @@
     const text = cellEditor.value;
     editing = null;
     cellEditor.hidden = true;
+    // Move the selection and restore focus to the grid *before* awaiting
+    // the network round-trip, not after: with the move deferred into a
+    // `.then()` that only ran once the response came back, focus briefly
+    // belonged to no element in the grid at all (the just-hidden editor
+    // isn't it, and grid-wrapper hadn't been refocused yet). Typing
+    // quickly right after Enter/Tab — the normal way to fill in a row —
+    // could then lose its first keystroke(s) to nothing, landing instead
+    // whenever the fetch happened to resolve. Real bug, found only by
+    // actually typing several cells in a row in a live browser and
+    // reading back what actually got stored, not from any test that
+    // waits between actions.
+    if (moveDir === "down") selectCell(col, row + 1, false);
+    else if (moveDir === "right") selectCell(col + 1, row, false);
+    else selectCell(col, row, false);
+    gridWrapper.focus();
     try {
       const resp = await api("/api/cell", { col, row, raw: text });
       applyResponse(resp);
     } catch (err) {
       setStatus(String(err.message || err), true);
     }
-    if (moveDir === "down") selectCell(col, row + 1, false);
-    else if (moveDir === "right") selectCell(col, row, false);
-    else selectCell(col, row, false);
-    gridWrapper.focus();
   }
 
   function cancelEdit() {
@@ -313,13 +333,11 @@
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
-      const col = editing.col, row = editing.row;
-      commitEdit(null).then(() => selectCell(col, row + 1, false));
+      commitEdit("down");
     } else if (e.key === "Tab") {
       e.preventDefault();
       e.stopPropagation();
-      const col = editing.col, row = editing.row;
-      commitEdit(null).then(() => selectCell(col + 1, row, false));
+      commitEdit("right");
     } else if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -338,8 +356,7 @@
     if (e.key === "Enter") {
       e.preventDefault();
       cellEditor.value = formulaInput.value;
-      const col = editing ? editing.col : sel.c2, row = editing ? editing.row : sel.r2;
-      commitEdit(null).then(() => selectCell(col, row + 1, false));
+      commitEdit("down");
     } else if (e.key === "Escape") {
       cancelEdit();
     }

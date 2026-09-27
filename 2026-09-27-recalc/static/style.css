@@ -205,6 +205,11 @@ table#grid {
   z-index: 3;
 }
 
+#grid th.head-active {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
 #grid td {
   background: var(--panel);
   color: var(--text);

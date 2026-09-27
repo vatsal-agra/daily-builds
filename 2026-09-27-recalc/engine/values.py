@@ -115,7 +115,7 @@ def format_number(x):
     if x == int(x) and abs(x) < 1e15:
         return str(int(x))
     s = f"{x:.10g}"
-    return s
+    return s.replace("e", "E")  # Excel's own scientific-notation style
 
 
 def display(v):

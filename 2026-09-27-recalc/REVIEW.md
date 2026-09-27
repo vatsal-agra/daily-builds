@@ -101,6 +101,37 @@ the happy path.
    watch real request traffic from a real browser. Fixed with
    `e.stopPropagation()` on the editor's Enter/Tab/Escape handling.
 
+## Phase 4 addendum: one more real bug, found by actually typing a row
+
+While polishing the UI, filling in a small sample table by typing several
+cells in a row (`Item` Tab `Price` Enter, `Widget` Tab `9.99` Enter, ...)
+at normal typing speed produced silently wrong data: a value typed as
+`19.99` landed in the cell as `9.99` — the leading `1` vanished. Root
+cause: `commitEdit` deferred moving the selection and refocusing
+`#grid-wrapper` until *after* `await`ing the `/api/cell` response, with
+the actual `selectCell()` call living in a `.then()` on the caller's side.
+Between hiding the just-committed cell's editor and that response coming
+back, **no element in the grid had focus at all**, so any keys typed in
+that window (which a fast typist reliably enters, since Tab-then-type is
+the normal way to fill in a row) were dispatched nowhere and silently
+lost — indistinguishable from the keystroke just not having happened.
+Whichever character happened to be "in flight" when the response arrived
+and focus returned defined where the *next* `startEdit` call picked up,
+which is why the value quietly lost only its *first* digit rather than
+failing in any more obvious way.
+
+Fixed by moving the selection change and `gridWrapper.focus()` call to
+happen synchronously, immediately after reading `cellEditor`'s value and
+*before* the `await` — the value still saves asynchronously, but the grid
+is never left without an active focus target. Also fixed in the same
+pass: `commitEdit`'s own `moveDir` parameter was dead code (every call
+site passed `null` and did its own separate, differently-timed
+`selectCell` via a trailing `.then()`, and the `"right"` branch of that
+dead code did not even move right) — calls now pass the real intended
+direction and there is exactly one place selection changes after a
+commit. `tests/browser_smoke.js` now types a whole row back-to-back with
+no artificial pauses (check 7) to guard against this regressing.
+
 ## Verification added, not just fixes
 
 - A combined fuzz test (`test_random_paste_fill_clear_fuzz`) drives

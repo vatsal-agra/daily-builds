@@ -72,6 +72,15 @@ class TestDependencyRecalc(unittest.TestCase):
         s.set_cell(*A("A1"), "5")
         self.assertEqual(s.get_display(*A("D1")), "25")
 
+    def test_leading_apostrophe_forces_text(self):
+        s = Sheet()
+        s.set_cell(*A("A1"), "'5")
+        s.set_cell(*A("A2"), "'TRUE")
+        s.set_cell(*A("B1"), "=A1+1")  # text "5" still coerces for arithmetic
+        self.assertEqual(s.get_display(*A("A1")), "5")
+        self.assertEqual(s.get_display(*A("A2")), "TRUE")
+        self.assertEqual(s.get_display(*A("B1")), "6")
+
     def test_clearing_a_precedent_is_blank_not_crash(self):
         s = Sheet()
         s.set_cell(*A("A1"), "5")
