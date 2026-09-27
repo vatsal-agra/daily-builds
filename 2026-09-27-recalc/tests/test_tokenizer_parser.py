@@ -44,6 +44,29 @@ class TestTokenizer(unittest.TestCase):
             tokenize("A1 @ B1")
 
 
+class TestParseDepthGuard(unittest.TestCase):
+    """A pathologically deeply-nested formula must fail cleanly with
+    ParseError, never crash the process with a raw RecursionError — real
+    bug, see REVIEW.md."""
+
+    def test_moderate_nesting_still_works(self):
+        formula = "(" * 30 + "1+1" + ")" * 30
+        ast = P.parse(formula)  # must not raise
+        self.assertIsInstance(ast, P.BinOp)
+
+    def test_pathological_nesting_raises_parse_error_not_recursion_error(self):
+        formula = "(" * 5000 + "1" + ")" * 5000
+        with self.assertRaises(P.ParseError):
+            P.parse(formula)
+
+    def test_pathological_nesting_via_sheet_becomes_clean_error_cell(self):
+        from engine.sheet import Sheet
+        s = Sheet()
+        formula = "=" + "(" * 5000 + "1" + ")" * 5000
+        s.set_cell(1, 1, formula)  # must not raise RecursionError
+        self.assertEqual(s.get_display(1, 1), "#ERROR!")
+
+
 class TestParserPrecedence(unittest.TestCase):
     def ev(self, formula):
         """Parse and evaluate with no cell lookups needed (pure literals)."""

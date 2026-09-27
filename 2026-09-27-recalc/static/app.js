@@ -130,8 +130,7 @@
       }
     }
     // formula bar reflects the active (most-recently-touched) cell
-    cellAddressEl.textContent = normSel().c2 === sel.c2 && normSel().r2 === sel.r2
-      ? addr(sel.c2, sel.r2) : addr(sel.c2, sel.r2);
+    cellAddressEl.textContent = addr(sel.c2, sel.r2);
     const activeCell = data[addr(sel.c2, sel.r2)];
     if (!editing) formulaInput.value = activeCell ? activeCell.raw : "";
 
@@ -461,10 +460,14 @@
 
   // -- toolbar --------------------------------------------------------------
 
-  document.getElementById("btn-new").addEventListener("click", async () => {
-    if (!confirm("Start a new, empty workbook? This clears the current sheet.")) return;
+  function forgetClipboard() {
     clipboard = null;
     updateClipboardVisuals();
+  }
+
+  document.getElementById("btn-new").addEventListener("click", async () => {
+    if (!confirm("Start a new, empty workbook? This clears the current sheet.")) return;
+    forgetClipboard();
     try { applyResponse(await api("/api/new")); } catch (err) { setStatus(String(err.message || err), true); }
   });
   document.getElementById("btn-undo").addEventListener("click", doUndo);
@@ -488,6 +491,7 @@
     if (!file) return;
     const text = await file.text();
     const n = normSel();
+    forgetClipboard();
     try {
       const resp = await api("/api/import_csv", { text, origin: [n.c1, n.r1] });
       applyResponse(resp);
@@ -505,6 +509,7 @@
     const file = e.target.files[0];
     if (!file) return;
     const text = await file.text();
+    forgetClipboard();
     try {
       const resp = await api("/api/load", { text });
       applyResponse(resp);

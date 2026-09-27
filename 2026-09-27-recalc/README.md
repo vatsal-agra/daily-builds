@@ -4,9 +4,11 @@ A from-scratch spreadsheet engine: formula language, dependency graph,
 incremental recalculation, and a browser grid UI backed by the real
 Python engine.
 
-**Status: Phase 2 (core build) complete — all 4 required features work
-end-to-end.** See [PLAN.md](PLAN.md) for the full architecture and
-feature list.
+**Status: Phase 3 (adversarial review) complete.** All 4 required
+features work end-to-end; 7 real bugs were found (2 of them only visible
+by driving an actual headless browser, one a process-crashing
+`RecursionError`) and fixed — see [REVIEW.md](REVIEW.md) for the full
+writeup. See [PLAN.md](PLAN.md) for the architecture and feature list.
 
 ## What's implemented
 
@@ -32,11 +34,12 @@ feature list.
   panel) that renders only values the real Python engine computed.
 - `recalc.py` — CLI (`serve`, `run`, `demo`).
 - `demo.py` — a narrated, self-checking walkthrough of every feature.
-- `tests/` — 75 unit tests (tokenizer/parser/precedence, the full
+- `tests/` — 79 unit tests (tokenizer/parser/precedence, the full
   function library, the dependency graph, copy/paste/fill translation,
-  undo/redo, CSV I/O) plus a real headless-Chromium browser test
-  (`tests/browser_smoke.js`), including a fuzz harness that, after every
-  random edit to a random sheet, diffs the incremental engine's cell
+  undo/redo, CSV I/O, a parser nesting-depth guard) plus a real
+  headless-Chromium browser test (`tests/browser_smoke.js`), including
+  fuzz harnesses that, after every random `set_cell`/`copy_paste`/
+  `fill`/`clear` on a random sheet, diff the incremental engine's cell
   values against a from-scratch full recompute — the core correctness
   invariant this build is built around.
 

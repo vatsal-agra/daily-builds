@@ -100,6 +100,18 @@ class Handler(BaseHTTPRequestHandler):
     # -- routing ------------------------------------------------------------
 
     def do_GET(self):
+        try:
+            self._do_GET()
+        except (KeyError, ValueError, IndexError, TypeError) as e:
+            self._send_json({"error": f"bad request: {e}"}, status=400)
+
+    def do_POST(self):
+        try:
+            self._do_POST()
+        except (KeyError, ValueError, IndexError, TypeError) as e:
+            self._send_json({"error": f"bad request: {e}"}, status=400)
+
+    def _do_GET(self):
         state = self.server.app_state
         if self.path == "/api/sheet":
             with state.lock:
@@ -127,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._serve_static(self.path)
 
-    def do_POST(self):
+    def _do_POST(self):
         state = self.server.app_state
         body = self._read_json()
 

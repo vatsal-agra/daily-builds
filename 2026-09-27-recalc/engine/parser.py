@@ -89,10 +89,22 @@ class FuncCall:
 _COMPARISON_OPS = {"=", "<>", "<", "<=", ">", ">="}
 
 
+# Every parenthesized group or function-call argument recurses back
+# through parse_expr, so a pathological input like 2000 nested '('
+# characters would otherwise recurse Python's own call stack into a raw
+# RecursionError (which — unlike ParseError — nothing downstream is
+# built to expect, and would crash the request that triggered it rather
+# than showing a clean error in the cell). Bounding depth *at parse
+# time* means the AST itself can never be deep enough for evaluate(),
+# translate(), or to_formula() to hit the same problem later, either.
+MAX_EXPR_DEPTH = 60
+
+
 class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
         self.i = 0
+        self.depth = 0
 
     def peek(self):
         return self.tokens[self.i]
@@ -116,7 +128,13 @@ class Parser:
         return node
 
     def parse_expr(self):
-        return self.parse_comparison()
+        self.depth += 1
+        if self.depth > MAX_EXPR_DEPTH:
+            raise ParseError("formula is too deeply nested", self.peek().pos)
+        try:
+            return self.parse_comparison()
+        finally:
+            self.depth -= 1
 
     def parse_comparison(self):
         left = self.parse_concat()

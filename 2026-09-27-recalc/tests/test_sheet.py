@@ -236,6 +236,61 @@ class TestFullVsIncrementalOracle(unittest.TestCase):
             full = self._snapshot(s)
             self.assertEqual(incremental, full)
 
+    def test_random_paste_fill_clear_fuzz(self):
+        """The riskiest oracle test: mixes set_cell, copy_paste, fill, and
+        clear (each its own batched multi-cell recompute path) against
+        formulas that frequently create and break cycles, and checks the
+        incremental engine agrees with a full recompute after every single
+        step, not just after plain single-cell edits."""
+        rng = random.Random(42)
+        addrs = [(c, r) for c in range(1, 7) for r in range(1, 7)]
+
+        def random_raw():
+            kind = rng.random()
+            if kind < 0.25:
+                return str(rng.randint(-5, 5))
+            if kind < 0.35:
+                return ""
+            c, r = rng.choice(addrs)
+            op = rng.choice(["+", "-", "*"])
+            c2, r2 = rng.choice(addrs)
+            return f"={refs.col_to_letters(c)}{r}{op}{refs.col_to_letters(c2)}{r2}"
+
+        s = Sheet()
+        for i in range(300):
+            action = rng.random()
+            if action < 0.5:
+                c, r = rng.choice(addrs)
+                s.set_cell(c, r, random_raw())
+            elif action < 0.7:
+                c1, r1 = rng.choice(addrs)
+                c2, r2 = rng.choice(addrs)
+                lo_c, hi_c = sorted((c1, c2))
+                lo_r, hi_r = sorted((r1, r2))
+                dest = rng.choice(addrs)
+                s.copy_paste((lo_c, lo_r), (hi_c, hi_r), dest)
+            elif action < 0.85:
+                src = rng.choice(addrs)
+                c1, r1 = rng.choice(addrs)
+                c2, r2 = rng.choice(addrs)
+                lo_c, hi_c = sorted((c1, c2))
+                lo_r, hi_r = sorted((r1, r2))
+                s.fill(src[0], src[1], (lo_c, lo_r), (hi_c, hi_r))
+            else:
+                c1, r1 = rng.choice(addrs)
+                c2, r2 = rng.choice(addrs)
+                lo_c, hi_c = sorted((c1, c2))
+                lo_r, hi_r = sorted((r1, r2))
+                s.clear((lo_c, lo_r), (hi_c, hi_r))
+
+            incremental = self._snapshot(s)
+            s.recompute_all()
+            full = self._snapshot(s)
+            self.assertEqual(
+                incremental, full,
+                f"incremental/full mismatch after step {i} (action={action:.2f})",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
