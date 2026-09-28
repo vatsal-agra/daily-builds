@@ -22,7 +22,12 @@ class _Handler(socketserver.BaseRequestHandler):
     def handle(self):
         try:
             req = protocol.recv_msg(self.request)
-        except protocol.ProtocolError:
+        except (protocol.ProtocolError, OSError, ValueError):
+            # Malformed/truncated message or a connection that dropped
+            # mid-read: nothing useful to reply with, and definitely not
+            # worth taking the server down over -- just drop this request.
+            return
+        if not isinstance(req, dict):
             return
         method = req.get("method")
         params = req.get("params", {})

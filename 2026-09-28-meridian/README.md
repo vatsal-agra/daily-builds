@@ -39,5 +39,21 @@ python3 -m meridian.cli cluster-stop
 ```
 
 See [`PLAN.md`](PLAN.md) for the full architecture and feature list.
-Adversarial review, stretch features, and final verification are still to
-come.
+
+**Status: Phase 3 (adversarial review) complete.** See
+[`REVIEW.md`](REVIEW.md) for the full write-up. Five real bugs were found by
+attacking a live multi-process cluster (not just reading the code) and
+fixed, including one that would have silently mis-hashed keys on any
+non-default ring size, and one where a cluster-start failure was reported
+as success because the readiness check could be fooled by an unrelated
+process squatting the port. Stretch features and final verification are
+still to come.
+
+### Known limitation (by design, not a bug)
+
+Meridian follows Chord's own consistency model: **eventually consistent,
+not linearizable.** If a key is written once, every read of it is correct,
+including immediately after a node holding it crashes (verified). If a key
+were overwritten while replicas are still catching up to a recent topology
+change, a very short staleness window is possible — the same trade-off the
+real protocol makes. See `REVIEW.md` for the full reasoning.

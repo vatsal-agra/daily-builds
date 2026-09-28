@@ -329,7 +329,7 @@ class ChordNode:
             for store in self.replica_data.values():
                 if kid in store:
                     return store[kid][1]
-        raise KeyNotFoundError(key)
+        raise KeyNotFoundError(f"key {key!r} not found (not held as primary or replica on this node)")
 
     def rpc_transfer_keys(self, new_node_id: int) -> dict:
         with self.lock:
@@ -388,9 +388,17 @@ class ChordNode:
             }
 
 
-def get(key: str, start: NodeRef, rpc_call: RpcCall):
-    """External-client style get: returns (value, hops_used)."""
-    kid = hashing.key_id(key, hashing.DEFAULT_M_BITS)
+def get(key: str, start: NodeRef, rpc_call: RpcCall, m_bits: int = hashing.DEFAULT_M_BITS):
+    """External-client style get: returns (value, hops_used).
+
+    `m_bits` MUST match the ring's actual identifier-space width (i.e. the
+    `--m-bits` a cluster was started with), not just the library default --
+    hashing a key into the wrong-sized space silently mis-targets storage
+    the moment a ring uses a non-default width. Callers that already know
+    a node's ring config (the CLI reads it out of cluster state) must pass
+    it explicitly rather than relying on the default.
+    """
+    kid = hashing.key_id(key, m_bits)
     final_node, hops = iterative_find_successor(start, kid, rpc_call)
     candidates = [final_node]
     try:
@@ -399,8 +407,14 @@ def get(key: str, start: NodeRef, rpc_call: RpcCall):
     except RPCError:
         if hops:
             prev = hops[-1]
-            resp = rpc_call(prev, "get_successor_list", {})
-            candidates = [NodeRef.from_dict(d) for d in resp["successors"]]
+            try:
+                resp = rpc_call(prev, "get_successor_list", {})
+                candidates = [NodeRef.from_dict(d) for d in resp["successors"]]
+            except RPCError as e:
+                raise LookupFailed(
+                    f"both the responsible node {final_node} and the previous hop {prev} "
+                    f"are unreachable while looking up key={key!r}"
+                ) from e
 
     last_err: Optional[Exception] = None
     for cand in candidates:
@@ -413,9 +427,12 @@ def get(key: str, start: NodeRef, rpc_call: RpcCall):
     raise last_err or LookupFailed(f"no reachable replica for key={key!r}")
 
 
-def put(key: str, value, start: NodeRef, rpc_call: RpcCall):
-    """External-client style put: returns (responsible_node, hops_used)."""
-    kid = hashing.key_id(key, hashing.DEFAULT_M_BITS)
+def put(key: str, value, start: NodeRef, rpc_call: RpcCall, m_bits: int = hashing.DEFAULT_M_BITS):
+    """External-client style put: returns (responsible_node, hops_used).
+
+    See `get()`'s docstring: `m_bits` must match the ring's actual width.
+    """
+    kid = hashing.key_id(key, m_bits)
     final_node, hops = iterative_find_successor(start, kid, rpc_call)
     rpc_call(final_node, "store", {"key": key, "value": value})
     try:

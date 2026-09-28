@@ -12,7 +12,6 @@ import argparse
 import json
 import os
 import signal
-import socket
 import subprocess
 import sys
 import time
@@ -35,15 +34,26 @@ def _save_state(path: Path, state: dict) -> None:
     path.write_text(json.dumps(state, indent=2))
 
 
-def _wait_for_port(host: str, port: int, timeout: float = 10.0) -> bool:
+def _wait_for_node_ready(proc: subprocess.Popen, host: str, port: int, m_bits: int, timeout: float = 10.0) -> str | None:
+    """Wait for the node process to come up and actually answer a Meridian
+    `ping` RPC -- not just for *some* socket to accept a TCP connection on
+    that port. A bare connect-only check can't tell "our node is up" from
+    "an unrelated process already occupies this port and our node crashed
+    trying to bind it," which looks identical at the TCP handshake level
+    but leaves the ring silently missing a member. Returns an error string
+    on failure, or None on success.
+    """
+    ref = NodeRef(id=hashing.node_id_for_addr(host, port, m_bits), host=host, port=port)
     deadline = time.time() + timeout
     while time.time() < deadline:
+        if proc.poll() is not None:
+            return f"node process for {host}:{port} exited early (code {proc.returncode}), likely a bind failure"
         try:
-            with socket.create_connection((host, port), timeout=0.2):
-                return True
-        except OSError:
+            client.call(ref, "ping", {}, timeout=0.3)
+            return None
+        except RPCError:
             time.sleep(0.05)
-    return False
+    return f"node on {host}:{port} never answered a ping within {timeout}s"
 
 
 def _node_ref(entry: dict, m_bits: int) -> NodeRef:
@@ -51,37 +61,63 @@ def _node_ref(entry: dict, m_bits: int) -> NodeRef:
 
 
 def _first_alive_ref(state: dict) -> NodeRef:
+    """Return the first cluster member that is both not-known-killed and
+    actually answers a ping right now -- a node can be unreachable for
+    reasons the CLI never told it to (e.g. it crashed on its own), and
+    picking a dead node as the routing start point would fail every
+    command with a confusing "bootstrap node unreachable" error instead of
+    just trying the next candidate."""
+    tried = []
     for entry in state["nodes"]:
-        if not entry.get("killed"):
-            return _node_ref(entry, state["m_bits"])
-    raise SystemExit("no live nodes in cluster (everything has been killed)")
+        if entry.get("killed"):
+            continue
+        ref = _node_ref(entry, state["m_bits"])
+        tried.append(str(ref))
+        try:
+            client.call(ref, "ping", {})
+            return ref
+        except RPCError:
+            continue
+    if not tried:
+        raise SystemExit("no live nodes in cluster (everything has been killed)")
+    raise SystemExit(f"no reachable node in cluster; tried: {', '.join(tried)}")
 
 
 def cmd_cluster_start(args):
+    if args.n < 1:
+        raise SystemExit("cluster-start requires at least 1 node")
     state_path = Path(args.state)
     if state_path.exists() and not args.force:
         raise SystemExit(f"{state_path} already exists; pass --force to overwrite, or `cluster stop` first")
 
     nodes = []
+    procs = []
     bootstrap_addr = None
-    for i in range(args.n):
-        port = args.base_port + i
-        cmd = [sys.executable, "-m", "meridian.node_process", "--host", args.host, "--port", str(port),
-               "--m-bits", str(args.m_bits), "--r", str(args.r)]
-        if args.fast:
-            cmd.append("--fast")
-        if bootstrap_addr is not None:
-            cmd += ["--join", bootstrap_addr]
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if not _wait_for_port(args.host, port):
-            raise SystemExit(f"node on port {port} never came up")
-        nodes.append({"host": args.host, "port": port, "pid": proc.pid, "killed": False})
-        if bootstrap_addr is None:
-            bootstrap_addr = f"{args.host}:{port}"
-        # Give the join a brief moment before the next node bootstraps off
-        # a slightly more settled ring; not required for correctness
-        # (stabilization converges regardless) but makes demo output tidier.
-        time.sleep(args.join_pause)
+    try:
+        for i in range(args.n):
+            port = args.base_port + i
+            cmd = [sys.executable, "-m", "meridian.node_process", "--host", args.host, "--port", str(port),
+                   "--m-bits", str(args.m_bits), "--r", str(args.r)]
+            if args.fast:
+                cmd.append("--fast")
+            if bootstrap_addr is not None:
+                cmd += ["--join", bootstrap_addr]
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            procs.append(proc)
+            err = _wait_for_node_ready(proc, args.host, port, args.m_bits)
+            if err:
+                raise RuntimeError(err)
+            nodes.append({"host": args.host, "port": port, "pid": proc.pid, "killed": False})
+            if bootstrap_addr is None:
+                bootstrap_addr = f"{args.host}:{port}"
+            # Give the join a brief moment before the next node bootstraps off
+            # a slightly more settled ring; not required for correctness
+            # (stabilization converges regardless) but makes demo output tidier.
+            time.sleep(args.join_pause)
+    except (RuntimeError, KeyboardInterrupt):
+        for proc in procs:
+            proc.kill()
+        raise SystemExit(f"cluster-start aborted partway through ({len(procs)} process(es) that did start were killed)")
 
     state = {"m_bits": args.m_bits, "r": args.r, "nodes": nodes}
     _save_state(state_path, state)
@@ -129,7 +165,7 @@ def cmd_status(args):
 def cmd_put(args):
     state = _load_state(Path(args.state))
     start = _first_alive_ref(state)
-    node_ref, hops = node_mod.put(args.key, args.value, start, client.call)
+    node_ref, hops = node_mod.put(args.key, args.value, start, client.call, m_bits=state["m_bits"])
     print(f"stored {args.key!r} on node {node_ref} in {len(hops)} hop(s): " + " -> ".join(str(h) for h in hops))
 
 
@@ -137,7 +173,7 @@ def cmd_get(args):
     state = _load_state(Path(args.state))
     start = _first_alive_ref(state)
     try:
-        value, hops = node_mod.get(args.key, start, client.call)
+        value, hops = node_mod.get(args.key, start, client.call, m_bits=state["m_bits"])
     except Exception as e:  # noqa: BLE001
         raise SystemExit(f"get failed: {e}")
     print(f"{args.key!r} = {value!r}  (resolved in {len(hops)} hop(s): " + " -> ".join(str(h) for h in hops) + ")")
@@ -148,11 +184,17 @@ def cmd_kill(args):
     state = _load_state(state_path)
     for entry in state["nodes"]:
         if entry["port"] == args.port:
+            if entry.get("killed"):
+                raise SystemExit(f"node on port {args.port} was already killed")
             pid = entry["pid"]
-            os.kill(pid, signal.SIGKILL)
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                print(f"pid {pid} (port {args.port}) was already gone")
+            else:
+                print(f"SIGKILL sent to pid {pid} (port {args.port}) -- simulating a hard crash")
             entry["killed"] = True
             _save_state(state_path, state)
-            print(f"SIGKILL sent to pid {pid} (port {args.port}) -- simulating a hard crash")
             return
     raise SystemExit(f"no node on port {args.port} in {state_path}")
 
@@ -179,7 +221,7 @@ def cmd_trace(args):
     for key in args.keys:
         start = alive_refs[0]
         try:
-            value, hops = node_mod.get(key, start, client.call)
+            value, hops = node_mod.get(key, start, client.call, m_bits=m_bits)
             traces.append({"key": key, "value": value, "hops": [h.id for h in hops], "ok": True})
         except Exception as e:  # noqa: BLE001
             traces.append({"key": key, "error": str(e), "hops": [], "ok": False})
@@ -235,7 +277,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     ap = build_parser()
     args = ap.parse_args(argv)
-    args.fn(args)
+    try:
+        args.fn(args)
+    except BrokenPipeError:
+        # e.g. `meridian status | head` -- the reader went away, not an error.
+        sys.stderr.close()
+        return 0
     return 0
 
 
