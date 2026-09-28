@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import random
 import threading
+import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -388,18 +389,21 @@ class ChordNode:
             }
 
 
-def get(key: str, start: NodeRef, rpc_call: RpcCall, m_bits: int = hashing.DEFAULT_M_BITS):
-    """External-client style get: returns (value, hops_used).
+def _candidate_replicas(final_node: NodeRef, hops: list[NodeRef], rpc_call: RpcCall, action: str, key: str):
+    """Resolve the list of nodes worth trying for `key`: the node routing
+    reported as responsible, plus its successor-list replicas.
 
-    `m_bits` MUST match the ring's actual identifier-space width (i.e. the
-    `--m-bits` a cluster was started with), not just the library default --
-    hashing a key into the wrong-sized space silently mis-targets storage
-    the moment a ring uses a non-default width. Callers that already know
-    a node's ring config (the CLI reads it out of cluster state) must pass
-    it explicitly rather than relying on the default.
+    Routing (`iterative_find_successor`) only ever reports what some live
+    node's *local* view currently believes is responsible for an id -- it
+    never itself verifies that node is actually still up, by design (that
+    would mean every intermediate routing hop pays for a liveness check it
+    usually doesn't need). So the *reported* final node can legitimately
+    be dead already (e.g. it just crashed and the ring hasn't stabilized
+    yet); both get() and put() need the exact same recovery here: ask it
+    for its successor list to find live replicas, and if it's the one
+    that's dead, fall back to asking the previous hop for *its* view of
+    that successor list instead.
     """
-    kid = hashing.key_id(key, m_bits)
-    final_node, hops = iterative_find_successor(start, kid, rpc_call)
     candidates = [final_node]
     try:
         resp = rpc_call(final_node, "get_successor_list", {})
@@ -413,8 +417,49 @@ def get(key: str, start: NodeRef, rpc_call: RpcCall, m_bits: int = hashing.DEFAU
             except RPCError as e:
                 raise LookupFailed(
                     f"both the responsible node {final_node} and the previous hop {prev} "
-                    f"are unreachable while looking up key={key!r}"
+                    f"are unreachable while trying to {action} key={key!r}"
                 ) from e
+    return candidates
+
+
+def get(key: str, start: NodeRef, rpc_call: RpcCall, m_bits: int = hashing.DEFAULT_M_BITS,
+        retries: int = 3, retry_delay: float = 0.15):
+    """External-client style get: returns (value, hops_used).
+
+    `m_bits` MUST match the ring's actual identifier-space width (i.e. the
+    `--m-bits` a cluster was started with), not just the library default --
+    hashing a key into the wrong-sized space silently mis-targets storage
+    the moment a ring uses a non-default width. Callers that already know
+    a node's ring config (the CLI reads it out of cluster state) must pass
+    it explicitly rather than relying on the default.
+
+    Retries the whole lookup (fresh routing from `start`, not just the
+    final candidate list) up to `retries` times on a transient routing/RPC
+    failure: a successor list captured moments after a crash can itself be
+    short (still only padded with the just-died node) before the next
+    stabilization round fills it back in with real distinct replicas, and
+    a fresh routing attempt shortly after usually finds fresher state
+    rather than the same stale one. A definitive "this key does not exist"
+    (`KeyNotFoundError` from a node that is actually reachable) is never
+    retried -- more attempts wouldn't change a confident negative answer.
+    """
+    last_err: Optional[Exception] = None
+    for attempt in range(retries):
+        try:
+            return _get_once(key, start, rpc_call, m_bits)
+        except KeyNotFoundError:
+            raise
+        except (RPCError, LookupFailed) as e:
+            last_err = e
+            if attempt < retries - 1:
+                time.sleep(retry_delay)
+    raise last_err
+
+
+def _get_once(key: str, start: NodeRef, rpc_call: RpcCall, m_bits: int):
+    kid = hashing.key_id(key, m_bits)
+    final_node, hops = iterative_find_successor(start, kid, rpc_call)
+    candidates = _candidate_replicas(final_node, hops, rpc_call, "read", key)
 
     last_err: Optional[Exception] = None
     for cand in candidates:
@@ -427,23 +472,51 @@ def get(key: str, start: NodeRef, rpc_call: RpcCall, m_bits: int = hashing.DEFAU
     raise last_err or LookupFailed(f"no reachable replica for key={key!r}")
 
 
-def put(key: str, value, start: NodeRef, rpc_call: RpcCall, m_bits: int = hashing.DEFAULT_M_BITS):
+def put(key: str, value, start: NodeRef, rpc_call: RpcCall, m_bits: int = hashing.DEFAULT_M_BITS,
+        retries: int = 3, retry_delay: float = 0.15):
     """External-client style put: returns (responsible_node, hops_used).
 
-    See `get()`'s docstring: `m_bits` must match the ring's actual width.
+    See `get()`'s docstring for both the `m_bits` requirement and why the
+    whole operation retries with fresh routing on a transient failure.
     """
+    last_err: Optional[Exception] = None
+    for attempt in range(retries):
+        try:
+            return _put_once(key, value, start, rpc_call, m_bits)
+        except (RPCError, LookupFailed) as e:
+            last_err = e
+            if attempt < retries - 1:
+                time.sleep(retry_delay)
+    raise last_err
+
+
+def _put_once(key: str, value, start: NodeRef, rpc_call: RpcCall, m_bits: int):
     kid = hashing.key_id(key, m_bits)
     final_node, hops = iterative_find_successor(start, kid, rpc_call)
-    rpc_call(final_node, "store", {"key": key, "value": value})
+    candidates = _candidate_replicas(final_node, hops, rpc_call, "write", key)
+
+    stored_on: Optional[NodeRef] = None
+    last_err: Optional[Exception] = None
+    for cand in candidates:
+        try:
+            rpc_call(cand, "store", {"key": key, "value": value})
+            stored_on = cand
+            break
+        except RPCError as e:
+            last_err = e
+            continue
+    if stored_on is None:
+        raise last_err or LookupFailed(f"no reachable node to store key={key!r}")
+
     try:
-        resp = rpc_call(final_node, "get_successor_list", {})
+        resp = rpc_call(stored_on, "get_successor_list", {})
         for d in resp["successors"]:
-            if d["id"] == final_node.id:
+            if d["id"] == stored_on.id:
                 continue
             try:
-                rpc_call(NodeRef.from_dict(d), "replicate", {"owner_id": final_node.id, "key": key, "value": value})
+                rpc_call(NodeRef.from_dict(d), "replicate", {"owner_id": stored_on.id, "key": key, "value": value})
             except RPCError:
                 continue
     except RPCError:
         pass
-    return final_node, hops + [final_node]
+    return stored_on, hops + [stored_on]

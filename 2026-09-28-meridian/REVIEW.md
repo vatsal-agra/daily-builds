@@ -104,6 +104,71 @@ either way instead of a traceback. `cluster-start` cleans up on failure
 (see #4). `cluster-start 0` (or negative) is now rejected with a clear
 error instead of silently doing nothing and writing an empty cluster.
 
+### 6. (found while writing Phase 5's unit tests) `put()` had no fallback when the routing-reported owner was already dead
+
+**Symptom:** none seen in the earlier manual cluster testing, because
+those tests always killed a node *after* successfully storing data on it.
+Writing a fast in-memory unit test for the "kill it first, then use it"
+ordering caught it immediately: `put()` called `rpc_call(final_node,
+"store", ...)` with no `try`/`except` around it at all, so if the node
+`iterative_find_successor` reported as responsible had already died before
+the `store` call landed, `put()` raised the raw `RPCError` straight out to
+the caller instead of falling back to a live replica the way `get()`
+already did.
+
+**Root cause:** `iterative_find_successor` is, by design, a pure routing
+function — it reports whatever a live node's own local view currently
+believes is responsible for an id, and never itself contacts that
+*reported* node to check it's actually still up (see its updated
+docstring / `_candidate_replicas`'s docstring for why: verifying every
+reported answer would mean paying a liveness check on every hop, most of
+which don't need it). `get()` already accounted for this by falling back
+to successor-list candidates when the reported node didn't answer;
+`put()` never got the equivalent handling.
+
+**Fix:** factored the candidate-resolution logic both functions need
+(reported node, else its successor list, else the previous hop's view of
+that list) into one shared helper, `_candidate_replicas()`, and `put()`
+now tries each candidate in turn exactly like `get()` does. Covered by
+`tests/test_node_unit.py::TestGetPutSurviveAPrimaryOwnersDeath`, including
+the specific "the node routing reports doesn't exist by the time we try to
+use it" ordering that the manual, ad-hoc cluster testing in Phases 2-4 had
+never actually exercised.
+
+### 7. (found running the real-cluster test suite) a single-node kill occasionally exhausted the fallback candidate list
+
+**Symptom:** on one run of the 15-node real-cluster fault-tolerance test
+(30 keys stored, one node holding several primary keys `SIGKILL`ed, then
+all 30 immediately read back), exactly 1 of 30 reads failed with "no live
+successor candidates after ... died" — even though only a single node had
+died and the replication factor was `r=4`.
+
+**Root cause:** `_candidate_replicas()`'s fallback (when the reported
+responsible node is dead) asks the *previous hop* for **its** cached
+successor list and tries whichever entries that contains. That cached list
+is a snapshot from the previous hop's last `stabilize()` round — which,
+immediately after `cluster-start`, might not yet have grown to `r` full
+distinct entries (a freshly-joined node's successor list can still be
+padded with repeats of very few real neighbors it has learned about so
+far). If that particular cached list happened to consist entirely of the
+now-dead node (padding repeats it), there was nothing else to try — not
+because replication had actually failed, but because the *specific* cached
+view this one lookup path happened to consult was momentarily thin,
+while a fresh routing attempt from scratch a moment later would very
+likely see an already-more-complete view.
+
+**Fix:** `get()`/`put()` now retry the *entire* lookup (fresh routing from
+the original start node, not just re-trying candidates from the same
+stale hop) up to 3 times with a short delay, before finally raising. A
+definitive `KeyNotFoundError` from a live, reachable node is never
+retried, since more attempts can't change a confident negative answer.
+This is standard practice for any DHT client talking to a system that is
+only ever eventually consistent, and is different from (and does not
+weaken) the deliberate "not a bug" limit right below: this retry helps
+exactly the transient "my cached view was momentarily thin" case, not the
+genuine "more than `r-1` nodes are actually down" case, which still fails
+after retries exhaust, as it should.
+
 ## Reviewed and judged not a bug (by design / inherent to the protocol)
 
 - **Stale replicas after a key's ownership moves are not actively deleted.**

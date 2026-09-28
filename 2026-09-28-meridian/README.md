@@ -76,6 +76,31 @@ real Meridian `ping` response (not just "some TCP listener exists") and
 cleans up already-spawned processes if a later node in the batch fails;
 every command prints a clear, specific message for the empty-cluster case.
 
+**Status: Phase 5 (verification) complete.** 26 automated tests
+(`tests/test_hashing.py`, `tests/test_node_unit.py`,
+`tests/test_cluster.py`) plus an end-to-end `./demo.sh` covering every
+required and stretch feature against a real multi-process cluster, all
+green:
+
+```
+python3 -m unittest discover -s tests   # 26 tests, ~10s, no flakiness across repeated runs
+./demo.sh                               # 10/10 checks, real cluster, real SIGKILL, real HTML output
+```
+
+Writing the fast in-memory unit test suite (`test_node_unit.py`) caught a
+6th real bug that the earlier manual/ad-hoc cluster testing in Phases 2-4
+had never happened to exercise: `put()` had no fallback when routing
+reported an already-dead node as responsible (only `get()` did). Running
+the real-cluster suite repeatedly then caught a 7th, rarer one: a
+single-node kill could occasionally exhaust the fallback candidate list if
+the specific cached successor-list view a lookup happened to consult was
+still thin moments after `cluster-start`. Both are fixed and covered by
+regression tests; full detail in [`REVIEW.md`](REVIEW.md).
+`tests/test_node_unit.py` also reproduces the original Chord paper's own
+published 3-bit worked example (Stoica et al., Figures 3-5) node-for-node
+and finger-table-entry-for-entry, as an independent, external ground truth
+beyond this build's own reasoning about itself.
+
 ### Known limitation (by design, not a bug)
 
 Meridian follows Chord's own consistency model: **eventually consistent,
