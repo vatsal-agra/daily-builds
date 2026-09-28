@@ -1,111 +1,133 @@
 # Meridian
 
 A from-scratch implementation of the **Chord distributed hash table**
-protocol (Stoica et al., SIGCOMM 2001): consistent hashing over a SHA-1
-ring, `O(log N)` lookups via finger tables, self-healing join/stabilization,
-and crash fault tolerance via successor-list replication — running as real
-independent OS processes talking real TCP, not threads in one process.
+protocol (Stoica, Morris, Karger, Kaashoek & Balakrishnan, SIGCOMM 2001):
+consistent hashing over a SHA-1 ring, `O(log N)` lookups via finger
+tables, self-healing join/stabilization, and crash fault tolerance via
+successor-list replication — running as real independent OS processes
+talking real TCP sockets, not threads sharing memory in one process.
 
-**Status: Phase 2 (core build) complete.** All 4 required features are
-implemented and verified end-to-end against a real 20-process cluster:
+It is a genuinely new domain for this repo's dense "from-scratch systems"
+history: every prior distributed build here picked a different
+coordination shape — Raft's leader-and-vote (Quorum), a leaderless CRDT
+with no scarcity (Concord), Nakamoto consensus among mutually distrusting
+peers (Vein), an unstructured swarm with a central tracker (Swarm) — but
+none has been a *structured* peer-to-peer routing overlay: every key and
+node hashed into one ring, each node holding only `O(log N)` long-range
+pointers, and a lookup from anywhere reaching the right node in `O(log N)`
+hops with no node ever knowing the full membership.
 
-- Consistent hashing + correct `find_successor` routing (verified: the ring
-  converges to the exact sorted successor/predecessor cycle across all 20
-  independently-hashed node processes).
-- Finger-table-driven lookups: `get`/`put` on a 20-node ring resolve in
-  2-5 hops (`O(log N)` for N=20 is ~4.3), not the 20 hops a linear scan
-  would take.
-- Join + background stabilization converges every node to correct
-  successor/predecessor pointers regardless of join order or timing.
-- Successor-list replication survives a real `SIGKILL` of the primary
-  owner of live data: every one of 30 stored keys, including all of the
-  keys the killed node had been primary for, was still retrievable via a
-  replica *immediately* after the kill (0 failures across the run), and
-  the ring's pointers self-heal back to a fully correct cycle within a
-  couple of stabilization rounds.
+## Why this, today
 
-Quickstart:
+Chord is checkable against real, external ground truth in a way a lot of
+distributed protocols aren't from a hobby implementation: the original
+paper publishes a fully worked 3-node example with exact finger tables,
+so `tests/test_node_unit.py` reproduces it node-for-node and
+finger-table-entry-for-entry rather than just trusting this build's own
+reasoning about itself. And the interesting engineering problem is a real
+one — finger-table routing only works if "successor pointers form one
+sorted cycle" holds even while nodes join concurrently and processes get
+`SIGKILL`ed — which turned out to be true: this build found and fixed
+seven real bugs by actually attacking a live multi-process cluster rather
+than only reading the code (see [`REVIEW.md`](REVIEW.md)), several of
+which no amount of code review alone would likely have caught (a
+readiness check fooled by a stray process squatting a port; a hardcoded
+hash width invisible on the default ring size but not on others; a lookup
+fallback that occasionally exhausted its retry candidates in a real
+timing window that never showed up in synthetic tests until the real
+cluster suite ran repeatedly).
+
+## How to run it
 
 ```
 cd 2026-09-28-meridian
+
+# automated verification
+python3 -m unittest discover -s tests   # 26 tests: hashing math, the Chord
+                                         # paper's own worked example, and a
+                                         # real multi-process cluster (~10s)
+./demo.sh                                # end-to-end: every required +
+                                          # stretch feature, real SIGKILL,
+                                          # real HTML output (10/10 checks)
+
+# operate a real cluster by hand
 python3 -m meridian.cli cluster-start 8 --fast     # spawns 8 real node processes, joins them into a ring
-python3 -m meridian.cli status                     # dump the live ring topology
+python3 -m meridian.cli status                     # dump the live ring topology from every node's own view
 python3 -m meridian.cli put mykey "hello"
 python3 -m meridian.cli get mykey                  # prints the value and the real hop path taken
-python3 -m meridian.cli kill <port>                # SIGKILL a node -- watch get() still work via replicas
+python3 -m meridian.cli kill <port>                # SIGKILL a node -- get() still works via replicas
 python3 -m meridian.cli trace mykey --out trace.json
 python3 -m meridian.visualize trace.json ring.html # open ring.html in a browser
 python3 -m meridian.cli cluster-stop
 ```
 
-See [`PLAN.md`](PLAN.md) for the full architecture and feature list.
+A pre-rendered example is checked in — open
+[`examples/demo_cluster.html`](examples/demo_cluster.html) directly in a
+browser (10-node cluster, one node killed mid-session, 4 captured
+lookups); it was generated from [`examples/demo_cluster.json`](examples/demo_cluster.json).
 
-**Status: Phase 3 (adversarial review) complete.** See
-[`REVIEW.md`](REVIEW.md) for the full write-up. Five real bugs were found by
-attacking a live multi-process cluster (not just reading the code) and
-fixed, including one that would have silently mis-hashed keys on any
-non-default ring size, and one where a cluster-start failure was reported
-as success because the readiness check could be fooled by an unrelated
-process squatting the port. Stretch features and final verification are
-still to come.
+## Feature list
 
-**Status: Phase 4 (stretch + polish) complete.** Both planned stretch
-features were already real as of Phase 2/3 and are now polished:
+**Required:**
 
-- **Real multi-process cluster over real TCP** (`meridian cluster-start`) —
-  every node is an independent OS process; `meridian kill <port>` sends a
-  genuine `SIGKILL`.
-- **Interactive HTML ring visualizer** (`meridian.visualize`) — now
-  responsive (resizes to the browser window, device-pixel-ratio aware),
-  shows a hover tooltip per node instead of permanently-on overlapping ID
-  labels, renders a real red-X marker for a killed node (previously the
-  trace command silently dropped killed nodes from the payload entirely —
-  fixed so the fault-tolerance story is actually visible), shows live
-  summary stats (alive/killed/keys-stored), and gracefully handles an empty
-  trace file instead of a blank canvas.
-- A curated example is checked in at
-  [`examples/demo_cluster.json`](examples/demo_cluster.json) /
-  [`examples/demo_cluster.html`](examples/demo_cluster.html) — a 10-node
-  cluster with one node killed mid-session, open the `.html` file directly
-  in a browser.
+1. **Consistent hashing + correct routing** — real SHA-1 hashing folded
+   into a configurable ring width (`--m-bits`, default 32 bits);
+   `find_successor`/`closest_preceding_finger` per the paper, verified
+   against its own published 3-bit worked example and against real
+   clusters up to 20 nodes converging to the exact sorted cycle.
+2. **Finger-table-driven `O(log N)` lookups** — measured directly: 15-20
+   node real clusters resolve `put`/`get` in 2-5 hops, not the 15-20 a
+   linear scan would need.
+3. **Join + background stabilization** — nodes join at an arbitrary point
+   and the ring converges to correct successor/predecessor order via
+   `stabilize`/`notify`, regardless of join order or timing; verified with
+   randomized join orders and with 5 new nodes joining an already-populated
+   6-node ring (all 40 pre-existing keys survive).
+4. **Fault-tolerant replication via successor lists** — every node
+   replicates its keys onto its next `r` successors; a real `SIGKILL` of
+   the node holding the most primary keys in a 15-node cluster loses zero
+   of 30 stored keys, verified immediately after the kill (not after
+   waiting for repair), and the ring self-heals to the exact correct cycle
+   afterward.
 
-Polish: `--m-bits`/`--r` are now validated with clear errors; `kill` and
-`cluster-start` handle repeat/invalid operator input gracefully instead of
-raising raw tracebacks; `cluster-start`'s readiness check now verifies a
-real Meridian `ping` response (not just "some TCP listener exists") and
-cleans up already-spawned processes if a later node in the batch fails;
-every command prints a clear, specific message for the empty-cluster case.
+**Stretch:**
 
-**Status: Phase 5 (verification) complete.** 26 automated tests
-(`tests/test_hashing.py`, `tests/test_node_unit.py`,
-`tests/test_cluster.py`) plus an end-to-end `./demo.sh` covering every
-required and stretch feature against a real multi-process cluster, all
-green:
+5. **Real multi-process cluster over real TCP** — every node
+   (`meridian.node_process`) is an independent OS process with its own
+   socket; `meridian cluster-start` spawns real subprocesses, `meridian
+   kill <port>` sends a real `SIGKILL`.
+6. **Interactive HTML ring visualizer** (`meridian.visualize`) — a
+   self-contained, dependency-free Canvas page (no build step):
+   responsive/device-pixel-ratio-aware, hover tooltips instead of
+   permanently-overlapping node labels, a real red-X marker for a killed
+   node, live summary stats, and an animated hop-by-hop replay of a
+   captured lookup.
 
-```
-python3 -m unittest discover -s tests   # 26 tests, ~10s, no flakiness across repeated runs
-./demo.sh                               # 10/10 checks, real cluster, real SIGKILL, real HTML output
-```
-
-Writing the fast in-memory unit test suite (`test_node_unit.py`) caught a
-6th real bug that the earlier manual/ad-hoc cluster testing in Phases 2-4
-had never happened to exercise: `put()` had no fallback when routing
-reported an already-dead node as responsible (only `get()` did). Running
-the real-cluster suite repeatedly then caught a 7th, rarer one: a
-single-node kill could occasionally exhaust the fallback candidate list if
-the specific cached successor-list view a lookup happened to consult was
-still thin moments after `cluster-start`. Both are fixed and covered by
-regression tests; full detail in [`REVIEW.md`](REVIEW.md).
-`tests/test_node_unit.py` also reproduces the original Chord paper's own
-published 3-bit worked example (Stoica et al., Figures 3-5) node-for-node
-and finger-table-entry-for-entry, as an independent, external ground truth
-beyond this build's own reasoning about itself.
-
-### Known limitation (by design, not a bug)
+## Known limitation (by design, not a bug)
 
 Meridian follows Chord's own consistency model: **eventually consistent,
-not linearizable.** If a key is written once, every read of it is correct,
-including immediately after a node holding it crashes (verified). If a key
-were overwritten while replicas are still catching up to a recent topology
-change, a very short staleness window is possible — the same trade-off the
-real protocol makes. See `REVIEW.md` for the full reasoning.
+not linearizable.** Every read of a key that was written once is correct,
+including immediately after the node holding it crashes (verified). If a
+key were overwritten while replicas are still catching up from a very
+recent topology change, a short staleness window is possible — the same
+trade-off the real protocol makes. Full reasoning in `REVIEW.md`.
+
+## Where a human could take this next
+
+- **Vector-clock or version-stamped values** to close the eventual-
+  consistency staleness window noted above for overwritten keys, turning
+  "eventually consistent" into "read-your-writes."
+- **A real network instead of localhost** — the protocol has no
+  localhost-only assumption baked in; pointing node processes at different
+  hosts (and adding basic auth/TLS on the RPC socket) would make this a
+  genuine multi-machine deployment, not just a multi-process demo.
+- **Kademlia-style parallel lookups** (query several fingers at once
+  rather than strictly iteratively) for lower tail latency at large `N`.
+- **A real workload on top of the KV layer** — the hard distributed-systems
+  part is done; a small file store, a distributed cache with TTLs, or a
+  pub/sub layer could all be built as a client of this ring rather than
+  needing their own routing logic.
+- **Chaos-style property testing** (in the spirit of this repo's own
+  Quorum build) — randomized interleavings of joins, kills, and puts,
+  checked against a linearizability-style oracle, would stress the eventual-
+  consistency edges harder than the scripted scenarios in `tests/`.
