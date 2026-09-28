@@ -63,17 +63,28 @@ _TEMPLATE = """<!doctype html>
   .legend { display: flex; gap: 16px; margin-left: auto; color: var(--muted); font-size: 11.5px; }
   .legend span { display: inline-flex; align-items: center; gap: 5px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .stat { color: var(--text); }
+  .stat b { color: var(--accent); font-weight: 600; }
+  #tooltip { position: absolute; pointer-events: none; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; font-size: 11.5px;
+    display: none; white-space: nowrap; box-shadow: 0 4px 16px rgba(0,0,0,0.4); z-index: 5; }
+  #canvas-empty { color: var(--muted); font-size: 13px; display: none; }
 </style>
 </head>
 <body>
 <header>
   <h1>Meridian</h1>
-  <span class="sub">Chord DHT ring — __NUM_NODES__ nodes, m = __M_BITS__ bits (2^__M_BITS__ ring positions)</span>
+  <span class="sub">Chord DHT ring &mdash; m = __M_BITS__ bits (2<sup>__M_BITS__</sup> ring positions)</span>
+  <span class="sub stat" id="summary-stats"></span>
 </header>
 <main>
-  <div id="canvas-wrap"><canvas id="ring" width="900" height="900"></canvas></div>
+  <div id="canvas-wrap">
+    <canvas id="ring"></canvas>
+    <div id="tooltip"></div>
+    <div id="canvas-empty">No cluster data in this trace. Run <code>meridian trace &lt;key&gt; --out trace.json</code> against a running cluster first.</div>
+  </div>
   <div id="sidebar">
-    <div id="empty-hint">Click a node on the ring for details.</div>
+    <div id="empty-hint">Click a node on the ring for details. Hover any node for a quick preview.</div>
     <div id="node-detail" style="display:none">
       <h2>Node</h2>
       <div class="kv" id="node-kv"></div>
@@ -86,8 +97,8 @@ _TEMPLATE = """<!doctype html>
 <footer>
   <label for="trace-select">Lookup trace:</label>
   <select id="trace-select"></select>
-  <button id="play-btn">▶ Play</button>
-  <button id="reset-btn">⟲ Reset</button>
+  <button id="play-btn">&#9654; Play</button>
+  <button id="reset-btn">&#8635; Reset</button>
   <span id="trace-result"></span>
   <div class="legend">
     <span><span class="dot" style="background:var(--accent)"></span>alive</span>
@@ -100,12 +111,26 @@ const DATA = __DATA_JSON__;
 
 const canvas = document.getElementById('ring');
 const ctx = canvas.getContext('2d');
-const W = canvas.width, H = canvas.height;
-const CX = W / 2, CY = H / 2, R = Math.min(W, H) * 0.36;
+const wrap = document.getElementById('canvas-wrap');
 const RING_SIZE = Math.pow(2, DATA.m_bits);
 
+let W = 900, H = 900, CX = 450, CY = 450, R = 320;
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const size = Math.max(320, Math.min(wrap.clientWidth, wrap.clientHeight) - 40);
+  W = H = size;
+  canvas.style.width = size + 'px';
+  canvas.style.height = size + 'px';
+  canvas.width = Math.round(size * dpr);
+  canvas.height = Math.round(size * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  CX = CY = size / 2;
+  R = size * 0.38;
+  draw();
+}
+
 const nodesById = new Map(DATA.nodes.map(n => [n.id, n]));
-const sortedIds = DATA.nodes.map(n => n.id).sort((a, b) => a - b);
 
 function angleFor(id) { return (id / RING_SIZE) * 2 * Math.PI - Math.PI / 2; }
 function pointFor(id) {
@@ -114,11 +139,26 @@ function pointFor(id) {
 }
 
 let selectedNode = null;
+let hoveredNode = null;
 let hopHighlightIndex = -1;  // -1 = none; index into current trace's hops
 let currentTraceHops = [];
 
+function drawNodeLabel(n, x, y) {
+  ctx.fillStyle = '#c7cee3';
+  ctx.font = '11px ui-monospace, monospace';
+  ctx.fillText(`${n.id}`, x + 11, y - 8);
+  ctx.fillStyle = '#8a93ab';
+  ctx.font = '10px ui-monospace, monospace';
+  ctx.fillText(`${n.host}:${n.port}`, x + 11, y + 6);
+}
+
 function draw() {
   ctx.clearRect(0, 0, W, H);
+
+  if (!DATA.nodes.length) {
+    document.getElementById('canvas-empty').style.display = '';
+    return;
+  }
 
   // base ring
   ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--ring');
@@ -150,23 +190,37 @@ function draw() {
     }
   }
 
-  // nodes
+  // nodes -- labels are drawn only for the selected node, the currently
+  // active trace hop, and whichever node the mouse is over, so a large
+  // ring doesn't turn into an unreadable wall of overlapping numbers.
   for (const n of DATA.nodes) {
     const [x, y] = pointFor(n.id);
     const isHot = currentTraceHops[hopHighlightIndex] === n.id;
+    const isSelected = selectedNode && selectedNode.id === n.id;
+    const isHovered = hoveredNode && hoveredNode.id === n.id;
+
     ctx.beginPath();
-    ctx.arc(x, y, isHot ? 9 : 6, 0, 2 * Math.PI);
+    ctx.arc(x, y, isHot ? 9 : (isSelected || isHovered ? 8 : 6), 0, 2 * Math.PI);
     ctx.fillStyle = !n.alive ? '#ff6b6b' : (isHot ? '#ff9d5e' : '#5ec9ff');
     ctx.fill();
-    if (selectedNode && selectedNode.id === n.id) {
+
+    if (!n.alive) {
+      ctx.strokeStyle = '#1a0b0b';
+      ctx.lineWidth = 1.5;
+      const s = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(x - s, y - s); ctx.lineTo(x + s, y + s);
+      ctx.moveTo(x - s, y + s); ctx.lineTo(x + s, y - s);
+      ctx.stroke();
+    }
+
+    if (isSelected) {
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#fff';
       ctx.stroke();
     }
-    ctx.fillStyle = '#8a93ab';
-    ctx.font = '10px ui-monospace, monospace';
-    const label = n.id.toString();
-    ctx.fillText(label, x + 10, y + 3);
+
+    if (isSelected || isHot || isHovered) drawNodeLabel(n, x, y);
   }
 }
 
@@ -189,7 +243,7 @@ function drawChord(fromId, toId, color, width, curved) {
   ctx.stroke();
 }
 
-canvas.addEventListener('click', (ev) => {
+function nodeAtEvent(ev) {
   const rect = canvas.getBoundingClientRect();
   const mx = (ev.clientX - rect.left) * (W / rect.width);
   const my = (ev.clientY - rect.top) * (H / rect.height);
@@ -199,6 +253,11 @@ canvas.addEventListener('click', (ev) => {
     const d = Math.hypot(x - mx, y - my);
     if (d < bestDist) { bestDist = d; hit = n; }
   }
+  return hit;
+}
+
+canvas.addEventListener('click', (ev) => {
+  const hit = nodeAtEvent(ev);
   if (hit && selectedNode && hit.id === selectedNode.id) {
     selectedNode = null;
   } else {
@@ -207,6 +266,31 @@ canvas.addEventListener('click', (ev) => {
   renderSidebar();
   draw();
 });
+
+const tooltip = document.getElementById('tooltip');
+canvas.addEventListener('mousemove', (ev) => {
+  const hit = nodeAtEvent(ev);
+  if (hit !== hoveredNode) {
+    hoveredNode = hit;
+    draw();
+  }
+  if (hit) {
+    const wrapRect = wrap.getBoundingClientRect();
+    tooltip.style.display = '';
+    tooltip.style.left = (ev.clientX - wrapRect.left + 14) + 'px';
+    tooltip.style.top = (ev.clientY - wrapRect.top + 14) + 'px';
+    tooltip.innerHTML = `<b>${hit.id}</b> &mdash; ${hit.host}:${hit.port}<br>${hit.alive ? (hit.num_primary_keys + ' keys, ' + hit.num_replica_owners + ' replica set(s)') : 'KILLED'}`;
+  } else {
+    tooltip.style.display = 'none';
+  }
+});
+canvas.addEventListener('mouseleave', () => {
+  hoveredNode = null;
+  tooltip.style.display = 'none';
+  draw();
+});
+
+window.addEventListener('resize', resizeCanvas);
 
 function renderSidebar() {
   const empty = document.getElementById('empty-hint');
@@ -239,6 +323,19 @@ function renderSidebar() {
 
 const traceSelect = document.getElementById('trace-select');
 const traceResult = document.getElementById('trace-result');
+const playBtn = document.getElementById('play-btn');
+const resetBtn = document.getElementById('reset-btn');
+
+if (!DATA.traces.length) {
+  traceSelect.disabled = true;
+  playBtn.disabled = true;
+  resetBtn.disabled = true;
+  const opt = document.createElement('option');
+  opt.textContent = '(no lookup traces captured)';
+  traceSelect.appendChild(opt);
+  traceResult.textContent = 'Run `meridian trace <key> --out trace.json` to capture one or more lookups.';
+}
+
 DATA.traces.forEach((t, i) => {
   const opt = document.createElement('option');
   opt.value = i;
@@ -260,14 +357,14 @@ function loadTrace() {
 
 function stopPlayback() {
   if (playTimer) { clearInterval(playTimer); playTimer = null; }
-  document.getElementById('play-btn').textContent = '▶ Play';
+  playBtn.innerHTML = '&#9654; Play';
 }
 
-document.getElementById('play-btn').addEventListener('click', () => {
+playBtn.addEventListener('click', () => {
   if (playTimer) { stopPlayback(); return; }
   if (!currentTraceHops.length) return;
   hopHighlightIndex = 0;
-  document.getElementById('play-btn').textContent = '⏸ Pause';
+  playBtn.innerHTML = '&#9208; Pause';
   playTimer = setInterval(() => {
     hopHighlightIndex++;
     if (hopHighlightIndex >= currentTraceHops.length) { stopPlayback(); hopHighlightIndex = currentTraceHops.length - 1; }
@@ -275,7 +372,7 @@ document.getElementById('play-btn').addEventListener('click', () => {
   }, 700);
 });
 
-document.getElementById('reset-btn').addEventListener('click', () => {
+resetBtn.addEventListener('click', () => {
   stopPlayback();
   hopHighlightIndex = currentTraceHops.length ? 0 : -1;
   draw();
@@ -284,7 +381,15 @@ document.getElementById('reset-btn').addEventListener('click', () => {
 traceSelect.addEventListener('change', loadTrace);
 if (DATA.traces.length) loadTrace();
 
-draw();
+// --- summary stats + initial layout -------------------------------------
+
+const aliveCount = DATA.nodes.filter(n => n.alive).length;
+const deadCount = DATA.nodes.length - aliveCount;
+const totalKeys = DATA.nodes.reduce((s, n) => s + (n.num_primary_keys || 0), 0);
+document.getElementById('summary-stats').textContent =
+  `${aliveCount} alive` + (deadCount ? `, ${deadCount} killed` : '') + `, ${totalKeys} keys stored`;
+
+resizeCanvas();
 renderSidebar();
 </script>
 </body>

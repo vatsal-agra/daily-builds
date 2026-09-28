@@ -49,6 +49,33 @@ as success because the readiness check could be fooled by an unrelated
 process squatting the port. Stretch features and final verification are
 still to come.
 
+**Status: Phase 4 (stretch + polish) complete.** Both planned stretch
+features were already real as of Phase 2/3 and are now polished:
+
+- **Real multi-process cluster over real TCP** (`meridian cluster-start`) —
+  every node is an independent OS process; `meridian kill <port>` sends a
+  genuine `SIGKILL`.
+- **Interactive HTML ring visualizer** (`meridian.visualize`) — now
+  responsive (resizes to the browser window, device-pixel-ratio aware),
+  shows a hover tooltip per node instead of permanently-on overlapping ID
+  labels, renders a real red-X marker for a killed node (previously the
+  trace command silently dropped killed nodes from the payload entirely —
+  fixed so the fault-tolerance story is actually visible), shows live
+  summary stats (alive/killed/keys-stored), and gracefully handles an empty
+  trace file instead of a blank canvas.
+- A curated example is checked in at
+  [`examples/demo_cluster.json`](examples/demo_cluster.json) /
+  [`examples/demo_cluster.html`](examples/demo_cluster.html) — a 10-node
+  cluster with one node killed mid-session, open the `.html` file directly
+  in a browser.
+
+Polish: `--m-bits`/`--r` are now validated with clear errors; `kill` and
+`cluster-start` handle repeat/invalid operator input gracefully instead of
+raising raw tracebacks; `cluster-start`'s readiness check now verifies a
+real Meridian `ping` response (not just "some TCP listener exists") and
+cleans up already-spawned processes if a later node in the batch fails;
+every command prints a clear, specific message for the empty-cluster case.
+
 ### Known limitation (by design, not a bug)
 
 Meridian follows Chord's own consistency model: **eventually consistent,

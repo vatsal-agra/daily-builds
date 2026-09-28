@@ -67,10 +67,14 @@ def _first_alive_ref(state: dict) -> NodeRef:
     picking a dead node as the routing start point would fail every
     command with a confusing "bootstrap node unreachable" error instead of
     just trying the next candidate."""
+    if not state["nodes"]:
+        raise SystemExit("no cluster running -- try `meridian cluster-start N` first")
     tried = []
+    any_not_killed = False
     for entry in state["nodes"]:
         if entry.get("killed"):
             continue
+        any_not_killed = True
         ref = _node_ref(entry, state["m_bits"])
         tried.append(str(ref))
         try:
@@ -78,14 +82,18 @@ def _first_alive_ref(state: dict) -> NodeRef:
             return ref
         except RPCError:
             continue
-    if not tried:
-        raise SystemExit("no live nodes in cluster (everything has been killed)")
+    if not any_not_killed:
+        raise SystemExit("no live nodes in cluster (every node has been killed)")
     raise SystemExit(f"no reachable node in cluster; tried: {', '.join(tried)}")
 
 
 def cmd_cluster_start(args):
     if args.n < 1:
         raise SystemExit("cluster-start requires at least 1 node")
+    if args.m_bits < 1 or args.m_bits > 64:
+        raise SystemExit("--m-bits must be between 1 and 64 (a ring needs a non-trivial identifier space)")
+    if args.r < 1:
+        raise SystemExit("--r (the successor-list / replication factor) must be at least 1")
     state_path = Path(args.state)
     if state_path.exists() and not args.force:
         raise SystemExit(f"{state_path} already exists; pass --force to overwrite, or `cluster stop` first")
@@ -144,6 +152,9 @@ def cmd_cluster_stop(args):
 
 def cmd_status(args):
     state = _load_state(Path(args.state))
+    if not state["nodes"]:
+        print("no cluster running -- try `meridian cluster-start N` first")
+        return
     m_bits = state["m_bits"]
     print(f"{'ID':>12} {'ADDR':<22} {'PRED':>12} {'SUCC[0]':>12} {'KEYS':>6} {'REPLICAS':>9} {'STATUS'}")
     for entry in state["nodes"]:
@@ -202,12 +213,16 @@ def cmd_kill(args):
 def cmd_trace(args):
     state = _load_state(Path(args.state))
     m_bits = state["m_bits"]
+    all_refs = [_node_ref(e, m_bits) for e in state["nodes"]]
     alive_refs = [_node_ref(e, m_bits) for e in state["nodes"] if not e.get("killed")]
     if not alive_refs:
-        raise SystemExit("no live nodes")
+        raise SystemExit("no live nodes in cluster -- try `meridian cluster-start N` first, or check `meridian status`")
 
+    # Snapshot every node we ever started, killed ones included, so the
+    # visualizer can actually render a node's death (a red X on the ring)
+    # instead of silently pretending it never existed.
     snapshots = []
-    for ref in alive_refs:
+    for ref in all_refs:
         try:
             snap = client.call(ref, "snapshot", {})
             snap["alive"] = True
