@@ -19,11 +19,21 @@ func (e *Engine) Why(pred string, t []Val) (string, error) {
 		return "", fmt.Errorf("%s is not derivable (it is false in the minimal model)", tupleString(pred, t))
 	}
 	var b strings.Builder
-	e.proof(&b, FactRef{pred, i}, "", "", 0)
+	lines := 0
+	e.proof(&b, FactRef{pred, i}, "", "", &lines)
+	if lines > maxProofLines {
+		fmt.Fprintf(&b, "… proof truncated after %d lines\n", maxProofLines)
+	}
 	return b.String(), nil
 }
 
-func (e *Engine) proof(b *strings.Builder, f FactRef, prefix, childPrefix string, depth int) {
+const maxProofLines = 2000
+
+func (e *Engine) proof(b *strings.Builder, f FactRef, prefix, childPrefix string, lines *int) {
+	*lines++
+	if *lines > maxProofLines {
+		return
+	}
 	rel := e.Rels[f.Pred]
 	text := tupleString(f.Pred, rel.Tuples[f.Idx])
 	d := rel.Prov[f.Idx]
@@ -43,8 +53,8 @@ func (e *Engine) proof(b *strings.Builder, f FactRef, prefix, childPrefix string
 			branch, cont = "└─ ", "   "
 		}
 		if d.Body[i].Pred != "" {
-			e.proof(b, d.Body[i], childPrefix+branch, childPrefix+cont, depth+1)
-		} else {
+			e.proof(b, d.Body[i], childPrefix+branch, childPrefix+cont, lines)
+		} else if *lines++; *lines <= maxProofLines {
 			fmt.Fprintf(b, "%s%s  ✓\n", childPrefix+branch, d.Note[i])
 		}
 	}

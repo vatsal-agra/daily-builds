@@ -1,5 +1,4 @@
 # Tarski
-Datalog engine in Go (stdlib only). Status: Phase 2 done — 4 required features implemented
-(parser, semi-naive evaluation, stratified negation + safety, built-ins/queries/provenance).
-Aggregates, naive-vs-semi-naive bench and a REPL are already wired in (stretch, to be reviewed).
+Datalog engine in Go (stdlib only). Status: Phase 3 done (see REVIEW.md) — core engine reviewed and hardened
+via differential fuzzing against an independent oracle. Stretch features (aggregates, naive/bench, REPL) present and being polished.
 Build: `go build -o tarski . && ./tarski run examples/family.dl`. See PLAN.md.

@@ -12,7 +12,7 @@ func Check(p *Program) (map[string]int, error) {
 	arity := map[string]int{}
 	use := func(a Atom, line int) error {
 		if n, ok := arity[a.Pred]; ok && n != len(a.Args) {
-			return fmt.Errorf("line %d: predicate %s used with %d arguments but earlier with %d", line, a.Pred, len(a.Args), n)
+			return fmt.Errorf("line %d: predicate %s used with %d argument(s) but earlier with %d", line, a.Pred, len(a.Args), n)
 		}
 		if len(a.Args) > 60 {
 			return fmt.Errorf("line %d: predicate %s has too many arguments (max 60)", line, a.Pred)
@@ -34,15 +34,6 @@ func Check(p *Program) (map[string]int, error) {
 		for _, l := range r.Body {
 			if l.Kind != LCmp {
 				if err := use(l.Atom, r.Line); err != nil {
-					return nil, err
-				}
-			}
-		}
-	}
-	for _, q := range p.Queries {
-		for _, l := range q.Body {
-			if l.Kind != LCmp {
-				if err := use(l.Atom, q.Line); err != nil {
 					return nil, err
 				}
 			}

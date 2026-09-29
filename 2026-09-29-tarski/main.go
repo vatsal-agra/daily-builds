@@ -56,6 +56,7 @@ func run(args []string, out, errw io.Writer) int {
 		fmt.Fprint(errw, usage)
 		return 2
 	}
+	status := 0
 	fail := func(err error) int { fmt.Fprintln(errw, "error:", err); return 1 }
 	switch args[0] {
 	case "run":
@@ -64,6 +65,7 @@ func run(args []string, out, errw io.Writer) int {
 		naive := fs.Bool("naive", false, "use naive evaluation")
 		stats := fs.Bool("stats", false, "print evaluation statistics")
 		dump := fs.Bool("dump", false, "print every derived relation")
+		limit := fs.Int("limit", 0, "abort after this many derived facts (default 500000)")
 		if err := fs.Parse(args[1:]); err != nil {
 			return 2
 		}
@@ -76,6 +78,10 @@ func run(args []string, out, errw io.Writer) int {
 			return fail(err)
 		}
 		e.Naive = *naive
+		e.MaxFacts = *limit
+		for _, w := range e.Warnings() {
+			fmt.Fprintln(errw, "warning:", w)
+		}
 		if err := e.Run(); err != nil {
 			return fail(err)
 		}
@@ -83,7 +89,9 @@ func run(args []string, out, errw io.Writer) int {
 			fmt.Fprintf(out, "?- %s.\n", litsString(q.Body))
 			res, err := e.Ask(q)
 			if err != nil {
-				return fail(err)
+				fmt.Fprintln(errw, "error:", err)
+				status = 1
+				continue
 			}
 			fmt.Fprint(out, res.Format())
 		}
@@ -101,6 +109,9 @@ func run(args []string, out, errw io.Writer) int {
 		e, err := load(args[1])
 		if err != nil {
 			return fail(err)
+		}
+		for _, w := range e.Warnings() {
+			fmt.Fprintln(errw, "warning:", w)
 		}
 		fmt.Fprint(out, e.Strata.Describe(e.Arity))
 		fmt.Fprintf(out, "ok: %d rules, %d queries\n", len(e.Prog.Rules), len(e.Prog.Queries))
@@ -152,7 +163,7 @@ func run(args []string, out, errw io.Writer) int {
 		fmt.Fprint(errw, usage)
 		return 2
 	}
-	return 0
+	return status
 }
 
 func litsString(ls []Literal) string {
@@ -258,6 +269,9 @@ func repl(in io.Reader, out io.Writer, initial string) {
 			}
 		case strings.HasPrefix(line, ":why"):
 			pred, t, err := ParseFact(strings.TrimPrefix(line, ":why"))
+			if err == nil && eng == nil {
+				err = fmt.Errorf("program does not currently evaluate; fix it first")
+			}
 			if err != nil {
 				fmt.Fprintln(out, "error:", err)
 				break

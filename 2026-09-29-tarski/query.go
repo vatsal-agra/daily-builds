@@ -38,7 +38,7 @@ func (e *Engine) Ask(q *Query) (res *QueryResult, err error) {
 			if n, ok := e.Arity[l.Atom.Pred]; !ok {
 				return nil, fmt.Errorf("unknown predicate %s", l.Atom.Pred)
 			} else if n != len(l.Atom.Args) {
-				return nil, fmt.Errorf("predicate %s has %d arguments, query uses %d", l.Atom.Pred, n, len(l.Atom.Args))
+				return nil, fmt.Errorf("predicate %s takes %d argument(s), query uses %d", l.Atom.Pred, n, len(l.Atom.Args))
 			}
 		}
 	}
@@ -130,4 +130,23 @@ func ParseFact(s string) (string, []Val, error) {
 		t[i] = a.C
 	}
 	return r.Head.Pred, t, nil
+}
+
+// Warnings reports likely typos: body predicates that no fact or rule defines.
+func (e *Engine) Warnings() []string {
+	defined := map[string]bool{}
+	for _, r := range e.Prog.Rules {
+		defined[r.Head.Pred] = true
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, r := range e.Prog.Rules {
+		for _, l := range r.Body {
+			if l.Kind != LCmp && !defined[l.Atom.Pred] && !seen[l.Atom.Pred] {
+				seen[l.Atom.Pred] = true
+				out = append(out, fmt.Sprintf("line %d: predicate %s/%d is used but never defined (always empty)", r.Line, l.Atom.Pred, len(l.Atom.Args)))
+			}
+		}
+	}
+	return out
 }

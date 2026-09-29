@@ -197,6 +197,9 @@ type Rule struct {
 }
 
 func (r *Rule) String() string {
+	if r.Head.Pred == "?" {
+		return "?- " + litsString(r.Body) + "."
+	}
 	if len(r.Body) == 0 {
 		return r.Head.String() + "."
 	}

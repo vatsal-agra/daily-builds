@@ -139,13 +139,14 @@ type Stats struct {
 }
 
 type Engine struct {
-	Prog    *Program
-	Arity   map[string]int
-	Strata  *Stratification
-	Rels    map[string]*Relation
-	Naive   bool
-	Stats   Stats
-	byLevel [][]*crule
+	Prog     *Program
+	Arity    map[string]int
+	Strata   *Stratification
+	Rels     map[string]*Relation
+	Naive    bool
+	MaxFacts int // abort when total derived facts exceed this (0 = default)
+	Stats    Stats
+	byLevel  [][]*crule
 }
 
 // NewEngine validates and plans a program.
@@ -645,10 +646,20 @@ func (e *Engine) evalRule(cr *crule, ranges []rng) int {
 		}
 		head.add(t, c.deriv())
 		added++
+		e.Stats.Derived++
+		if e.Stats.Derived > e.limit() {
+			panic(&EvalError{fmt.Sprintf("derivation limit exceeded (%d new facts) — the program probably recurses forever through arithmetic, e.g. `n(X) :- n(Y), X = Y + 1.`; raise it with -limit", e.limit())})
+		}
 	}
 	c.run(0)
-	e.Stats.Derived += added
 	return added
+}
+
+func (e *Engine) limit() int {
+	if e.MaxFacts > 0 {
+		return e.MaxFacts
+	}
+	return 500000
 }
 
 func (e *Engine) fullRanges(cr *crule) []rng {
