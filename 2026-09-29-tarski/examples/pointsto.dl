@@ -1,0 +1,22 @@
+% Andersen-style flow-insensitive points-to analysis — the classic Datalog workload.
+%   x = &o      new(x, o)
+%   x = y       assign(x, y)
+%   x = *y      load(x, y)     (field-insensitive)
+%   *x = y      store(x, y)
+new(p, o1).  new(q, o2).  new(r, o3).
+assign(s, p).
+store(p, q).       % *p = q   (o1 now holds &o2)
+load(t, p).        % t = *p
+assign(u, t).
+
+pts(V, O) :- new(V, O).
+pts(V, O) :- assign(V, W), pts(W, O).
+pts(V, O) :- load(V, W), pts(W, P), heap(P, O).
+heap(P, O) :- store(W, V), pts(W, P), pts(V, O).
+
+alias(X, Y) :- pts(X, O), pts(Y, O), X != Y.
+unaliased(X) :- new(X, _), not alias(X, _).
+
+?- pts(u, O).
+?- alias(X, Y), X < Y.
+?- unaliased(X).

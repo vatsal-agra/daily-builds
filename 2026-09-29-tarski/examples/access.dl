@@ -1,0 +1,20 @@
+% Role-based access control with inheritance, denial (negation) and audit aggregates.
+member(ann, admins). member(bob, staff). member(cy, staff). member(dee, interns).
+inherits(admins, staff). inherits(staff, interns).
+role(U, R) :- member(U, R).
+role(U, R2) :- role(U, R1), inherits(R1, R2).
+
+grants(interns, read, wiki).  grants(staff, write, wiki).
+grants(admins, delete, wiki). grants(staff, read, payroll).
+revoked(cy, read, payroll).
+
+can(U, A, Res) :- role(U, R), grants(R, A, Res), not revoked(U, A, Res).
+n_perms(U, count(*)) :- can(U, _, _).
+max_perm_count(max(N)) :- n_perms(_, N).
+most_privileged(U) :- n_perms(U, N), max_perm_count(N).
+noaccess(U) :- member(U, _), not can(U, delete, wiki).
+
+?- can(cy, A, R).
+?- n_perms(U, N).
+?- most_privileged(U).
+?- noaccess(U).

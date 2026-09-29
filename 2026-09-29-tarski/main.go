@@ -42,7 +42,7 @@ func load(path string) (*Engine, error) {
 func build(src string) (*Engine, error) {
 	prog, err := Parse(src)
 	if err != nil {
-		return nil, err
+		return nil, withSnippet(err, src)
 	}
 	return NewEngine(prog)
 }
@@ -390,4 +390,23 @@ func sameModel(a, b *Engine) bool {
 		}
 	}
 	return true
+}
+
+// withSnippet decorates a parse error with the offending source line and a caret.
+func withSnippet(err error, src string) error {
+	pe, ok := err.(*ParseError)
+	if !ok {
+		return err
+	}
+	lines := strings.Split(src, "\n")
+	if pe.Line < 1 || pe.Line > len(lines) {
+		return err
+	}
+	ln, col := pe.Line, pe.Col
+	for ln > 1 && strings.TrimSpace(lines[ln-1]) == "" {
+		ln--
+		col = len(lines[ln-1]) + 1
+	}
+	l := strings.ReplaceAll(lines[ln-1], "\t", " ")
+	return fmt.Errorf("%v\n  %s\n  %s^", err, l, strings.Repeat(" ", max(col-1, 0)))
 }
