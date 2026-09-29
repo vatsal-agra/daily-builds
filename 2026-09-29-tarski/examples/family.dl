@@ -1,0 +1,27 @@
+% Family relations: recursion, negation, aggregates.
+parent(alice, bob).   parent(alice, carol).
+parent(bob, dave).    parent(bob, erin).
+parent(carol, frank). parent(dave, gina).
+person(P) :- parent(P, _).
+person(C) :- parent(_, C).
+
+ancestor(X, Y) :- parent(X, Y).
+ancestor(X, Z) :- parent(X, Y), ancestor(Y, Z).
+
+sibling(X, Y) :- parent(P, X), parent(P, Y), X != Y.
+cousin(X, Y) :- parent(A, X), parent(B, Y), sibling(A, B).
+
+has_child(P) :- parent(P, _).
+childless(P) :- person(P), not has_child(P).
+
+num_descendants(A, count(*)) :- ancestor(A, _).
+generation(alice, 0).
+generation(C, N) :- generation(P, M), parent(P, C), N = M + 1.
+deepest(max(N)) :- generation(_, N).
+
+?- ancestor(alice, X).
+?- cousin(X, Y), X < Y.
+?- childless(P).
+?- num_descendants(A, N).
+?- deepest(D).
+?- generation(gina, N).

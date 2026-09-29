@@ -1,0 +1,10 @@
+% Reachability, cycles, unreachable nodes (stratified negation), weighted paths.
+edge(a,b). edge(b,c). edge(c,a). edge(c,d). edge(e,f).
+node(X) :- edge(X,_).
+node(X) :- edge(_,X).
+reach(X,Y) :- edge(X,Y).
+reach(X,Z) :- reach(X,Y), edge(Y,Z).
+on_cycle(X) :- reach(X,X).
+unreachable_from_a(X) :- node(X), X != a, not reach(a,X).
+?- on_cycle(X).
+?- unreachable_from_a(X).
