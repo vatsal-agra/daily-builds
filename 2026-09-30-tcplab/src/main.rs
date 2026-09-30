@@ -279,6 +279,13 @@ fn main() {
     }
 }
 
-fn write_html(path: &str, _runs: &[(&tcplab::sim::Outcome, &Sim)], _name: &str) {
-    eprintln!("(HTML report for {path} not implemented yet)");
+fn write_html(path: &str, runs: &[(&tcplab::sim::Outcome, &Sim)], name: &str) {
+    let html = tcplab::html::report(runs, name);
+    match std::fs::write(path, html) {
+        Ok(()) => eprintln!("wrote {path}"),
+        Err(e) => {
+            eprintln!("tcplab: cannot write {path}: {e}");
+            exit(1);
+        }
+    }
 }

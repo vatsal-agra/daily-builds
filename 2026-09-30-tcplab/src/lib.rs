@@ -1,5 +1,6 @@
 //! tcplab — a from-scratch TCP stack over a deterministic simulated network.
 pub mod cc;
+pub mod html;
 pub mod link;
 pub mod report;
 pub mod rng;
