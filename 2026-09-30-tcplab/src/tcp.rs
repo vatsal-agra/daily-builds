@@ -538,7 +538,9 @@ impl Tcb {
     }
 
     fn send_ack(&mut self, now: u64) {
-        let seg = self.base_segment(self.snd_nxt, ACK);
+        // snd_max, not snd_nxt: after an RTO snd_nxt is rewound below what the peer already holds,
+        // and a pure ACK with a stale seq would be rejected as out-of-window.
+        let seg = self.base_segment(self.snd_max, ACK);
         self.emit(now, seg);
     }
 
@@ -918,7 +920,8 @@ impl Tcb {
         match (len, wnd) {
             (0, 0) => start == rn,
             (0, _) => in_win(start),
-            (_, 0) => false,
+            // Zero window: only a payload-free segment (a bare FIN) exactly at rcv_nxt may land.
+            (_, 0) => seg.payload.is_empty() && !seg.has(SYN) && start == rn,
             (_, _) => in_win(start) || in_win(start.wrapping_add(len - 1)) || (seq_lt(start, rn) && seq_geq(start.wrapping_add(len - 1), rn)),
         }
     }
@@ -1022,7 +1025,7 @@ impl Tcb {
     }
 
     fn emit_pure_ack(&mut self, now: u64) {
-        let seg = self.base_segment(self.snd_nxt, ACK);
+        let seg = self.base_segment(self.snd_max, ACK);
         self.emit(now, seg);
     }
 
@@ -1093,6 +1096,9 @@ impl Tcb {
             }
             self.probe_out = false;
             self.retries = 0;
+            // Forward progress ends the backoff (BSD/Linux practice). Holding the backed-off value until a
+            // clean RTT sample (RFC 6298 §5.7) livelocks under heavy loss without timestamps: every ACK
+            // covers retransmitted data, so no sample ever arrives and the RTO ratchets to its cap.
             self.rto_us = self.computed_rto();
             if data_acked > 0 {
                 match self.cc.on_new_ack(data_acked, self.snd_una, now, self.min_rtt_us) {
@@ -1157,7 +1163,11 @@ impl Tcb {
                 }
             } else {
                 self.stats.ooo_segs += 1;
-                self.ooo.insert(self.rcv_off + start as u64, data.to_vec());
+                let key = self.rcv_off + start as u64;
+                let longer = self.ooo.get(&key).map_or(true, |old| old.len() < data.len());
+                if longer {
+                    self.ooo.insert(key, data.to_vec());
+                }
                 self.ack_pure = true; // dup ACK for fast retransmit
             }
         }

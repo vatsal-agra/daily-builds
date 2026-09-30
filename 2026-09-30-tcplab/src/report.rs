@@ -28,17 +28,20 @@ pub fn summary(sim: &Sim, o: &Outcome) -> String {
         sim.sc.link_ab.queue_pkts,
         sim.sc.link_ab.loss * 100.0
     );
-    match o.delivered_us {
-        Some(t) => s += &format!(
-            "  transfer   {} in {:.3} s → goodput {} ({:.0}% of link)   {}\n",
-            fmt_bytes(o.bytes as u64),
-            t as f64 / 1e6,
-            fmt_rate(o.goodput_bps),
-            100.0 * o.goodput_bps / link_rate,
-            if o.verified { "VERIFIED byte-exact" } else { "DATA MISMATCH" }
-        ),
-        None if o.bytes == 0 => s += &format!("  transfer   (no payload)   {}\n", if o.verified { "OK" } else { "FAILED" }),
-        None => s += &format!("  transfer   INCOMPLETE — {} of {} delivered\n", fmt_bytes(sim.recv_b.len() as u64), fmt_bytes(o.bytes as u64)),
+    if o.bytes == 0 {
+        s += &format!("  transfer   (no payload; handshake + close only)   {}\n", if o.verified { "OK" } else { "FAILED" });
+    } else {
+        match o.delivered_us {
+            Some(t) => s += &format!(
+                "  transfer   {} in {:.3} s → goodput {} ({:.0}% of link)   {}\n",
+                fmt_bytes(o.bytes as u64),
+                t as f64 / 1e6,
+                fmt_rate(o.goodput_bps),
+                100.0 * o.goodput_bps / link_rate,
+                if o.verified { "VERIFIED byte-exact" } else { "DATA MISMATCH" }
+            ),
+            None => s += &format!("  transfer   INCOMPLETE — {} of {} delivered\n", fmt_bytes(sim.recv_b.len() as u64), fmt_bytes(o.bytes as u64)),
+        }
     }
     s += &format!(
         "  sender     {} data segs, {} retransmits ({} fast, {} RTO), {} dupacks, {} zero-window probes\n",

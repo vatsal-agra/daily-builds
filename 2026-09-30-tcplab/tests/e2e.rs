@@ -555,3 +555,101 @@ fn a_bad_link_config_default_is_sane() {
     let l = LinkConfig::default();
     assert!(l.rate_bps > 0 && l.queue_pkts > 0);
 }
+
+// ---------------------------------------------------------------- regressions from REVIEW.md
+
+#[test]
+fn review_fin_is_accepted_at_zero_window() {
+    let mut p = Pair::new();
+    p.b.cfg.rcv_buf = 2000; // tiny receive buffer on B; fill it so the window is zero
+    // (cfg is read live for window computation.)
+    p.a.write(p.now, &vec![1u8; 2000]).unwrap();
+    p.settle();
+    assert_eq!(p.b.readable(), 2000);
+    p.a.close(p.now);
+    p.settle();
+    assert!(p.b.peer_fin, "FIN at rcv_nxt must be accepted although the window is zero");
+    assert_eq!(p.b.state, State::CloseWait);
+    assert_eq!(p.b.read(p.now, 10_000).len(), 2000);
+}
+
+fn deliver(from: &mut Tcb, to: &mut Tcb, now: u64) -> Vec<Segment> {
+    let segs = from.take_outbox();
+    for s in &segs {
+        to.on_segment(now, Segment::decode(s.src_addr, s.dst_addr, &s.encode()).unwrap());
+    }
+    segs
+}
+
+#[test]
+fn review_pure_ack_uses_snd_max_after_rto_rewind() {
+    let mut p = Pair::new();
+    p.a.write(p.now, &vec![1u8; 3000]).unwrap();
+    p.b.write(p.now, &vec![2u8; 500]).unwrap(); // B's data segment is held back (ack = old rcv_nxt)
+    let held = p.b.take_outbox();
+    assert_eq!(held.len(), 1);
+    // A's two in-window segments reach B, but B's ACKs are lost.
+    deliver(&mut p.a, &mut p.b, p.now);
+    p.b.take_outbox();
+    // A's RTO fires: snd_nxt is rewound to snd_una.
+    let t = p.a.next_timer().unwrap();
+    p.now = t;
+    p.a.on_timer(t);
+    p.a.take_outbox();
+    assert!(seq_lt(p.a.snd_nxt, p.a.snd_max), "test setup: snd_nxt must be rewound");
+    // B's held data arrives; A answers with a pure ACK. Its seq must be snd_max, not the stale snd_nxt.
+    p.a.on_segment(p.now, Segment::decode(held[0].src_addr, held[0].dst_addr, &held[0].encode()).unwrap());
+    let acks = p.a.take_outbox();
+    let pure = acks.iter().find(|s| s.payload.is_empty() && s.has(ACK)).expect("A must ACK B's data");
+    assert_eq!(pure.seq, p.a.snd_max);
+    // and B accepts it as an ordinary ACK (no "unacceptable segment" reply)
+    let before = p.b.stats.segs_tx;
+    p.b.on_segment(p.now, Segment::decode(pure.src_addr, pure.dst_addr, &pure.encode()).unwrap());
+    assert_eq!(p.b.stats.segs_tx, before, "B rejected A's pure ACK as out-of-window");
+}
+
+#[test]
+fn review_backoff_ends_on_forward_progress() {
+    let mut p = Pair::new();
+    p.a.write(p.now, &vec![1u8; 3000]).unwrap();
+    p.a.take_outbox(); // both initial segments lost
+    let t = p.a.next_timer().unwrap();
+    p.now = t;
+    p.a.on_timer(t);
+    let backed_off = p.a.rto_us;
+    assert_eq!(backed_off, 2 * p.a.cfg.min_rto_us);
+    let rtx = p.a.take_outbox();
+    p.b.on_segment(p.now, Segment::decode(rtx[0].src_addr, rtx[0].dst_addr, &rtx[0].encode()).unwrap());
+    let ack = p.b.take_outbox();
+    p.now += 10_000;
+    p.a.on_segment(p.now, Segment::decode(ack[0].src_addr, ack[0].dst_addr, &ack[0].encode()).unwrap());
+    // An ACK for new data ends the backoff even though it acknowledged retransmitted data.
+    assert_eq!(p.a.rto_us, p.a.cfg.min_rto_us);
+}
+
+#[test]
+fn review_extreme_loss_does_not_ratchet_rto_to_the_cap() {
+    // 50 % loss: a "keep backoff until a clean RTT sample" rule never sees a sample and livelocks
+    // (rto → 60 s, transfer stalls past the time limit). Forward-progress reset keeps it moving.
+    let mut s = base(100_000);
+    s.link_ab.loss = 0.5;
+    s.max_time_us = 400_000_000;
+    let (sim, o) = run(s);
+    assert!(o.verified, "{o:?}");
+    assert!(!o.timed_out);
+    let worst = sim.a.events.iter().filter_map(|(_, e)| if let Event::Timeout { rto_us } = e { Some(*rto_us) } else { None }).max().unwrap();
+    assert!(worst < 60_000_000, "RTO reached the cap: {worst}");
+}
+
+#[test]
+fn review_ooo_buffer_prefers_longer_duplicate() {
+    // Two segments at the same out-of-order offset (long one first): the short duplicate must not evict it.
+    let mut p = Pair::new();
+    let mk = |seq: u32, n: usize, ack: u32| Segment { src_addr: ADDR_A, dst_addr: ADDR_B, src_port: PORT_A, dst_port: PORT_B, flags: ACK, seq, ack, window: 1000, payload: vec![5u8; n], ..Default::default() };
+    let base_seq = p.b.rcv_nxt;
+    let ack = p.a.rcv_nxt;
+    p.b.on_segment(p.now, mk(base_seq.wrapping_add(1000), 1000, ack));
+    p.b.on_segment(p.now, mk(base_seq.wrapping_add(1000), 300, ack));
+    p.b.on_segment(p.now, mk(base_seq, 1000, ack));
+    assert_eq!(p.b.readable(), 2000);
+}
