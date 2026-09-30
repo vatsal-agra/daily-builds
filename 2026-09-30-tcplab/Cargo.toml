@@ -1,0 +1,10 @@
+[package]
+name = "tcplab"
+version = "0.1.0"
+edition = "2021"
+description = "A from-scratch TCP implementation (handshake, reliability, flow + congestion control) over a deterministic simulated network"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
