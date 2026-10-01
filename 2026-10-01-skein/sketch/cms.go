@@ -20,6 +20,9 @@ func NewCMS(eps, delta float64) (*CMS, error) {
 	if !(eps > 0 && eps < 1) || !(delta > 0 && delta < 1) {
 		return nil, fmt.Errorf("cms: eps and delta must be in (0,1), got %v, %v", eps, delta)
 	}
+	if math.E/eps > 1<<28 {
+		return nil, fmt.Errorf("cms: eps=%v needs more than 2^28 columns; use eps >= %.2g", eps, math.E/(1<<28))
+	}
 	w := uint32(math.Ceil(math.E / eps))
 	d := uint32(math.Ceil(math.Log(1 / delta)))
 	if d < 1 {

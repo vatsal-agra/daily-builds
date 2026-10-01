@@ -193,7 +193,7 @@ func parseQuantiles(s string) ([]float64, error) {
 			continue
 		}
 		q, err := strconv.ParseFloat(p, 64)
-		if err != nil || q < 0 || q > 1 {
+		if err != nil || !(q >= 0 && q <= 1) {
 			return nil, fmt.Errorf("bad quantile %q (want numbers in [0,1])", p)
 		}
 		qs = append(qs, q)
@@ -226,6 +226,16 @@ func cmdStats(args []string) error {
 	}
 	var b *sketch.Bundle
 	if *in != "" {
+		conflict := ""
+		fs.Visit(func(fl *flag.Flag) {
+			switch fl.Name {
+			case "p", "k", "eps", "delta":
+				conflict = fl.Name
+			}
+		})
+		if conflict != "" {
+			return fmt.Errorf("-%s cannot be combined with -load: a saved state keeps the parameters it was built with", conflict)
+		}
 		v, err := loadSketch(*in)
 		if err != nil {
 			return err
@@ -260,6 +270,9 @@ func cmdStats(args []string) error {
 		return err
 	}
 	if b.Records == 0 {
+		if bad > 0 {
+			return fmt.Errorf("no usable records: all %d line(s) were skipped (field out of range or value not numeric; check -d/-f/-v)", bad)
+		}
 		return errors.New("no input records")
 	}
 	fmt.Printf("records            %d\n", b.Records)
@@ -270,10 +283,10 @@ func cmdStats(args []string) error {
 		fmt.Printf("  %2d. %-30s %10d  (±%d)  cms=%d\n", i+1, trunc(e.Key, 30), e.Count, e.Err, b.Freq.Estimate([]byte(e.Key)))
 	}
 	if b.Dist.Count() > 0 {
-		fmt.Printf("values (n=%.0f, min=%g, max=%g):\n", b.Dist.Count(), b.Dist.Min(), b.Dist.Max())
+		fmt.Printf("values (n=%.0f, min=%.6g, max=%.6g):\n", b.Dist.Count(), b.Dist.Min(), b.Dist.Max())
 		for _, q := range quant {
 			v, _ := b.Dist.Quantile(q)
-			fmt.Printf("  p%-6g %g\n", q*100, v)
+			fmt.Printf("  p%-7s %.6g\n", pct(q), v)
 		}
 	}
 	if bad > 0 {
@@ -287,6 +300,9 @@ func cmdStats(args []string) error {
 	}
 	return nil
 }
+
+// pct renders a quantile as a clean percentile label (0.999 → "99.9", 0.07 → "7").
+func pct(q float64) string { return strconv.FormatFloat(math.Round(q*1e8)/1e6, 'f', -1, 64) }
 
 func trunc(s string, n int) string {
 	r := []rune(s)
@@ -436,9 +452,9 @@ func cmdQuantile(args []string) error {
 		v, _ := td.Quantile(q)
 		if *exact {
 			e := all[int(q*float64(len(all)-1)+0.5)]
-			fmt.Printf("  p%-6g %-14g exact %-14g\n", q*100, v, e)
+			fmt.Printf("  p%-7s %-12.6g exact %-12.6g\n", pct(q), v, e)
 		} else {
-			fmt.Printf("  p%-6g %g\n", q*100, v)
+			fmt.Printf("  p%-7s %.6g\n", pct(q), v)
 		}
 	}
 	if bad > 0 {

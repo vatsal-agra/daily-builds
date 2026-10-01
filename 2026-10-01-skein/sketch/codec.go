@@ -23,7 +23,7 @@ const (
 	tBundle
 )
 
-var ErrCorrupt = errors.New("skein: corrupt or truncated data")
+var ErrCorrupt = errors.New("corrupt or truncated data")
 
 type wr struct{ bytes.Buffer }
 
@@ -169,7 +169,7 @@ func Marshal(v any) ([]byte, error) {
 			w.Write(b)
 		}
 	default:
-		return nil, fmt.Errorf("skein: cannot marshal %T", v)
+		return nil, fmt.Errorf("cannot marshal %T", v)
 	}
 	return frame(t, w.Bytes()), nil
 }
@@ -177,7 +177,7 @@ func Marshal(v any) ([]byte, error) {
 // Unmarshal decodes data produced by Marshal and returns the concrete sketch.
 func Unmarshal(data []byte) (any, error) {
 	if len(data) < len(magic)+1+1+4 || string(data[:4]) != magic {
-		return nil, fmt.Errorf("skein: not a skein file (bad magic)")
+		return nil, errors.New("not a skein file (bad magic)")
 	}
 	body, sum := data[:len(data)-4], binary.LittleEndian.Uint32(data[len(data)-4:])
 	if crc32.ChecksumIEEE(body) != sum {
@@ -283,11 +283,17 @@ func Unmarshal(data []byte) (any, error) {
 		if err != nil {
 			return nil, ErrCorrupt
 		}
+		if math.IsNaN(n) || math.IsInf(n, 0) || n < 0 || math.IsNaN(mn) || math.IsNaN(mx) {
+			return nil, fmt.Errorf("%w: non-finite digest header", ErrCorrupt)
+		}
+		if cnt > 0 && (math.IsInf(mn, 0) || math.IsInf(mx, 0) || mn > mx) {
+			return nil, fmt.Errorf("%w: bad digest range", ErrCorrupt)
+		}
 		td.n, td.min, td.max = n, mn, mx
 		sum, prev := 0.0, math.Inf(-1)
 		for i := uint64(0); i < cnt; i++ {
 			c := centroid{r.f(), r.f()}
-			if !(c.weight > 0) || math.IsNaN(c.mean) || c.mean < prev {
+			if !(c.weight > 0) || math.IsInf(c.weight, 0) || math.IsNaN(c.mean) || math.IsInf(c.mean, 0) || c.mean < prev || c.mean < mn || c.mean > mx {
 				return nil, ErrCorrupt
 			}
 			prev = c.mean
@@ -334,7 +340,7 @@ func Unmarshal(data []byte) (any, error) {
 		}
 		out = b
 	default:
-		return nil, fmt.Errorf("skein: unknown sketch type %d", t)
+		return nil, fmt.Errorf("unknown sketch type %d", t)
 	}
 	if r.err != nil {
 		return nil, r.err
