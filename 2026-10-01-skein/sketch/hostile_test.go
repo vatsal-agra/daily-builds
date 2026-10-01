@@ -486,3 +486,22 @@ func TestShingles(t *testing.T) {
 		t.Fatalf("unicode %v", got)
 	}
 }
+
+func TestCMSWeightedAddsAreExactWhenAlone(t *testing.T) {
+	c, _ := NewCMSDims(64, 4)
+	c.Add([]byte("a"), 5)
+	c.Add([]byte("a"), 7)
+	c.Add([]byte("b"), 3)
+	if got := c.Estimate([]byte("a")); got < 12 || got > 15 {
+		t.Fatalf("a=%d want 12..15", got)
+	}
+	c2, _ := NewCMSDims(4096, 4)
+	c2.Add([]byte("only"), 1000)
+	if c2.Estimate([]byte("only")) != 1000 {
+		t.Fatalf("lone weighted add: %d", c2.Estimate([]byte("only")))
+	}
+	c2.Add([]byte("only"), math.MaxUint32) // saturates, must not wrap
+	if c2.Estimate([]byte("only")) != math.MaxUint32 {
+		t.Fatal("counter wrapped instead of saturating")
+	}
+}

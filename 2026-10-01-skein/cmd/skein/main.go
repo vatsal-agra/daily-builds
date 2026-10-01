@@ -31,6 +31,7 @@ usage: skein <command> [flags] [files...]      ("-" or no file = stdin)
   dups      near-duplicate lines/documents (MinHash + LSH)
   merge     merge saved sketches built on different shards
   inspect   describe a saved sketch file
+  report    accuracy-vs-memory benchmark as a self-contained HTML page
 
 run 'skein <command> -h' for flags`
 
@@ -43,7 +44,7 @@ func main() {
 	cmds := map[string]func([]string) error{
 		"stats": cmdStats, "count": cmdCount, "top": cmdTop, "quantile": cmdQuantile,
 		"member": cmdMember, "sim": cmdSim, "dups": cmdDups, "merge": cmdMerge,
-		"inspect": cmdInspect,
+		"inspect": cmdInspect, "report": cmdReport,
 	}
 	if cmd == "-h" || cmd == "--help" || cmd == "help" {
 		fmt.Println(usage)
