@@ -259,9 +259,13 @@ func (n *Node) write(sb *strings.Builder, names []string, parent int) {
 	case Bin:
 		switch n.Op {
 		case "+", "-":
+			op, r := n.Op, n.R
+			if f := flipSign(r); f != nil { // a + -b  prints as  a - b
+				op, r = map[string]string{"+": "-", "-": "+"}[op], f
+			}
 			n.L.write(sb, names, 1)
-			sb.WriteString(" " + n.Op + " ")
-			n.R.write(sb, names, 2)
+			sb.WriteString(" " + op + " ")
+			r.write(sb, names, 2)
 		case "*", "/":
 			n.L.write(sb, names, 2)
 			sb.WriteString(" " + n.Op + " ")
@@ -286,4 +290,18 @@ func (n *Node) Equal(o *Node) bool {
 		return false
 	}
 	return n.L.Equal(o.L) && n.R.Equal(o.R)
+}
+
+// flipSign returns -n when n visibly starts with a minus (negative constant,
+// negation, or negative-constant product); nil otherwise. Used by the printer.
+func flipSign(n *Node) *Node {
+	switch {
+	case n.Kind == Const && n.Val < 0:
+		return C(-n.Val)
+	case n.Kind == Un && n.Op == "neg":
+		return n.L
+	case n.Kind == Bin && (n.Op == "*" || n.Op == "/") && n.L.Kind == Const && n.L.Val < 0:
+		return B(n.Op, C(-n.L.Val), n.R)
+	}
+	return nil
 }
