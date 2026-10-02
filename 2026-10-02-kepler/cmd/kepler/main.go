@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/signal"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"kepler/data"
@@ -82,8 +85,33 @@ func addFlags(fs *flag.FlagSet) *searchFlags {
 	fs.StringVar(&s.report, "report", "", "write an HTML report to this path")
 	fs.BoolVar(&s.quiet, "q", false, "suppress progress")
 	fs.StringVar(&s.target, "target", "", "target column (default: last)")
+	fs.DurationVar(&s.cfg.TimeLimit, "time", 0, "wall-clock budget, e.g. 30s (0 = unlimited)")
 	fs.IntVar(&s.n, "n", 120, "bench: samples to generate")
 	return s
+}
+
+// parse accepts flags before or after positional arguments.
+func parse(fs *flag.FlagSet, args []string) ([]string, error) {
+	var pos []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		if fs.NArg() == 0 {
+			return pos, nil
+		}
+		pos = append(pos, fs.Arg(0))
+		args = fs.Args()[1:]
+	}
+}
+
+// interruptible makes Ctrl-C end the search gracefully and report what was found.
+func interruptible(cfg *gp.Config) {
+	var flag int32
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+	go func() { <-ch; atomic.StoreInt32(&flag, 1) }()
+	cfg.Stop = func() bool { return atomic.LoadInt32(&flag) == 1 }
 }
 
 func (s *searchFlags) apply() error {
@@ -110,16 +138,18 @@ func (s *searchFlags) apply() error {
 func cmdFit(args []string) error {
 	fs := flag.NewFlagSet("fit", flag.ContinueOnError)
 	s := addFlags(fs)
-	if err := fs.Parse(args); err != nil {
+	pos, err := parse(fs, args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+	if len(pos) != 1 {
 		return fmt.Errorf("fit needs exactly one CSV file")
 	}
 	if err := s.apply(); err != nil {
 		return err
 	}
-	d, err := data.LoadCSV(fs.Arg(0), s.target)
+	interruptible(&s.cfg)
+	d, err := data.LoadCSV(pos[0], s.target)
 	if err != nil {
 		return err
 	}
@@ -127,6 +157,9 @@ func cmdFit(args []string) error {
 	res, err := gp.Run(d, s.cfg)
 	if err != nil {
 		return err
+	}
+	if d.N() < 20 {
+		fmt.Fprintln(os.Stderr, "note: fewer than 20 rows — no holdout split, model selection uses training error")
 	}
 	printResult(d, res, time.Since(t0))
 	if s.report != "" {
@@ -160,21 +193,22 @@ func printResult(d *data.Dataset, res *gp.Result, el time.Duration) {
 func cmdBench(args []string) error {
 	fs := flag.NewFlagSet("bench", flag.ContinueOnError)
 	s := addFlags(fs)
-	s.quiet = true
-	if err := fs.Parse(args); err != nil {
+	pos, err := parse(fs, args)
+	if err != nil {
 		return err
 	}
 	s.quiet = true
 	if err := s.apply(); err != nil {
 		return err
 	}
+	interruptible(&s.cfg)
 	var list []*data.Benchmark
-	if fs.NArg() == 0 {
+	if len(pos) == 0 {
 		for i := range data.Benchmarks {
 			list = append(list, &data.Benchmarks[i])
 		}
 	}
-	for _, n := range fs.Args() {
+	for _, n := range pos {
 		b, ok := data.Find(n)
 		if !ok {
 			return fmt.Errorf("unknown benchmark %q (try `kepler datasets`)", n)
@@ -229,15 +263,16 @@ func status(ok bool) string {
 func cmdGen(args []string) error {
 	fs := flag.NewFlagSet("gen", flag.ContinueOnError)
 	s := addFlags(fs)
-	if err := fs.Parse(args); err != nil {
+	pos, err := parse(fs, args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+	if len(pos) != 1 {
 		return fmt.Errorf("gen needs a benchmark name (see `kepler datasets`)")
 	}
-	b, ok := data.Find(fs.Arg(0))
+	b, ok := data.Find(pos[0])
 	if !ok {
-		return fmt.Errorf("unknown benchmark %q", fs.Arg(0))
+		return fmt.Errorf("unknown benchmark %q", pos[0])
 	}
 	return b.Generate(s.n, s.cfg.Seed).WriteCSV(os.Stdout)
 }

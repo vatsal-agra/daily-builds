@@ -57,6 +57,11 @@ func simp(n *Node) *Node {
 			return n
 		}
 		l, r := n.L, n.R
+		if n.Op == "+" || n.Op == "-" {
+			if c := collectTerms(n); c != nil {
+				return c
+			}
+		}
 		switch n.Op {
 		case "+":
 			if isC(l, 0) {
@@ -120,6 +125,10 @@ func simp(n *Node) *Node {
 			if l.Equal(r) {
 				return B("^", l, C(2))
 			}
+			// (c*a)*a -> c*a^2
+			if l.Kind == Bin && l.Op == "*" && l.R.Equal(r) {
+				return B("*", l.L, B("^", r, C(2)))
+			}
 			if l.Kind == Un && l.Op == "neg" && r.Kind == Un && r.Op == "neg" {
 				return B("*", l.L, r.L)
 			}
@@ -159,4 +168,80 @@ func simp(n *Node) *Node {
 		}
 	}
 	return n
+}
+
+// ---- like-term collection:  x^3 - x - x  ->  x^3 - 2*x ----
+
+type term struct {
+	coef float64
+	base *Node // nil = pure constant
+}
+
+func flattenSum(n *Node, sign float64, out *[]term) {
+	switch {
+	case n.Kind == Bin && n.Op == "+":
+		flattenSum(n.L, sign, out)
+		flattenSum(n.R, sign, out)
+	case n.Kind == Bin && n.Op == "-":
+		flattenSum(n.L, sign, out)
+		flattenSum(n.R, -sign, out)
+	case n.Kind == Un && n.Op == "neg":
+		flattenSum(n.L, -sign, out)
+	case n.Kind == Const:
+		*out = append(*out, term{sign * n.Val, nil})
+	case n.Kind == Bin && n.Op == "*" && n.L.Kind == Const:
+		*out = append(*out, term{sign * n.L.Val, n.R})
+	default:
+		*out = append(*out, term{sign, n})
+	}
+}
+
+// collectTerms merges terms with identical bases. It returns nil unless the
+// number of terms strictly shrinks, so it cannot oscillate with other rules.
+func collectTerms(n *Node) *Node {
+	var ts []term
+	flattenSum(n, 1, &ts)
+	idx := map[string]int{}
+	var merged []term
+	var keys []string
+	for _, t := range ts {
+		k := "#const"
+		if t.base != nil {
+			k = t.base.String()
+		}
+		if i, ok := idx[k]; ok {
+			merged[i].coef += t.coef
+		} else {
+			idx[k] = len(merged)
+			merged = append(merged, t)
+			keys = append(keys, k)
+		}
+	}
+	if len(merged) >= len(ts) {
+		return nil
+	}
+	var out *Node
+	for _, t := range merged {
+		if t.coef == 0 {
+			continue
+		}
+		var piece *Node
+		switch {
+		case t.base == nil:
+			piece = C(t.coef)
+		case t.coef == 1:
+			piece = t.base
+		default:
+			piece = B("*", C(t.coef), t.base)
+		}
+		if out == nil {
+			out = piece
+		} else {
+			out = B("+", out, piece)
+		}
+	}
+	if out == nil {
+		return C(0)
+	}
+	return out
 }

@@ -80,6 +80,9 @@ func (p *parser) next() {
 			p.i++
 		}
 		p.tok = token{tIdent, p.src[start:p.i], start}
+	case c == '*' && p.i+1 < len(p.src) && p.src[p.i+1] == '*': // Python-style power
+		p.i += 2
+		p.tok = token{tSym, "^", start}
 	default:
 		p.i++
 		p.tok = token{tSym, string(c), start}

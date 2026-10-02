@@ -302,6 +302,8 @@ func flipSign(n *Node) *Node {
 		return n.L
 	case n.Kind == Bin && (n.Op == "*" || n.Op == "/") && n.L.Kind == Const && n.L.Val < 0:
 		return B(n.Op, C(-n.L.Val), n.R)
+	case n.Kind == Bin && (n.Op == "*" || n.Op == "/") && n.L.Kind == Un && n.L.Op == "neg":
+		return B(n.Op, n.L.L, n.R)
 	}
 	return nil
 }

@@ -31,7 +31,7 @@ h2{font-size:18px;margin:0 0 10px}.sub{color:var(--mute);margin:0 0 24px}
 .eq{font:600 20px ui-monospace,Menlo,Consolas,monospace;color:var(--acc);word-break:break-word}
 table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
 th{color:var(--mute);font-weight:600}td.f{font-family:ui-monospace,Menlo,Consolas,monospace}tr.sel td{background:rgba(110,231,183,.12)}
-.ok{color:var(--acc)}.bad{color:var(--bad)}svg{width:100%;height:auto;display:block}
+.ok,.tag.ok{color:var(--acc);border-color:var(--acc)}.bad,.tag.bad{color:var(--bad);border-color:var(--bad)}svg{width:100%;height:auto;display:block}
 .tag{display:inline-block;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute);font-size:12px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}@media(max-width:760px){.grid{grid-template-columns:1fr}}`
 
@@ -105,33 +105,21 @@ func paretoSVG(res *gp.Result) string {
 	const W, H, L, B, T, R = 460, 300, 52, 36, 14, 14
 	f := res.Front
 	maxC := 1
-	lo, hi := 0.0, -16.0
+	worst, best := math.Inf(-1), math.Inf(1)
 	for _, m := range f {
-		if m.Complexity > maxC {
-			maxC = m.Complexity
-		}
+		maxC = max(maxC, m.Complexity)
 		v := logv(m.TrainNMSE)
-		if v > lo {
-			lo = v
-		}
-		if v < hi || hi == -16 {
-			hi = math.Min(hi, v)
-		}
+		worst, best = math.Max(worst, v), math.Min(best, v)
 	}
-	hi, lo = -16, math.Max(lo, 0.5)
-	for _, m := range f {
-		hi = math.Max(hi, math.Floor(logv(m.TrainNMSE))-1)
+	lo, hi := math.Ceil(worst), math.Floor(best) // y axis: lo (top) .. hi (bottom)
+	if lo-hi < 2 {
+		lo = hi + 2
 	}
-	hi = math.Max(hi, -16)
-	// y axis: lo (top, worst) .. hi (bottom, best)
-	lo, hi = math.Ceil(lo), math.Min(hi, lo-1)
 	x := func(c int) float64 { return L + float64(c)/float64(maxC+1)*(W-L-R) }
-	y := func(v float64) float64 { return T + (lo-v)/(lo-hi)*(H-T-B)*-1 + (H - T - B) - (H - T - B) + 0 }
-	_ = y
-	yy := func(v float64) float64 { return T + (v-lo)/(hi-lo)*float64(H-T-B)*1 }
+	yy := func(v float64) float64 { return T + (lo-v)/(lo-hi)*float64(H-T-B) }
 	var sb strings.Builder
 	fmt.Fprintf(&sb, `<svg viewBox="0 0 %d %d" role="img" aria-label="Pareto front: error versus complexity">`, W, H)
-	for v := math.Ceil(hi); v <= lo; v++ {
+	for v := hi; v <= lo; v++ {
 		fmt.Fprintf(&sb, `<line x1="%d" x2="%d" y1="%.1f" y2="%.1f" stroke="var(--line)"/><text x="%d" y="%.1f" fill="var(--mute)" font-size="10" text-anchor="end">1e%d</text>`, L, W-R, yy(v), yy(v), L-6, yy(v)+3, int(v))
 	}
 	fmt.Fprintf(&sb, `<text x="%d" y="%d" fill="var(--mute)" font-size="11" text-anchor="middle">complexity →</text>`, (W+L)/2, H-6)

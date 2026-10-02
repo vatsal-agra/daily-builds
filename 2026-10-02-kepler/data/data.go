@@ -2,6 +2,7 @@
 package data
 
 import (
+	"bufio"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -26,7 +27,11 @@ func (d *Dataset) N() int { return len(d.Y) }
 // empty the last column is used. Blank lines/ragged rows/non-numeric cells are
 // reported with line numbers rather than silently skipped.
 func ReadCSV(r io.Reader, target string) (*Dataset, error) {
-	cr := csv.NewReader(r)
+	br := bufio.NewReader(r)
+	if b, err := br.Peek(3); err == nil && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF {
+		br.Discard(3) // UTF-8 byte-order mark (Excel exports)
+	}
+	cr := csv.NewReader(br)
 	cr.TrimLeadingSpace = true
 	cr.FieldsPerRecord = -1
 	cr.Comment = '#'

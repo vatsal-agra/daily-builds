@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
+	"time"
 
 	"kepler/data"
 	"kepler/expr"
@@ -20,12 +21,14 @@ type Config struct {
 	Seed         int64 // determinism: same seed + config => same result
 	MaxSize      int   // node limit (bloat control)
 	MaxDepth     int
-	Unary        []string // enabled unary ops
-	Binary       []string // enabled binary ops
-	Parsimony    float64  // selection penalty per complexity unit (multiplicative)
-	MigrateEvery int      // generations between ring migrations
-	StopErr      float64  // stop when best NMSE <= this
-	Holdout      float64  // fraction held out for model selection (0 = none)
+	Unary        []string      // enabled unary ops
+	Binary       []string      // enabled binary ops
+	Parsimony    float64       // selection penalty per complexity unit (multiplicative)
+	MigrateEvery int           // generations between ring migrations
+	StopErr      float64       // stop when best NMSE <= this
+	Holdout      float64       // fraction held out for model selection (0 = none)
+	TimeLimit    time.Duration // wall-clock budget (0 = unlimited)
+	Stop         func() bool   // polled each generation; true ends the search early
 	Verbose      func(string)
 }
 
@@ -156,6 +159,7 @@ func Run(d *data.Dataset, cfg Config) (*Result, error) {
 		}
 	}
 	var gens int
+	start := time.Now()
 	for g := 0; g < cfg.Gens; g++ {
 		gens = g + 1
 		var wg sync.WaitGroup
@@ -177,6 +181,12 @@ func Run(d *data.Dataset, cfg Config) (*Result, error) {
 			cfg.Verbose(fmt.Sprintf("gen %3d  best nmse %.3e  %s", g+1, best.NMSE, best.Tree.Format(d.Names)))
 		}
 		if best != nil && best.NMSE <= cfg.StopErr {
+			break
+		}
+		if cfg.TimeLimit > 0 && time.Since(start) >= cfg.TimeLimit {
+			break
+		}
+		if cfg.Stop != nil && cfg.Stop() {
 			break
 		}
 	}
@@ -223,7 +233,7 @@ func finalize(arch *archive, pr, hpr *Problem, names []string, gens int, evals i
 	for _, m := range cand {
 		// a higher-complexity model must be strictly better to stay on the front;
 		// errors below the numeric floor count as equal
-		if len(front) == 0 || floor(m.TrainNMSE) < floor(front[len(front)-1].TrainNMSE)*(1-1e-9) {
+		if len(front) == 0 || floor(m.TrainNMSE) < floor(front[len(front)-1].TrainNMSE)*0.99 {
 			front = append(front, m)
 		}
 	}
