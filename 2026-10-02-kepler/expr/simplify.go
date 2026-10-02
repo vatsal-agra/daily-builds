@@ -1,6 +1,9 @@
 package expr
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 // Simplify applies constant folding and algebraic identities bottom-up until
 // a fixed point. It never changes the function computed (on its domain).
@@ -57,6 +60,11 @@ func simp(n *Node) *Node {
 			return n
 		}
 		l, r := n.L, n.R
+		if n.Op == "*" || n.Op == "/" {
+			if c := collectFactors(n); c != nil && !c.Equal(n) {
+				return c
+			}
+		}
 		if n.Op == "+" || n.Op == "-" {
 			if c := collectTerms(n); c != nil {
 				return c
@@ -159,6 +167,10 @@ func simp(n *Node) *Node {
 			if isC(l, 1) {
 				return C(1)
 			}
+			// (c*a)^k -> c^k * a^k for integer k
+			if r.Kind == Const && r.Val == math.Trunc(r.Val) && l.Kind == Bin && l.Op == "*" && l.L.Kind == Const {
+				return B("*", C(math.Pow(l.L.Val, r.Val)), B("^", l.R, r))
+			}
 			if l.Kind == Bin && l.Op == "^" && l.R.Kind == Const && r.Kind == Const {
 				// (a^p)^q = a^(pq) only safe when p is even-int/q int; restrict to both integers
 				if l.R.Val == math.Trunc(l.R.Val) && r.Val == math.Trunc(r.Val) {
@@ -244,4 +256,120 @@ func collectTerms(n *Node) *Node {
 		return C(0)
 	}
 	return out
+}
+
+// ---- monomial normalisation:  m2/r/(c/m1)/r  ->  (1/c) * m1 * m2 / r^2 ----
+
+type factors struct {
+	coef  float64
+	bases []*Node
+	exps  []float64
+	count int // number of factors before merging
+}
+
+func (f *factors) add(b *Node, e float64) {
+	f.count++
+	k := b.String()
+	for i := range f.bases {
+		if f.bases[i].String() == k {
+			f.exps[i] += e
+			return
+		}
+	}
+	f.bases = append(f.bases, b)
+	f.exps = append(f.exps, e)
+}
+
+func (f *factors) walk(n *Node, e float64) { // e is +1 (numerator) or -1 (denominator)
+	switch {
+	case n.Kind == Bin && n.Op == "*":
+		f.walk(n.L, e)
+		f.walk(n.R, e)
+	case n.Kind == Bin && n.Op == "/":
+		f.walk(n.L, e)
+		f.walk(n.R, -e)
+	case n.Kind == Un && n.Op == "neg":
+		f.coef = -f.coef
+		f.walk(n.L, e)
+	case n.Kind == Const && (e == 1 || n.Val != 0):
+		f.count++
+		if e == 1 {
+			f.coef *= n.Val
+		} else {
+			f.coef /= n.Val
+		}
+	case n.Kind == Bin && n.Op == "^" && n.R.Kind == Const:
+		f.add(n.L, e*n.R.Val)
+	default:
+		f.add(n, e)
+	}
+}
+
+// collectFactors merges repeated bases in a product/quotient. It returns nil
+// unless something was actually merged or the result is cheaper to read.
+func collectFactors(n *Node) *Node {
+	f := &factors{coef: 1}
+	f.walk(n, 1)
+	var num, den *Node
+	mul := func(acc, x *Node) *Node {
+		if acc == nil {
+			return x
+		}
+		return B("*", acc, x)
+	}
+	if f.coef != 1 && f.coef != 0 {
+		num = C(f.coef) // constant leads the product: 2 * a * b
+	}
+	// canonical order (by printed form) so equal products print identically
+	ord := make([]int, len(f.bases))
+	for i := range ord {
+		ord[i] = i
+	}
+	rank := func(n *Node) int { // plain variables first, then compound factors
+		if n.Kind == Var {
+			return 0
+		}
+		return 1
+	}
+	sort.SliceStable(ord, func(a, b int) bool {
+		x, y := f.bases[ord[a]], f.bases[ord[b]]
+		if rank(x) != rank(y) {
+			return rank(x) < rank(y)
+		}
+		return x.String() < y.String()
+	})
+	for _, i := range ord {
+		b, e := f.bases[i], f.exps[i]
+		switch {
+		case e == 0:
+		case e == 1:
+			num = mul(num, b)
+		case e == -1:
+			den = mul(den, b)
+		case e > 0:
+			num = mul(num, B("^", b, C(e)))
+		default:
+			den = mul(den, B("^", b, C(-e)))
+		}
+	}
+	var out *Node
+	coef := f.coef
+	if coef == 0 {
+		return C(0)
+	}
+	switch {
+	case num == nil && den == nil:
+		return C(1)
+	case num == nil:
+		out = B("/", C(1), den)
+	case den == nil:
+		out = num
+	default:
+		out = B("/", num, den)
+	}
+	_ = coef
+	if len(f.bases) < f.count && (out.Complexity() <= n.Complexity()) || out.Complexity() < n.Complexity() {
+		return out
+	}
+	return nil
 }

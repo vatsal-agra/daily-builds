@@ -86,7 +86,7 @@ func (n *Node) Complexity() int {
 		switch n.Op {
 		case "+", "-":
 			w = 1
-		case "*":
+		case "*", "^":
 			w = 2
 		default:
 			w = 3

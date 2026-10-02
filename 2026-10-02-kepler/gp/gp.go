@@ -220,6 +220,8 @@ func finalize(arch *archive, pr, hpr *Problem, names []string, gens int, evals i
 		clean = expr.Simplify(clean)
 		pr.FitConstants(clean, 200, 1) // re-tune what snapping left free
 		pr.Snap(clean, 0.02)
+		clean = expr.Simplify(clean)
+		pr.Snap(clean, 0.02)
 		add(expr.Simplify(clean)) // cleaned first: wins exact ties
 		add(raw)
 	}

@@ -1,13 +1,14 @@
 # Kepler
 Symbolic regression engine in Go — discovers closed-form equations from data.
+**Status: Phase 4 done** (stretch features + polish). Tests/demo/final README follow in Phases 5–6.
 
-**Status: Phase 2 done** (core build). Required features working end-to-end:
-expression engine (parse/print/simplify/diff), genetic-programming search,
-Nelder-Mead constant fitting, Pareto front + CLI (`fit`, `bench`, `gen`, `eval`, `diff`).
+Working so far: expression engine (parse / print / simplify / differentiate), genetic-programming
+search with island model, Nelder-Mead constant fitting, Pareto front with holdout model selection,
+HTML reports, and a CLI (`fit`, `bench`, `gen`, `eval`, `diff`, `datasets`).
 
 ```
 go build -o kepler ./cmd/kepler
-./kepler bench            # rediscover 7 physics laws from sampled data
-./kepler gen kinetic > k.csv && ./kepler fit k.csv
+./kepler bench                      # rediscover 7 physics laws from sampled data
+./kepler gen kinetic > k.csv && ./kepler fit -report r.html k.csv
 ```
-See PLAN.md. Full README arrives in Phase 6.
+See PLAN.md and REVIEW.md.
