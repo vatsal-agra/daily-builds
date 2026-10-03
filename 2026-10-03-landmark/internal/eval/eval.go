@@ -55,6 +55,7 @@ type Config struct {
 	Trials           int
 	Seed             int64
 	Policy           index.Policy
+	Only             string // run only conditions whose name contains this substring
 	Log              func(string)
 }
 
@@ -75,8 +76,9 @@ type Report struct {
 	Rows          []Row
 	NegTrials     int
 	NegAccepts    int
-	NegScores     []int // top aligned-vote score of every negative query
-	PosScores     []int // winning score of every correctly identified positive query
+	FalseAccepts  []string // description of each never-indexed query that was wrongly accepted
+	NegScores     []int    // top aligned-vote score of every negative query
+	PosScores     []int    // winning score of every correctly identified positive query
 	IndexKeys     int
 	IndexPostings int
 	Markdown      string
@@ -126,6 +128,9 @@ func Run(cfg Config) (*Report, error) {
 	rep := &Report{Cfg: cfg, IndexKeys: ix.NumKeys(), IndexPostings: post}
 	conds := Conditions()
 	for ci, c := range conds {
+		if cfg.Only != "" && !strings.Contains(c.Name, cfg.Only) {
+			continue
+		}
 		row := Row{Cond: c.Name, Cells: make([]Cell, len(cfg.ClipLens))}
 		for li, L := range cfg.ClipLens {
 			cell := &row.Cells[li]
@@ -192,6 +197,8 @@ func Run(cfg Config) (*Report, error) {
 						rep.NegScores = append(rep.NegScores, res.Matches[0].Score)
 					}
 					if res.Found {
+						rep.FalseAccepts = append(rep.FalseAccepts, fmt.Sprintf("negative song #%d (clip %.0fs, trial %d) -> %q score %d alt %d runner-up %d speed x%.3f",
+							10000+ni, L, k, res.Best.Song.Name, res.Best.Score, res.Best.Alt, res.RunnerUp, res.Speed))
 						rep.NegAccepts++
 					}
 					mu.Unlock()
@@ -241,6 +248,9 @@ func (r *Report) render(ix *index.Index) string {
 		b.WriteString("\n")
 	}
 	fmt.Fprintf(&b, "\nFalse accepts on never-indexed songs: **%d / %d** queries.\n", r.NegAccepts, r.NegTrials)
+	for _, f := range r.FalseAccepts {
+		fmt.Fprintf(&b, "  - %s\n", f)
+	}
 	if len(r.PosScores) > 0 && len(r.NegScores) > 0 {
 		pos, neg := append([]int(nil), r.PosScores...), append([]int(nil), r.NegScores...)
 		sort.Ints(pos)
@@ -251,7 +261,7 @@ func (r *Report) render(ix *index.Index) string {
 	return b.String()
 }
 
-// Worst returns the lowest accuracy among rows whose name contains substr (for tests).
+// Accuracy returns the fraction of correct identifications in the named condition at clip-length index lenIdx.
 func (r *Report) Accuracy(cond string, lenIdx int) float64 {
 	for _, row := range r.Rows {
 		if row.Cond == cond {

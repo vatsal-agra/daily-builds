@@ -2,7 +2,7 @@
 
 Shazam-style audio fingerprinting from scratch in Go (stdlib only).
 
-*Status: Phase 2 complete — the four required features work end-to-end (see PLAN.md).*
+*Status: Phase 3 complete — adversarial review done, 15 findings fixed (see REVIEW.md); stretch + polish next.*
 
 ```
 go build -o landmark ./cmd/landmark

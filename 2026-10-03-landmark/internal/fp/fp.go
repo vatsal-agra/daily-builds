@@ -2,6 +2,7 @@
 package fp
 
 import (
+	"fmt"
 	"math"
 	"sort"
 
@@ -19,7 +20,8 @@ type Params struct {
 	FreqR       int     // ... and within ±FreqR bins
 	RangeDB     float64 // peaks must lie within this many dB of the loudest spectrogram cell
 	PeaksPerSec int     // density cap: strongest N peaks per second kept
-	Fan         int     // max pairs formed per anchor peak
+	Fan         int     // max pairs formed per anchor peak when indexing
+	QueryFan    int     // ... and when querying (larger: asymmetric, tolerates peaks lost to noise)
 	MinDT       int     // target zone: minimum frames after the anchor
 	MaxDT       int     // ... maximum frames after the anchor (<=63, 6 bits)
 	MaxDF       int     // ... maximum |bin difference|
@@ -28,7 +30,7 @@ type Params struct {
 // Default is the tuned parameter set.
 func Default() Params {
 	return Params{Rate: 8000, NFFT: 1024, Hop: 256, MinBin: 8, MaxBin: 450, TimeR: 7, FreqR: 12,
-		RangeDB: 60, PeaksPerSec: 24, Fan: 5, MinDT: 2, MaxDT: 63, MaxDF: 80}
+		RangeDB: 60, PeaksPerSec: 24, Fan: 5, QueryFan: 5, MinDT: 2, MaxDT: 63, MaxDF: 80}
 }
 
 // FrameSeconds is the duration of one STFT frame step.
@@ -177,7 +179,10 @@ func MakeHash(f1, f2, dt int) uint32 {
 }
 
 // Pairs forms anchor→target landmarks: each anchor pairs with its Fan strongest peaks in the target zone.
-func Pairs(peaks []Peak, p Params) []Pair {
+func Pairs(peaks []Peak, p Params) []Pair { return PairsFan(peaks, p, p.Fan) }
+
+// PairsFan is Pairs with an explicit fan-out.
+func PairsFan(peaks []Peak, p Params, fan int) []Pair {
 	var out []Pair
 	var cand []int
 	for i, a := range peaks {
@@ -198,9 +203,9 @@ func Pairs(peaks []Peak, p Params) []Pair {
 				cand = append(cand, j)
 			}
 		}
-		if len(cand) > p.Fan {
+		if len(cand) > fan {
 			sort.Slice(cand, func(x, y int) bool { return peaks[cand[x]].DB > peaks[cand[y]].DB })
-			cand = cand[:p.Fan]
+			cand = cand[:fan]
 		}
 		for _, j := range cand {
 			b := peaks[j]
@@ -220,4 +225,19 @@ func Fingerprint(x []float64, rate float64, p Params) ([]Peak, []Hash) {
 		hs[i] = pr.Hash
 	}
 	return peaks, hs
+}
+
+// Validate rejects parameter sets that would overflow the 24-bit hash or make the pipeline degenerate.
+func (p Params) Validate() error {
+	switch {
+	case p.Rate < 1000 || p.NFFT < 64 || p.NFFT&(p.NFFT-1) != 0 || p.Hop < 1 || p.Hop > p.NFFT:
+		return fmt.Errorf("invalid analysis params (rate %d, fft %d, hop %d)", p.Rate, p.NFFT, p.Hop)
+	case p.MinBin < 0 || p.MaxBin <= p.MinBin || p.MaxBin > 511 || p.MaxBin > p.NFFT/2:
+		return fmt.Errorf("invalid bin range %d–%d (must fit 9 bits and the FFT)", p.MinBin, p.MaxBin)
+	case p.MinDT < 1 || p.MaxDT < p.MinDT || p.MaxDT > 63:
+		return fmt.Errorf("invalid target zone dt %d–%d (must fit 6 bits)", p.MinDT, p.MaxDT)
+	case p.Fan < 1 || p.QueryFan < 1 || p.TimeR < 0 || p.FreqR < 0 || p.PeaksPerSec < 1:
+		return fmt.Errorf("invalid peak/fan parameters")
+	}
+	return nil
 }

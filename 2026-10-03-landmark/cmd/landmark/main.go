@@ -71,8 +71,22 @@ func main() {
 }
 
 func newFlags(name string) *flag.FlagSet {
-	fs := flag.NewFlagSet(name, flag.ExitOnError)
-	return fs
+	return flag.NewFlagSet(name, flag.ExitOnError)
+}
+
+// parse accepts flags before, after, or between positional arguments (Go's flag stops at the first
+// positional, which makes `identify clip.wav -db x.lmk` fail confusingly). It returns the positionals.
+func parse(fs *flag.FlagSet, args []string) []string {
+	var pos []string
+	for {
+		fs.Parse(args)
+		args = fs.Args()
+		if len(args) == 0 {
+			return pos
+		}
+		pos = append(pos, args[0])
+		args = args[1:]
+	}
 }
 
 func cmdSynth(args []string) {
@@ -82,7 +96,7 @@ func cmdSynth(args []string) {
 	dur := fs.Float64("dur", 60, "seconds per song")
 	rate := fs.Int("rate", 22050, "sample rate")
 	out := fs.String("out", "corpus", "output directory")
-	fs.Parse(args)
+	parse(fs, args)
 	if *n < 1 || *dur < 1 || *dur > 900 || *rate < 8000 || *rate > 96000 {
 		die("synth: need n>=1, 1<=dur<=900, 8000<=rate<=96000")
 	}
@@ -133,11 +147,11 @@ func cmdIndex(args []string) {
 	fs := newFlags("index")
 	out := fs.String("out", "library.lmk", "index file to write")
 	add := fs.Bool("add", false, "extend an existing index instead of starting fresh")
-	fs.Parse(args)
-	if fs.NArg() == 0 {
+	paths := parse(fs, args)
+	if len(paths) == 0 {
 		die("index: give at least one WAV file or directory")
 	}
-	files, err := wavFiles(fs.Args())
+	files, err := wavFiles(paths)
 	if err != nil {
 		die("%v", err)
 	}
@@ -155,6 +169,10 @@ func cmdIndex(args []string) {
 		x, rate, err := wavio.Read(f)
 		if err != nil {
 			die("%v", err)
+		}
+		if *add && ix.Has(songName(f)) {
+			fmt.Printf("  = %-24s already indexed, skipped\n", songName(f))
+			continue
 		}
 		s, err := engine.Add(ix, songName(f), x, rate)
 		if err != nil {
@@ -187,12 +205,12 @@ func cmdIdentify(args []string) {
 	sp, st := speedFlags(fs)
 	minScore := fs.Int("min-score", index.DefaultPolicy().MinScore, "minimum aligned votes to accept")
 	top := fs.Int("top", 3, "show this many candidates")
-	fs.Parse(args)
-	if fs.NArg() != 1 {
+	pos := parse(fs, args)
+	if len(pos) != 1 {
 		die("identify: give exactly one WAV clip")
 	}
 	ix := loadIndex(*db)
-	x, rate, err := wavio.Read(fs.Arg(0))
+	x, rate, err := wavio.Read(pos[0])
 	if err != nil {
 		die("%v", err)
 	}
@@ -208,7 +226,11 @@ func cmdIdentify(args []string) {
 		if i >= *top {
 			break
 		}
-		fmt.Printf("  #%d %-26s votes %-4d offset %6.2fs  (%d raw collisions)\n", i+1, m.Song.Name, m.Score, m.OffsetSec, m.Hits)
+		fmt.Printf("  #%d %-26s votes %-4d offset %6.2fs  (%d raw collisions, best rival offset %d)\n", i+1, m.Song.Name, m.Score, m.OffsetSec, m.Hits, m.Alt)
+	}
+	if res.Hashes == 0 {
+		fmt.Println("NO MATCH — no usable landmarks: the clip is silent, too quiet, or shorter than ~1.5 s")
+		os.Exit(3)
 	}
 	if !res.Found {
 		fmt.Printf("NO MATCH — %s\n", res.Reason)
@@ -231,7 +253,7 @@ func cmdDegrade(args []string) {
 	out := fs.String("out", "query.wav", "output WAV")
 	start := fs.Float64("start", 0, "crop start (s)")
 	length := fs.Float64("len", 0, "crop length (s); 0 = to the end")
-	snr := fs.Float64("snr", 1000, "add noise at this SNR in dB (omit for none)")
+	snr := fs.Float64("snr", 0, "add noise at this SNR in dB (only when the flag is given)")
 	pink := fs.Bool("pink", false, "use pink instead of white noise")
 	lp := fs.Float64("lowpass", 0, "low-pass cutoff in Hz (0 = off)")
 	drive := fs.Float64("distort", 0, "tanh distortion drive (0 = off)")
@@ -239,7 +261,9 @@ func cmdDegrade(args []string) {
 	gain := fs.Float64("gain", 0, "gain in dB")
 	speed := fs.Float64("speed", 1, "playback speed factor (1 = off)")
 	seed := fs.Int64("seed", 1, "random seed")
-	fs.Parse(args)
+	parse(fs, args)
+	snrSet := false
+	fs.Visit(func(f *flag.Flag) { snrSet = snrSet || f.Name == "snr" })
 	if *in == "" {
 		die("degrade: -in is required")
 	}
@@ -268,7 +292,7 @@ func cmdDegrade(args []string) {
 	if *rev > 0 {
 		x = degrade.Reverb(x, rate, *rev, rng)
 	}
-	if *snr < 999 {
+	if snrSet {
 		x = degrade.Noise(x, *snr, *pink, rng)
 	}
 	if *speed != 1 {
@@ -293,14 +317,15 @@ func cmdEval(args []string) {
 	secs := fs.Float64("dur", 60, "seconds per song")
 	trials := fs.Int("trials", 30, "trials per table cell")
 	seed := fs.Int64("seed", 42, "random seed")
+	only := fs.String("only", "", "run only conditions containing this text")
 	md := fs.String("md", "", "also write the markdown table to this file")
-	fs.Parse(args)
+	parse(fs, args)
 	if *songs < 2 || *trials < 1 || *secs < 20 {
 		die("eval: need songs>=2, trials>=1, dur>=20")
 	}
 	t0 := time.Now()
 	rep, err := eval.Run(eval.Config{Songs: *songs, Negatives: *negs, SongSeconds: *secs, GenRate: 22050,
-		ClipLens: []float64{5, 10}, Trials: *trials, Seed: *seed, Policy: index.DefaultPolicy(),
+		ClipLens: []float64{5, 10}, Trials: *trials, Seed: *seed, Policy: index.DefaultPolicy(), Only: *only,
 		Log: func(s string) { fmt.Fprintln(os.Stderr, s) }})
 	if err != nil {
 		die("%v", err)
@@ -317,7 +342,7 @@ func cmdEval(args []string) {
 func cmdInfo(args []string) {
 	fs := newFlags("info")
 	db := fs.String("db", "library.lmk", "index file")
-	fs.Parse(args)
+	parse(fs, args)
 	ix := loadIndex(*db)
 	p := ix.Params
 	fmt.Printf("%s: %d songs, %d distinct hashes\nparams: %d Hz, FFT %d, hop %d (%.0f ms/frame), bins %d–%d, fan-out %d\n",

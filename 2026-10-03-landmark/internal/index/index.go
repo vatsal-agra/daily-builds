@@ -59,6 +59,16 @@ func (ix *Index) Add(name string, hashes []fp.Hash, frames int) (uint32, error) 
 	return id, nil
 }
 
+// Has reports whether a song of that name is already indexed.
+func (ix *Index) Has(name string) bool {
+	for _, s := range ix.Songs {
+		if s.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // NumKeys is the number of distinct hash keys.
 func (ix *Index) NumKeys() int { return len(ix.table) }
 
@@ -70,7 +80,6 @@ type Match struct {
 	OffsetSec float64 // same, in seconds
 	Hits      int     // all hash collisions with this song (noise floor context)
 	Alt       int     // best vote count at an offset >2 frames away from Offset (periodic/looped material)
-	Hist      map[int32]int
 }
 
 // Query tallies (song, Δt) votes for every query hash. Results are sorted best-first.
@@ -141,12 +150,15 @@ func (ix *Index) Histogram(q []fp.Hash, song uint32) map[int32]int {
 type Policy struct {
 	MinScore     int     // absolute floor on aligned votes
 	Ratio        float64 // winner must beat the runner-up song by this factor
+	Sharpness    float64 // a speed-corrected winner must beat the same song's score at far-away speeds by this factor
 	SpeedPenalty int     // extra votes demanded when the match needed a speed correction (multiple-comparison guard)
 	LoopFactor   int     // if the song has a rival offset peak (loop / rhythm-only coincidence), require MinScore×LoopFactor
 }
 
 // DefaultPolicy is tuned by the eval harness (see REVIEW.md).
-func DefaultPolicy() Policy { return Policy{MinScore: 11, Ratio: 2.0, LoopFactor: 4, SpeedPenalty: 6} }
+func DefaultPolicy() Policy {
+	return Policy{MinScore: 11, Ratio: 2.0, LoopFactor: 4, SpeedPenalty: 6, Sharpness: 2.5}
+}
 
 // Verdict is the final answer for a query.
 type Verdict struct {
@@ -223,7 +235,11 @@ func (ix *Index) Save(path string) error {
 	var crc [4]byte
 	binary.LittleEndian.PutUint32(crc[:], crc32.ChecksumIEEE(b.Bytes()))
 	b.Write(crc[:])
-	return os.WriteFile(path, b.Bytes(), 0o644)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b.Bytes(), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path) // atomic: a crash never leaves a half-written index
 }
 
 func putU(b *bytes.Buffer, v uint64) {
@@ -250,6 +266,12 @@ func Load(path string) (*Index, error) {
 	if r.err == nil {
 		if e := json.Unmarshal(pj, &ix.Params); e != nil {
 			return nil, fmt.Errorf("%s: bad params: %w", path, e)
+		}
+		if ix.Params.QueryFan == 0 {
+			ix.Params.QueryFan = ix.Params.Fan // files written before QueryFan existed
+		}
+		if e := ix.Params.Validate(); e != nil {
+			return nil, fmt.Errorf("%s: %w", path, e)
 		}
 	}
 	ns := int(r.u())

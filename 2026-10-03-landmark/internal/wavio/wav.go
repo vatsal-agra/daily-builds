@@ -57,7 +57,7 @@ func Decode(b []byte) ([]float64, int, error) {
 		return nil, 0, fmt.Errorf("unsupported WAV format tag %d (need PCM or float)", format)
 	}
 	bps := bits / 8
-	if bps < 1 || (format == 1 && bps > 4) || (format == 3 && bps != 4 && bps != 8) {
+	if bits%8 != 0 || bps < 1 || (format == 1 && bps > 4) || (format == 3 && bps != 4 && bps != 8) {
 		return nil, 0, fmt.Errorf("unsupported bit depth %d", bits)
 	}
 	frames := len(data) / (bps * channels)
