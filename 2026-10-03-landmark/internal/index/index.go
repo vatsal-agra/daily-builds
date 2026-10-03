@@ -69,6 +69,9 @@ func (ix *Index) Has(name string) bool {
 	return false
 }
 
+// Lookup returns the postings for one hash key.
+func (ix *Index) Lookup(h uint32) []Posting { return ix.table[h] }
+
 // NumKeys is the number of distinct hash keys.
 func (ix *Index) NumKeys() int { return len(ix.table) }
 

@@ -4,6 +4,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -17,6 +18,8 @@ import (
 	"landmark/internal/fp"
 	"landmark/internal/index"
 	"landmark/internal/synth"
+	"landmark/internal/timeline"
+	"landmark/internal/viz"
 	"landmark/internal/wavio"
 )
 
@@ -29,6 +32,7 @@ usage: landmark <command> [flags]
   identify  name the song in a WAV clip (and where in the song it starts)
   degrade   damage a WAV (crop, noise, filter, distortion, reverb, speed) to make test queries
   eval      run the robustness benchmark and false-accept test
+  mix       splice WAV excerpts into a crossfaded DJ-style test mix
   timeline  segment a long mix into the songs it contains
   viz       write a self-contained HTML report for a query
   info      show what an index file contains
@@ -56,6 +60,8 @@ func main() {
 		cmdDegrade(args)
 	case "eval":
 		cmdEval(args)
+	case "mix":
+		cmdMix(args)
 	case "timeline":
 		cmdTimeline(args)
 	case "viz":
@@ -352,6 +358,147 @@ func cmdInfo(args []string) {
 	}
 }
 
-// placeholders until timeline/viz land
-func cmdTimeline(args []string) { die("timeline: not built yet") }
-func cmdViz(args []string)      { die("viz: not built yet") }
+func parseSpan(spec string) (string, float64, float64, error) {
+	i := strings.LastIndex(spec, ":")
+	if i < 0 {
+		return spec, 0, 0, nil // whole file
+	}
+	var a, b float64
+	if n, err := fmt.Sscanf(spec[i+1:], "%f-%f", &a, &b); err != nil || n != 2 || a < 0 || b <= a {
+		return "", 0, 0, fmt.Errorf("bad span %q (want file.wav:START-END in seconds)", spec)
+	}
+	return spec[:i], a, b, nil
+}
+
+func cmdMix(args []string) {
+	fs := newFlags("mix")
+	out := fs.String("out", "mix.wav", "output WAV")
+	xf := fs.Float64("fade", 1.5, "crossfade seconds between tracks")
+	snr := fs.Float64("snr", 0, "add white noise at this SNR in dB (only when given)")
+	seed := fs.Int64("seed", 1, "noise seed")
+	spans := parse(fs, args)
+	snrSet := false
+	fs.Visit(func(f *flag.Flag) { snrSet = snrSet || f.Name == "snr" })
+	if len(spans) < 2 {
+		die("mix: give at least two tracks as file.wav:START-END")
+	}
+	var mix []float64
+	mixRate := 0
+	for _, sp := range spans {
+		path, a, b, err := parseSpan(sp)
+		if err != nil {
+			die("%v", err)
+		}
+		x, rate, err := wavio.Read(path)
+		if err != nil {
+			die("%v", err)
+		}
+		if mixRate == 0 {
+			mixRate = rate
+		} else if rate != mixRate {
+			die("mix: all tracks must share one sample rate (%d vs %d)", mixRate, rate)
+		}
+		if b == 0 {
+			b = float64(len(x)) / float64(rate)
+		}
+		seg := degrade.Crop(x, rate, a, b-a)
+		if len(seg) == 0 {
+			die("mix: span %q is empty", sp)
+		}
+		mix = crossfade(mix, seg, int(*xf*float64(rate)))
+	}
+	if snrSet {
+		mix = degrade.Noise(mix, *snr, false, rand.New(rand.NewSource(*seed)))
+	}
+	if err := wavio.Write(*out, mix, mixRate); err != nil {
+		die("%v", err)
+	}
+	fmt.Printf("wrote %s (%.1fs, %d tracks)\n", *out, float64(len(mix))/float64(mixRate), len(spans))
+}
+
+// crossfade appends b to a, overlapping n samples with an equal-power fade.
+func crossfade(a, b []float64, n int) []float64 {
+	if len(a) == 0 {
+		return append([]float64(nil), b...)
+	}
+	if n > len(a) {
+		n = len(a)
+	}
+	if n > len(b) {
+		n = len(b)
+	}
+	out := append([]float64(nil), a...)
+	for i := 0; i < n; i++ {
+		t := float64(i) / float64(n)
+		k := len(a) - n + i
+		out[k] = a[k]*math.Cos(t*math.Pi/2) + b[i]*math.Sin(t*math.Pi/2)
+	}
+	return append(out, b[n:]...)
+}
+
+func cmdTimeline(args []string) {
+	fs := newFlags("timeline")
+	db := fs.String("db", "library.lmk", "index file")
+	win := fs.Float64("win", 8, "analysis window (s)")
+	step := fs.Float64("step", 2, "window step (s)")
+	sp, st := speedFlags(fs)
+	pos := parse(fs, args)
+	if len(pos) != 1 {
+		die("timeline: give exactly one WAV recording")
+	}
+	ix := loadIndex(*db)
+	x, rate, err := wavio.Read(pos[0])
+	if err != nil {
+		die("%v", err)
+	}
+	cfg := timeline.Default()
+	cfg.Window, cfg.Step = *win, *step
+	cfg.Speed = engine.SpeedRange{Max: *sp, Step: *st}
+	t0 := time.Now()
+	segs, err := timeline.Run(ix, x, rate, cfg)
+	if err != nil {
+		die("%v", err)
+	}
+	fmt.Printf("%.1fs recording, %.1fs windows every %.1fs (%.1fs)\n\n", float64(len(x))/float64(rate), *win, *step, time.Since(t0).Seconds())
+	fmt.Printf("  %-13s %-26s %s\n", "mix time", "song", "song position at segment start")
+	for _, s := range segs {
+		name, at := "— unidentified —", ""
+		if s.Known {
+			name, at = s.Song.Name, fmt.Sprintf("%.1fs", s.SongStart)
+		}
+		fmt.Printf("  %5.1f–%-6.1f %-26s %s\n", s.Start, s.End, name, at)
+	}
+}
+
+func cmdViz(args []string) {
+	fs := newFlags("viz")
+	db := fs.String("db", "library.lmk", "index file")
+	out := fs.String("out", "report.html", "output HTML file")
+	sp, st := speedFlags(fs)
+	pos := parse(fs, args)
+	if len(pos) != 1 {
+		die("viz: give exactly one WAV clip")
+	}
+	ix := loadIndex(*db)
+	x, rate, err := wavio.Read(pos[0])
+	if err != nil {
+		die("%v", err)
+	}
+	const maxSec = 30
+	if float64(len(x))/float64(rate) > maxSec {
+		x = x[:maxSec*rate]
+		fmt.Printf("note: clip truncated to the first %d s for the report\n", maxSec)
+	}
+	res, err := engine.Identify(ix, x, rate, index.DefaultPolicy(), engine.SpeedRange{Max: *sp, Step: *st})
+	if err != nil {
+		die("%v", err)
+	}
+	html, err := viz.Render(ix, x, rate, res, filepath.Base(pos[0]))
+	if err != nil {
+		die("%v", err)
+	}
+	if err := os.WriteFile(*out, []byte(html), 0o644); err != nil {
+		die("%v", err)
+	}
+	fmt.Printf("wrote %s (%d KB)\n", *out, len(html)/1024)
+}
