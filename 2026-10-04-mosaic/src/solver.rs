@@ -341,3 +341,83 @@ pub fn run(
     }
     Err(SolveError::Exhausted)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Two patterns that must alternate in every direction (checkerboard).
+    fn checker() -> Model {
+        let other = vec![vec![1u32], vec![0u32]];
+        Model { weights: vec![1.0, 1.0], prop: [other.clone(), other.clone(), other.clone(), other] }
+    }
+
+    #[test]
+    fn checkerboard_even_torus_solves_and_alternates() {
+        let m = checker();
+        let cfg = Config { w: 6, h: 4, periodic: true, backtrack: true, max_backtracks: 100, max_restarts: 5 };
+        let r = run(&m, &cfg, &vec![], 7, &mut |_| {}).unwrap();
+        for y in 0..4 {
+            for x in 0..6 {
+                assert_ne!(r.cells[y * 6 + x], r.cells[y * 6 + (x + 1) % 6]);
+                assert_ne!(r.cells[y * 6 + x], r.cells[((y + 1) % 4) * 6 + x]);
+            }
+        }
+    }
+
+    #[test]
+    fn checkerboard_odd_torus_is_impossible() {
+        let m = checker();
+        let cfg = Config { w: 3, h: 3, periodic: true, backtrack: true, max_backtracks: 100, max_restarts: 3 };
+        assert_eq!(run(&m, &cfg, &vec![], 1, &mut |_| {}).err(), Some(SolveError::Exhausted));
+    }
+
+    #[test]
+    fn pins_that_conflict_are_unsatisfiable() {
+        let m = checker();
+        let cfg = Config { w: 2, h: 1, periodic: false, backtrack: true, max_backtracks: 10, max_restarts: 2 };
+        let pins: Pins = vec![(0, vec![true, false]), (1, vec![true, false])];
+        assert_eq!(run(&m, &cfg, &pins, 1, &mut |_| {}).err(), Some(SolveError::Unsatisfiable));
+    }
+
+    /// Decide, propagate, then undo: every piece of bookkeeping must return exactly to its start.
+    #[test]
+    fn undo_restores_state_exactly() {
+        let img = crate::samples::load("dungeon").unwrap();
+        let ov = crate::overlap::Overlap::new(&img, 3, 1, false).unwrap();
+        let mut s = Solver::new(&ov.model, 12, 12, false).unwrap();
+        let (wave, compat, rem) = (s.wave.clone(), s.compat.clone(), s.remaining.clone());
+        let (sw, swl) = (s.sum_w.clone(), s.sum_wlogw.clone());
+        let base = s.trail.len();
+        let mut rng = Rng::new(3);
+        for _ in 0..5 {
+            let before = s.trail.len();
+            let c = s.pick_cell(&mut rng).unwrap();
+            let p = s.pick_pattern(c, &mut rng);
+            for q in 0..s.t {
+                if q != p {
+                    s.ban(c, q);
+                }
+            }
+            s.propagate();
+            assert!(s.trail.len() > before);
+        }
+        s.undo_to(base);
+        assert_eq!(s.wave, wave);
+        assert_eq!(s.compat, compat);
+        assert_eq!(s.remaining, rem);
+        for c in 0..144 {
+            assert!((s.sum_w[c] - sw[c]).abs() < 1e-9 && (s.sum_wlogw[c] - swl[c]).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn collapsed_wave_has_one_pattern_per_cell() {
+        let img = crate::samples::load("flowers").unwrap();
+        let ov = crate::overlap::Overlap::new(&img, 3, 1, false).unwrap();
+        let cfg = Config { w: 20, h: 20, periodic: false, backtrack: true, max_backtracks: 100, max_restarts: 10 };
+        let mut last = None;
+        run(&ov.model, &cfg, &vec![], 2, &mut |s| last = Some((0..400).all(|c| s.remaining(c) >= 1))).unwrap();
+        assert_eq!(last, Some(true));
+    }
+}

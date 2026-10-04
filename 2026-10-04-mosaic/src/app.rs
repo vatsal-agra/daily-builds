@@ -43,6 +43,7 @@ pub struct TiledOpts {
     pub set: String,
 }
 
+#[derive(Debug)]
 pub struct Report {
     pub w: usize,
     pub h: usize,
@@ -143,7 +144,7 @@ pub fn run_overlap(o: &OverlapOpts) -> Result<Report, String> {
     let pins = merge_pins(pins, ov.patterns.len());
     check_state(gw * gh, ov.patterns.len())?;
     let cfg = config(c, gw, gh);
-    let mut rec = if c.anim_frames > 0 { Some(Recorder::new((gw * gh / c.anim_frames).max(1), c.anim_frames)) } else { None };
+    let mut rec = recorder(c, &ov.model, &cfg, &pins);
     let render_state = |s: &Solver| (c.w, c.h, ov.render(c.w, c.h, c.periodic, &|cell, p| s.allowed(cell, p)));
     let solved = solver::run(&ov.model, &cfg, &pins, c.seed, &mut |s| {
         if let Some(r) = rec.as_mut() {
@@ -186,7 +187,7 @@ pub fn run_tiled(o: &TiledOpts) -> Result<Report, String> {
     let pins = merge_pins(pins, ts.tiles.len());
     check_state(c.w * c.h, ts.tiles.len())?;
     let cfg = config(c, c.w, c.h);
-    let mut rec = if c.anim_frames > 0 { Some(Recorder::new((c.w * c.h / c.anim_frames).max(1), c.anim_frames)) } else { None };
+    let mut rec = recorder(c, &model, &cfg, &pins);
     let (pw, ph) = (c.w * ts.size, c.h * ts.size);
     let solved = solver::run(&model, &cfg, &pins, c.seed, &mut |s| {
         if let Some(r) = rec.as_mut() {
@@ -202,6 +203,17 @@ pub fn run_tiled(o: &TiledOpts) -> Result<Report, String> {
         frames = r.frames;
     }
     Ok(Report { w: pw, h: ph, px, cells: solved.cells, grid: (c.w, c.h), stats: solved.stats, violations, first_violation, frames, ascii: None, patterns: ts.tiles.len() })
+}
+
+/// Animation recorder: the solve is deterministic per seed, so a dry run counts the observable
+/// events and frames are then sampled evenly across them.
+fn recorder(c: &Common, model: &solver::Model, cfg: &Config, pins: &Pins) -> Option<Recorder> {
+    if c.anim_frames == 0 {
+        return None;
+    }
+    let mut events = 0usize;
+    let _ = solver::run(model, cfg, pins, c.seed, &mut |_| events += 1);
+    Some(Recorder::new(events.div_ceil(c.anim_frames).max(1), c.anim_frames))
 }
 
 fn merge_pins(pins: Pins, _t: usize) -> Pins {

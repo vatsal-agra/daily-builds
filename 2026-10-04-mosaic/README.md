@@ -22,3 +22,7 @@ target/release/mosaic bench overlap --sample wires --n 4 --wrap-in --wrap-out --
 11 findings fixed (see REVIEW.md): 28 MB flipbooks -> real deflate, pin glyph bug, scale OOM, empty animation,
 self-overlapping periodic outputs, wrong error advice, no resource limits, backtracking thrash -> hybrid budget,
 PNG sample loading added.
+
+## Phase 4 — stretch + polish
+Stretch shipped: pinned cells (`--pin`), collapse-animation flipbook (`--anim`, sampled evenly over the real event count),
+benchmark mode (`bench`). Polish: precise errors with exit code 2, resource limits, dark flipbook viewer with scrubber.
