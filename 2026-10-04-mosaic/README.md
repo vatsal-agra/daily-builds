@@ -1,3 +1,19 @@
 # Mosaic
 
-Wave Function Collapse engine in Rust with backtracking. **Status: Phase 1 — plan written (see PLAN.md).**
+Wave Function Collapse engine in Rust (zero dependencies) with trail-based backtracking.
+**Status: Phase 2 — core build done** (plan: PLAN.md).
+
+```
+cargo build --release
+target/release/mosaic list
+target/release/mosaic overlap --sample dungeon --out dungeon.png
+target/release/mosaic overlap --sample city --ground --size 64x24 --out city.png
+target/release/mosaic tiled --set terrain --size 30x20 --out terrain.png
+target/release/mosaic bench overlap --sample wires --n 4 --wrap-in --wrap-out --size 50x50
+```
+
+## Built so far (required features)
+1. Generic WFC solver core (min-entropy, support counts, weighted collapse, periodic grids)
+2. Overlapping model (NxN extraction, symmetries, wrap-in, ground anchoring)
+3. Tiled model (edge sockets, auto rotation; `circuit` and 81-tile `terrain` sets)
+4. Backtracking with trail + decision stack, restart budget and stats
