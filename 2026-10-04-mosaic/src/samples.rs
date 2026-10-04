@@ -9,6 +9,8 @@ pub struct Image {
     pub px: Vec<u32>,
     /// color -> glyph, used for ASCII export of overlap results
     pub glyphs: HashMap<u32, char>,
+    /// glyph -> color for every character used by an ASCII sample (several glyphs may share a colour)
+    pub chars: HashMap<char, u32>,
 }
 
 struct Builtin {
@@ -170,6 +172,7 @@ fn from_ascii(rows: &[&str], legend: &[(char, u32)]) -> Result<Image, String> {
     }
     let mut px = Vec::with_capacity(w * rows.len());
     let mut glyphs = HashMap::new();
+    let mut chars = HashMap::new();
     for (i, r) in rows.iter().enumerate() {
         if r.chars().count() != w {
             return Err(format!("row {} has width {} but row 0 has width {}", i + 1, r.chars().count(), w));
@@ -177,13 +180,14 @@ fn from_ascii(rows: &[&str], legend: &[(char, u32)]) -> Result<Image, String> {
         for ch in r.chars() {
             let col = legend.iter().find(|(c, _)| *c == ch).map(|(_, v)| *v).unwrap_or_else(|| color_for_unknown(ch));
             glyphs.entry(col).or_insert(ch);
+            chars.insert(ch, col);
             px.push(col);
         }
     }
-    Ok(Image { w, h: rows.len(), px, glyphs })
+    Ok(Image { w, h: rows.len(), px, glyphs, chars })
 }
 
-/// Load a built-in sample by name, or a `.txt` / `.ppm` file by path.
+/// Load a built-in sample by name, or a `.txt` / `.ppm` / `.png` file by path.
 pub fn load(spec: &str) -> Result<Image, String> {
     if let Some(b) = BUILTINS.iter().find(|b| b.name == spec) {
         return from_ascii(b.rows, b.legend);
@@ -191,10 +195,13 @@ pub fn load(spec: &str) -> Result<Image, String> {
     let path = std::path::Path::new(spec);
     if !path.exists() {
         let names: Vec<&str> = BUILTINS.iter().map(|b| b.name).collect();
-        return Err(format!("unknown sample '{}' (built-ins: {}; or give a .txt/.ppm path)", spec, names.join(", ")));
+        return Err(format!("unknown sample '{}' (built-ins: {}; or give a .txt, .ppm or .png path)", spec, names.join(", ")));
     }
     let bytes = std::fs::read(path).map_err(|e| format!("cannot read {}: {}", spec, e))?;
-    if bytes.starts_with(b"P3") || bytes.starts_with(b"P6") {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        let (w, h, px) = crate::png::decode(&bytes).map_err(|e| format!("{}: {}", spec, e))?;
+        Ok(Image { w, h, px, glyphs: HashMap::new(), chars: HashMap::new() })
+    } else if bytes.starts_with(b"P3") || bytes.starts_with(b"P6") {
         parse_ppm(&bytes)
     } else {
         let text = String::from_utf8(bytes).map_err(|_| "sample file is not UTF-8 text or PPM".to_string())?;
@@ -252,5 +259,5 @@ fn parse_ppm(b: &[u8]) -> Result<Image, String> {
             px.push(scale(vals[i * 3]) << 16 | scale(vals[i * 3 + 1]) << 8 | scale(vals[i * 3 + 2]));
         }
     }
-    Ok(Image { w, h, px, glyphs: HashMap::new() })
+    Ok(Image { w, h, px, glyphs: HashMap::new(), chars: HashMap::new() })
 }

@@ -119,6 +119,9 @@ fn finish_args(a: &Args) {
 }
 
 fn save(rep: &Report, out: &str, scale: usize, quiet: bool, title: &str, anim_path: Option<&str>) {
+    if scale == 0 || scale > 64 || rep.w * rep.h * scale * scale > 60_000_000 {
+        die("--scale must be 1..64 and keep the PNG under 60 megapixels");
+    }
     let (w, h, px) = png::upscale(rep.w, rep.h, &rep.px, scale);
     std::fs::write(out, png::encode(w, h, &px)).unwrap_or_else(|e| die(&format!("cannot write {}: {}", out, e)));
     if let Some(p) = anim_path {
@@ -183,12 +186,18 @@ fn main() {
             let ascii = a.flag("--ascii");
             finish_args(&a);
             if anim_path.is_some() {
+                if !(2..=1000).contains(&frames) {
+                    die("--anim-frames must be between 2 and 1000");
+                }
                 o.common.anim_frames = frames;
             }
             let rep = run_overlap(&o).unwrap_or_else(|e| die(&e));
             save(&rep, &out, scale, quiet, &format!("Mosaic · {}", o.sample), anim_path.as_deref());
             if ascii {
-                print!("{}", rep.ascii.as_deref().unwrap_or(""));
+                match samples::load(&o.sample) {
+                    Ok(img) if !img.glyphs.is_empty() => print!("{}", rep.ascii.as_deref().unwrap_or("")),
+                    _ => eprintln!("note: --ascii only works for ASCII-art samples (image samples have no glyphs)"),
+                }
             }
             if rep.violations > 0 {
                 std::process::exit(1);
@@ -205,6 +214,9 @@ fn main() {
             let quiet = a.flag("--quiet");
             finish_args(&a);
             if anim_path.is_some() {
+                if !(2..=1000).contains(&frames) {
+                    die("--anim-frames must be between 2 and 1000");
+                }
                 o.common.anim_frames = frames;
             }
             let rep = run_tiled(&o).unwrap_or_else(|e| die(&e));

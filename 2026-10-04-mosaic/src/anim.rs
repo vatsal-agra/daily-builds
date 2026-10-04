@@ -26,6 +26,10 @@ impl Recorder {
     }
 }
 
+fn esc(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+}
+
 pub fn html(title: &str, info: &str, frames: &[(usize, usize, Vec<u32>)], scale: usize) -> String {
     let imgs: Vec<String> = frames
         .iter()
@@ -55,8 +59,8 @@ b.onclick=()=>{{play=!play;b.textContent=play?'Pause':'Play';if(play&&i==F.lengt
 sl.oninput=()=>{{play=false;b.textContent='Play';show(+sl.value)}};
 show(0);setInterval(()=>{{if(play){{if(i<F.length-1)show(i+1);else{{play=false;b.textContent='Replay'}}}}}},60);
 </script></body></html>"##,
-        title = title,
-        info = info,
+        title = esc(title),
+        info = esc(info),
         iw = w * scale,
         last = frames.len().saturating_sub(1),
         imgs = imgs.join(",")

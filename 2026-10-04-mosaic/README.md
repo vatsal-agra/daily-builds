@@ -17,3 +17,8 @@ target/release/mosaic bench overlap --sample wires --n 4 --wrap-in --wrap-out --
 2. Overlapping model (NxN extraction, symmetries, wrap-in, ground anchoring)
 3. Tiled model (edge sockets, auto rotation; `circuit` and 81-tile `terrain` sets)
 4. Backtracking with trail + decision stack, restart budget and stats
+
+## Phase 3 — adversarial review
+11 findings fixed (see REVIEW.md): 28 MB flipbooks -> real deflate, pin glyph bug, scale OOM, empty animation,
+self-overlapping periodic outputs, wrong error advice, no resource limits, backtracking thrash -> hybrid budget,
+PNG sample loading added.

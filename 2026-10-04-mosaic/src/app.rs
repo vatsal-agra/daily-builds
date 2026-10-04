@@ -57,12 +57,23 @@ pub struct Report {
     pub patterns: usize,
 }
 
+const MAX_CELLS: usize = 250_000;
+const MAX_STATE: usize = 12_000_000; // cells x patterns held in the wave
+const MAX_PATTERNS: usize = 4_000;
+
+fn check_state(cells: usize, t: usize) -> Result<(), String> {
+    if cells * t > MAX_STATE {
+        return Err(format!("{} cells x {} patterns is too much state (limit {}); use a smaller --size", cells, t, MAX_STATE));
+    }
+    Ok(())
+}
+
 fn check_size(w: usize, h: usize) -> Result<(), String> {
     if w == 0 || h == 0 {
         return Err("size must be at least 1x1".into());
     }
-    if w * h > 4_000_000 {
-        return Err(format!("size {}x{} is unreasonably large", w, h));
+    if w * h > MAX_CELLS {
+        return Err(format!("size {}x{} is too large (limit {} cells/pixels)", w, h, MAX_CELLS));
     }
     Ok(())
 }
@@ -80,9 +91,10 @@ fn split_pin(s: &str) -> Result<(usize, usize, &str), String> {
     }
 }
 
-fn map_err(e: SolveError) -> String {
+fn map_err(e: SolveError, overlap: bool) -> String {
     match e {
-        SolveError::Unsatisfiable => "unsatisfiable: no arrangement of the learned patterns can fill this grid with these pins/ground (try a smaller --n, --wrap-in, more --symmetry, a different size, or fewer pins)".into(),
+        SolveError::Unsatisfiable if overlap => "unsatisfiable: no arrangement of the sample's patterns can fill this grid with these pins/ground (try a smaller --n, --wrap-in, more --symmetry, another size, or fewer pins)".into(),
+        SolveError::Unsatisfiable => "unsatisfiable: no arrangement of the tiles can fill this grid with these pins (pinned tiles that touch must have matching sockets)".into(),
         SolveError::Exhausted => "no solution found within the restart budget; try another --seed, a different size, or a higher --restarts/--max-backtracks".into(),
     }
 }
@@ -99,7 +111,10 @@ pub fn run_overlap(o: &OverlapOpts) -> Result<Report, String> {
         return Err("--symmetry must be between 1 and 8".into());
     }
     let ov = Overlap::new(&img, o.n, o.symmetry, o.wrap_in)?;
-    if !c.periodic && (c.w < o.n || c.h < o.n) {
+    if ov.patterns.len() > MAX_PATTERNS {
+        return Err(format!("sample yields {} unique patterns (limit {}); use a smaller/simpler sample or lower --n/--symmetry", ov.patterns.len(), MAX_PATTERNS));
+    }
+    if c.w < o.n || c.h < o.n {
         return Err(format!("output {}x{} is smaller than the pattern size {}", c.w, c.h, o.n));
     }
     let (gw, gh) = ov.grid_for(c.w, c.h, c.periodic);
@@ -120,12 +135,13 @@ pub fn run_overlap(o: &OverlapOpts) -> Result<Report, String> {
             if it.next().is_some() {
                 return Err(format!("pin '{}': value must be one glyph or #rrggbb", p));
             }
-            *img.glyphs.iter().find(|(_, g)| **g == ch).map(|(c, _)| c).ok_or_else(|| format!("pin '{}': glyph '{}' is not in the sample", p, ch))?
+            *img.chars.get(&ch).ok_or_else(|| format!("pin '{}': glyph '{}' is not in the sample (only ASCII samples have glyphs; use #rrggbb)", p, ch))?
         };
         pins.push(ov.pin_color(gw, gh, x, y, color)?);
     }
     // merge pins on the same cell (intersection)
     let pins = merge_pins(pins, ov.patterns.len());
+    check_state(gw * gh, ov.patterns.len())?;
     let cfg = config(c, gw, gh);
     let mut rec = if c.anim_frames > 0 { Some(Recorder::new((gw * gh / c.anim_frames).max(1), c.anim_frames)) } else { None };
     let render_state = |s: &Solver| (c.w, c.h, ov.render(c.w, c.h, c.periodic, &|cell, p| s.allowed(cell, p)));
@@ -134,7 +150,7 @@ pub fn run_overlap(o: &OverlapOpts) -> Result<Report, String> {
             r.offer(|| render_state(s));
         }
     })
-    .map_err(map_err)?;
+    .map_err(|e| map_err(e, true))?;
     let px = ov.render(c.w, c.h, c.periodic, &|cell, p| solved.cells[cell] == p);
     let (violations, first_violation) = verify::overlap_windows(&img, o.n, o.symmetry, o.wrap_in, &px, c.w, c.h, c.periodic);
     let mut frames = Vec::new();
@@ -168,6 +184,7 @@ pub fn run_tiled(o: &TiledOpts) -> Result<Report, String> {
         pins.push(ts.pin(c.w, c.h, x, y, v.trim())?);
     }
     let pins = merge_pins(pins, ts.tiles.len());
+    check_state(c.w * c.h, ts.tiles.len())?;
     let cfg = config(c, c.w, c.h);
     let mut rec = if c.anim_frames > 0 { Some(Recorder::new((c.w * c.h / c.anim_frames).max(1), c.anim_frames)) } else { None };
     let (pw, ph) = (c.w * ts.size, c.h * ts.size);
@@ -176,7 +193,7 @@ pub fn run_tiled(o: &TiledOpts) -> Result<Report, String> {
             r.offer(|| (pw, ph, ts.render(c.w, c.h, &|cell, p| s.allowed(cell, p))));
         }
     })
-    .map_err(map_err)?;
+    .map_err(|e| map_err(e, false))?;
     let px = ts.render(c.w, c.h, &|cell, p| solved.cells[cell] == p);
     let (violations, first_violation) = verify::tiled_edges(&ts, &solved.cells, c.w, c.h, c.periodic);
     let mut frames = Vec::new();
