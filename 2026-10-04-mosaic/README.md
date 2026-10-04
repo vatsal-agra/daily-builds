@@ -26,3 +26,7 @@ PNG sample loading added.
 ## Phase 4 — stretch + polish
 Stretch shipped: pinned cells (`--pin`), collapse-animation flipbook (`--anim`, sampled evenly over the real event count),
 benchmark mode (`bench`). Polish: precise errors with exit code 2, resource limits, dark flipbook viewer with scrubber.
+
+## Phase 5 — verification
+`./demo.sh` builds, runs 40 tests (unit + integration + CLI) and exercises every feature, failing on any validator
+violation. All green; mutation checks (broken undo, broken socket rotation) were caught by the suite.
