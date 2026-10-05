@@ -25,3 +25,17 @@ reproduced first, then fixed, then re-run.
 Fresh run-through after the fixes: `make test` (0 failures), `reaper fuzz` over all 6 workloads × 5 collectors × several seeds
 (0 failures), full run matrix at default settings (no OOM, no corruption, verifier clean), mutants of the barrier and of the
 sweeper both killed. None of the 14 issues above reproduces.
+
+## Addendum — findings from Phase 5 (verification)
+
+Running the 16-mutant harness (`tests/mutate.py`) against the Phase-4 code turned up three more problems — two in the
+test-suite and one in the collector:
+
+| # | Sev | Finding | Fix |
+|---|-----|---------|-----|
+| 15 | High | **Two incremental-GC mutants survived**: "no root rescan at mark termination" and "no allocate-black". The mutator never kept a white object *only* in a root slot across a collector step, so the root-rescan path was untested. | `pointer-shuffle` now detaches a subtree and holds it only in a root slot for a few steps before re-attaching it; the rescan mutant is killed (crashes on the dangling slot). |
+| 16 | Med | The allocate-black mutant survived because it is an **equivalent mutant**: with a Dijkstra store barrier *and* an atomic root rescan, a fresh object is always either stored (barrier shades it) or still in a root slot (rescan finds it). Allocating black only adds floating garbage. | Deleted the dead `onAllocated` hook from the incremental collector instead of keeping unneeded code; mutant removed from the list with this note. |
+| 17 | Low | Mutants that corrupt roots crash the process (SIGSEGV) rather than report cleanly — still a kill, but ugly. | Accepted: the harness reports "crashed (exit -11)". Noted in README limitations. |
+| 18 | Low | `print` in the script language could not show loop variables. | Words starting with `$` are evaluated as expressions. |
+
+Final state: 101 test groups / 1 000 680 checks green in <2 s; 16/16 mutants killed; `demo.sh` green.
