@@ -50,14 +50,23 @@ void IncrementalHeap::terminateMark() {
   touchLive(cycleLive);
   st = SWEEP;
   sweepPos = BASE;
-  head = NIL;  // free blocks are rediscovered (and coalesced) as the sweep advances
+  head = NIL;
+  pend = NIL;
+  freeW = 0;   // free blocks are rediscovered (and coalesced) as the sweep advances
+}
+
+void IncrementalHeap::flushPending() {
+  if (pend == NIL) return;
+  mem[pend + 1] = head;          // LIFO push: lets the mutator allocate from swept space immediately
+  head = pend;
+  freeW += size(pend);
+  pend = NIL;
 }
 
 void IncrementalHeap::sweepStep(size_t budget) {
   double t = nowMs();
   stats.inc_steps++;
   size_t end = mem.size(), done = 0;
-  Ref lastFree = NIL;
   while (sweepPos < end && done < budget) {
     size_t pos = sweepPos;
     uint32_t sz = size((Ref)pos);
@@ -65,18 +74,21 @@ void IncrementalHeap::sweepStep(size_t budget) {
     bool dead = !isFree && !(mem[pos] & MARK_BIT);
     done += sz;
     sweepPos += sz;
-    if (!isFree && !dead) { mem[pos] &= ~MARK_BIT; lastFree = NIL; continue; }
+    if (!isFree && !dead) { mem[pos] &= ~MARK_BIT; flushPending(); continue; }
     if (dead) cycleReclaimed += sz;
-    if (lastFree != NIL && lastFree + size(lastFree) == pos) {
-      mem[lastFree] = makeMeta(size(lastFree) + sz, 0, TAG_FREE);
+    if (pend != NIL && pend + size(pend) == pos) {            // coalesce, even across slice boundaries
+      mem[pend] = makeMeta(size(pend) + sz, 0, TAG_FREE);
       poison(pos, pos + sz);
     } else {
-      makeFree(pos, sz, head);   // LIFO push: lets the mutator allocate from swept space immediately
-      head = lastFree = (Ref)pos;
+      flushPending();
+      makeFree(pos, sz, NIL);
+      pend = (Ref)pos;
     }
   }
   if (sweepPos >= end) {
+    flushPending();
     st = IDLE;
+    allocSince = 0;
     stats.major_gcs++;
     stats.reclaimed_words += cycleReclaimed;
   }
@@ -96,9 +108,11 @@ void IncrementalHeap::fullCycle() {
 }
 
 void IncrementalHeap::pace(uint32_t words) {
-  size_t freeW = capacityWords() - usedWords();
   if (st == IDLE) {
-    if (freeW * 100 < capacityWords() * 40) startCycle();   // begin when under 40% free
+    allocSince += words;
+    // start when under 40% free, but not before the mutator has allocated a fair fraction of what
+    // survived last time — otherwise a mostly-live heap would collect continuously
+    if (freeW * 100 < capacityWords() * 40 && allocSince >= cycleLive / 4 + 64) startCycle();   // begin when under 40% free
     return;
   }
   debt += (size_t)words * 4;                                 // 4 units of GC work per word allocated

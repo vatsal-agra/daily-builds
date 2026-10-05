@@ -7,6 +7,7 @@ MarkSweepHeap::MarkSweepHeap(size_t words) : Heap(words) {
   poison(BASE, mem.size());
   makeFree(BASE, words, NIL);
   head = BASE;
+  freeW = words;
 }
 
 void MarkSweepHeap::makeFree(size_t at, size_t words, Ref next) {
@@ -22,8 +23,14 @@ Ref MarkSweepHeap::tryAlloc(uint32_t w) {
     if (sz < w || sz - w == 1) continue;  // a 1-word remainder cannot hold a header
     Ref next = (Ref)mem[cur + 1];
     Ref link = next;
-    if (sz > w) { makeFree(cur + w, sz - w, next); link = cur + w; }
+    if (sz > w) {                          // split: only the new header is written, the interior is already poison
+      size_t at = cur + w;
+      mem[at] = makeMeta(sz - w, 0, TAG_FREE);
+      mem[at + 1] = next;
+      link = (Ref)at;
+    }
     if (prev == NIL) head = link; else mem[prev + 1] = link;
+    freeW -= w;
     return cur;
   }
   return NIL;
@@ -42,6 +49,7 @@ void MarkSweepHeap::collect() {
   markFromRoots(stack, &live);
   size_t end = mem.size(), tail = NIL, lastFree = NIL;
   head = NIL;
+  freeW = 0;
   uint64_t reclaimed = 0;
   for (size_t pos = BASE; pos < end;) {
     uint32_t sz = size((Ref)pos);
@@ -49,6 +57,7 @@ void MarkSweepHeap::collect() {
     bool dead = !isFree && !(mem[pos] & MARK_BIT);
     if (!isFree && !dead) { mem[pos] &= ~MARK_BIT; lastFree = NIL; pos += sz; continue; }
     if (dead) reclaimed += sz;
+    freeW += sz;
     if (lastFree != NIL && lastFree + size(lastFree) == pos) {   // coalesce into previous free block
       mem[lastFree] = makeMeta(size(lastFree) + sz, 0, TAG_FREE);
       poison(pos, pos + sz);
@@ -65,11 +74,7 @@ void MarkSweepHeap::collect() {
   recordPause(t, nowMs() - t, 'M');
 }
 
-size_t MarkSweepHeap::usedWords() const {
-  size_t freeW = 0;
-  for (Ref c = head; c != NIL; c = (Ref)mem[c + 1]) freeW += size(c);
-  return capacityWords() - freeW;
-}
+size_t MarkSweepHeap::usedWords() const { return capacityWords() - freeW; }
 
 void MarkSweepHeap::walk(const std::function<void(Ref, bool)>& f) const {
   for (size_t p = BASE; p < mem.size(); p += size((Ref)p)) f((Ref)p, tag((Ref)p) == TAG_FREE);
@@ -90,6 +95,7 @@ std::string MarkSweepHeap::verifyExtra() const {
     if (++seen > mem.size()) return "free list is cyclic";
   }
   for (size_t p = BASE; p < mem.size(); p += size((Ref)p)) if (tag((Ref)p) == TAG_FREE) walked += size((Ref)p);
+  if (listed != freeW) return "free-word counter (" + std::to_string(freeW) + ") disagrees with free list (" + std::to_string(listed) + ")";
   if (name() == "marksweep" && listed != walked) return "free list misses free blocks (leak)";
   return "";
 }

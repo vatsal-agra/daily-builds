@@ -91,6 +91,7 @@ void GenerationalHeap::minor() {
   poison(nurStart, nurTop);
   stats.minor_gcs++;
   stats.reclaimed_words += nurUsed - (oldTop - promoStart);
+  touchLive(oldTop - BASE);        // retained words (old gen may still hold dead objects until the next major)
   nurTop = nurStart;
   lastMajor = false;
   recordPause(t, nowMs() - t, 'm');

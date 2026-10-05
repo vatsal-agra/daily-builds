@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdlib>
 #include <stdexcept>
+#include <initializer_list>
 
 namespace reaper {
 struct Args {
@@ -22,6 +23,13 @@ struct Args {
       } else a.pos.push_back(s);
     }
     return a;
+  }
+  void allow(std::initializer_list<const char*> known) const {   // reject typos instead of silently ignoring them
+    for (auto& kv : opt) {
+      bool ok = false;
+      for (auto k : known) if (kv.first == k) ok = true;
+      if (!ok) throw std::invalid_argument("unknown option --" + kv.first);
+    }
   }
   bool has(const std::string& k) const { return opt.count(k) > 0; }
   std::string str(const std::string& k, const std::string& d) const { auto it = opt.find(k); return it == opt.end() ? d : it->second; }

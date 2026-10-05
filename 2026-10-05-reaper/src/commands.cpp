@@ -21,6 +21,10 @@ static std::vector<std::string> workloadNames() {
   for (auto& w : workloadInfos()) n.push_back(w.name);
   return n;
 }
+static size_t heapFor(const std::string& w, const Args& a) {
+  for (auto& i : workloadInfos()) if (i.name == w) return a.has("heap") ? (size_t)a.num("heap", 0) : i.defaultHeap;
+  return (size_t)a.num("heap", 1u << 16);
+}
 static size_t stepsFor(const std::string& w, const Args& a, double scale = 1.0) {
   for (auto& i : workloadInfos())
     if (i.name == w) return a.has("steps") ? (size_t)a.num("steps", 0) : std::max<size_t>(1, (size_t)(i.defaultSteps * scale));
@@ -32,7 +36,7 @@ int cmdList() {
   for (auto& k : heapKinds()) std::printf("  %-13s %s\n", k.c_str(), makeHeap(k, 4096)->describe().c_str());
   std::puts("  nogc          oracle: bump allocator, never collects");
   std::puts("workloads:");
-  for (auto& w : workloadInfos()) std::printf("  %-13s %s (default %zu steps)\n", w.name.c_str(), w.desc.c_str(), w.defaultSteps);
+  for (auto& w : workloadInfos()) std::printf("  %-13s %s (default %zu steps, %zu-word heap)\n", w.name.c_str(), w.desc.c_str(), w.defaultSteps, w.defaultHeap);
   return 0;
 }
 
@@ -49,10 +53,11 @@ static void printStats(Heap& h, const RunResult& r) {
 }
 
 int cmdRun(const Args& a) {
+  a.allow({"heap", "steps", "seed", "param", "verify-every"});
   if (a.pos.size() < 2) throw std::invalid_argument("usage: reaper run <gc> <workload> [--heap N --steps N --seed N]");
-  size_t heap = a.num("heap", 1u << 20);
-  auto h = makeHeap(a.pos[0], heap, a.num("param", 0));
   std::string w = a.pos[1];
+  size_t heap = heapFor(w, a);
+  auto h = makeHeap(a.pos[0], heap, a.num("param", 0));
   auto m = makeMutator(w, a.num("seed", 1), heap);
   size_t steps = stepsFor(w, a);
   std::printf("%s on %s (%zu words, %zu steps) — %s\n", w.c_str(), h->name().c_str(), heap, steps, h->describe().c_str());
@@ -65,10 +70,12 @@ int cmdRun(const Args& a) {
 }
 
 int cmdFuzz(const Args& a) {
+  a.allow({"gc", "workload", "seeds", "steps", "heap", "check-every", "param"});
   auto kinds = pick(a.str("gc", "all"), heapKinds(), "collector");
   auto works = pick(a.str("workload", "graph-fuzz"), workloadNames(), "workload");
   size_t seeds = a.num("seeds", 5), steps = a.num("steps", 20000), heap = a.num("heap", 1u << 14);
   size_t every = a.num("check-every", 250);
+  if (seeds == 0 || steps == 0) throw std::invalid_argument("--seeds and --steps must be at least 1");
   size_t bad = 0, total = 0, checks = 0;
   for (auto& k : kinds)
     for (auto& w : works) {

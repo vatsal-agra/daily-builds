@@ -8,6 +8,7 @@ std::vector<std::string> heapKinds() {
 
 std::unique_ptr<Heap> makeHeap(const std::string& kind, size_t words, size_t param) {
   if (words < 256) throw std::invalid_argument("heap must be at least 256 words");
+  if (words > ((size_t)1 << 28)) throw std::invalid_argument("heap too large (max 2^28 words = 2 GiB; refs are 32-bit word indexes)");
   if (kind == "nogc") return std::make_unique<NoGcHeap>(words);
   if (kind == "marksweep") return std::make_unique<MarkSweepHeap>(words);
   if (kind == "markcompact") return std::make_unique<MarkCompactHeap>(words);

@@ -46,7 +46,9 @@ void Heap::newObj(size_t dst, uint32_t np, uint32_t nd, uint32_t tag) {
   Ref r = tryAlloc(words);
   for (int attempt = 0; r == NIL; attempt++) {
     if (!collectForAlloc(words, attempt))
-      throw OutOfMemory("heap exhausted allocating " + std::to_string(words) + " words in " + name());
+      throw OutOfMemory("heap exhausted allocating " + std::to_string(words) + " words in " + name() + " (" +
+                        std::to_string(usedWords()) + " of " + std::to_string(capacityWords()) + " words in use, fragmentation " +
+                        std::to_string((int)(fragmentation() * 100)) + "%)");
     r = tryAlloc(words);
   }
   mem[r] = makeMeta(words, np, tag);

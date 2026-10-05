@@ -26,7 +26,7 @@ class Mutator {
   virtual uint64_t checksum() const { return 0; }   // fold of everything the mutator *read*
 };
 
-struct WorkloadInfo { std::string name, desc; size_t defaultSteps; };
+struct WorkloadInfo { std::string name, desc; size_t defaultSteps, defaultHeap; };
 std::vector<WorkloadInfo> workloadInfos();
 // heapWords lets workloads size their live set relative to the heap
 std::unique_ptr<Mutator> makeMutator(const std::string& name, uint64_t seed, size_t heapWords);

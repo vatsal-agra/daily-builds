@@ -46,6 +46,7 @@ class MarkSweepHeap : public Heap {
   void collect();
   void makeFree(size_t at, size_t words, Ref next);
   Ref head = NIL;
+  size_t freeW = 0;     // words on the free list (maintained incrementally; O(1) usedWords)
 };
 
 // Lisp2 sliding mark-compact (bump allocation).
@@ -135,9 +136,11 @@ class IncrementalHeap : public MarkSweepHeap {
   void pace(uint32_t words);
   State st = IDLE;
   std::vector<Ref> gray;
+  void flushPending();
+  Ref pend = NIL;          // trailing free block of the last sweep slice, held back so the next slice can extend it
   size_t sweepPos = BASE, slice, debt = 0;
   bool lastWasFull = false;
-  uint64_t cycleLive = 0, cycleReclaimed = 0;
+  uint64_t cycleLive = 0, cycleReclaimed = 0, allocSince = 0;
 };
 
 }  // namespace reaper

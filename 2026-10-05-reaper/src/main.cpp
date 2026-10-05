@@ -18,7 +18,7 @@ static void usage() {
       "  reaper fuzz [opts]                            differential fuzz vs. the never-collecting oracle\n"
       "  reaper script <file.rpr> [--gc X]             run a mutator script\n"
       "  reaper viz <out.html> [opts]                  heap-map + pause-timeline report\n\n"
-      "common options: --heap WORDS (default 1048576)  --steps N  --seed N  --param N (nursery / GC slice)\n"
+      "common options: --heap WORDS (default depends on the workload)  --steps N  --seed N  --param N (nursery / GC slice)\n"
       "run:   --verify-every N      fuzz: --seeds N --gc X --workload W --check-every N");
 }
 
@@ -36,6 +36,9 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "reaper: unknown command '%s'\n\n", cmd.c_str());
     usage();
     return 2;
+  } catch (const std::bad_alloc&) {
+    std::fprintf(stderr, "reaper: error: the host ran out of memory (try a smaller --heap)\n");
+    return 1;
   } catch (const std::exception& e) {
     std::fprintf(stderr, "reaper: error: %s\n", e.what());
     return 1;

@@ -238,15 +238,89 @@ class GraphFuzz : public Mutator {
   uint64_t checksum() const override { return acc; }
 };
 
+// ---------------------------------------------------------------- pointer-shuffle
+// A binary tree reachable only through its root. Each step relocates whole subtrees from one parent
+// to another with load/store/storeNil — the exact "hide a white object behind a black one" pattern
+// that a tri-colour collector's write barrier exists to survive — while garbage drives collection.
+class PointerShuffle : public Mutator {
+  Rng rng;
+  uint64_t id = 0, inserted = 0, acc = 0;
+  static constexpr size_t ROOT = 0, A = 1, B = 2, X = 3, TMP = 4, NEW = 5, GARB = 6, SCR = 8;
+  static constexpr uint64_t CAP = 600;
+  void descend(Heap& h, std::vector<uint8_t>& path, size_t dst) {
+    h.move(dst, ROOT);
+    path.clear();
+    while (path.size() < 40 && rng.below(5) != 0) {
+      uint8_t d = (uint8_t)rng.below(2);
+      h.load(TMP, dst, d);
+      if (h.isNull(TMP)) break;
+      h.move(dst, TMP);
+      path.push_back(d);
+    }
+  }
+  void freshNode(Heap& h, size_t dst) {
+    h.newObj(dst, 2, 1);
+    h.setData(dst, 0, ++id * 3 + 1);
+  }
+  uint64_t check(Heap& h, size_t slot, int depth) {
+    if (depth > 50) corrupt("shuffle tree too deep (cycle?)");
+    if (h.getData(slot, 0) % 3 != 1) corrupt("shuffle node payload clobbered");
+    uint64_t n = 1;
+    for (uint32_t d = 0; d < 2; d++) {
+      h.load(SCR + depth, slot, d);
+      if (!h.isNull(SCR + depth)) n += check(h, SCR + depth, depth + 1);
+      if (n > CAP + 2) corrupt("shuffle tree too large (cycle?)");
+    }
+    return n;
+  }
+ public:
+  PointerShuffle(uint64_t seed) : rng(seed) {}
+  void step(Heap& h) override {
+    if (h.isNull(ROOT) || inserted >= CAP) { h.clear(ROOT); freshNode(h, ROOT); inserted = 0; }
+    for (int k = 0; k < 3; k++) { h.newObj(GARB, 1, 1 + rng.below(8)); h.setData(GARB, 0, id); }
+    std::vector<uint8_t> pa, pb;
+    for (int k = 0; k < 2; k++) {                       // relocate a subtree
+      descend(h, pa, A);
+      descend(h, pb, B);
+      uint32_t sa = rng.below(2), sb = rng.below(2);
+      h.load(X, A, sa);
+      if (h.isNull(X)) continue;
+      if (pa == pb && sa == sb) continue;
+      if (pb.size() > pa.size()) continue;              // only move subtrees up/sideways: depth never grows past 41
+      std::vector<uint8_t> px = pa;                     // path of the subtree root
+      px.push_back((uint8_t)sa);
+      if (pb.size() >= px.size() && std::equal(px.begin(), px.end(), pb.begin())) continue;  // would form a cycle
+      h.load(TMP, B, sb);
+      if (!h.isNull(TMP)) continue;                     // only move into empty slots: nothing is ever dropped
+      h.store(B, sb, X);
+      h.storeNil(A, sa);
+      acc++;
+    }
+    for (int k = 0; k < 4; k++) {                       // grow
+      descend(h, pa, A);
+      uint32_t s = rng.below(2);
+      h.load(TMP, A, s);
+      if (h.isNull(TMP)) { freshNode(h, NEW); h.store(A, s, NEW); inserted++; }
+    }
+    h.clear(X); h.clear(A); h.clear(B); h.clear(TMP);
+  }
+  void finish(Heap& h) override {
+    if (h.isNull(ROOT)) return;
+    check(h, ROOT, 0);
+  }
+  uint64_t checksum() const override { return acc; }
+};
+
 }  // namespace
 
 std::vector<WorkloadInfo> workloadInfos() {
   return {
-      {"binary-trees", "one long-lived tree + endless short-lived trees (classic GC benchmark)", 300},
-      {"list-churn", "cons-heavy linked lists that die wholesale", 200000},
-      {"lru-cache", "old table, young entries: stresses the generational write barrier", 60000},
-      {"fragmenter", "mixed-size blocks freed at random + big contiguous requests", 100000},
-      {"graph-fuzz", "random cyclic graph mutation (the differential-fuzz workload)", 200000},
+      {"binary-trees", "one long-lived tree + endless short-lived trees (classic GC benchmark)", 300, 262144},
+      {"list-churn", "cons-heavy linked lists that die wholesale", 200000, 32768},
+      {"lru-cache", "old table, young entries: stresses the generational write barrier", 60000, 65536},
+      {"fragmenter", "mixed-size blocks freed at random + big contiguous requests", 100000, 262144},
+      {"pointer-shuffle", "relocates subtrees between parents while GC runs (barrier torture test)", 40000, 32768},
+      {"graph-fuzz", "random cyclic graph mutation (the differential-fuzz workload)", 200000, 32768},
   };
 }
 
@@ -255,6 +329,7 @@ std::unique_ptr<Mutator> makeMutator(const std::string& name, uint64_t seed, siz
   if (name == "list-churn") return std::make_unique<ListChurn>(seed);
   if (name == "lru-cache") return std::make_unique<LruCache>(seed);
   if (name == "fragmenter") return std::make_unique<Fragmenter>(seed, heapWords);
+  if (name == "pointer-shuffle") return std::make_unique<PointerShuffle>(seed);
   if (name == "graph-fuzz") return std::make_unique<GraphFuzz>(seed);
   throw std::invalid_argument("unknown workload '" + name + "'");
 }
@@ -313,6 +388,15 @@ FuzzReport differentialRun(const std::string& kind, const std::string& workload,
     }
     mt->finish(*target);
     mo->finish(oracle);
+    if (!compare(steps)) return rep;
+    // precision: a full collection must retain exactly the live words (catches collectors that leak)
+    target->gc(true);
+    size_t liveObjs = 0, liveWords = 0;
+    target->graphHash(&liveObjs, &liveWords);
+    if (target->usedWords() != liveWords) {
+      fail("after a full GC " + std::to_string(target->usedWords()) + " words are in use but only " + std::to_string(liveWords) + " are live (leak)", steps);
+      return rep;
+    }
     if (!compare(steps)) return rep;
   } catch (const std::exception& e) {
     fail(e.what(), i);
