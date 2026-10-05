@@ -1,6 +1,9 @@
 #include "collectors.hpp"
 #include "report.hpp"
 #include "workloads.hpp"
+#include "script.hpp"
+#include <iostream>
+#include <sstream>
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
@@ -94,8 +97,70 @@ int cmdFuzz(const Args& a) {
   return bad ? 1 : 0;
 }
 
-int cmdBench(const Args&) { return 0; }
-int cmdScript(const Args&) { return 0; }
-int cmdViz(const Args&) { return 0; }
+int cmdBench(const Args& a) {
+  a.allow({"gc", "workload", "steps", "seed", "scale", "csv", "param", "heap"});
+  auto kinds = pick(a.str("gc", "all"), heapKinds(), "collector");
+  auto works = pick(a.str("workload", "all"), workloadNames(), "workload");
+  double scale = std::stod(a.str("scale", "1"));
+  if (!(scale > 0)) throw std::invalid_argument("--scale must be positive");
+  std::ofstream csv;
+  if (a.has("csv")) {
+    csv.open(a.str("csv", ""));
+    if (!csv) throw std::runtime_error("cannot write " + a.str("csv", ""));
+    csv << "workload,collector,heap_words,steps,wall_ms,alloc_words,mwords_per_s,minor_gcs,major_gcs,inc_steps,total_pause_ms,max_pause_ms,p99_pause_ms,moved_objects,peak_retained_words,fragmentation,error\n";
+  }
+  int failures = 0;
+  for (auto& w : works) {
+    size_t heap = heapFor(w, a), steps = stepsFor(w, a, scale);
+    std::printf("\n== %s — %zu steps, %zu-word heap ==\n", w.c_str(), steps, heap);
+    std::printf("%-13s %9s %9s %7s %7s %10s %10s %10s %9s %6s\n", "collector", "wall ms", "Mw/s", "minor", "major", "pause tot", "pause max", "pause p99", "moved", "frag");
+    for (auto& k : kinds) {
+      auto h = makeHeap(k, heap, a.num("param", 0));
+      auto m = makeMutator(w, a.num("seed", 1), heap);
+      RunResult r = runWorkload(*h, *m, steps);
+      const Stats& st = h->stats;
+      if (!r.error.empty()) {
+        failures++;
+        std::printf("%-13s FAILED: %s\n", k.c_str(), r.error.c_str());
+      } else {
+        std::string v = h->verify();
+        if (!v.empty()) { failures++; std::printf("%-13s VERIFY FAILED: %s\n", k.c_str(), v.c_str()); continue; }
+        double mws = r.wall_ms > 0 ? st.alloc_words / 1e3 / r.wall_ms : 0;
+        std::printf("%-13s %9.1f %9.1f %7llu %7llu %9.2fms %9.3fms %9.3fms %9llu %5.0f%%\n", k.c_str(), r.wall_ms, mws,
+                    (unsigned long long)st.minor_gcs, (unsigned long long)st.major_gcs, st.total_pause_ms, st.max_pause_ms, st.pct(99),
+                    (unsigned long long)st.moved_objects, h->fragmentation() * 100);
+      }
+      if (csv) {
+        char line[512];
+        snprintf(line, sizeof line, "%s,%s,%zu,%zu,%.3f,%llu,%.3f,%llu,%llu,%llu,%.4f,%.4f,%.4f,%llu,%llu,%.4f,", w.c_str(), k.c_str(), heap, steps, r.wall_ms,
+                 (unsigned long long)st.alloc_words, r.wall_ms > 0 ? st.alloc_words / 1e3 / r.wall_ms : 0.0, (unsigned long long)st.minor_gcs,
+                 (unsigned long long)st.major_gcs, (unsigned long long)st.inc_steps, st.total_pause_ms, st.max_pause_ms, st.pct(99),
+                 (unsigned long long)st.moved_objects, (unsigned long long)st.peak_live_words, h->fragmentation());
+        std::string e = r.error;
+        for (char& c : e) if (c == ',' || c == '\n') c = ';';
+        csv << line << e << "\n";
+      }
+    }
+  }
+  if (csv) std::printf("\nwrote %s\n", a.str("csv", "").c_str());
+  return failures ? 1 : 0;
+}
+
+int cmdScript(const Args& a) {
+  a.allow({"gc", "heap", "param", "no-verify"});
+  if (a.pos.size() != 1) throw std::invalid_argument("usage: reaper script <file.rpr> [--gc X] [--heap WORDS]");
+  std::ifstream f(a.pos[0]);
+  if (!f) throw std::runtime_error("cannot open " + a.pos[0]);
+  std::stringstream ss;
+  ss << f.rdbuf();
+  std::string gc = a.str("gc", "generational");
+  auto h = makeHeap(gc, a.num("heap", 1u << 16), a.num("param", 0));
+  ScriptResult r = runScript(*h, ss.str(), a.pos[0], std::cout);
+  if (!r.ok) { std::fprintf(stderr, "%s\n", r.error.c_str()); return 1; }
+  std::string v = a.has("no-verify") ? "" : h->verify();
+  std::printf("ok: %zu statements on %s, heap verify %s\n", r.statements, gc.c_str(), v.empty() ? "clean" : v.c_str());
+  return v.empty() ? 0 : 1;
+}
+
 
 }  // namespace reaper

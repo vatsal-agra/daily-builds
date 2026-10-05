@@ -244,8 +244,9 @@ class GraphFuzz : public Mutator {
 // that a tri-colour collector's write barrier exists to survive — while garbage drives collection.
 class PointerShuffle : public Mutator {
   Rng rng;
-  uint64_t id = 0, inserted = 0, acc = 0;
-  static constexpr size_t ROOT = 0, A = 1, B = 2, X = 3, TMP = 4, NEW = 5, GARB = 6, SCR = 8;
+  uint64_t id = 0, inserted = 0, acc = 0, holdSince = 0;
+  size_t holdDepth = 0;
+  static constexpr size_t ROOT = 0, A = 1, B = 2, X = 3, TMP = 4, NEW = 5, GARB = 6, HOLD = 7, SCR = 8;
   static constexpr uint64_t CAP = 600;
   void descend(Heap& h, std::vector<uint8_t>& path, size_t dst) {
     h.move(dst, ROOT);
@@ -295,6 +296,22 @@ class PointerShuffle : public Mutator {
       h.store(B, sb, X);
       h.storeNil(A, sa);
       acc++;
+    }
+    // Detach a subtree and keep it ONLY in a root slot for a few steps: while it is unreachable from the
+    // heap, a marker that never rescans root slots would free it, and the later re-attach would expose that.
+    if (h.isNull(HOLD)) {
+      if (rng.below(3) == 0) {
+        descend(h, pa, A);
+        uint32_t sa = rng.below(2);
+        h.load(HOLD, A, sa);
+        if (!h.isNull(HOLD)) { h.storeNil(A, sa); holdDepth = pa.size(); holdSince = 0; acc++; }
+      }
+    } else if (++holdSince > 2 + rng.below(8)) {
+      descend(h, pb, B);
+      uint32_t sb = rng.below(2);
+      h.load(TMP, B, sb);
+      if (h.isNull(TMP) && pb.size() <= holdDepth) { h.store(B, sb, HOLD); h.clear(HOLD); acc++; }
+      else if (holdSince > 40) h.clear(HOLD);           // give up: the subtree becomes garbage
     }
     for (int k = 0; k < 4; k++) {                       // grow
       descend(h, pa, A);

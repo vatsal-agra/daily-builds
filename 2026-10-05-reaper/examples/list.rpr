@@ -1,0 +1,20 @@
+# Build a 1000-node linked list (newest first), collect, then walk it and check the payloads survived.
+alloc 0 1 1          # slot0 = head node: 1 pointer (next), 1 data word
+set 0 0 0
+repeat 999 as i {
+  alloc 1 1 1
+  let v $i+1
+  set 1 0 $v         # payload = node number
+  store 1 0 0        # node.next = head
+  move 0 1           # head = node
+}
+gc full
+expect live 1000
+expect data 0 0 999  # head holds the newest payload
+move 2 0
+repeat 999 as k {    # walk 999 links down to the oldest node
+  load 2 2 0
+}
+expect data 2 0 0
+print stats
+print live

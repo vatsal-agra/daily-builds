@@ -1,11 +1,9 @@
 # Reaper — a garbage-collector laboratory (C++17)
 
-**Status: Phase 2 done** — required features 1–4 work end to end:
+**Status: Phase 4 done** — all 4 required features plus all 4 stretch features work:
 
-- heap core + verifier (`src/heap.*`), root-slot mutator API
-- mark-sweep, mark-compact (Lisp2), Cheney copying collectors
-- generational collector (nursery, write barrier, remembered set)
-- differential fuzzer against a never-collecting oracle: `make && ./reaper fuzz`
+- required: heap core + verifier · mark-sweep / mark-compact / copying · generational (write barrier, remembered set) · differential fuzzer vs. a never-collecting oracle
+- stretch: incremental tri-colour collector · benchmark harness (`reaper bench`) · mutator scripting language (`reaper script`, see `examples/`) · heap-map HTML visualiser (`reaper viz`)
 
-Build: `make`. Try: `./reaper list`, `./reaper run generational lru-cache`, `./reaper fuzz --seeds 5`.
-Full README (features, design, next steps) arrives in Phase 6. See PLAN.md.
+Build: `make`. Try: `./reaper list`, `./reaper bench`, `./reaper fuzz`, `./reaper script examples/barrier.rpr`, `./reaper viz out.html`.
+Phase 5 (tests / demo) and the full README follow. See PLAN.md and REVIEW.md.

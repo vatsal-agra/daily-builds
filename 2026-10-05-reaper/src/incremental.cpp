@@ -17,10 +17,6 @@ void IncrementalHeap::onStore(Ref, Ref val) {
   }
 }
 
-void IncrementalHeap::onAllocated(Ref r) {
-  if (st == MARK || (st == SWEEP && r >= sweepPos)) mem[r] |= MARK_BIT;   // allocate black
-}
-
 void IncrementalHeap::startCycle() {
   double t = nowMs();
   st = MARK;

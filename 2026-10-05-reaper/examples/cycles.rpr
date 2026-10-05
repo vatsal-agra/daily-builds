@@ -1,0 +1,14 @@
+# Cyclic garbage: a reference-counting collector would leak every one of these.
+repeat 5000 {
+  alloc 0 2 0
+  alloc 1 2 0
+  store 0 0 1        # a.0 -> b
+  store 1 0 0        # b.0 -> a   (cycle)
+  store 0 1 0        # a.1 -> a   (self loop)
+  clear 0
+  clear 1
+}
+gc full
+expect live 0
+expect used <= 64    # every cycle was reclaimed
+print stats

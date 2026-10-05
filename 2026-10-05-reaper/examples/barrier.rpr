@@ -1,0 +1,19 @@
+# Old->young pointer: promote an object, then store a brand-new nursery object into it.
+# A generational GC without a write barrier would free the young object at the next minor GC.
+alloc 0 1 1
+set 0 0 111
+gc full              # slot0 is now an old, compacted object
+alloc 1 0 1
+set 1 0 222
+store 0 0 1          # old.0 -> young  (barrier must remember `old`)
+clear 1              # the ONLY path to the young object is through the old one
+repeat 300 {         # churn the nursery so several minor GCs run
+  alloc 2 0 20
+}
+gc minor
+load 3 0 0
+expect set 3
+expect data 3 0 222
+expect verify
+print slot 3
+print hash

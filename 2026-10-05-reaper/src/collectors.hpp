@@ -98,6 +98,7 @@ class GenerationalHeap : public Heap {
   std::string describe() const override;
   size_t nurseryWords() const { return nurEnd - nurStart; }
   size_t rememberedSize() const { return remembered.size(); }
+  bool isYoungForTest(size_t slot) const { return isYoung(roots[slot]); }
  protected:
   Ref tryAlloc(uint32_t w) override;
   bool collectForAlloc(uint32_t, int attempt) override;
@@ -126,7 +127,6 @@ class IncrementalHeap : public MarkSweepHeap {
   bool collectForAlloc(uint32_t, int attempt) override;
   void collectExplicit(bool) override { finishCycle(); fullCycle(); }
   void onStore(Ref obj, Ref val) override;
-  void onAllocated(Ref r) override;
   void startCycle();
   void markStep(size_t budget);
   void terminateMark();
