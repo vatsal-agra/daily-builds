@@ -123,14 +123,38 @@ func (i *inferer) declTypes(env *Env, d *syntax.DType) *DeclResult {
 			}
 			seenP[p] = true
 		}
-		info := &TypeInfo{Head: &Head{Name: td.Name, Arity: len(td.Params)}, Params: len(td.Params)}
+		info := &TypeInfo{Head: &Head{Name: td.Name, Arity: len(td.Params)}, Params: len(td.Params), IsAlias: td.Alias != nil}
 		types[td.Name] = info
 		infos = append(infos, info)
 	}
 	ne := env.withTypes(types, cons)
 	i.env = ne
+	i.inDecl = true
+	// aliases are expanded in declaration order (before constructors that may mention them)
+	for k, td := range d.Types {
+		if td.Alias == nil {
+			continue
+		}
+		info := infos[k]
+		pv := map[string]Type{}
+		for j, p := range td.Params {
+			v := &TVar{ID: j + 1, Level: Generic}
+			info.AliasVars = append(info.AliasVars, v)
+			pv[p] = v
+		}
+		info.AliasBody = i.convType(td.Alias, func(name string, sp syntax.Span) Type {
+			v, ok := pv[name]
+			if !ok {
+				i.fail(syntax.Errorf("type", sp, "type parameter '%s is not declared by `type ... %s`", name, td.Name))
+			}
+			return v
+		})
+	}
 	seenC := map[string]bool{}
 	for k, td := range d.Types {
+		if td.Alias != nil {
+			continue
+		}
 		info := infos[k]
 		params := make([]Type, len(td.Params))
 		pv := map[string]Type{}

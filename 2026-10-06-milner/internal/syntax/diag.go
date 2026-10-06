@@ -54,13 +54,31 @@ func Errorf(kind string, sp Span, format string, a ...any) *Diag {
 }
 
 // Render prints d with a source excerpt and carets. file may be empty.
-func (d *Diag) Render(src, file string) string {
+func (d *Diag) Render(src, file string) string { return d.RenderColor(src, file, false) }
+
+// ANSI styling used when rendering for a terminal.
+type palette struct{ sev, accent, bold, reset string }
+
+func (d *Diag) palette(color bool) palette {
+	if !color {
+		return palette{}
+	}
+	sev := "\x1b[1;31m" // bold red
+	if d.Warn {
+		sev = "\x1b[1;33m" // bold yellow
+	}
+	return palette{sev: sev, accent: "\x1b[1;34m", bold: "\x1b[1m", reset: "\x1b[0m"}
+}
+
+// RenderColor is Render with optional ANSI colours (errors red, warnings yellow, gutters blue).
+func (d *Diag) RenderColor(src, file string, color bool) string {
 	var b strings.Builder
+	pal := d.palette(color)
 	sev := "error"
 	if d.Warn {
 		sev = "warning"
 	}
-	fmt.Fprintf(&b, "%s[%s]: %s\n", sev, d.Kind, d.Msg)
+	fmt.Fprintf(&b, "%s%s[%s]%s%s: %s%s\n", pal.sev, sev, d.Kind, pal.reset, pal.bold, d.Msg, pal.reset)
 	if d.Span.Start.Line > 0 {
 		if file == "" {
 			file = "<input>"
@@ -83,8 +101,8 @@ func (d *Diag) Render(src, file string) string {
 			l2 = len(lines)
 		}
 		w := len(fmt.Sprint(l2))
-		fmt.Fprintf(&b, "%*s--> %s:%d:%d\n", w, "", file, d.Span.Start.Line, d.Span.Start.Col)
-		fmt.Fprintf(&b, "%*s |\n", w, "")
+		fmt.Fprintf(&b, "%*s%s-->%s %s:%d:%d\n", w, "", pal.accent, pal.reset, file, d.Span.Start.Line, d.Span.Start.Col)
+		fmt.Fprintf(&b, "%*s %s|%s\n", w, "", pal.accent, pal.reset)
 		show := l2 - l1
 		if show > 4 { // very long spans: show only the first line
 			l2 = l1
@@ -93,7 +111,7 @@ func (d *Diag) Render(src, file string) string {
 		for ln := l1; ln <= l2; ln++ {
 			text := strings.TrimRight(lines[ln-1], "\r")
 			text = strings.ReplaceAll(text, "\t", " ")
-			fmt.Fprintf(&b, "%*d | %s\n", w, ln, text)
+			fmt.Fprintf(&b, "%s%*d |%s %s\n", pal.accent, w, ln, pal.reset, text)
 			rs := []rune(text)
 			from, to := 1, len(rs)+1
 			if ln == d.Span.Start.Line {
@@ -112,16 +130,16 @@ func (d *Diag) Render(src, file string) string {
 			if from < 1 {
 				from = 1
 			}
-			fmt.Fprintf(&b, "%*s | %s%s", w, "", strings.Repeat(" ", from-1), strings.Repeat("^", to-from))
+			fmt.Fprintf(&b, "%*s %s|%s %s%s%s", w, "", pal.accent, pal.reset, strings.Repeat(" ", from-1), pal.sev, strings.Repeat("^", to-from))
 			if ln == l2 && d.Label != "" {
 				b.WriteString(" " + d.Label)
 			}
-			b.WriteString("\n")
+			b.WriteString(pal.reset + "\n")
 		}
 		_ = show
 	}
 	for _, n := range d.Notes {
-		fmt.Fprintf(&b, "  = %s\n", n)
+		fmt.Fprintf(&b, "  %s=%s %s\n", pal.accent, pal.reset, n)
 	}
 	return b.String()
 }

@@ -4,6 +4,7 @@ package check
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"milner/internal/syntax"
@@ -12,10 +13,11 @@ import (
 
 type ctor struct {
 	name    string
-	arity   int     // number of sub-patterns (columns it expands to)
-	family  []*ctor // all constructors of the type; nil when the signature is infinite (ints, strings)
-	kind    string  // "con", "tuple", "lit", "bool", "unit"
-	payload int     // declared argument count of a data constructor (for display)
+	arity   int      // number of sub-patterns (columns it expands to)
+	family  []*ctor  // all constructors of the type; nil when the signature is infinite (ints, strings)
+	kind    string   // "con", "tuple", "lit", "bool", "unit"
+	payload int      // declared argument count of a data constructor (for display)
+	labels  []string // field names of a record constructor (for display)
 }
 
 type ipat struct {
@@ -40,6 +42,7 @@ type Checker struct {
 	bools  [2]*ctor
 	budget int
 	gaveUp bool
+	fields []string // union of record field names in the match being analysed (record patterns lower to tuples over it)
 }
 
 // New returns a checker for the constructors in cons.
@@ -61,6 +64,17 @@ func (c *Checker) tupleCtor(n int) *ctor {
 	t := &ctor{name: fmt.Sprintf("tuple%d", n), arity: n, kind: "tuple"}
 	t.family = []*ctor{t}
 	c.tuples[n] = t
+	return t
+}
+
+func (c *Checker) recordCtor(labels []string) *ctor {
+	key := "{" + strings.Join(labels, ",") + "}"
+	if t, ok := c.lits[key]; ok {
+		return t
+	}
+	t := &ctor{name: key, arity: len(labels), kind: "record", labels: labels}
+	t.family = []*ctor{t}
+	c.lits[key] = t
 	return t
 }
 
@@ -123,6 +137,19 @@ func (c *Checker) lower(p syntax.Pat) *ipat {
 			subs[i] = c.lower(e)
 		}
 		return &ipat{c: c.tupleCtor(len(subs)), subs: subs}
+	case *syntax.PRecord:
+		subs := make([]*ipat, len(c.fields))
+		for i := range subs {
+			subs[i] = wild
+		}
+		for _, f := range x.Fields {
+			for i, n := range c.fields {
+				if n == f.Name {
+					subs[i] = c.lower(f.Pat)
+				}
+			}
+		}
+		return &ipat{c: c.recordCtor(c.fields), subs: subs}
 	case *syntax.PCon:
 		k := c.conCtor(x.Name)
 		if x.Arg == nil {
@@ -323,6 +350,12 @@ func (w *wit) show(prec int) string {
 			parts[i] = s.show(0)
 		}
 		return "(" + strings.Join(parts, ", ") + ")"
+	case "record":
+		parts := make([]string, len(w.subs))
+		for i, s := range w.subs {
+			parts[i] = w.c.labels[i] + " = " + s.show(0)
+		}
+		return "{ " + strings.Join(parts, "; ") + " }"
 	case "con":
 		if w.c.name == "[]" {
 			return "[]"
@@ -386,6 +419,7 @@ func (c *Checker) Analyze(arms []armIn) (res MatchResult) {
 			panic(r)
 		}
 	}()
+	c.fields = collectFields(arms)
 	var rows []row
 	for _, a := range arms {
 		for _, alt := range topAlts(a.pat) {
@@ -402,4 +436,43 @@ func (c *Checker) Analyze(arms []armIn) (res MatchResult) {
 		res.Missing = w[0].String()
 	}
 	return res
+}
+
+// collectFields returns the sorted union of field names used by record patterns in the arms.
+func collectFields(arms []armIn) []string {
+	set := map[string]bool{}
+	var walk func(p syntax.Pat)
+	walk = func(p syntax.Pat) {
+		switch x := p.(type) {
+		case *syntax.PRecord:
+			for _, f := range x.Fields {
+				set[f.Name] = true
+				walk(f.Pat)
+			}
+		case *syntax.PTuple:
+			for _, e := range x.Elems {
+				walk(e)
+			}
+		case *syntax.PCon:
+			if x.Arg != nil {
+				walk(x.Arg)
+			}
+		case *syntax.POr:
+			walk(x.L)
+			walk(x.R)
+		case *syntax.PAs:
+			walk(x.P)
+		case *syntax.PAnnot:
+			walk(x.P)
+		}
+	}
+	for _, a := range arms {
+		walk(a.pat)
+	}
+	out := make([]string, 0, len(set))
+	for n := range set {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
 }

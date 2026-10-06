@@ -117,5 +117,16 @@ func (w *walker) expr(e syntax.Expr) {
 		w.expr(x.R)
 	case *syntax.EAnnot:
 		w.expr(x.E)
+	case *syntax.ERecord:
+		for _, f := range x.Fields {
+			w.expr(f.Expr)
+		}
+	case *syntax.ERecordWith:
+		w.expr(x.Base)
+		for _, f := range x.Fields {
+			w.expr(f.Expr)
+		}
+	case *syntax.EField:
+		w.expr(x.E)
 	}
 }

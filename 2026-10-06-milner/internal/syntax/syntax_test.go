@@ -153,7 +153,7 @@ func TestParseErrors(t *testing.T) {
 		`[1; 2`:                  "expected `]`",
 		`fun -> 1`:               "needs at least one parameter",
 		`let rec (a, b) = 1`:     "`let rec` must bind a function name",
-		`type t = int`:           "must list constructors",
+		`type t = `:              "expected a type",
 		`type T = A`:             "lower-case type name",
 		`1 + `:                   "expected an expression",
 		`let f x = x in`:         "expected an expression",
@@ -232,5 +232,38 @@ func TestLayoutRule(t *testing.T) {
 		if got := count(c.src); got != c.want {
 			t.Errorf("%q: %d declarations, want %d", c.src, got, c.want)
 		}
+	}
+}
+
+func TestRenderColor(t *testing.T) {
+	d := &Diag{Kind: "type", Msg: "boom", Label: "here", Span: Span{Pos{0, 1, 1}, Pos{3, 1, 4}}}
+	plain := d.Render("abc", "f")
+	if strings.Contains(plain, "\x1b[") {
+		t.Errorf("plain rendering must not contain escapes: %q", plain)
+	}
+	col := d.RenderColor("abc", "f", true)
+	if !strings.Contains(col, "\x1b[1;31m") {
+		t.Errorf("errors should be red: %q", col)
+	}
+	d.Warn = true
+	if w := d.RenderColor("abc", "f", true); !strings.Contains(w, "\x1b[1;33m") || strings.Contains(w, "\x1b[1;31m") {
+		t.Errorf("warnings should be yellow: %q", w)
+	}
+	// stripping the escapes gives exactly the plain rendering
+	strip := func(s string) string {
+		var b strings.Builder
+		for i := 0; i < len(s); i++ {
+			if s[i] == 0x1b {
+				for i < len(s) && s[i] != 'm' {
+					i++
+				}
+				continue
+			}
+			b.WriteByte(s[i])
+		}
+		return b.String()
+	}
+	if strip(d.RenderColor("abc", "f", true)) != d.Render("abc", "f") {
+		t.Error("colour rendering differs from plain rendering beyond escapes")
 	}
 }

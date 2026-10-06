@@ -3,6 +3,7 @@ package types
 
 import (
 	"sort"
+	"strings"
 
 	"milner/internal/syntax"
 )
@@ -24,6 +25,8 @@ type TVar struct {
 type Head struct {
 	Name  string
 	Arity int // -1 for tuples (any arity)
+	Label string
+	Row   bool // a row constructor: HRowEmpty, or a field extension (Label: t, rest)
 }
 
 // TCon is an applied type constructor.
@@ -34,16 +37,41 @@ type TCon struct {
 
 // Built-in heads.
 var (
-	HArrow  = &Head{"->", 2}
-	HTuple  = &Head{"*", -1}
-	HInt    = &Head{"int", 0}
-	HBool   = &Head{"bool", 0}
-	HString = &Head{"string", 0}
-	HUnit   = &Head{"unit", 0}
-	HList   = &Head{"list", 1}
-	HRef    = &Head{"ref", 1}
-	HOption = &Head{"option", 1}
+	HArrow  = &Head{Name: "->", Arity: 2}
+	HTuple  = &Head{Name: "*", Arity: -1}
+	HInt    = &Head{Name: "int", Arity: 0}
+	HBool   = &Head{Name: "bool", Arity: 0}
+	HString = &Head{Name: "string", Arity: 0}
+	HUnit   = &Head{Name: "unit", Arity: 0}
+	HList   = &Head{Name: "list", Arity: 1}
+	HRef    = &Head{Name: "ref", Arity: 1}
+	HOption = &Head{Name: "option", Arity: 1}
+
+	// Records: `{x : int; y : bool}` is TCon{HRecord, [row]} where the row is built from HRowEmpty and
+	// one extension head per label. An unresolved row variable at the end makes the record open.
+	HRecord   = &Head{Name: "record", Arity: 1}
+	HRowEmpty = &Head{Name: "{}", Arity: 0, Row: true}
 )
+
+var labelHeads = map[string]*Head{}
+
+// LabelHead returns the (unique) row-extension head for a field label.
+func LabelHead(label string) *Head {
+	if h, ok := labelHeads[label]; ok {
+		return h
+	}
+	h := &Head{Name: "." + label, Arity: 2, Label: label, Row: true}
+	labelHeads[label] = h
+	return h
+}
+
+// RowExt builds the row `label : t | rest`.
+func RowExt(label string, t, rest Type) Type {
+	return &TCon{Head: LabelHead(label), Args: []Type{t, rest}}
+}
+
+// RecordOf wraps a row as a record type.
+func RecordOf(row Type) Type { return &TCon{Head: HRecord, Args: []Type{row}} }
 
 var (
 	TInt    Type = &TCon{Head: HInt}
@@ -81,6 +109,11 @@ type TypeInfo struct {
 	Head   *Head
 	Params int
 	Cons   []*ConInfo
+	// Alias types (`type 'a pair = 'a * 'a`) are expanded wherever they are used: AliasVars are the
+	// generic parameter variables and AliasBody the type they occur in.
+	IsAlias   bool
+	AliasVars []*TVar
+	AliasBody Type
 }
 
 // ConInfo describes a data constructor.
@@ -144,4 +177,17 @@ func spanOr(sp, fallback syntax.Span) syntax.Span {
 		return fallback
 	}
 	return sp
+}
+
+// NamesSince lists the names bound in e after base (most recent first, shadowed duplicates removed).
+func (e *Env) NamesSince(base *Env) []string {
+	seen := map[string]bool{}
+	var out []string
+	for n := e.vars; n != nil && n != base.vars; n = n.next {
+		if !seen[n.name] && !strings.HasPrefix(n.name, "$") {
+			seen[n.name] = true
+			out = append(out, n.name)
+		}
+	}
+	return out
 }

@@ -86,6 +86,27 @@ func (m *Machine) loop(n node, env *Env) Value {
 			return &Tuple{Elems: elems}
 		case *nCon:
 			return &Con{Name: x.Name, Idx: x.Idx, Arg: m.eval(x.Arg, env)}
+		case *nRecord:
+			vals := make([]Value, len(x.Exprs))
+			for i, e := range x.Exprs {
+				vals[x.Pos[i]] = m.eval(e, env)
+			}
+			return &Record{Labels: x.Labels, Vals: vals}
+		case *nField:
+			r := m.eval(x.E, env).(*Record)
+			i := r.index(x.Name)
+			if i < 0 {
+				m.loc = x.Sp
+				m.fail("internal error: record has no field %s", x.Name)
+			}
+			return r.Vals[i]
+		case *nRecWith:
+			base := m.eval(x.Base, env).(*Record)
+			vals := append([]Value(nil), base.Vals...)
+			for i, e := range x.Exprs {
+				vals[base.index(x.Names[i])] = m.eval(e, env)
+			}
+			return &Record{Labels: base.Labels, Vals: vals}
 		case *nSeq:
 			m.eval(x.A, env)
 			n = x.B
@@ -219,6 +240,14 @@ func matchPat(p *cPat, v Value, slots []Value) bool {
 			return false
 		}
 		slots[p.Slot] = v
+		return true
+	case pkRecord:
+		r := v.(*Record)
+		for i, name := range p.Names {
+			if !matchPat(&p.Subs[i], r.Vals[r.index(name)], slots) {
+				return false
+			}
+		}
 		return true
 	}
 	panic("matchPat: bad pattern kind")

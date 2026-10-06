@@ -29,6 +29,8 @@ func (t *gty) String() string {
 		return "(" + t.a.String() + " option)"
 	case "pair":
 		return "(" + t.a.String() + " * " + t.b.String() + ")"
+	case "rec":
+		return "{ a : " + t.a.String() + "; b : " + t.b.String() + " }"
 	case "fun":
 		return "(" + t.a.String() + " -> " + t.b.String() + ")"
 	}
@@ -56,7 +58,9 @@ func (g *gen) randType(depth int) *gty {
 	if depth <= 0 {
 		return []*gty{tInt, tBool, tStr}[g.r.Intn(3)]
 	}
-	switch g.r.Intn(9) {
+	switch g.r.Intn(11) {
+	case 9, 10:
+		return &gty{kind: "rec", a: g.randType(depth - 1), b: g.randType(depth - 1)}
 	case 0, 1:
 		return tInt
 	case 2:
@@ -99,8 +103,23 @@ func (g *gen) expr(t *gty, env []genv, d int) string {
 		}
 		return g.leaf(t, env)
 	}
-	n := g.r.Intn(10)
+	n := g.r.Intn(12)
 	switch {
+	case n == 10:
+		// field selection (the record may have extra fields at the use site only through its type)
+		other := g.randType(1)
+		field := []string{"a", "b"}[g.r.Intn(2)]
+		rt := &gty{kind: "rec", a: t, b: other}
+		if field == "b" {
+			rt = &gty{kind: "rec", a: other, b: t}
+		}
+		return fmt.Sprintf("(%s).%s", g.expr(rt, env, d-1), field)
+	case n == 11:
+		// destructure a record with a pattern
+		at, bt := g.randType(1), g.randType(1)
+		x, y := g.fresh(), g.fresh()
+		e2 := append(env[:len(env):len(env)], genv{x, at}, genv{y, bt})
+		return fmt.Sprintf("(let { b = %s; a = %s } = %s in %s)", y, x, g.expr(&gty{kind: "rec", a: at, b: bt}, env, d-1), g.expr(t, e2, d-1))
 	case n == 0 && len(vars) > 0:
 		return vars[g.r.Intn(len(vars))]
 	case n == 1:
@@ -178,7 +197,7 @@ func (g *gen) structural(t *gty, env []genv, d int) string {
 			return fmt.Sprintf("(not %s)", g.expr(tBool, env, dd))
 		case 3:
 			at := g.randType(1)
-			if at.kind == "fun" || strings.Contains(at.String(), "->") {
+			if strings.Contains(at.String(), "->") {
 				at = tInt
 			}
 			return fmt.Sprintf("(%s = %s)", g.expr(at, env, dd), g.expr(at, env, dd))
@@ -212,6 +231,12 @@ func (g *gen) structural(t *gty, env []genv, d int) string {
 		return fmt.Sprintf("(Some %s)", g.expr(t.a, env, dd))
 	case "pair":
 		return fmt.Sprintf("(%s, %s)", g.expr(t.a, env, dd), g.expr(t.b, env, dd))
+	case "rec":
+		ea, eb := g.expr(t.a, env, dd), g.expr(t.b, env, dd)
+		if g.r.Intn(2) == 0 {
+			return fmt.Sprintf("{ a = %s; b = %s }", ea, eb)
+		}
+		return fmt.Sprintf("{ b = %s; a = %s }", eb, ea)
 	case "fun":
 		v := g.fresh()
 		return fmt.Sprintf("(fun %s -> %s)", v, g.expr(t.b, append(env[:len(env):len(env)], genv{v, t.a}), dd))

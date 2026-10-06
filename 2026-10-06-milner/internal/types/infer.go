@@ -31,6 +31,7 @@ type inferer struct {
 	holes  []hole
 	tr     *Tracer
 	depth  int
+	inDecl bool // converting a `type` declaration (open record types are not allowed there)
 }
 
 type hole struct {
@@ -116,10 +117,23 @@ func (i *inferer) instantiate(t Type, m map[*TVar]Type) Type {
 func (i *inferer) fail(d *syntax.Diag) { panic(d) }
 
 func (i *inferer) unifyAt(sp syntax.Span, expected, actual Type, note string) {
+	before := len(i.u.trail)
+	// snapshot the operands before unification binds anything, so the trace reads naturally
+	var ea, aa string
+	var tp *Printer
 	if i.tr != nil {
-		i.tr.unify(i.depth, expected, actual)
+		tp = i.tr.printer()
+		ea, aa = tp.String(expected), tp.String(actual)
 	}
-	if err := i.u.unify(expected, actual); err != nil {
+	err := i.u.unify(expected, actual)
+	if i.tr != nil {
+		var bound []string
+		for _, v := range i.u.trail[before:] {
+			bound = append(bound, fmt.Sprintf("%s := %s", tp.nameOf(v), tp.String(v.Ref)))
+		}
+		i.tr.unifyStr(i.depth, ea, aa, bound, err != nil)
+	}
+	if err != nil {
 		i.fail(i.mismatch(sp, expected, actual, err, note))
 	}
 }
@@ -140,7 +154,13 @@ func (i *inferer) mismatch(sp syntax.Span, expected, actual Type, err *UnifyErr,
 	if note != "" {
 		d.Notes = append(d.Notes, note)
 	}
-	if err.Arity {
+	if err.Field != "" {
+		if err.LacksLeft {
+			d.Notes = append(d.Notes, fmt.Sprintf("the expected record type is closed and has no field `%s` (write `; ..` at the end of the annotation to accept records with more fields)", err.Field))
+		} else {
+			d.Notes = append(d.Notes, fmt.Sprintf("the record given here has no field `%s`", err.Field))
+		}
+	} else if err.Arity {
 		d.Notes = append(d.Notes, fmt.Sprintf("`%s` and `%s` have different numbers of components", pr.String(err.A), pr.String(err.B)))
 	} else if ea, eb := pr.String(err.A), pr.String(err.B); (ea != e || eb != a) && ea != eb {
 		d.Notes = append(d.Notes, fmt.Sprintf("specifically, `%s` is not `%s`", ea, eb))
@@ -204,6 +224,27 @@ func (i *inferer) convType(te syntax.TyExpr, scope tyScope) Type {
 			ts[k] = i.convType(e, scope)
 		}
 		return Tuple(ts)
+	case *syntax.TyRecord:
+		seen := map[string]bool{}
+		var tail Type = &TCon{Head: HRowEmpty}
+		if t.Open {
+			if i.inDecl {
+				i.fail(syntax.Errorf("type", t.Sp, "open record types (`; ..`) are only allowed in annotations, not in `type` declarations"))
+			}
+			tail = i.newVar()
+		}
+		fts := make([]Type, len(t.Fields))
+		for k, f := range t.Fields {
+			if seen[f.Name] {
+				i.fail(syntax.Errorf("type", t.Sp, "field `%s` appears twice in this record type", f.Name))
+			}
+			seen[f.Name] = true
+			fts[k] = i.convType(f.Ty, scope)
+		}
+		for k := len(t.Fields) - 1; k >= 0; k-- {
+			tail = RowExt(t.Fields[k].Name, fts[k], tail)
+		}
+		return RecordOf(tail)
 	case *syntax.TyCon:
 		info, ok := i.env.Types[t.Name]
 		if !ok {
@@ -224,9 +265,40 @@ func (i *inferer) convType(te syntax.TyExpr, scope tyScope) Type {
 		for k, a := range t.Args {
 			args[k] = i.convType(a, scope)
 		}
+		if info.IsAlias {
+			if info.AliasBody == nil {
+				i.fail(syntax.Errorf("type", t.Sp, "type alias `%s` is used before it is defined (aliases cannot be recursive)", t.Name))
+			}
+			m := map[*TVar]Type{}
+			for k, v := range info.AliasVars {
+				m[v] = args[k]
+			}
+			return substGeneric(info.AliasBody, m)
+		}
 		return &TCon{Head: info.Head, Args: args}
 	}
 	panic("unreachable")
+}
+
+// substGeneric replaces the generic variables in m inside t (used to expand type aliases).
+func substGeneric(t Type, m map[*TVar]Type) Type {
+	switch x := Prune(t).(type) {
+	case *TVar:
+		if r, ok := m[x]; ok {
+			return r
+		}
+		return x
+	case *TCon:
+		if len(x.Args) == 0 {
+			return x
+		}
+		args := make([]Type, len(x.Args))
+		for k, a := range x.Args {
+			args[k] = substGeneric(a, m)
+		}
+		return &TCon{Head: x.Head, Args: args}
+	}
+	return t
 }
 
 // hasGeneric reports whether t mentions a generalised variable (an annotation variable that an inner
@@ -280,6 +352,22 @@ func nonExpansive(e syntax.Expr) bool {
 			}
 		}
 		return nonExpansive(x.Body)
+	case *syntax.ERecord:
+		for _, f := range x.Fields {
+			if !nonExpansive(f.Expr) {
+				return false
+			}
+		}
+		return true
+	case *syntax.ERecordWith:
+		for _, f := range x.Fields {
+			if !nonExpansive(f.Expr) {
+				return false
+			}
+		}
+		return nonExpansive(x.Base)
+	case *syntax.EField:
+		return nonExpansive(x.E)
 	}
 	return false
 }
@@ -334,6 +422,9 @@ func (i *inferer) infer(env *Env, e syntax.Expr) Type {
 	if i.tr != nil {
 		i.depth++
 		defer func() { i.depth-- }()
+	}
+	if i.tr != nil {
+		i.tr.enter(i.depth, e)
 	}
 	t := i.inferInner(env, e)
 	if i.tr != nil {
@@ -476,6 +567,36 @@ func (i *inferer) inferInner(env *Env, e syntax.Expr) Type {
 		at := i.convType(x.Ty, i.annotScope())
 		i.unifyAt(x.E.ESpan(), at, t, "this expression was annotated with `"+TypeString(at)+"`")
 		return at
+	case *syntax.ERecord:
+		seen := map[string]bool{}
+		fts := make([]Type, len(x.Fields))
+		for k, f := range x.Fields {
+			if seen[f.Name] {
+				i.fail(syntax.Errorf("type", f.Sp, "field `%s` is defined twice in this record", f.Name))
+			}
+			seen[f.Name] = true
+			fts[k] = i.infer(env, f.Expr)
+		}
+		var row Type = &TCon{Head: HRowEmpty}
+		for k := len(x.Fields) - 1; k >= 0; k-- {
+			row = RowExt(x.Fields[k].Name, fts[k], row)
+		}
+		return RecordOf(row)
+	case *syntax.EField:
+		return i.selectField(i.infer(env, x.E), x.Name, x.NameSp, x.E.ESpan())
+	case *syntax.ERecordWith:
+		tb := i.infer(env, x.Base)
+		seen := map[string]bool{}
+		for _, f := range x.Fields {
+			if seen[f.Name] {
+				i.fail(syntax.Errorf("type", f.Sp, "field `%s` is updated twice", f.Name))
+			}
+			seen[f.Name] = true
+			ft := i.selectField(tb, f.Name, f.Sp, x.Base.ESpan())
+			ta := i.infer(env, f.Expr)
+			i.unifyAt(f.Expr.ESpan(), ft, ta, fmt.Sprintf("field `%s` has type `%s`; a record update cannot change a field's type", f.Name, TypeString(ft)))
+		}
+		return tb
 	case *syntax.EHole:
 		t := Type(i.newVar())
 		i.holes = append(i.holes, hole{sp: x.Sp, t: t, env: env})
@@ -511,6 +632,55 @@ func (i *inferer) inferListChain(env *Env, x *syntax.ECon) Type {
 	tt := i.infer(env, cur)
 	i.unifyAt(cur.ESpan(), ListOf(elem), tt, "the right side of `::` must be a list")
 	return ListOf(elem)
+}
+
+// rowFields lists the labels of a record type's row and whether the row is closed.
+func rowFields(row Type) (labels []string, closed bool) {
+	for {
+		c, ok := Prune(row).(*TCon)
+		if !ok {
+			return labels, false
+		}
+		if c.Head == HRowEmpty {
+			return labels, true
+		}
+		labels = append(labels, c.Head.Label)
+		row = c.Args[1]
+	}
+}
+
+// selectField returns the type of field `name` of a record of type t, constraining t to have it.
+func (i *inferer) selectField(t Type, name string, sp, subjSp syntax.Span) Type {
+	switch x := Prune(t).(type) {
+	case *TCon:
+		if x.Head != HRecord {
+			d := syntax.Errorf("type", subjSp, "this expression has type `%s`, which is not a record, so it has no field `%s`", TypeString(t), name)
+			d.Label = "not a record"
+			i.fail(d)
+		}
+		if labels, closed := rowFields(x.Args[0]); closed {
+			found := false
+			for _, l := range labels {
+				if l == name {
+					found = true
+				}
+			}
+			if !found {
+				sort.Strings(labels)
+				d := syntax.Errorf("type", sp, "this record has no field `%s`", name)
+				d.Label = "no such field"
+				d.Notes = append(d.Notes, "its type is `"+TypeString(t)+"`")
+				if s := suggest(name, labels); s != "" {
+					d.Notes = append(d.Notes, fmt.Sprintf("did you mean `%s`?", s))
+				}
+				i.fail(d)
+			}
+		}
+	}
+	a := Type(i.newVar())
+	rho := Type(i.newVar())
+	i.unifyAt(subjSp, RecordOf(RowExt(name, a, rho)), t, "")
+	return a
 }
 
 func payloadDesc(ci *ConInfo) string {
@@ -701,6 +871,24 @@ func (i *inferer) inferPat(env *Env, p syntax.Pat, expected Type, binds []bind) 
 		}
 		i.unifyAt(x.Sp, expected, fn.Args[1], "")
 		binds = i.inferPat(env, x.Arg, fn.Args[0], binds)
+	case *syntax.PRecord:
+		seen := map[string]bool{}
+		fts := make([]Type, len(x.Fields))
+		for k, f := range x.Fields {
+			if seen[f.Name] {
+				i.fail(syntax.Errorf("type", f.Sp, "field `%s` appears twice in this pattern", f.Name))
+			}
+			seen[f.Name] = true
+			fts[k] = i.newVar()
+		}
+		var row Type = i.newVar() // open: the matched record may have other fields
+		for k := len(x.Fields) - 1; k >= 0; k-- {
+			row = RowExt(x.Fields[k].Name, fts[k], row)
+		}
+		i.unifyAt(x.Sp, expected, RecordOf(row), "a record pattern matches any record that has at least these fields")
+		for k, f := range x.Fields {
+			binds = i.inferPat(env, f.Pat, fts[k], binds)
+		}
 	case *syntax.POr:
 		l := i.inferPat(env, x.L, expected, nil)
 		r := i.inferPat(env, x.R, expected, nil)

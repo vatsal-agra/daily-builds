@@ -1,0 +1,11 @@
+{"name":"milner","tags":["ml","types"],"stats":{"files":12,"deps":0,"ok":true},"neg":-5,"none":null}
+depth: 2
+sum of numbers: 7
+stats.files = 12
+stats.nope: not found
+[1, 2  =>  expected , or ] in list
+{"a" 1}  =>  expected : after key a
+tru  =>  unexpected character t
+"open  =>  unterminated string
+[1] x  =>  trailing input at x
+{1: 2}  =>  expected a string key

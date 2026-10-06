@@ -48,3 +48,21 @@ fuzzers) and was fixed; the fresh run-through at the end hits none of them.
 - Caret alignment counts runes, not display width (wide CJK/emoji glyphs misalign the caret).
 - Evaluation order of function arguments is left to right (OCaml is right to left).
 - Nested `match` without parentheses is greedy, as in OCaml.
+
+## Phase 4 re-review (stretch features)
+
+The stretch features were attacked the same way before being accepted.
+
+| # | Sev | Issue | Fix |
+|---|-----|-------|-----|
+| S01 | Medium | The note on a missing record field said “a closed record cannot gain fields” even when the *value* (not the annotation) was the record lacking the field, sending the user in the wrong direction. | `UnifyErr.LacksLeft` records which side lacks the field; the note now says either “the expected record type is closed …” or “the record given here has no field `b`”. |
+| S02 | Medium | `type account = { … }` was rejected (“aliases are not supported”) — a glaring gap once records existed. | Type aliases (with parameters, expanded at use, recursion rejected) implemented. |
+| S03 | Low | Record patterns could not say `{ name; age; .. }` although the type syntax uses `..`. | `..` accepted (and documented as the default: record patterns always ignore extra fields). |
+| S04 | Low | `explain` snippets lost the parentheses the parser drops from spans (`f (f x`). | Snippets re-balance parentheses (outside string literals). |
+| S05 | Low | The tracer called every non-generic variable “lambda-bound or weak”, which was wrong for built-ins like `+`. | Only variables still being solved get that remark. |
+
+Hostile record probes that *passed*: two open rows unifying through `if` (`pick {x=1} {y=2}` is rejected, `both a b` with two different
+fields is accepted and typed `{x; y; ..}`), occurs-check through rows (`fun r -> r.x r`), type-changing updates (rejected),
+duplicate fields in literals/patterns/types, record equality independent of field order, nested update/selection, row-polymorphic
+functions generalised and instantiated at different shapes. The type-directed fuzzer was extended with records (literals, selection,
+destructuring patterns); 4 000 more programs all type-check at their intended type and evaluate without internal errors.

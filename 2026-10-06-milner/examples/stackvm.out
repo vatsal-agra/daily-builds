@@ -1,0 +1,4 @@
+push 2; push 3; apply +; push 10; push 8; push 2; apply /; apply -; neg; apply *
+machine: -30   direct: -30
+bad program -> stack underflow
+bad program -> stack should hold exactly one value at the end

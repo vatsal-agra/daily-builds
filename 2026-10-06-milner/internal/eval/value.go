@@ -51,6 +51,28 @@ type ConFn struct {
 	Idx  int
 }
 
+// Record is a record value; labels are sorted so field lookup is a binary search.
+type Record struct {
+	Labels []string
+	Vals   []Value
+}
+
+func (r *Record) index(label string) int {
+	lo, hi := 0, len(r.Labels)
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if r.Labels[mid] < label {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo < len(r.Labels) && r.Labels[lo] == label {
+		return lo
+	}
+	return -1
+}
+
 // Ref is a mutable cell.
 type Ref struct{ V Value }
 
@@ -154,6 +176,16 @@ func show(b *strings.Builder, v Value, prec int, depth int) {
 		if prec > 0 {
 			b.WriteByte(')')
 		}
+	case *Record:
+		b.WriteString("{ ")
+		for i, l := range x.Labels {
+			if i > 0 {
+				b.WriteString("; ")
+			}
+			b.WriteString(l + " = ")
+			show(b, x.Vals[i], 0, depth+1)
+		}
+		b.WriteString(" }")
 	case *Ref:
 		b.WriteString("{contents = ")
 		show(b, x.V, 0, depth+1)

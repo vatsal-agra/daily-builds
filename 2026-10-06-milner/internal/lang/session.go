@@ -18,8 +18,9 @@ var preludeSrc string
 
 // Session is a stateful interpreter: a typing environment plus a value environment.
 type Session struct {
-	Env    *types.Env
-	Interp *eval.Interp
+	Env        *types.Env
+	Interp     *eval.Interp
+	PreludeEnv *types.Env // the environment right after the prelude (for listing user bindings)
 }
 
 // DeclOut describes the outcome of one declaration.
@@ -45,6 +46,7 @@ func NewSession(out io.Writer) (*Session, error) {
 		return nil, fmt.Errorf("prelude is broken: %v", err)
 	}
 	_ = outs
+	s.PreludeEnv = s.Env
 	return s, nil
 }
 
@@ -149,6 +151,9 @@ func typeSummary(ti *types.TypeInfo) string {
 		}
 		params = "(" + strings.Join(ps, ", ") + ") "
 	}
+	if ti.IsAlias {
+		return fmt.Sprintf("%s%s = %s", params, ti.Head.Name, types.TypeString(ti.AliasBody))
+	}
 	cons := make([]string, len(ti.Cons))
 	for i, c := range ti.Cons {
 		cons[i] = c.Name
@@ -157,4 +162,36 @@ func typeSummary(ti *types.TypeInfo) string {
 		}
 	}
 	return fmt.Sprintf("%s%s = %s", params, ti.Head.Name, strings.Join(cons, " | "))
+}
+
+// Explain type-checks src (without evaluating) and returns a step-by-step inference trace: every
+// sub-expression visited, every polymorphic instantiation, every unification with the variables it
+// bound, and every generalisation. The error, if any, is the type error that stopped inference
+// (the trace up to that point is still returned).
+func (s *Session) Explain(src string) ([]string, error) {
+	decls, d := syntax.ParseProgram(src)
+	if d != nil {
+		return nil, d
+	}
+	env := s.Env
+	var lines []string
+	for n, decl := range decls {
+		tr := types.NewTracer(src)
+		if len(decls) > 1 {
+			lines = append(lines, fmt.Sprintf("── declaration %d ──", n+1))
+		}
+		res, d := types.InferDeclTrace(env, decl, tr)
+		lines = append(lines, tr.Lines...)
+		if d != nil {
+			return lines, d
+		}
+		env = res.Env
+		out := &DeclOut{Decl: decl, Bound: res.Bound, NewTypes: res.NewTypes, ExprType: res.Expr, IsExpr: res.Expr != nil}
+		for _, l := range strings.Split(strings.TrimSpace(out.Format()), "\n") {
+			if l != "" {
+				lines = append(lines, "result: "+strings.TrimPrefix(l, "- : "))
+			}
+		}
+	}
+	return lines, nil
 }

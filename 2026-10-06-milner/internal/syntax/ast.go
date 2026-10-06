@@ -211,6 +211,7 @@ type TypeDecl struct {
 	Name   string
 	Params []string
 	Cons   []*ConDecl
+	Alias  TyExpr // non-nil for a type alias: `type t = int * string`
 	Sp     Span
 }
 
@@ -248,3 +249,67 @@ type PAnnot struct {
 }
 
 func (p *PAnnot) PSpan() Span { return p.Sp }
+
+// ---------- records (row-polymorphic) ----------
+
+// TyField is `name : type` inside a record type.
+type TyField struct {
+	Name string
+	Ty   TyExpr
+}
+
+// TyRecord is `{ x : int; y : string }` (closed) or `{ x : int; .. }` (open: any record with at least x).
+type TyRecord struct {
+	Fields []TyField
+	Open   bool
+	Sp     Span
+}
+
+func (t *TyRecord) TySpan() Span { return t.Sp }
+
+// FieldInit is `name = expr` (or the pun `name`) in a record expression.
+type FieldInit struct {
+	Name string
+	Expr Expr
+	Sp   Span
+}
+
+type (
+	// ERecord is `{ a = 1; b = 2 }`.
+	ERecord struct {
+		Fields []*FieldInit
+		Sp     Span
+	}
+	// EField is `e.name`.
+	EField struct {
+		E      Expr
+		Name   string
+		NameSp Span
+		Sp     Span
+	}
+	// ERecordWith is `{ base with a = 1 }`.
+	ERecordWith struct {
+		Base   Expr
+		Fields []*FieldInit
+		Sp     Span
+	}
+)
+
+func (e *ERecord) ESpan() Span     { return e.Sp }
+func (e *EField) ESpan() Span      { return e.Sp }
+func (e *ERecordWith) ESpan() Span { return e.Sp }
+
+// FieldPat is `name = pattern` (or the pun `name`) in a record pattern.
+type FieldPat struct {
+	Name string
+	Pat  Pat
+	Sp   Span
+}
+
+// PRecord is `{ a = p; b }`: matches any record that has at least these fields.
+type PRecord struct {
+	Fields []*FieldPat
+	Sp     Span
+}
+
+func (p *PRecord) PSpan() Span { return p.Sp }

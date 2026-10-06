@@ -1,0 +1,16 @@
+fun x -> x
+    : 'a -> 'a
+fun f -> fun x -> f (f x)
+    : ('a -> 'a) -> 'a -> 'a
+fun f -> fun g -> fun x -> f (g x)
+    : ('a -> 'b) -> ('c -> 'a) -> 'c -> 'b
+if true then 1 else 2
+    : int
+let id = fun x -> x in if id true then id 1 else 0
+    : int
+fun x -> x x
+    : error: infinite type
+if 1 then 2 else 3
+    : error: type mismatch
+(fun x -> x + y)
+    : error: unbound variable y

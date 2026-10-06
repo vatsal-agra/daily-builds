@@ -3,7 +3,7 @@
 An ML-family language with Hindley–Milner type inference, algebraic data types and exhaustiveness
 checking, built from scratch in Go (standard library only).
 
-**Status: Phase 3 (adversarial review) complete — 20 issues found and fixed, see [REVIEW.md](REVIEW.md).** The four required features work end-to-end:
+**Status: Phase 4 (stretch + polish) complete** — all 8 planned features, 25 review issues found and fixed ([REVIEW.md](REVIEW.md)). The four required features work end-to-end:
 
 | # | Feature | Where |
 |---|---------|-------|
@@ -28,3 +28,14 @@ internal error) and an exhaustiveness differential test against brute force (1 5
 of `go test ./...`. Found and fixed: a checker crash on reused annotation variables, three fatal Go stack overflows
 (cyclic printing, cyclic `=`, deep recursion), REPL input splitting inside strings, and several diagnostics that pointed
 at the wrong place.
+
+## Stretch features (Phase 4)
+| # | Feature | Try it |
+|---|---------|--------|
+| 5 | Row-polymorphic records: literals, `r.x`, `{ r with x = 1 }`, record patterns, record types and type aliases | `milner type 'fun r -> r.x + r.y'` → `{ x : int; y : int; .. } -> int` |
+| 6 | `explain`: step-by-step inference trace (instantiate / unify with the variables it binds / generalise) | `milner explain 'let id x = x in (id 1, id "a")'` |
+| 7 | Typed holes: `_` reports the type the context requires and which in-scope bindings fit | `milner check - <<< 'let f (n : int) = n + _'` |
+| 8 | Gallery of 8 programs with golden output (`examples/`): n-queens, symbolic differentiation, BST, stack-VM compiler, JSON parser, HM type inference *written in Milner*, bank/queue with refs, records | `go test ./cmd/milner` |
+
+Polish: coloured diagnostics on a TTY (`NO_COLOR` honoured), REPL commands (`:type`, `:explain`, `:env`, `:help`, `:quit`),
+`--deny-warnings`, `--fuel`, BOM/CRLF-safe input, precise errors for empty/invalid input.

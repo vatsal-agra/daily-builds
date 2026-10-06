@@ -30,7 +30,7 @@ func (p *parser) declBoundary(i int) bool {
 			return false
 		}
 	case SYM:
-		if t.Text != "(" && t.Text != "[" && t.Text != "!" {
+		if t.Text != "(" && t.Text != "[" && t.Text != "!" && t.Text != "{" {
 			return false
 		}
 	default:
@@ -230,7 +230,9 @@ func (p *parser) parseTypeDecl() *TypeDecl {
 		p.next()
 	}
 	if p.peek().Kind != UIDENT {
-		p.fail("type declarations must list constructors (like `A | B of int`); aliases are not supported")
+		td.Alias = p.parseType()
+		td.Sp = Join(start, p.prevSpan())
+		return td
 	}
 	for {
 		ct := p.next()
@@ -294,6 +296,30 @@ func (p *parser) parseTyApp() TyExpr {
 	case tok.Kind == IDENT:
 		p.next()
 		t = &TyCon{Name: tok.Text, Sp: tok.Span}
+	case p.isSym("{"):
+		p.next()
+		rt := &TyRecord{}
+		for !p.isSym("}") {
+			if p.isSym("..") {
+				p.next()
+				rt.Open = true
+				break
+			}
+			nt := p.next()
+			if nt.Kind != IDENT {
+				panic(Errorf("syntax", nt.Span, "expected a field name in the record type, found %s", p.describe(nt)))
+			}
+			p.expectSym(":", "after the field name")
+			rt.Fields = append(rt.Fields, TyField{Name: nt.Text, Ty: p.parseType()})
+			if p.isSym(";") {
+				p.next()
+				continue
+			}
+			break
+		}
+		end := p.expectSym("}", "to close the record type")
+		rt.Sp = Join(tok.Span, end.Span)
+		t = rt
 	case p.isSym("("):
 		p.next()
 		inner := p.parseType()
@@ -333,7 +359,7 @@ func (p *parser) startsPatAtom() bool {
 	case KW:
 		return t.Text == "true" || t.Text == "false"
 	case SYM:
-		return t.Text == "(" || t.Text == "[" || t.Text == "_"
+		return t.Text == "(" || t.Text == "[" || t.Text == "_" || t.Text == "{"
 	}
 	return false
 }
@@ -396,7 +422,7 @@ func (p *parser) startsExpr() bool {
 		}
 	case SYM:
 		switch t.Text {
-		case "(", "[", "!", "-", "_":
+		case "(", "[", "!", "-", "_", "{":
 			return true
 		}
 	}
@@ -644,22 +670,92 @@ func (p *parser) startsAtom() bool {
 	case KW:
 		return t.Text == "true" || t.Text == "false" || t.Text == "begin"
 	case SYM:
-		return t.Text == "(" || t.Text == "[" || t.Text == "!" || t.Text == "_"
+		return t.Text == "(" || t.Text == "[" || t.Text == "!" || t.Text == "_" || t.Text == "{"
 	}
 	return false
 }
 
+// parsePostfix parses an atom followed by any number of `.field` selections.
+func (p *parser) parsePostfix() Expr {
+	e := p.parseAtom()
+	for p.isSym(".") {
+		p.next()
+		nt := p.next()
+		if nt.Kind != IDENT {
+			panic(Errorf("syntax", nt.Span, "expected a field name after `.`, found %s", p.describe(nt)))
+		}
+		e = &EField{E: e, Name: nt.Text, NameSp: nt.Span, Sp: Join(e.ESpan(), nt.Span)}
+	}
+	return e
+}
+
 func (p *parser) parseApp() Expr {
-	head := p.parseAtom()
+	head := p.parsePostfix()
 	if c, ok := head.(*ECon); ok && c.Arg == nil && p.startsAtom() {
-		arg := p.parseAtom()
+		arg := p.parsePostfix()
 		head = &ECon{Name: c.Name, Arg: arg, Sp: Join(c.Sp, arg.ESpan())}
 	}
 	for p.startsAtom() {
-		arg := p.parseAtom()
+		arg := p.parsePostfix()
 		head = &EApp{Fn: head, Arg: arg, Sp: Join(head.ESpan(), arg.ESpan())}
 	}
 	return head
+}
+
+func (p *parser) parseFieldInits(ctx string) []*FieldInit {
+	var fields []*FieldInit
+	for !p.isSym("}") {
+		nt := p.next()
+		if nt.Kind != IDENT {
+			panic(Errorf("syntax", nt.Span, "expected a field name %s, found %s", ctx, p.describe(nt)))
+		}
+		fi := &FieldInit{Name: nt.Text, Sp: nt.Span}
+		if p.isSym("=") {
+			p.next()
+			fi.Expr = p.parseNoSeq()
+			fi.Sp = Join(nt.Span, fi.Expr.ESpan())
+		} else {
+			fi.Expr = &EVar{Name: nt.Text, Sp: nt.Span} // pun: { x } means { x = x }
+		}
+		fields = append(fields, fi)
+		if p.isSym(";") {
+			p.next()
+			continue
+		}
+		break
+	}
+	return fields
+}
+
+func (p *parser) parseRecordExpr(open Token) Expr {
+	// { base with f = e; ... }  — detect `IDENT with` / a general expression followed by `with`
+	if p.peek().Kind == IDENT && p.peekAt(1).Kind == KW && p.peekAt(1).Text == "with" {
+		bt := p.next()
+		p.next() // with
+		fields := p.parseFieldInits("in the record update")
+		if len(fields) == 0 {
+			p.fail("a record update needs at least one `field = value`")
+		}
+		end := p.expectSym("}", "to close the record update")
+		return &ERecordWith{Base: &EVar{Name: bt.Text, Sp: bt.Span}, Fields: fields, Sp: Join(open.Span, end.Span)}
+	}
+	if p.isSym("}") {
+		p.fail("a record needs at least one field (use `()` for the empty value)")
+	}
+	if !(p.peek().Kind == IDENT && (p.peekAt(1).Kind == SYM && (p.peekAt(1).Text == "=" || p.peekAt(1).Text == ";" || p.peekAt(1).Text == "}"))) {
+		// general base expression: { (f x) with ... }
+		base := p.parseNoSeq()
+		p.expectKw("with", "after the record being updated")
+		fields := p.parseFieldInits("in the record update")
+		if len(fields) == 0 {
+			p.fail("a record update needs at least one `field = value`")
+		}
+		end := p.expectSym("}", "to close the record update")
+		return &ERecordWith{Base: base, Fields: fields, Sp: Join(open.Span, end.Span)}
+	}
+	fields := p.parseFieldInits("in the record")
+	end := p.expectSym("}", "to close the record")
+	return &ERecord{Fields: fields, Sp: Join(open.Span, end.Span)}
 }
 
 var operatorNames = map[string]bool{
@@ -699,6 +795,8 @@ func (p *parser) parseAtom() Expr {
 			return &EApp{Fn: &EVar{Name: "!", Sp: t.Span}, Arg: e, Sp: Join(t.Span, e.ESpan())}
 		case "(":
 			return p.parseParen(t)
+		case "{":
+			return p.parseRecordExpr(t)
 		case "[":
 			var elems []Expr
 			if !p.isSym("]") {
@@ -863,6 +961,38 @@ func (p *parser) parsePatAtom() Pat {
 			}
 			p.expectSym(")", "to close the pattern")
 			return inner
+		case "{":
+			rp := &PRecord{}
+			for !p.isSym("}") {
+				if p.isSym("..") && len(rp.Fields) > 0 { // `..` documents that other fields are ignored (the default)
+					p.next()
+					break
+				}
+				nt := p.next()
+				if nt.Kind != IDENT {
+					panic(Errorf("syntax", nt.Span, "expected a field name in the record pattern, found %s", p.describe(nt)))
+				}
+				fp := &FieldPat{Name: nt.Text, Sp: nt.Span}
+				if p.isSym("=") {
+					p.next()
+					fp.Pat = p.parsePat()
+					fp.Sp = Join(nt.Span, fp.Pat.PSpan())
+				} else {
+					fp.Pat = &PVar{Name: nt.Text, Sp: nt.Span}
+				}
+				rp.Fields = append(rp.Fields, fp)
+				if p.isSym(";") {
+					p.next()
+					continue
+				}
+				break
+			}
+			if len(rp.Fields) == 0 {
+				p.fail("a record pattern needs at least one field")
+			}
+			end := p.expectSym("}", "to close the record pattern")
+			rp.Sp = Join(t.Span, end.Span)
+			return rp
 		case "[":
 			var elems []Pat
 			if !p.isSym("]") {

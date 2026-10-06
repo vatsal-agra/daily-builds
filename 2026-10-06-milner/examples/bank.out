@@ -1,0 +1,5 @@
+counter: [11; 12; 13]
+balance 70
+insufficient funds for ada
+history: open:100, withdraw:30
+queue: first=1 rest=[2; 3; 4]

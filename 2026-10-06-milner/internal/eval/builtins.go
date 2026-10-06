@@ -115,6 +115,15 @@ func (m *Machine) cmp(a, b Value, depth int) int {
 				return 0
 			}
 			a, b = x.Arg, y.Arg
+		case *Record:
+			y := b.(*Record)
+			n := len(x.Vals)
+			for i := 0; i < n-1; i++ {
+				if c := m.cmp(x.Vals[i], y.Vals[i], depth+1); c != 0 {
+					return c
+				}
+			}
+			a, b = x.Vals[n-1], y.Vals[n-1]
 		case *Ref:
 			a, b = x.V, b.(*Ref).V
 		default:

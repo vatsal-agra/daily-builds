@@ -1,0 +1,6 @@
+sorted:   [20; 30; 40; 50; 60; 65; 70; 80]
+height:   4
+mem 60/61: true/false
+after removing 20 and 50: [30; 40; 60; 65; 70; 80]
+words:    [apple; banana; cherry; fig; pear]
+sorted input of 64 -> height 64 (no rebalancing)

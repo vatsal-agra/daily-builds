@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -120,5 +122,70 @@ func TestCLIReplSemicolonsInStringsAndComments(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("repl output lacks %q:\n%s", want, out)
 		}
+	}
+}
+
+// Every program in examples/ runs warning-free and prints exactly its golden .out file.
+func TestExamplesGolden(t *testing.T) {
+	files, err := filepath.Glob("../../examples/*.ml")
+	if err != nil || len(files) < 8 {
+		t.Fatalf("expected the example gallery, found %d files (%v)", len(files), err)
+	}
+	for _, f := range files {
+		want, err := os.ReadFile(strings.TrimSuffix(f, ".ml") + ".out")
+		if err != nil {
+			t.Errorf("%s: missing golden file: %v", f, err)
+			continue
+		}
+		code, out, errs := runCLI(t, "", "run", "--deny-warnings", f)
+		if code != 0 {
+			t.Errorf("%s: exit %d\n%s", f, code, errs)
+			continue
+		}
+		if out != string(want) {
+			t.Errorf("%s: output differs from golden file\n--- got\n%s\n--- want\n%s", f, out, want)
+		}
+	}
+}
+
+func TestCLIReplCommands(t *testing.T) {
+	in := ":env\nlet sq x = x * x;;\n:env\n:type map sq\n:explain sq 3\n:type 1 +\n:bogus\n:help\n:quit\nlet unreachable = 1;;\n"
+	code, out, _ := runCLI(t, in, "repl")
+	for _, want := range []string{"(nothing defined yet)", "val sq : int -> int", "int list -> int list", "unify", "error[syntax]", "unknown command :bogus", ":explain EXPR"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("repl output lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "unreachable") || code != 0 {
+		t.Errorf(":quit must stop the session (code %d):\n%s", code, out)
+	}
+}
+
+func TestCLIExplain(t *testing.T) {
+	code, out, _ := runCLI(t, "", "explain", "fun x -> x")
+	if code != 0 || !strings.Contains(out, "result: 'a -> 'a") {
+		t.Errorf("code=%d out=%q", code, out)
+	}
+	code, out, errs := runCLI(t, "", "explain", "1 + true")
+	if code != 1 || !strings.Contains(out, "✗ fails") || !strings.Contains(errs, "error[type]") {
+		t.Errorf("code=%d out=%q err=%q", code, out, errs)
+	}
+	code, _, _ = runCLI(t, "let id x = x\nlet n = id 1", "explain", "-f", "-")
+	if code != 0 {
+		t.Errorf("explain -f - failed: %d", code)
+	}
+}
+
+func TestCLIEmptyAndInvalidInput(t *testing.T) {
+	for _, src := range []string{"", "   \n", "(* just a comment *)", ";;"} {
+		if code, out, errs := runCLI(t, src, "run", "-"); code != 0 || out != "" || errs != "" {
+			t.Errorf("%q: code=%d out=%q err=%q", src, code, out, errs)
+		}
+	}
+	if code, _, errs := runCLI(t, "", "type", ""); code != 1 || !strings.Contains(errs, "expected an expression") {
+		t.Errorf("code=%d err=%q", code, errs)
+	}
+	if code, _, errs := runCLI(t, "\x00\x01", "run", "-"); code != 1 || !strings.Contains(errs, "unexpected character") {
+		t.Errorf("code=%d err=%q", code, errs)
 	}
 }

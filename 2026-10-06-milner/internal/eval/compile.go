@@ -2,6 +2,7 @@ package eval
 
 import (
 	"fmt"
+	"sort"
 
 	"milner/internal/syntax"
 	"milner/internal/types"
@@ -46,6 +47,22 @@ type (
 		Idx  int
 		Arg  node
 	}
+	// nRecord evaluates Exprs (source order) into the slots Pos (sorted-label order).
+	nRecord struct {
+		Labels []string // sorted
+		Pos    []int
+		Exprs  []node
+	}
+	nField struct {
+		E    node
+		Name string
+		Sp   syntax.Span
+	}
+	nRecWith struct {
+		Base  node
+		Names []string
+		Exprs []node
+	}
 )
 
 type cFun struct {
@@ -78,6 +95,7 @@ type cPat struct {
 	Idx   int
 	Subs  []cPat // tuple elems, or the single constructor argument
 	Slots []string
+	Names []string // record pattern field names (Subs are parallel)
 }
 
 type pk int
@@ -93,6 +111,7 @@ const (
 	pkCon
 	pkOr
 	pkAs
+	pkRecord
 )
 
 // NSlots returns how many variables the pattern binds.
@@ -176,6 +195,13 @@ func (c *Compiler) pat(p syntax.Pat, names *[]string) cPat {
 		return cPat{Kind: pkAs, Slot: slotOf(names, x.Name), Subs: []cPat{inner}}
 	case *syntax.PAnnot:
 		return c.pat(x.P, names)
+	case *syntax.PRecord:
+		cp := cPat{Kind: pkRecord}
+		for _, f := range x.Fields {
+			cp.Names = append(cp.Names, f.Name)
+			cp.Subs = append(cp.Subs, c.pat(f.Pat, names))
+		}
+		return cp
 	}
 	panic(fmt.Sprintf("compile: unhandled pattern %T", p))
 }
@@ -268,6 +294,30 @@ func (c *Compiler) expr(e syntax.Expr) node {
 		return &nOr{L: c.expr(x.L), R: c.expr(x.R)}
 	case *syntax.EAnnot:
 		return c.expr(x.E)
+	case *syntax.ERecord:
+		order := make([]int, len(x.Fields))
+		for i := range order {
+			order[i] = i
+		}
+		sort.Slice(order, func(a, b int) bool { return x.Fields[order[a]].Name < x.Fields[order[b]].Name })
+		r := &nRecord{Pos: make([]int, len(x.Fields))}
+		for rank, src := range order {
+			r.Labels = append(r.Labels, x.Fields[src].Name)
+			r.Pos[src] = rank
+		}
+		for _, f := range x.Fields {
+			r.Exprs = append(r.Exprs, c.expr(f.Expr))
+		}
+		return r
+	case *syntax.EField:
+		return &nField{E: c.expr(x.E), Name: x.Name, Sp: x.NameSp}
+	case *syntax.ERecordWith:
+		rw := &nRecWith{Base: c.expr(x.Base)}
+		for _, f := range x.Fields {
+			rw.Names = append(rw.Names, f.Name)
+			rw.Exprs = append(rw.Exprs, c.expr(f.Expr))
+		}
+		return rw
 	}
 	panic(fmt.Sprintf("compile: unhandled expression %T", e))
 }
