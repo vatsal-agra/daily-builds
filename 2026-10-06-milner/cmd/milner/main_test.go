@@ -93,3 +93,32 @@ func TestCLIUsage(t *testing.T) {
 		t.Errorf("code=%d", code)
 	}
 }
+
+func TestCLIDenyWarnings(t *testing.T) {
+	src := "type t = A | B\nlet f x = match x with A -> 1\n"
+	if code, _, _ := runCLI(t, src, "check", "-"); code != 0 {
+		t.Errorf("warnings alone must not fail: %d", code)
+	}
+	code, _, errs := runCLI(t, src, "check", "--deny-warnings", "-")
+	if code != 1 || !strings.Contains(errs, "treated as errors") {
+		t.Errorf("code=%d err=%q", code, errs)
+	}
+}
+
+func TestCLIBOMAndCRLF(t *testing.T) {
+	src := "\ufefflet x = 1\r\nlet y = x + 1\r\nlet () = print_int y\r\n"
+	code, out, errs := runCLI(t, src, "run", "-")
+	if code != 0 || out != "2" {
+		t.Errorf("code=%d out=%q err=%q", code, out, errs)
+	}
+}
+
+func TestCLIReplSemicolonsInStringsAndComments(t *testing.T) {
+	in := "let s = \"a;;b\";;\n(* ;; *) let t = 1;;\nlet u = \"multi\nline\";;\ns;;\n"
+	_, out, _ := runCLI(t, in, "repl")
+	for _, want := range []string{`val s : string = "a;;b"`, "val t : int = 1", `val u : string = "multi\nline"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("repl output lacks %q:\n%s", want, out)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -39,63 +40,87 @@ func unlist(v Value) []Value {
 }
 
 // compare is the polymorphic structural comparison behind `=`, `<`, `compare`, ...
+// It iterates along list spines and last components, and gives up (with an error) on structures that
+// are nested too deeply or cyclic instead of overflowing the Go stack or looping forever.
 func (m *Machine) compare(a, b Value) int {
-	switch x := a.(type) {
-	case int64:
-		y := b.(int64)
-		switch {
-		case x < y:
-			return -1
-		case x > y:
-			return 1
-		}
-		return 0
-	case string:
-		y := b.(string)
-		switch {
-		case x < y:
-			return -1
-		case x > y:
-			return 1
-		}
-		return 0
-	case bool:
-		y := b.(bool)
-		switch {
-		case x == y:
-			return 0
-		case !x:
-			return -1
-		}
+	m.cmpOps = 0
+	return m.cmp(a, b, 0)
+}
+
+const (
+	maxCmpDepth = 100000
+	maxCmpOps   = 200_000_000
+)
+
+func sign(c int) int {
+	switch {
+	case c < 0:
+		return -1
+	case c > 0:
 		return 1
-	case Unit:
-		return 0
-	case *Tuple:
-		y := b.(*Tuple)
-		for i := range x.Elems {
-			if c := m.compare(x.Elems[i], y.Elems[i]); c != 0 {
-				return c
-			}
+	}
+	return 0
+}
+
+func (m *Machine) cmp(a, b Value, depth int) int {
+	if depth > maxCmpDepth {
+		m.fail("compare: structure is nested too deeply (or cyclic)")
+	}
+	for {
+		m.cmpOps++
+		if m.cmpOps > maxCmpOps {
+			m.fail("compare: gave up after too many steps (is a value cyclic?)")
 		}
-		return 0
-	case *Con:
-		y := b.(*Con)
-		if x.Idx != y.Idx {
-			if x.Idx < y.Idx {
+		switch x := a.(type) {
+		case int64:
+			y := b.(int64)
+			switch {
+			case x < y:
+				return -1
+			case x > y:
+				return 1
+			}
+			return 0
+		case string:
+			return sign(strings.Compare(x, b.(string)))
+		case bool:
+			y := b.(bool)
+			switch {
+			case x == y:
+				return 0
+			case !x:
 				return -1
 			}
 			return 1
-		}
-		if x.Arg == nil {
+		case Unit:
 			return 0
+		case *Tuple:
+			y := b.(*Tuple)
+			n := len(x.Elems)
+			for i := 0; i < n-1; i++ {
+				if c := m.cmp(x.Elems[i], y.Elems[i], depth+1); c != 0 {
+					return c
+				}
+			}
+			a, b = x.Elems[n-1], y.Elems[n-1]
+		case *Con:
+			y := b.(*Con)
+			if x.Idx != y.Idx {
+				if x.Idx < y.Idx {
+					return -1
+				}
+				return 1
+			}
+			if x.Arg == nil {
+				return 0
+			}
+			a, b = x.Arg, y.Arg
+		case *Ref:
+			a, b = x.V, b.(*Ref).V
+		default:
+			m.fail("compare: cannot compare functional values")
 		}
-		// iterate along list spines to avoid deep recursion
-		return m.compare(x.Arg, y.Arg)
-	case *Ref:
-		return m.compare(x.V, b.(*Ref).V)
 	}
-	m.fail("compare: cannot compare functional values")
-	return 0
 }
 
 func intOfString(s string) (int64, bool) {

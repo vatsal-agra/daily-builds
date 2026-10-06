@@ -10,16 +10,18 @@ import (
 // Machine executes compiled nodes.
 type Machine struct {
 	Out      io.Writer
-	MaxDepth int   // maximum non-tail recursion depth (default 100000)
+	MaxDepth int   // maximum non-tail recursion depth (default 400000)
 	MaxSteps int64 // 0 = unlimited
 	depth    int
 	steps    int64
+	cmpOps   int
+	scratch  []Value // reusable pattern-slot buffer (slots are copied into the environment right after a match)
 	loc      syntax.Span
 }
 
 // NewMachine returns a machine writing program output to out.
 func NewMachine(out io.Writer) *Machine {
-	return &Machine{Out: out, MaxDepth: 100000}
+	return &Machine{Out: out, MaxDepth: 400000}
 }
 
 func (m *Machine) fail(format string, a ...any) {
@@ -104,97 +106,15 @@ func (m *Machine) loop(n node, env *Env) Value {
 				n = x.E
 			}
 		case *nLet:
-			if x.Rec {
-				cells := make([]*Env, len(x.Binds))
-				for i := range x.Binds {
-					env = &Env{next: env}
-					cells[i] = env
-				}
-				for i, b := range x.Binds {
-					cells[i].val = m.eval(b.E, env)
-				}
-			} else {
-				vals := make([]Value, len(x.Binds))
-				for i, b := range x.Binds {
-					vals[i] = m.eval(b.E, env)
-				}
-				for i, b := range x.Binds {
-					env = m.bindIrrefutable(&b.Pat, vals[i], env, x)
-				}
-			}
-			n = x.Body
+			n, env = m.doLet(x, env)
 		case *nMatch:
-			v := m.eval(x.Scrut, env)
-			matched := false
-			for i := range x.Arms {
-				arm := &x.Arms[i]
-				var slots []Value
-				if k := arm.Pat.nslots(); k > 0 {
-					slots = make([]Value, k)
-				}
-				if !matchPat(&arm.Pat, v, slots) {
-					continue
-				}
-				ne := env
-				for _, s := range slots {
-					ne = &Env{val: s, next: ne}
-				}
-				if arm.Guard != nil && !m.eval(arm.Guard, ne).(bool) {
-					continue
-				}
-				env, n = ne, arm.Body
-				matched = true
-				break
-			}
-			if !matched {
-				m.loc = x.Sp
-				m.fail("Match_failure: no pattern matched the value %s", Show(v))
-			}
+			n, env = m.doMatch(x, env)
 		case *nApp:
-			f := m.eval(x.Fn, env)
-			args := make([]Value, len(x.Args))
-			for i, a := range x.Args {
-				args[i] = m.eval(a, env)
-			}
-			m.loc = x.Sp
-		apply:
-			for {
-				switch fv := f.(type) {
-				case *Closure:
-					k := len(fv.Fn.Params)
-					if len(args) < k {
-						return &PAP{Fn: fv, Args: args}
-					}
-					newEnv := m.bindParams(fv, args[:k])
-					if len(args) == k {
-						env, n = newEnv, fv.Fn.Body
-						break apply
-					}
-					f = m.eval(fv.Fn.Body, newEnv)
-					args = args[k:]
-				case *PAP:
-					all := make([]Value, 0, len(fv.Args)+len(args))
-					all = append(all, fv.Args...)
-					all = append(all, args...)
-					f, args = fv.Fn, all
-				case *Builtin:
-					if len(args) < fv.Arity {
-						return &PAP{Fn: fv, Args: args}
-					}
-					r := fv.Fn(m, args[:fv.Arity])
-					if len(args) == fv.Arity {
-						return r
-					}
-					f, args = r, args[fv.Arity:]
-				case *ConFn:
-					r := &Con{Name: fv.Name, Idx: fv.Idx, Arg: args[0]}
-					if len(args) == 1 {
-						return r
-					}
-					f, args = r, args[1:]
-				default:
-					m.fail("internal error: applying a non-function %s", Show(f))
-				}
+			var v Value
+			var done bool
+			n, env, v, done = m.doApp(x, env)
+			if done {
+				return v
 			}
 		default:
 			panic(fmt.Sprintf("eval: unknown node %T", n))
@@ -212,10 +132,7 @@ func (m *Machine) bindParams(c *Closure, args []Value) *Env {
 	}
 	for i := range c.Fn.Params {
 		p := &c.Fn.Params[i]
-		var slots []Value
-		if k := p.nslots(); k > 0 {
-			slots = make([]Value, k)
-		}
+		slots := m.slotBuf(p.nslots())
 		if !matchPat(p, args[i], slots) {
 			m.loc = c.Fn.Sp
 			m.fail("Match_failure: function parameter pattern did not match the value %s", Show(args[i]))
@@ -243,6 +160,9 @@ func (m *Machine) bindIrrefutable(p *cPat, v Value, env *Env, _ *nLet) *Env {
 	}
 	return env
 }
+
+// Steps returns the number of evaluation steps taken by the last top-level run.
+func (m *Machine) Steps() int64 { return m.steps }
 
 // Apply calls a function value with arguments (used by the top level and builtins).
 func (m *Machine) Apply(f Value, args ...Value) Value {
@@ -302,4 +222,108 @@ func matchPat(p *cPat, v Value, slots []Value) bool {
 		return true
 	}
 	panic("matchPat: bad pattern kind")
+}
+
+func (m *Machine) doLet(x *nLet, env *Env) (node, *Env) {
+	if x.Rec {
+		cells := make([]*Env, len(x.Binds))
+		for i := range x.Binds {
+			env = &Env{next: env}
+			cells[i] = env
+		}
+		for i, b := range x.Binds {
+			cells[i].val = m.eval(b.E, env)
+		}
+	} else {
+		vals := make([]Value, len(x.Binds))
+		for i, b := range x.Binds {
+			vals[i] = m.eval(b.E, env)
+		}
+		for i := range x.Binds {
+			env = m.bindIrrefutable(&x.Binds[i].Pat, vals[i], env, x)
+		}
+	}
+	return x.Body, env
+}
+
+// slotBuf returns a scratch slice of k slots. It is only valid until the next call: callers copy the
+// values into the environment immediately after matching and never evaluate in between.
+func (m *Machine) slotBuf(k int) []Value {
+	if k == 0 {
+		return nil
+	}
+	if cap(m.scratch) < k {
+		m.scratch = make([]Value, k+8)
+	}
+	return m.scratch[:k]
+}
+
+func (m *Machine) doMatch(x *nMatch, env *Env) (node, *Env) {
+	v := m.eval(x.Scrut, env)
+	for i := range x.Arms {
+		arm := &x.Arms[i]
+		slots := m.slotBuf(arm.Pat.nslots())
+		if !matchPat(&arm.Pat, v, slots) {
+			continue
+		}
+		ne := env
+		for _, s := range slots {
+			ne = &Env{val: s, next: ne}
+		}
+		if arm.Guard != nil && !m.eval(arm.Guard, ne).(bool) {
+			continue
+		}
+		return arm.Body, ne
+	}
+	m.loc = x.Sp
+	m.fail("Match_failure: no pattern matched the value %s", Show(v))
+	return nil, nil
+}
+
+// doApp evaluates a call. For a saturated call of a user closure it returns the closure body and its
+// new environment so the caller's loop continues there (a proper tail call); otherwise done is true.
+func (m *Machine) doApp(x *nApp, env *Env) (n node, ne *Env, result Value, done bool) {
+	f := m.eval(x.Fn, env)
+	args := make([]Value, len(x.Args))
+	for i, a := range x.Args {
+		args[i] = m.eval(a, env)
+	}
+	m.loc = x.Sp
+	for {
+		switch fv := f.(type) {
+		case *Closure:
+			k := len(fv.Fn.Params)
+			if len(args) < k {
+				return nil, nil, &PAP{Fn: fv, Args: args}, true
+			}
+			newEnv := m.bindParams(fv, args[:k])
+			if len(args) == k {
+				return fv.Fn.Body, newEnv, nil, false
+			}
+			f = m.eval(fv.Fn.Body, newEnv)
+			args = args[k:]
+		case *PAP:
+			all := make([]Value, 0, len(fv.Args)+len(args))
+			all = append(all, fv.Args...)
+			all = append(all, args...)
+			f, args = fv.Fn, all
+		case *Builtin:
+			if len(args) < fv.Arity {
+				return nil, nil, &PAP{Fn: fv, Args: args}, true
+			}
+			r := fv.Fn(m, args[:fv.Arity])
+			if len(args) == fv.Arity {
+				return nil, nil, r, true
+			}
+			f, args = r, args[fv.Arity:]
+		case *ConFn:
+			r := &Con{Name: fv.Name, Idx: fv.Idx, Arg: args[0]}
+			if len(args) == 1 {
+				return nil, nil, r, true
+			}
+			f, args = r, args[1:]
+		default:
+			m.fail("internal error: applying a non-function %s", Show(f))
+		}
+	}
 }

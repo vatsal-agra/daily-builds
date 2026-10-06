@@ -80,12 +80,21 @@ const maxListPrint = 100
 // Show renders a value ML-style.
 func Show(v Value) string {
 	var b strings.Builder
-	show(&b, v, 0)
+	show(&b, v, 0, 0)
 	return b.String()
 }
 
+const (
+	maxShowDepth = 64     // nesting beyond this prints "..." (also protects against cyclic values built with refs)
+	maxShowBytes = 200000 // total output cap
+)
+
 // prec: 0 = top level, 1 = constructor argument (needs parens for applications / negatives)
-func show(b *strings.Builder, v Value, prec int) {
+func show(b *strings.Builder, v Value, prec int, depth int) {
+	if depth > maxShowDepth || b.Len() > maxShowBytes {
+		b.WriteString("...")
+		return
+	}
 	switch x := v.(type) {
 	case int64:
 		if x < 0 && prec > 0 {
@@ -105,7 +114,7 @@ func show(b *strings.Builder, v Value, prec int) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			show(b, e, 0)
+			show(b, e, 0, depth+1)
 		}
 		b.WriteByte(')')
 	case *Con:
@@ -126,7 +135,7 @@ func show(b *strings.Builder, v Value, prec int) {
 					break
 				}
 				pair := c.Arg.(*Tuple)
-				show(b, pair.Elems[0], 0)
+				show(b, pair.Elems[0], 0, depth+1)
 				cur = pair.Elems[1]
 				n++
 			}
@@ -141,13 +150,13 @@ func show(b *strings.Builder, v Value, prec int) {
 			b.WriteByte('(')
 		}
 		b.WriteString(x.Name + " ")
-		show(b, x.Arg, 1)
+		show(b, x.Arg, 1, depth+1)
 		if prec > 0 {
 			b.WriteByte(')')
 		}
 	case *Ref:
 		b.WriteString("{contents = ")
-		show(b, x.V, 0)
+		show(b, x.V, 0, depth+1)
 		b.WriteString("}")
 	case *Closure, *PAP, *Builtin, *ConFn:
 		b.WriteString("<fun>")

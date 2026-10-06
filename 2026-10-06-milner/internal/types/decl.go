@@ -70,6 +70,11 @@ func (i *inferer) reportHoles() {
 	d.Msg = fmt.Sprintf("this hole `_` must be filled with a value of type `%s`", pr.String(h.t))
 	d.Label = "hole"
 	var cands []string
+	if _, free := Prune(h.t).(*TVar); free {
+		// nothing constrains the hole yet: every binding would "fit", which is not informative
+		d.Notes = append(d.Notes, "nothing constrains the type of this hole yet; use it in a context that does (or annotate it)")
+		i.fail(d)
+	}
 	for _, n := range h.env.VisibleNames() {
 		if strings.HasPrefix(n, "$") {
 			continue

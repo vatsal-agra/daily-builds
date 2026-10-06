@@ -104,7 +104,11 @@ func (lx *lexer) skipSpace() *Diag {
 			depth := 0
 			for {
 				if lx.off >= len(lx.src) {
-					return Errorf("syntax", Span{start, lx.pos()}, "unterminated comment")
+					d := Errorf("syntax", Span{start, lx.pos()}, "unterminated comment")
+					if strings.HasPrefix(lx.src[start.Off:], "(*)") {
+						d.Notes = append(d.Notes, "`(*)` starts a comment; write `( * )` (with spaces) for the multiplication operator")
+					}
+					return d
 				}
 				switch {
 				case strings.HasPrefix(lx.src[lx.off:], "(*"):
@@ -228,8 +232,6 @@ func (lx *lexer) str(start Pos) (Token, *Diag) {
 		switch r {
 		case '"':
 			return Token{Kind: STRING, Text: b.String(), Span: Span{start, lx.pos()}}, nil
-		case '\n':
-			return Token{}, Errorf("syntax", Span{start, lx.pos()}, "newline inside string literal (use \\n)")
 		case '\\':
 			if lx.off >= len(lx.src) {
 				return Token{}, Errorf("syntax", Span{start, lx.pos()}, "unterminated string literal")

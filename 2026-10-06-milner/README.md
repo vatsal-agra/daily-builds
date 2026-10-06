@@ -3,7 +3,7 @@
 An ML-family language with Hindley–Milner type inference, algebraic data types and exhaustiveness
 checking, built from scratch in Go (standard library only).
 
-**Status: Phase 2 (core build) complete.** The four required features work end-to-end:
+**Status: Phase 3 (adversarial review) complete — 20 issues found and fixed, see [REVIEW.md](REVIEW.md).** The four required features work end-to-end:
 
 | # | Feature | Where |
 |---|---------|-------|
@@ -21,3 +21,10 @@ go test ./...
 ```
 
 See [PLAN.md](PLAN.md) for the plan and remaining stretch features.
+
+## Review highlights (Phase 3)
+Hostile inputs, a type-directed program fuzzer (4 000 programs: checker accepts them all, evaluation never hits an
+internal error) and an exhaustiveness differential test against brute force (1 500 matches, 100 % agreement) are part
+of `go test ./...`. Found and fixed: a checker crash on reused annotation variables, three fatal Go stack overflows
+(cyclic printing, cyclic `=`, deep recursion), REPL input splitting inside strings, and several diagnostics that pointed
+at the wrong place.

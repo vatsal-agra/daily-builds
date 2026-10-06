@@ -26,12 +26,10 @@ let rec fold_left f acc xs =
   | [] -> acc
   | x :: rest -> fold_left f (f acc x) rest
 
-let rec fold_right f xs acc =
-  match xs with
-  | [] -> acc
-  | x :: rest -> f x (fold_right f rest acc)
-
 let rev xs = fold_left (fun acc x -> x :: acc) [] xs
+let rev_append xs ys = fold_left (fun acc x -> x :: acc) ys xs
+(* tail-recursive, so it is safe on very long lists *)
+let fold_right f xs acc = fold_left (fun a x -> f x a) acc (rev xs)
 let rec length_aux n xs = match xs with [] -> n | _ :: t -> length_aux (n + 1) t
 let length xs = length_aux 0 xs
 let map f xs = rev (fold_left (fun acc x -> f x :: acc) [] xs)
@@ -58,25 +56,35 @@ let rec nth_opt xs n =
   match xs with
   | [] -> None
   | x :: t -> if n = 0 then Some x else if n < 0 then None else nth_opt t (n - 1)
-let rec take n xs = match xs with [] -> [] | x :: t -> if n <= 0 then [] else x :: take (n - 1) t
+let take n xs =
+  let rec go n ys acc = match ys with [] -> rev acc | y :: t -> if n <= 0 then rev acc else go (n - 1) t (y :: acc) in
+  go n xs []
 let rec drop n xs = match xs with [] -> [] | _ :: t as all -> if n <= 0 then all else drop (n - 1) t
 let range lo hi =
   let rec go i acc = if i < lo then acc else go (i - 1) (i :: acc) in
   go (hi - 1) []
-let rec replicate n x = if n <= 0 then [] else x :: replicate (n - 1) x
-let rec zip xs ys =
-  match xs, ys with
-  | x :: xt, y :: yt -> (x, y) :: zip xt yt
-  | _ -> []
+let replicate n x =
+  let rec go i acc = if i <= 0 then acc else go (i - 1) (x :: acc) in
+  go n []
+let zip xs ys =
+  let rec go xs ys acc =
+    match xs, ys with
+    | x :: xt, y :: yt -> go xt yt ((x, y) :: acc)
+    | _ -> rev acc
+  in
+  go xs ys []
 let unzip ps = (map fst ps, map snd ps)
 let sum xs = fold_left (fun a b -> a + b) 0 xs
 let product xs = fold_left (fun a b -> a * b) 1 xs
 
-let rec merge cmp xs ys =
-  match xs, ys with
-  | [], _ -> ys
-  | _, [] -> xs
-  | x :: xt, y :: yt -> if cmp x y <= 0 then x :: merge cmp xt ys else y :: merge cmp xs yt
+let merge cmp xs ys =
+  let rec go xs ys acc =
+    match xs, ys with
+    | [], _ -> rev_append acc ys
+    | _, [] -> rev_append acc xs
+    | x :: xt, y :: yt -> if cmp x y <= 0 then go xt ys (x :: acc) else go xs yt (y :: acc)
+  in
+  go xs ys []
 
 let sort cmp xs =
   let rec split l a b = match l with [] -> (a, b) | x :: t -> split t b (x :: a) in
@@ -90,11 +98,10 @@ let sort cmp xs =
   in
   go xs
 
-let rec join sep xs =
+let join sep xs =
   match xs with
   | [] -> ""
-  | [x] -> x
-  | x :: t -> x ^ sep ^ join sep t
+  | first :: rest -> fold_left (fun acc x -> acc ^ sep ^ x) first rest
 
 let string_of_bool b = if b then "true" else "false"
 let rec string_of_list f xs = "[" ^ join "; " (map f xs) ^ "]"

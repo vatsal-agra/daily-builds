@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"milner/internal/lang"
@@ -14,23 +15,27 @@ import (
 const usage = `milner — an ML-family language with Hindley–Milner type inference
 
 usage:
-  milner run   [-v] [--fuel N] FILE|-   type-check, then run a program (-v prints each binding)
-  milner check FILE|-                   type-check and pattern-check only; print inferred types
+  milner run   [-v] [--fuel N] [--deny-warnings] FILE|-
+                                        type-check, then run a program (-v prints each binding;
+                                        --fuel limits evaluation steps; warnings can fail the run)
+  milner check [--deny-warnings] FILE|- type-check and pattern-check only; print inferred types
   milner type  'EXPR'                   print the type of an expression
   milner repl                           interactive session (end inputs with ;;)
 `
 
 func main() {
+	// The evaluator allocates many small short-lived objects; trade memory for fewer GC cycles.
+	debug.SetGCPercent(800)
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
 func readSource(name string, stdin io.Reader) (string, string, error) {
 	if name == "-" {
 		b, err := io.ReadAll(stdin)
-		return string(b), "<stdin>", err
+		return strings.TrimPrefix(string(b), "\ufeff"), "<stdin>", err
 	}
 	b, err := os.ReadFile(name)
-	return string(b), name, err
+	return strings.TrimPrefix(string(b), "\ufeff"), name, err
 }
 
 func report(w io.Writer, err error, src, file string) {
@@ -48,7 +53,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	switch args[0] {
 	case "run", "check":
-		verbose := false
+		verbose, deny := false, false
 		var fuel int64
 		var file string
 		rest := args[1:]
@@ -56,6 +61,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			switch {
 			case rest[i] == "-v":
 				verbose = true
+			case rest[i] == "--deny-warnings":
+				deny = true
 			case rest[i] == "--fuel" && i+1 < len(rest):
 				fmt.Sscan(rest[i+1], &fuel)
 				i++
@@ -75,7 +82,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, "error:", err)
 			return 2
 		}
-		return runFile(args[0] == "run", verbose, fuel, src, name, stdout, stderr)
+		return runFile(args[0] == "run", verbose, deny, fuel, src, name, stdout, stderr)
 	case "type":
 		if len(args) != 2 {
 			fmt.Fprint(stderr, usage)
@@ -103,7 +110,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return 2
 }
 
-func runFile(evaluate, verbose bool, fuel int64, src, name string, stdout, stderr io.Writer) int {
+func runFile(evaluate, verbose, deny bool, fuel int64, src, name string, stdout, stderr io.Writer) int {
 	bw := bufio.NewWriter(stdout)
 	defer bw.Flush()
 	s, err := lang.NewSession(bw)
@@ -139,6 +146,11 @@ func runFile(evaluate, verbose bool, fuel int64, src, name string, stdout, stder
 			}
 		}
 	}
+	if warned > 0 && deny {
+		bw.Flush()
+		fmt.Fprintf(stderr, "%d warning(s) treated as errors (--deny-warnings)\n", warned)
+		return 1
+	}
 	return 0
 }
 
@@ -161,17 +173,35 @@ func repl(stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	prompt()
 	for sc.Scan() {
-		line := sc.Text()
-		buf.WriteString(line + "\n")
-		if strings.Contains(line, ";;") {
+		buf.WriteString(sc.Text() + "\n")
+		if replComplete(buf.String()) {
 			src := buf.String()
 			buf.Reset()
 			evalREPL(s, src, stdout)
 		}
 		prompt()
 	}
+	if strings.TrimSpace(buf.String()) != "" {
+		fmt.Fprintln(stdout)
+		evalREPL(s, buf.String(), stdout) // report whatever was left unterminated
+	}
 	fmt.Fprintln(stdout)
 	return 0
+}
+
+// replComplete reports whether the buffer holds a `;;` token (a `;;` inside a string or comment does
+// not count, and an unterminated string/comment keeps the REPL reading).
+func replComplete(src string) bool {
+	toks, d := syntax.Lex(src)
+	if d != nil {
+		return !strings.Contains(d.Msg, "unterminated") // genuine lex errors are reported right away
+	}
+	for _, t := range toks {
+		if t.Kind == syntax.SYM && t.Text == ";;" {
+			return true
+		}
+	}
+	return false
 }
 
 func evalREPL(s *lang.Session, src string, out io.Writer) {

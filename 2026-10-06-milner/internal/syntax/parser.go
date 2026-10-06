@@ -129,6 +129,9 @@ func (p *parser) isSym(s string) bool { t := p.peek(); return t.Kind == SYM && t
 func (p *parser) isKw(s string) bool  { t := p.peek(); return t.Kind == KW && t.Text == s }
 
 func (p *parser) describe(t Token) string {
+	if t.Kind == SYM && t.Text == ";;" && t.Span.Start.Off == t.Span.End.Off {
+		return "the start of a new declaration (a line beginning at column 1)"
+	}
 	switch t.Kind {
 	case EOF:
 		return "end of input"

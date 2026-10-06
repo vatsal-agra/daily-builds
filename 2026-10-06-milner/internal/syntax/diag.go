@@ -66,7 +66,13 @@ func (d *Diag) Render(src, file string) string {
 			file = "<input>"
 		}
 		lines := strings.Split(src, "\n")
-		l1, l2 := d.Span.Start.Line, d.Span.End.Line
+		endLine, endCol := d.Span.End.Line, d.Span.End.Col
+		if endLine > d.Span.Start.Line && endCol == 1 {
+			// the span ends at the very start of a line: it really ends at the end of the previous one
+			endLine--
+			endCol = len([]rune(strings.TrimRight(lines[endLine-1], "\r"))) + 1
+		}
+		l1, l2 := d.Span.Start.Line, endLine
 		if l2 < l1 {
 			l2 = l1
 		}
@@ -97,8 +103,8 @@ func (d *Diag) Render(src, file string) string {
 					from++
 				}
 			}
-			if ln == d.Span.End.Line && d.Span.End.Col > 0 {
-				to = d.Span.End.Col
+			if ln == endLine && endCol > 0 {
+				to = endCol
 			}
 			if to <= from {
 				to = from + 1

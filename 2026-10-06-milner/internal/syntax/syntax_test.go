@@ -27,7 +27,7 @@ func TestLexerErrors(t *testing.T) {
 		`let x = #`:            "unexpected character",
 		`"a\q"`:                "unknown escape",
 		`99999999999999999999`: "out of range",
-		"\"line\nbreak\"":      "newline inside string",
+		"\"line\nbreak":        "unterminated string",
 	} {
 		_, d := Lex(src)
 		if d == nil || !strings.Contains(d.Msg, want) {

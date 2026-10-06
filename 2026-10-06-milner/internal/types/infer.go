@@ -229,9 +229,25 @@ func (i *inferer) convType(te syntax.TyExpr, scope tyScope) Type {
 	panic("unreachable")
 }
 
+// hasGeneric reports whether t mentions a generalised variable (an annotation variable that an inner
+// `let` generalised must not be reused by a later annotation of the same name).
+func hasGeneric(t Type) bool {
+	switch x := Prune(t).(type) {
+	case *TVar:
+		return x.Level == Generic
+	case *TCon:
+		for _, a := range x.Args {
+			if hasGeneric(a) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (i *inferer) annotScope() tyScope {
 	return func(name string, sp syntax.Span) Type {
-		if v, ok := i.tyvars[name]; ok {
+		if v, ok := i.tyvars[name]; ok && !hasGeneric(v) {
 			return v
 		}
 		v := i.newVar()
@@ -257,6 +273,13 @@ func nonExpansive(e syntax.Expr) bool {
 		return true
 	case *syntax.EAnnot:
 		return nonExpansive(x.E)
+	case *syntax.ELet:
+		for _, b := range x.Bindings {
+			if !nonExpansive(b.Expr) {
+				return false
+			}
+		}
+		return nonExpansive(x.Body)
 	}
 	return false
 }
@@ -277,6 +300,19 @@ func isOperatorName(n string) bool {
 	}
 	c := n[0]
 	return !(c == '_' || c == '$' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c >= 0x80)
+}
+
+// schemeArity counts the syntactic parameters of a scheme's type (without looking through variables).
+func schemeArity(t Type) int {
+	n := 0
+	for {
+		c, ok := Prune(t).(*TCon)
+		if !ok || c.Head != HArrow {
+			return n
+		}
+		n++
+		t = c.Args[1]
+	}
 }
 
 func headName(e syntax.Expr) (string, int) {
@@ -518,6 +554,9 @@ func (i *inferer) inferApp(env *Env, x *syntax.EApp) Type {
 		ta := i.infer(env, x.Arg)
 		name, n := headName(x.Fn)
 		note := ""
+		if sc, ok := env.Lookup(name); name != "" && ok && n+1 > schemeArity(sc.Type) {
+			name = "" // the head's own type has fewer parameters: this argument belongs to a returned function
+		}
 		if name != "" {
 			if isOperatorName(name) {
 				note = fmt.Sprintf("operand %d of `%s`", n+1, name)

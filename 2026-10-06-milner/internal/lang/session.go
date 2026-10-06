@@ -67,12 +67,17 @@ func (s *Session) Run(src string, evaluate bool) ([]*DeclOut, error) {
 }
 
 // Step processes a single declaration.
-func (s *Session) Step(decl syntax.Decl, evaluate bool) (*DeclOut, error) {
+func (s *Session) Step(decl syntax.Decl, evaluate bool) (out *DeclOut, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			out, err = nil, &syntax.Diag{Kind: "internal", Span: decl.DSpan(), Msg: fmt.Sprintf("internal error: %v (this is a bug in Milner)", r)}
+		}
+	}()
 	res, d := types.InferDecl(s.Env, decl)
 	if d != nil {
 		return nil, d
 	}
-	out := &DeclOut{Decl: decl, Bound: res.Bound, NewTypes: res.NewTypes}
+	out = &DeclOut{Decl: decl, Bound: res.Bound, NewTypes: res.NewTypes}
 	if res.Expr != nil {
 		out.IsExpr, out.ExprType = true, res.Expr
 	}
