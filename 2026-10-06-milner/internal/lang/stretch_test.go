@@ -18,6 +18,8 @@ func TestRecordTypes(t *testing.T) {
 		{`fun { a; b } -> a + b`, "{ a : int; b : int; .. } -> int"},
 		{`fun { a = (x, y); b } -> x + y + b`, "{ a : int * int; b : int; .. } -> int"},
 		{`fun r -> r.next.value`, "{ next : { value : 'a; .. }; .. } -> 'a"},
+		// open rows with different fields are merged through unification of their tails
+		{`fun a b -> let _ = (a.x, b.y) in if true then a else b`, "{ x : 'a; y : 'b; .. } -> { x : 'a; y : 'b; .. } -> { x : 'a; y : 'b; .. }"},
 		{`let get r = r.x in (get { x = 1 }, get { x = "s"; y = true })`, "int * string"},
 		{`(fun (r : { x : int; .. }) -> r.x)`, "{ x : int; .. } -> int"},
 		{`fun (r : { x : int }) -> r`, "{ x : int } -> { x : int }"},

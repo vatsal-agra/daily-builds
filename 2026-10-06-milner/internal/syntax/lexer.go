@@ -60,6 +60,10 @@ func Lex(src string) ([]Token, *Diag) {
 		}
 		start := lx.pos()
 		if lx.off >= len(lx.src) {
+			// anchor end-of-input errors just after the last real token, not on a trailing blank line
+			if n := len(toks); n > 0 {
+				start = toks[n-1].Span.End
+			}
 			toks = append(toks, Token{Kind: EOF, Span: Span{start, start}})
 			return toks, nil
 		}

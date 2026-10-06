@@ -267,3 +267,49 @@ func TestRenderColor(t *testing.T) {
 		t.Error("colour rendering differs from plain rendering beyond escapes")
 	}
 }
+
+func TestParseRecordsAndTypes(t *testing.T) {
+	good := []string{
+		`{ x = 1; y = 2 }`, `{ x; y }`, `{ r with x = 1 }`, `{ r with x; y = 2; }`, `{ (f r) with x = 1 }`,
+		`r.x.y`, `f r.x`, `{ a = { b = 1 } }.a.b`, `fun { a; b = (c, d) } -> a`, `fun ({ a } : { a : int; .. }) -> a`,
+		`match r with { a = 1; .. } -> 1 | { a; b = Some x } -> x`,
+	}
+	for _, src := range good {
+		if _, d := ParseExpr(src); d != nil {
+			t.Errorf("%q: %v", src, d)
+		}
+	}
+	if _, d := ParseProgram(`type p = { x : int; y : string }
+type 'a box = { v : 'a; .. } list
+type ('a, 'b) pair = 'a * 'b`); d != nil {
+		t.Errorf("record/alias types: %v", d)
+	}
+	bad := map[string]string{
+		`{ x = 1; 2 }`:      "field name",
+		`{ r with }`:        "at least one",
+		`{ }`:               "at least one field",
+		`r.`:                "field name after `.`",
+		`r.1`:               "field name after `.`",
+		`fun { } -> 1`:      "at least one field",
+		`fun { 3 } -> 1`:    "field name",
+		`(1 : { x : })`:     "expected a type",
+		`(1 : { 3 : int })`: "field name",
+	}
+	for src, want := range bad {
+		_, d := ParseExpr(src)
+		if d == nil || !strings.Contains(d.Msg, want) {
+			t.Errorf("%q: got %v want %q", src, d, want)
+		}
+	}
+}
+
+func TestEndOfInputErrorAnchoredAfterLastToken(t *testing.T) {
+	_, d := ParseProgram("let x = 5 +\n\n\n")
+	if d == nil || d.Span.Start.Line != 1 || d.Span.Start.Col != 12 {
+		t.Fatalf("got %v", d)
+	}
+	out := d.Render("let x = 5 +\n\n\n", "f")
+	if strings.Contains(out, "2 |") || strings.Contains(out, "4 |") {
+		t.Errorf("rendering should not show the blank trailing lines:\n%s", out)
+	}
+}

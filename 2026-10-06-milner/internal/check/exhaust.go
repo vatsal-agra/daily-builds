@@ -41,6 +41,8 @@ type Checker struct {
 	unit   *ctor
 	bools  [2]*ctor
 	budget int
+	// Budget bounds the work of one analysis (usefulness checks can be exponential); 0 = default.
+	Budget int
 	gaveUp bool
 	fields []string // union of record field names in the match being analysed (record patterns lower to tuples over it)
 }
@@ -243,7 +245,11 @@ const budgetLimit = 3_000_000
 
 func (c *Checker) tick() {
 	c.budget++
-	if c.budget > budgetLimit {
+	limit := c.Budget
+	if limit == 0 {
+		limit = budgetLimit
+	}
+	if c.budget > limit {
 		c.gaveUp = true
 		panic(giveUp{})
 	}

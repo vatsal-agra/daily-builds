@@ -182,22 +182,6 @@ func (m *Machine) bindIrrefutable(p *cPat, v Value, env *Env, _ *nLet) *Env {
 	return env
 }
 
-// Steps returns the number of evaluation steps taken by the last top-level run.
-func (m *Machine) Steps() int64 { return m.steps }
-
-// Apply calls a function value with arguments (used by the top level and builtins).
-func (m *Machine) Apply(f Value, args ...Value) Value {
-	return m.eval(&nApp{Fn: &nConst{V: f}, Args: constNodes(args)}, nil)
-}
-
-func constNodes(vs []Value) []node {
-	ns := make([]node, len(vs))
-	for i, v := range vs {
-		ns[i] = &nConst{V: v}
-	}
-	return ns
-}
-
 func matchPat(p *cPat, v Value, slots []Value) bool {
 	switch p.Kind {
 	case pkWild:

@@ -106,8 +106,6 @@ func (t *Tracer) generalize(depth int, name string, ty Type) {
 	t.line(depth, "generalize `%s` : %s", name, t.ty(ty))
 }
 
-func (t *Tracer) note(depth int, format string, a ...any) { t.line(depth, format, a...) }
-
 func hasUnbound(t Type) bool {
 	switch x := Prune(t).(type) {
 	case *TVar:

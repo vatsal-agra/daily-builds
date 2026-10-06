@@ -16,7 +16,6 @@ func (u *UnifyErr) Error() string { return "unification failed" }
 
 type unifier struct {
 	trail []*TVar
-	next  *int
 }
 
 func (u *unifier) bind(v *TVar, t Type) {

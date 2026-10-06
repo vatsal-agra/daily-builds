@@ -3,7 +3,7 @@
 An ML-family language with Hindley–Milner type inference, algebraic data types and exhaustiveness
 checking, built from scratch in Go (standard library only).
 
-**Status: Phase 4 (stretch + polish) complete** — all 8 planned features, 25 review issues found and fixed ([REVIEW.md](REVIEW.md)). The four required features work end-to-end:
+**Status: Phase 5 (verification) complete** — all 8 planned features, 25 review issues found and fixed ([REVIEW.md](REVIEW.md)). The four required features work end-to-end:
 
 | # | Feature | Where |
 |---|---------|-------|
@@ -39,3 +39,12 @@ at the wrong place.
 
 Polish: coloured diagnostics on a TTY (`NO_COLOR` honoured), REPL commands (`:type`, `:explain`, `:env`, `:help`, `:quit`),
 `--deny-warnings`, `--fuel`, BOM/CRLF-safe input, precise errors for empty/invalid input.
+
+## Verification (Phase 5)
+| Check | Command | Result |
+|-------|---------|--------|
+| Unit + property + golden tests | `go test ./...` | green; 92 % statement coverage |
+| Soundness/progress fuzzer (8 000 type-directed programs incl. records) | part of `go test` | all accepted at the intended type, no internal errors |
+| Exhaustiveness differential test vs brute force (1 500 matches) | part of `go test` | 100 % agreement |
+| End-to-end demo exercising every feature through the CLI | `./demo.sh` | 64 assertions green |
+| Mutation check: 19 planted bugs (occurs check, generalisation, value restriction, row unification, exhaustiveness, tail calls, scoping, …) | `./mutants.sh` | 19/19 killed (one survivor found and closed with a new test) |

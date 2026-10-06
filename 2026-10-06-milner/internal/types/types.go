@@ -4,8 +4,6 @@ package types
 import (
 	"sort"
 	"strings"
-
-	"milner/internal/syntax"
 )
 
 // Generic is the level marking a quantified (generalised) variable.
@@ -169,14 +167,6 @@ func (e *Env) VisibleNames() []string {
 
 func (e *Env) withTypes(types map[string]*TypeInfo, cons map[string]*ConInfo) *Env {
 	return &Env{vars: e.vars, Types: types, Cons: cons}
-}
-
-// SpanOr returns sp unless it is empty.
-func spanOr(sp, fallback syntax.Span) syntax.Span {
-	if sp.Start.Line == 0 {
-		return fallback
-	}
-	return sp
 }
 
 // NamesSince lists the names bound in e after base (most recent first, shadowed duplicates removed).
