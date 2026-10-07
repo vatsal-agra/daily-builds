@@ -298,3 +298,15 @@ func TestBuildValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestTSPDistanceIsRoundedEuclid(t *testing.T) {
+	cases := []struct {
+		a, b [2]int
+		want int64
+	}{{[2]int{0, 0}, [2]int{3, 4}, 5}, {[2]int{0, 0}, [2]int{1, 1}, 1}, {[2]int{0, 0}, [2]int{0, 0}, 0}, {[2]int{10, 10}, [2]int{12, 13}, 4}, {[2]int{0, 0}, [2]int{2, 2}, 3}}
+	for _, c := range cases {
+		if got := TSPDist(c.a, c.b); got != c.want {
+			t.Errorf("dist(%v,%v)=%d want %d", c.a, c.b, got, c.want)
+		}
+	}
+}

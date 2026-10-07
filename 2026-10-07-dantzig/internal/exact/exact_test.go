@@ -172,3 +172,25 @@ func TestBasisVertex(t *testing.T) {
 		t.Fatalf("dual bound %v", b)
 	}
 }
+
+func TestFarkasAndRayBoundaryCases(t *testing.T) {
+	// a feasible system: no multiplier may "prove" infeasibility, in particular value 0 is not enough
+	m := parse(t, "Minimize\n o: x\nSubject To\n a: x + y >= 1\n b: x + y <= 3\nEnd")
+	if err := CheckFarkas(m, BoxOf(m), []*big.Rat{rat(0, 1), rat(0, 1)}); err == nil {
+		t.Fatal("accepted the zero vector as a Farkas certificate")
+	}
+	if err := CheckFarkas(m, BoxOf(m), []*big.Rat{rat(1, 1), rat(-1, 1)}); err == nil {
+		t.Fatal("accepted a vector whose value is exactly 0")
+	}
+	// ray must improve the objective strictly
+	m2 := parse(t, "Minimize\n o: y\nSubject To\n a: x - y <= 3\nEnd")
+	x0 := []*big.Rat{rat(0, 1), rat(0, 1)}
+	if err := CheckRay(m2, m2.MinCost(), x0, []*big.Rat{rat(1, 1), rat(0, 1)}); err == nil {
+		t.Fatal("accepted a ray with zero objective change")
+	}
+	// ray through an upper bound
+	m3 := parse(t, "Maximize\n o: x\nSubject To\n a: x - y <= 3\nBounds\n x <= 9\nEnd")
+	if err := CheckRay(m3, m3.MinCost(), x0, []*big.Rat{rat(1, 1), rat(1, 1)}); err == nil {
+		t.Fatal("accepted a ray that increases a bounded variable")
+	}
+}

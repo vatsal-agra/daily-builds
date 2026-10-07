@@ -297,3 +297,25 @@ End`)
 	}
 	_ = exact.Basic
 }
+
+func TestCheckerRejectsFractionalIncumbentAndRenamedModel(t *testing.T) {
+	src := "Maximize\n v: 3 a + 2 b\nSubject To\n w: 2 a + 2 b <= 5\nInteger\n a b\nEnd"
+	m := parse(t, src)
+	res := Solve(m, Options{})
+	if res.Status != Optimal || !res.Certified {
+		t.Fatal("setup")
+	}
+	good := mustMarshal(t, res.Proof)
+	// fractional but LP-feasible incumbent must be refused for an integer model
+	p := mustUnmarshal(t, good)
+	p.X = []string{"5/2", "0"}
+	p.Objective = "15/2"
+	if _, err := Check(m, p); err == nil {
+		t.Fatal("accepted a fractional incumbent for integer variables")
+	}
+	// the proof is bound to the model text: an equivalent model with renamed variables is a different model
+	renamed := parse(t, strings.NewReplacer("a", "aa", "Maximize", "Maximize").Replace(src))
+	if _, err := Check(renamed, mustUnmarshal(t, good)); err == nil {
+		t.Fatal("proof accepted for a differently written model (hash not enforced)")
+	}
+}

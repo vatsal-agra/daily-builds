@@ -221,3 +221,123 @@ func TestRefusesNonOptimal(t *testing.T) {
 		t.Fatal("analysed an unbounded LP")
 	}
 }
+
+// Just outside a reported range the analysis must stop predicting the optimum:
+// by convexity (min sense) the true value is strictly on the far side of the
+// linear extrapolation. Only meaningful for non-degenerate optima.
+func TestJustOutsideRangesPredictionBreaks(t *testing.T) {
+	r := rand.New(rand.NewSource(57))
+	sign := func(m *model.Model) *big.Rat {
+		if m.Maximize {
+			return rat(-1, 1)
+		}
+		return rat(1, 1)
+	}
+	costOut, rhsOut := 0, 0
+	for it := 0; it < 1500; it++ {
+		m := randomLP(r)
+		rep, err := Analyze(m)
+		if err != nil {
+			continue
+		}
+		nondeg := true
+		for _, v := range rep.Vars {
+			if v.Status == "basic" {
+				lo, hi := m.Vars[indexOf(m, v.Name)].Lo, m.Vars[indexOf(m, v.Name)].Hi
+				if (lo != nil && v.Value.Cmp(lo) == 0) || (hi != nil && v.Value.Cmp(hi) == 0) {
+					nondeg = false
+				}
+			} else if v.ReducedCost.Sign() == 0 {
+				nondeg = false
+			}
+		}
+		for _, row := range rep.Rows {
+			if row.Binding == "" && row.Slack.Sign() == 0 {
+				nondeg = false
+			}
+			if row.Binding != "" && row.Dual.Sign() == 0 {
+				nondeg = false
+			}
+		}
+		if !nondeg {
+			continue
+		}
+		sg := sign(m)
+		base := new(big.Rat).Mul(new(big.Rat).Sub(rep.Objective, m.ObjConst), sg) // min-sense objective
+		for j, v := range rep.Vars {
+			for side := 0; side < 2; side++ {
+				var edge *big.Rat
+				step := rat(1, 2)
+				if side == 0 && v.CostRange.Lo != nil {
+					edge = new(big.Rat).Sub(v.CostRange.Lo, step)
+				} else if side == 1 && v.CostRange.Hi != nil {
+					edge = new(big.Rat).Add(v.CostRange.Hi, step)
+				} else {
+					continue
+				}
+				m2 := m.Clone()
+				m2.Vars[j].Obj = edge
+				got, ok := solveObj(t, m2)
+				if !ok {
+					continue
+				}
+				gotMin := new(big.Rat).Mul(new(big.Rat).Sub(got, m2.ObjConst), sg)
+				// min-sense cost c_min = sg * c; the linear prediction uses the min-sense cost change
+				dc := new(big.Rat).Mul(new(big.Rat).Sub(edge, v.Cost), sg)
+				pred := new(big.Rat).Add(base, new(big.Rat).Mul(dc, v.Value))
+				if gotMin.Cmp(pred) >= 0 {
+					t.Fatalf("it %d: cost of %s just outside its range [%v,%v] at %s still follows the linear prediction (%s vs %s)\n%s",
+						it, v.Name, v.CostRange.Lo, v.CostRange.Hi, edge.RatString(), gotMin.RatString(), pred.RatString(), model.Format(m))
+				}
+				costOut++
+			}
+		}
+		for i, row := range rep.Rows {
+			if row.Binding == "" || row.Binding == "equality" {
+				continue
+			}
+			for side := 0; side < 2; side++ {
+				var cur, edge *big.Rat
+				if row.Binding == "lower" {
+					cur = m.Rows[i].Lo
+				} else {
+					cur = m.Rows[i].Hi
+				}
+				step := rat(1, 2)
+				if side == 0 && row.LimitRange.Lo != nil {
+					edge = new(big.Rat).Sub(row.LimitRange.Lo, step)
+				} else if side == 1 && row.LimitRange.Hi != nil {
+					edge = new(big.Rat).Add(row.LimitRange.Hi, step)
+				} else {
+					continue
+				}
+				m2 := m.Clone()
+				if row.Binding == "lower" {
+					m2.Rows[i].Lo = edge
+				} else {
+					m2.Rows[i].Hi = edge
+				}
+				if m2.Validate() != nil {
+					continue
+				}
+				got, ok := solveObj(t, m2)
+				if !ok {
+					continue // infeasible beyond the range: also a broken prediction
+				}
+				gotMin := new(big.Rat).Mul(new(big.Rat).Sub(got, m2.ObjConst), sg)
+				pred := new(big.Rat).Add(base, new(big.Rat).Mul(new(big.Rat).Mul(row.Dual, sg), new(big.Rat).Sub(edge, cur)))
+				if gotMin.Cmp(pred) <= 0 {
+					t.Fatalf("it %d: limit of %s just outside [%v,%v] at %s still linear (%s vs %s)\n%s",
+						it, row.Name, row.LimitRange.Lo, row.LimitRange.Hi, edge.RatString(), gotMin.RatString(), pred.RatString(), model.Format(m))
+				}
+				rhsOut++
+			}
+		}
+	}
+	t.Logf("outside checks: cost %d, rhs %d", costOut, rhsOut)
+	if costOut < 100 || rhsOut < 50 {
+		t.Fatalf("too few outside checks: %d/%d", costOut, rhsOut)
+	}
+}
+
+func indexOf(m *model.Model, name string) int { return m.VarIndex(name) }
