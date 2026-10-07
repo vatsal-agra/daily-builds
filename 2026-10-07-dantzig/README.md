@@ -5,7 +5,7 @@ mixed-integer programs with a bounded-variable primal + dual simplex and branch 
 and every answer ships with an **exact rational certificate** that an independent checker
 verifies with `math/big.Rat`.
 
-> Status: **Phase 2 complete** (4 required features built and working). Sections below grow
+> Status: **Phase 3 complete** (4 required features built; adversarial review done, 12 findings fixed — see [REVIEW.md](REVIEW.md)). Sections below grow
 > with each phase; see [PLAN.md](PLAN.md) for the full plan.
 
 ## Quick start
@@ -21,3 +21,9 @@ go build -o dantzig ./cmd/dantzig
 2. Bounded-variable simplex: composite two-phase primal, dual simplex warm starts, cost perturbation on dual stalls
 3. Exact certificates: optimal (primal + dual), infeasible (Farkas), unbounded (ray)
 4. Branch & bound with a proof tree; `dantzig check` re-verifies the entire proof exactly
+
+## Review highlights (phase 3)
+- Dual-degenerate LPs (e.g. a zero-objective sudoku) used to loop forever: fixed with stall detection + cost perturbation.
+- Proofs are now a flat node array with an iterative checker (deep trees broke the JSON decoder).
+- New certificates: integer-lattice (`gcd`) infeasibility, and certified UNBOUNDED / INFEASIBLE classification of MIPs whose LP relaxation is unbounded.
+- `tools/crosscheck.py` compares against HiGHS: ~2,000 models, 0 mismatches.
