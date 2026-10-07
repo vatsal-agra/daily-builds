@@ -243,6 +243,19 @@ func (s *solver) trace(cur *node) {
 		tp.Bound = fptr(s.toOrigF(gb))
 	}
 	s.res.Trace = append(s.res.Trace, tp)
+	if s.opt.Log != nil && cur != nil {
+		inc, bnd, gap := "-", "-", "-"
+		if tp.Incumbent != nil {
+			inc = fmt.Sprintf("%.6g", *tp.Incumbent)
+		}
+		if tp.Bound != nil {
+			bnd = fmt.Sprintf("%.6g", *tp.Bound)
+		}
+		if tp.Incumbent != nil && tp.Bound != nil {
+			gap = fmt.Sprintf("%.3f%%", 100*math.Abs(*tp.Incumbent-*tp.Bound)/math.Max(1e-9, math.Abs(*tp.Incumbent)))
+		}
+		s.logf("  node %-7d open %-6d bound %-12s incumbent %-12s gap %s\n", tp.Node, len(s.open), bnd, inc, gap)
+	}
 }
 
 func (s *solver) run() {
@@ -638,11 +651,25 @@ func (s *solver) dive() {
 			}
 		}
 		r := math.Round(w.X[best])
-		w.SetBounds(best, r, r)
-		if w.Solve(s.cutoff()) != simplex.Optimal {
+		alt := r + 1
+		if w.X[best] < r {
+			alt = r - 1
+		}
+		snap := w.Clone()
+		fixed := false
+		for _, val := range []float64{r, alt} {
+			w.SetBounds(best, val, val)
+			if w.Solve(s.cutoff()) == simplex.Optimal {
+				box = fixBox(box, best, val)
+				fixed = true
+				break
+			}
+			w = snap.Clone() // undo the failed rounding and try the other direction
+			s.ws = w
+		}
+		if !fixed {
 			return
 		}
-		box = fixBox(box, best, r)
 	}
 }
 
