@@ -118,6 +118,7 @@ type solver struct {
 	unbounded    bool
 	rootRay      []*big.Rat
 	rootX0       []*big.Rat
+	hitTime      bool
 }
 
 func (s *solver) sign() *big.Rat {
@@ -198,6 +199,9 @@ func Solve(m *model.Model, opt Options) *Result {
 	if opt.LogEvery == 0 {
 		opt.LogEvery = 25
 	}
+	if err := m.Validate(); err != nil {
+		return &Result{Status: Unknown, Note: err.Error(), Proof: &Proof{Version: 1, Status: "limit"}}
+	}
 	s := &solver{m: m, opt: opt, n: len(m.Vars), cost: m.MinCost(), intObj: m.ObjIsIntegral(), start: time.Now()}
 	s.res = &Result{}
 	for j, v := range m.Vars {
@@ -251,7 +255,17 @@ func (s *solver) run() {
 		s.res.Note = "a variable has lower bound above upper bound"
 		return
 	}
+	if row := exact.FindGCDInfeasibleRow(m); row >= 0 {
+		root.pn.Leaf = "gcd"
+		root.pn.Split = fmt.Sprint(row)
+		s.res.Note = "row " + m.Rows[row].Name + " has no integer solution (coefficient gcd does not divide its range)"
+		s.res.Nodes = 1
+		return
+	}
 	s.ws = simplex.New(lp.Build(m, box0))
+	if s.opt.TimeLimit > 0 {
+		s.ws.Deadline = s.start.Add(s.opt.TimeLimit)
+	}
 	var cur *node = root
 	first := true
 	for cur != nil || len(s.open) > 0 {
@@ -285,6 +299,11 @@ func (s *solver) run() {
 		}
 		first = false
 		kids := s.process(cur)
+		if s.hitTime {
+			s.res.Note = "time limit reached"
+			s.stopWith(cur)
+			return
+		}
 		if s.res.Nodes%s.opt.LogEvery == 0 {
 			s.trace(cur)
 		}
@@ -301,7 +320,8 @@ func (s *solver) stopWith(cur *node) {
 	cap := s.opt.OpenCertCap
 	emit := func(n *node) {
 		n.pn.Leaf = "open"
-		if !s.opt.NoProof && cap > 0 && n.basis != nil {
+		late := s.opt.TimeLimit > 0 && time.Since(s.start) > s.opt.TimeLimit*3/2+time.Second
+		if !s.opt.NoProof && cap > 0 && n.basis != nil && !late {
 			cap--
 			if y, _, err := lp.BoundCert(s.m, n.box, n.basis); err == nil {
 				n.pn.Y = ratStrs(y)
@@ -398,6 +418,10 @@ func (s *solver) process(nd *node) []*node {
 		res = s.ws.Solve(s.cutoff())
 	}
 	s.res.LPIters += s.ws.Iters - before
+	if (res == simplex.IterLimit || res == simplex.NumFail) && s.ws.TimedOut() {
+		s.hitTime = true
+		return nil
+	}
 	switch res {
 	case simplex.Infeasible:
 		s.leafFarkas(nd)
@@ -640,11 +664,15 @@ func (s *solver) finish() {
 		}
 		r.Proof.Status = string(r.Status)
 		r.Proof.Tree = nil
-		if s.rootRay != nil {
-			r.Proof.X, r.Proof.Ray = ratStrs(s.rootX0), ratStrs(s.rootRay)
-			r.Certified = true
-		} else {
+		if s.rootRay == nil {
 			r.Note = "unboundedness could not be certified exactly"
+			return
+		}
+		r.Proof.X, r.Proof.Ray = ratStrs(s.rootX0), ratStrs(s.rootRay)
+		r.X = s.rootX0
+		r.Certified = true
+		if s.m.HasInts() {
+			s.classifyUnboundedMIP()
 		}
 		return
 	}
@@ -675,6 +703,7 @@ func (s *solver) finish() {
 	if r.Status == Unknown {
 		r.Proof.Status = "limit"
 	}
+	r.Proof.Seal()
 	if s.opt.NoProof {
 		return
 	}
@@ -689,5 +718,99 @@ func (s *solver) finish() {
 		r.Certified = rep.Complete
 	case Limit:
 		r.Certified = true // incumbent and every bound verified; search incomplete
+	}
+}
+
+// classifyNodes caps the feasibility search that classifies an unbounded relaxation.
+const classifyNodes = 20000
+
+// classifyUnboundedMIP resolves the ambiguity of an unbounded LP relaxation:
+// with rational data the MIP is unbounded iff it is feasible. A zero-objective
+// feasibility solve decides which, and yields either an integer point + scaled
+// integer ray (unbounded) or a Farkas tree (infeasible).
+func (s *solver) classifyUnboundedMIP() {
+	r := s.res
+	feas := s.m.Clone()
+	for j := range feas.Vars {
+		feas.Vars[j].Obj = new(big.Rat)
+	}
+	feas.ObjConst = new(big.Rat)
+	opt := s.opt
+	opt.Log = nil
+	if opt.NodeLimit == 0 || opt.NodeLimit > classifyNodes {
+		opt.NodeLimit = classifyNodes // an unbounded integer domain can make a feasibility search endless
+	}
+	if opt.TimeLimit > 0 {
+		opt.TimeLimit -= time.Since(s.start)
+		if opt.TimeLimit <= 0 {
+			return
+		}
+	}
+	// First look for an integer point inside growing boxes around the origin
+	// (a point in a sub-box is feasible for the original model); only if that
+	// fails fall back to the unrestricted search, which can prove infeasibility.
+	var sub *Result
+	for _, k := range []int64{10, 1000} {
+		boxed := feas.Clone()
+		for j := range boxed.Vars {
+			v := &boxed.Vars[j]
+			if !v.Int {
+				continue
+			}
+			if v.Lo == nil || v.Lo.Cmp(big.NewRat(-k, 1)) < 0 {
+				v.Lo = big.NewRat(-k, 1)
+			}
+			if v.Hi == nil || v.Hi.Cmp(big.NewRat(k, 1)) > 0 {
+				v.Hi = big.NewRat(k, 1)
+			}
+			if v.Lo.Cmp(v.Hi) > 0 { // original bounds lie outside the box: keep them
+				v.Lo, v.Hi = feas.Vars[j].Lo, feas.Vars[j].Hi
+			}
+		}
+		bo := opt
+		bo.NoDive = false
+		if r2 := Solve(boxed, bo); r2.Status == Optimal && r2.Certified {
+			sub = r2
+			break
+		}
+	}
+	if sub == nil {
+		sub = Solve(feas, opt)
+	}
+	if sub.Status == Limit || sub.Status == Unknown {
+		r.Note = "the LP relaxation is unbounded; the integer feasibility search hit its limit, so the MIP is unbounded or infeasible"
+	}
+	switch {
+	case sub.Status == Infeasible && sub.Certified:
+		r.Status = Infeasible
+		r.Note = "the LP relaxation is unbounded but no integer point exists"
+		p := sub.Proof
+		p.ModelHash = HashModel(s.m)
+		p.Status = "infeasible"
+		p.X, p.Ray, p.Objective = nil, nil, ""
+		r.Proof = p
+		r.Nodes += sub.Nodes
+		r.Certified = false
+		if rep, err := Check(s.m, p); err == nil && rep.Complete {
+			r.Certified = true
+		}
+	case sub.Status == Optimal && sub.Certified && sub.X != nil:
+		// scale the rational ray to an integer direction
+		l := big.NewInt(1)
+		for _, d := range s.rootRay {
+			g := new(big.Int).GCD(nil, nil, l, d.Denom())
+			l.Mul(l, new(big.Int).Div(d.Denom(), g))
+		}
+		ray := make([]*big.Rat, len(s.rootRay))
+		for j, d := range s.rootRay {
+			ray[j] = new(big.Rat).Mul(d, new(big.Rat).SetInt(l))
+		}
+		p := &Proof{Version: 1, ModelHash: HashModel(s.m), Status: "unbounded", X: ratStrs(sub.X), Ray: ratStrs(ray)}
+		if _, err := Check(s.m, p); err == nil {
+			r.Status = Unbounded
+			r.Proof = p
+			r.X = sub.X
+			r.Note = "an integer-feasible point plus an integral improving ray was found"
+		}
 	}
 }

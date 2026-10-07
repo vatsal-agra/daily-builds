@@ -11,7 +11,7 @@ func (s *Solver) dual(cutoff float64) Result {
 	d := make([]float64, tot)
 	s.stall = 0
 	for {
-		if s.Iters > s.MaxIters {
+		if s.limitHit() {
 			return IterLimit
 		}
 		if s.sinceRefac >= refactorEvery {

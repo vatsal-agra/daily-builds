@@ -6,7 +6,6 @@ import (
 	"io"
 	"math/big"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -44,7 +43,8 @@ type solveFlags struct {
 func parseSolveFlags(name string, args []string) (*solveFlags, []string, error) {
 	f := &solveFlags{}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() {}
 	fs.StringVar(&f.proof, "proof", "", "")
 	fs.StringVar(&f.branch, "branch", "pseudo", "")
 	fs.StringVar(&f.values, "values", "nonzero", "")
@@ -75,10 +75,16 @@ func parseSolveFlags(name string, args []string) (*solveFlags, []string, error) 
 		}
 	}
 	if err := fs.Parse(rest); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%v (run `dantzig help` for the flag list)", err)
 	}
 	if f.branch != "pseudo" && f.branch != "mostfrac" {
 		return nil, nil, fmt.Errorf("--branch must be pseudo or mostfrac")
+	}
+	if f.values != "nonzero" && f.values != "all" {
+		return nil, nil, fmt.Errorf("--values must be nonzero or all")
+	}
+	if f.proof != "" && f.noProof {
+		return nil, nil, fmt.Errorf("--proof and --no-proof contradict each other")
 	}
 	if f.timeLimit < 0 || f.nodes < 0 {
 		return nil, nil, fmt.Errorf("limits must be non-negative")
@@ -131,8 +137,11 @@ func runSolve(m *model.Model, f *solveFlags) *bb.Result {
 }
 
 func objStr(m *model.Model, r *big.Rat) string {
-	if r.IsInt() {
+	if r.IsInt() && len(r.Num().String()) <= 30 {
 		return r.Num().String()
+	}
+	if rs := r.RatString(); len(rs) > 48 {
+		return fmt.Sprintf("≈ %s  (exact %d-digit fraction omitted)", model.DecStr(r), len(rs))
 	}
 	return fmt.Sprintf("%s  (≈ %s)", r.RatString(), model.DecStr(r))
 }
@@ -167,6 +176,9 @@ func printResult(w io.Writer, m *model.Model, res *bb.Result, f *solveFlags) {
 	if res.Note != "" {
 		fmt.Fprintf(w, "note: %s\n", res.Note)
 	}
+	if res.Status == bb.UnboundedRelaxation && res.Note == "" {
+		fmt.Fprintln(w, "note: the LP relaxation is unbounded, so the MIP is either unbounded or infeasible")
+	}
 	if res.Obj != nil {
 		sense := "min"
 		if m.Maximize {
@@ -181,6 +193,9 @@ func printResult(w io.Writer, m *model.Model, res *bb.Result, f *solveFlags) {
 		return
 	}
 	if res.X != nil {
+		if res.Status == bb.Unbounded {
+			fmt.Fprintln(w, "a feasible point (the objective improves without limit along the certified ray):")
+		}
 		type kv struct {
 			name string
 			v    *big.Rat
@@ -191,7 +206,6 @@ func printResult(w io.Writer, m *model.Model, res *bb.Result, f *solveFlags) {
 				rows = append(rows, kv{v.Name, res.X[j]})
 			}
 		}
-		sort.SliceStable(rows, func(a, b int) bool { return false })
 		for _, r := range rows {
 			fmt.Fprintf(w, "  %-14s = %s\n", r.name, objStr(m, r.v))
 		}

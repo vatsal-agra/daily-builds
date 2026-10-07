@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strconv"
 
 	"dantzig/internal/exact"
 	"dantzig/internal/model"
@@ -24,15 +25,60 @@ type PNode struct {
 	Inc   bool     `json:"inc,omitempty"`  // this leaf produced the final incumbent (display only)
 }
 
+// FlatNode is the serialised form of a proof-tree node. Children are indices
+// into Proof.Nodes (always greater than the parent's index; the root is 0), so
+// arbitrarily deep trees never recurse in the encoder, decoder or checker.
+type FlatNode struct {
+	Var   *int     `json:"var,omitempty"`
+	Split string   `json:"split,omitempty"`
+	Down  int      `json:"down,omitempty"`
+	Up    int      `json:"up,omitempty"`
+	Leaf  string   `json:"leaf,omitempty"`
+	Y     []string `json:"y,omitempty"`
+	LP    *float64 `json:"lp,omitempty"`
+	Inc   bool     `json:"inc,omitempty"`
+}
+
 // Proof is the complete certificate of a solve.
 type Proof struct {
-	Version   int      `json:"version"`
-	ModelHash string   `json:"model_sha256"`
-	Status    string   `json:"status"` // optimal | infeasible | unbounded | unbounded_relaxation | limit
-	Objective string   `json:"objective,omitempty"`
-	X         []string `json:"x,omitempty"`
-	Ray       []string `json:"ray,omitempty"`
-	Tree      *PNode   `json:"tree,omitempty"`
+	Version   int        `json:"version"`
+	ModelHash string     `json:"model_sha256"`
+	Status    string     `json:"status"` // optimal | infeasible | unbounded | unbounded_relaxation | limit
+	Objective string     `json:"objective,omitempty"`
+	X         []string   `json:"x"` // null when no solution is claimed
+	Ray       []string   `json:"ray,omitempty"`
+	Nodes     []FlatNode `json:"nodes,omitempty"`
+	Tree      *PNode     `json:"-"` // builder form, flattened by Seal
+}
+
+// Seal flattens the builder tree into Nodes (iteratively).
+func (p *Proof) Seal() {
+	p.Nodes = nil
+	if p.Tree == nil {
+		return
+	}
+	type item struct {
+		n      *PNode
+		parent int
+		isUp   bool
+	}
+	stack := []item{{p.Tree, -1, false}}
+	for len(stack) > 0 {
+		it := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		idx := len(p.Nodes)
+		p.Nodes = append(p.Nodes, FlatNode{Var: it.n.Var, Split: it.n.Split, Leaf: it.n.Leaf, Y: it.n.Y, LP: it.n.LP, Inc: it.n.Inc})
+		if it.parent >= 0 {
+			if it.isUp {
+				p.Nodes[it.parent].Up = idx
+			} else {
+				p.Nodes[it.parent].Down = idx
+			}
+		}
+		if it.n.Var != nil {
+			stack = append(stack, item{it.n.Up, idx, true}, item{it.n.Down, idx, false})
+		}
+	}
 }
 
 // HashModel fingerprints the canonical text of a model.
@@ -45,7 +91,7 @@ func ratStrs(v []*big.Rat) []string {
 	if v == nil {
 		return nil
 	}
-	o := make([]string, len(v))
+	o := make([]string, len(v)) // non-nil even when empty
 	for i, r := range v {
 		o[i] = r.RatString()
 	}
@@ -128,11 +174,20 @@ func Check(m *model.Model, p *Proof) (*CheckReport, error) {
 		if len(x0) != len(m.Vars) || len(ray) != len(m.Vars) {
 			return nil, fmt.Errorf("unbounded certificate has wrong dimension")
 		}
-		if m.HasInts() {
-			return nil, fmt.Errorf("an LP-relaxation ray does not prove a MIP unbounded")
-		}
 		if err := exact.CheckRay(m, cost, x0, ray); err != nil {
 			return nil, fmt.Errorf("unbounded certificate rejected: %w", err)
+		}
+		if m.HasInts() {
+			// the base point must be integer-feasible and the ray integral on the
+			// integer variables, so x0 + t*ray stays integer-feasible for integer t
+			if err := exact.CheckPoint(m, box0, x0, true); err != nil {
+				return nil, fmt.Errorf("MIP unbounded certificate: base point: %w", err)
+			}
+			for j, v := range m.Vars {
+				if v.Int && !ray[j].IsInt() {
+					return nil, fmt.Errorf("MIP unbounded certificate: ray is fractional on integer variable %s", v.Name)
+				}
+			}
 		}
 		rep.Complete = true
 		return rep, nil
@@ -177,26 +232,39 @@ func Check(m *model.Model, p *Proof) (*CheckReport, error) {
 	} else if p.Status == "optimal" {
 		return nil, fmt.Errorf("status optimal without a solution")
 	}
-	if p.Tree == nil {
+	if len(p.Nodes) == 0 {
 		return nil, fmt.Errorf("proof has no tree")
 	}
 	intObj := m.ObjIsIntegral()
 	var minBound *big.Rat // min over leaves of proven internal bound
 	boundKnown := true
-	var walk func(n *PNode, box exact.Box, depth int) error
-	walk = func(n *PNode, box exact.Box, depth int) error {
+	type frame struct {
+		idx int
+		box exact.Box
+	}
+	seen := make([]bool, len(p.Nodes))
+	stack := []frame{{0, box0}}
+	for len(stack) > 0 {
+		f := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if f.idx < 0 || f.idx >= len(p.Nodes) || seen[f.idx] {
+			return nil, fmt.Errorf("malformed proof tree (bad or repeated node index %d)", f.idx)
+		}
+		seen[f.idx] = true
+		n := &p.Nodes[f.idx]
+		box := f.box
 		rep.Nodes++
 		if n.Var != nil {
 			j := *n.Var
 			if j < 0 || j >= len(m.Vars) || !m.Vars[j].Int {
-				return fmt.Errorf("branching on non-integer variable index %d", j)
+				return nil, fmt.Errorf("branching on non-integer variable index %d", j)
 			}
 			s, ok := new(big.Rat).SetString(n.Split)
 			if !ok || !s.IsInt() {
-				return fmt.Errorf("branch split %q is not an integer", n.Split)
+				return nil, fmt.Errorf("branch split %q is not an integer", n.Split)
 			}
-			if n.Down == nil || n.Up == nil {
-				return fmt.Errorf("branch node on %s lacks a child", m.Vars[j].Name)
+			if n.Down <= f.idx || n.Up <= f.idx {
+				return nil, fmt.Errorf("branch node %d has missing or backward child", f.idx)
 			}
 			down := box.Clone()
 			if down.Hi[j] == nil || down.Hi[j].Cmp(s) > 0 {
@@ -207,58 +275,64 @@ func Check(m *model.Model, p *Proof) (*CheckReport, error) {
 			if up.Lo[j] == nil || up.Lo[j].Cmp(s1) < 0 {
 				up.Lo[j] = s1
 			}
-			if err := walk(n.Down, down, depth+1); err != nil {
-				return err
-			}
-			return walk(n.Up, up, depth+1)
+			stack = append(stack, frame{n.Up, up}, frame{n.Down, down})
+			continue
 		}
 		rep.Leaves++
 		switch n.Leaf {
 		case "farkas":
 			y, err := parseRats(n.Y)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if box.Empty() {
 				rep.FarkasLeaves++
-				return nil
+				continue
 			}
 			if len(y) != len(m.Rows) {
-				return fmt.Errorf("Farkas leaf has %d multipliers, model has %d rows", len(y), len(m.Rows))
+				return nil, fmt.Errorf("Farkas leaf has %d multipliers, model has %d rows", len(y), len(m.Rows))
 			}
 			if err := exact.CheckFarkas(m, box, y); err != nil {
-				return fmt.Errorf("Farkas leaf rejected: %w", err)
+				return nil, fmt.Errorf("Farkas leaf rejected: %w", err)
+			}
+			rep.FarkasLeaves++
+		case "gcd":
+			row, err := strconv.Atoi(n.Split)
+			if err != nil {
+				return nil, fmt.Errorf("gcd leaf: bad row index %q", n.Split)
+			}
+			if err := exact.CheckGCDRow(m, row); err != nil {
+				return nil, fmt.Errorf("gcd leaf rejected: %w", err)
 			}
 			rep.FarkasLeaves++
 		case "bound":
 			y, err := parseRats(n.Y)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if len(y) != len(m.Rows) {
-				return fmt.Errorf("bound leaf has %d multipliers, model has %d rows", len(y), len(m.Rows))
+				return nil, fmt.Errorf("bound leaf has %d multipliers, model has %d rows", len(y), len(m.Rows))
 			}
 			b, ok := exact.LagrangeBound(m, box, cost, y)
 			if !ok {
-				return fmt.Errorf("bound leaf multipliers need an infinite bound")
+				return nil, fmt.Errorf("bound leaf multipliers need an infinite bound")
 			}
 			if minBound == nil || b.Cmp(minBound) < 0 {
 				minBound = b
 			}
 			if p.Status == "limit" {
-				// a limit-terminated proof only needs valid bounds
-				rep.BoundLeaves++
-				return nil
+				rep.BoundLeaves++ // a limit-terminated proof only needs valid bounds
+				continue
 			}
 			if incObj == nil {
-				return fmt.Errorf("bound leaf in a proof without incumbent")
+				return nil, fmt.Errorf("bound leaf in a proof without incumbent")
 			}
 			eff := b
 			if intObj {
 				eff = ceilRat(b)
 			}
 			if eff.Cmp(incObj) < 0 {
-				return fmt.Errorf("bound leaf proves only %s, incumbent is %s (a better solution may exist)",
+				return nil, fmt.Errorf("bound leaf proves only %s, incumbent is %s (a better solution may exist)",
 					model.RatStr(eff), model.RatStr(incObj))
 			}
 			rep.BoundLeaves++
@@ -267,13 +341,13 @@ func Check(m *model.Model, p *Proof) (*CheckReport, error) {
 			if len(n.Y) == len(m.Rows) {
 				y, err := parseRats(n.Y)
 				if err != nil {
-					return err
+					return nil, err
 				}
 				if b, ok := exact.LagrangeBound(m, box, cost, y); ok {
 					if minBound == nil || b.Cmp(minBound) < 0 {
 						minBound = b
 					}
-					return nil
+					continue
 				}
 			}
 			boundKnown = false
@@ -281,12 +355,13 @@ func Check(m *model.Model, p *Proof) (*CheckReport, error) {
 			rep.Uncertified++
 			boundKnown = false
 		default:
-			return fmt.Errorf("unknown leaf kind %q", n.Leaf)
+			return nil, fmt.Errorf("unknown leaf kind %q", n.Leaf)
 		}
-		return nil
 	}
-	if err := walk(p.Tree, box0, 0); err != nil {
-		return nil, err
+	for i, ok := range seen {
+		if !ok {
+			return nil, fmt.Errorf("proof contains unreachable node %d", i)
+		}
 	}
 	rep.Complete = rep.OpenLeaves == 0 && rep.Uncertified == 0
 	if boundKnown && minBound != nil {

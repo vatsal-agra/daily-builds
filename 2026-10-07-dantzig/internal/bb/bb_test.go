@@ -181,7 +181,7 @@ End`)
 	}
 	// 4. perturbed multipliers in a leaf
 	p = mustUnmarshal(t, good)
-	if !corruptFirstLeaf(p.Tree) {
+	if !corruptFirstLeaf(p) {
 		t.Fatal("no leaf to corrupt")
 	}
 	if _, err := Check(m, p); err == nil {
@@ -189,8 +189,9 @@ End`)
 	}
 	// 5. dropping a subtree (pruning without proof)
 	p = mustUnmarshal(t, good)
-	if p.Tree.Down != nil {
-		p.Tree.Down = &PNode{Leaf: "bound", Y: []string{"0"}}
+	if p.Nodes[0].Var != nil {
+		d := p.Nodes[0].Down
+		p.Nodes[d] = FlatNode{Leaf: "bound", Y: []string{"0"}}
 		if _, err := Check(m, p); err == nil {
 			t.Fatal("accepted a replaced subtree")
 		}
@@ -210,16 +211,13 @@ func mustUnmarshal(t *testing.T, b []byte) *Proof {
 	return p
 }
 
-func corruptFirstLeaf(n *PNode) bool {
-	if n == nil {
-		return false
-	}
-	if n.Var != nil {
-		return corruptFirstLeaf(n.Down) || corruptFirstLeaf(n.Up)
-	}
-	if n.Leaf == "bound" && len(n.Y) > 0 {
-		n.Y[0] = "1000"
-		return true
+func corruptFirstLeaf(p *Proof) bool {
+	for i := range p.Nodes {
+		n := &p.Nodes[i]
+		if n.Var == nil && n.Leaf == "bound" && len(n.Y) > 0 {
+			n.Y[0] = "1000"
+			return true
+		}
 	}
 	return false
 }
@@ -236,12 +234,38 @@ func TestInfeasibleAndUnboundedMIP(t *testing.T) {
 	}
 	m = parse(t, "Maximize\n o: x + y\nSubject To\n c: x - y <= 2\nInteger\n x\nEnd")
 	res = Solve(m, Options{})
-	if res.Status != UnboundedRelaxation || !res.Certified {
+	if res.Status != Unbounded || !res.Certified {
 		t.Fatalf("%s %v %s", res.Status, res.Certified, res.Note)
 	}
 	if _, err := Check(m, res.Proof); err != nil {
 		t.Fatal(err)
 	}
+	// relaxation unbounded but no integer point exists: 3x - 3y = 1 over free integers
+	m = parse(t, "Minimize\n o: x\nSubject To\n c: 3 x - 3 y = 1\nBounds\n x free\n y free\nInteger\n x y\nEnd")
+	res = Solve(m, Options{})
+	if res.Status != Infeasible || !res.Certified {
+		t.Fatalf("%s %v %s", res.Status, res.Certified, res.Note)
+	}
+	if _, err := Check(m, res.Proof); err != nil {
+		t.Fatal(err)
+	}
+	// tampering: a fractional ray must be rejected for a MIP
+	m = parse(t, "Maximize\n o: x + y\nSubject To\n c: x - y <= 2\nInteger\n x\nEnd")
+	res = Solve(m, Options{})
+	p := mustUnmarshal(t, mustMarshal(t, res.Proof))
+	p.Ray[0] = "1/2"
+	p.Ray[1] = "1/2"
+	if _, err := Check(m, p); err == nil {
+		t.Fatal("accepted fractional ray on an integer variable")
+	}
+}
+
+func mustMarshal(t *testing.T, p *Proof) []byte {
+	b, err := MarshalProof(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
 
 func TestNodeLimitProofIsPartial(t *testing.T) {

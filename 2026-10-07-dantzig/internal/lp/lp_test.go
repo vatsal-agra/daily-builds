@@ -288,3 +288,187 @@ func TestWarmStartMatchesCold(t *testing.T) {
 		t.Fatal("too few warm-start cases")
 	}
 }
+
+func TestCyclingExamples(t *testing.T) {
+	// Beale's classic cycling LP (optimum -5/4)
+	m := mustParse(t, `
+Minimize
+ o: - 3/4 x4 + 20 x5 - 1/2 x6 + 6 x7
+Subject To
+ c1: 1/4 x4 - 8 x5 - x6 + 9 x7 <= 0
+ c2: 1/2 x4 - 12 x5 - 1/2 x6 + 3 x7 <= 0
+ c3: x6 <= 1
+End`)
+	s := Solve(m)
+	if s.Status != Optimal || !s.Certified || s.Obj.Cmp(big.NewRat(-5, 4)) != 0 {
+		t.Fatalf("beale: %v %s %v", s.Status, s.Note, s.Obj)
+	}
+	// Kuhn's example
+	m = mustParse(t, `
+Minimize
+ o: - 2 x1 - 3 x2 + x3 + 12 x4
+Subject To
+ c1: - 2 x1 - 9 x2 + x3 + 9 x4 <= 0
+ c2: 1/3 x1 + x2 - 1/3 x3 - 2 x4 <= 0
+End`)
+	if s := Solve(m); !s.Certified {
+		t.Fatalf("kuhn: %v %s", s.Status, s.Note)
+	}
+}
+
+func kleeMinty(n int) (*model.Model, *big.Rat) {
+	m := model.New()
+	m.Maximize = true
+	pow := func(b, e int) *big.Int { return new(big.Int).Exp(big.NewInt(int64(b)), big.NewInt(int64(e)), nil) }
+	for j := 0; j < n; j++ {
+		v := m.AddVar("x" + string(rune('a'+j)))
+		m.Vars[v].Obj = new(big.Rat).SetInt(pow(2, n-1-j))
+	}
+	for i := 0; i < n; i++ {
+		row := model.Row{Name: "c" + string(rune('a'+i))}
+		for j := 0; j < i; j++ {
+			row.Entries = append(row.Entries, model.Entry{J: j, V: new(big.Rat).SetInt(pow(2, i-j+1))})
+		}
+		row.Entries = append(row.Entries, model.Entry{J: i, V: big.NewRat(1, 1)})
+		row.Hi = new(big.Rat).SetInt(pow(5, i+1))
+		m.Rows = append(m.Rows, row)
+	}
+	return m, new(big.Rat).SetInt(pow(5, n))
+}
+
+func TestKleeMinty(t *testing.T) {
+	for n := 2; n <= 14; n++ {
+		m, opt := kleeMinty(n)
+		s := Solve(m)
+		if s.Status != Optimal || !s.Certified || new(big.Rat).Neg(s.Obj).Cmp(opt) != 0 {
+			t.Fatalf("n=%d: %v %s obj=%v want -%s", n, s.Status, s.Note, s.Obj, opt.RatString())
+		}
+	}
+}
+
+func TestLargerFeasibleLPs(t *testing.T) {
+	r := rand.New(rand.NewSource(5))
+	for it := 0; it < 25; it++ {
+		n, mm := 20+r.Intn(30), 10+r.Intn(25)
+		m := model.New()
+		m.Maximize = true
+		for j := 0; j < n; j++ {
+			v := m.AddVar("x" + string(rune('A'+j%26)) + string(rune('a'+j/26)))
+			m.Vars[v].Obj = big.NewRat(int64(1+r.Intn(20)), 1)
+		}
+		for i := 0; i < mm; i++ {
+			row := model.Row{Name: "r" + string(rune('A'+i%26)) + string(rune('a'+i/26))}
+			for j := 0; j < n; j++ {
+				if r.Intn(2) == 0 {
+					row.Entries = append(row.Entries, model.Entry{J: j, V: big.NewRat(int64(1+r.Intn(9)), 1)})
+				}
+			}
+			if len(row.Entries) == 0 {
+				row.Entries = []model.Entry{{J: 0, V: big.NewRat(1, 1)}}
+			}
+			row.Hi = big.NewRat(int64(100+r.Intn(900)), 1)
+			m.Rows = append(m.Rows, row)
+		}
+		s := Solve(m)
+		if s.Status != Optimal || !s.Certified {
+			t.Fatalf("it %d: %v %s", it, s.Status, s.Note)
+		}
+	}
+}
+
+func TestDegenerateAssignmentLPs(t *testing.T) {
+	r := rand.New(rand.NewSource(8))
+	for it := 0; it < 15; it++ {
+		n := 3 + r.Intn(10)
+		m := model.New()
+		for i := 0; i < n; i++ {
+			for j := 0; j < n; j++ {
+				v := m.AddVar("x" + string(rune('a'+i)) + string(rune('a'+j)))
+				m.Vars[v].Obj = big.NewRat(int64(1+r.Intn(5)), 1) // many ties => degenerate
+			}
+		}
+		for i := 0; i < n; i++ {
+			rr := model.Row{Name: "w" + string(rune('a'+i)), Lo: big.NewRat(1, 1), Hi: big.NewRat(1, 1)}
+			cc := model.Row{Name: "j" + string(rune('a'+i)), Lo: big.NewRat(1, 1), Hi: big.NewRat(1, 1)}
+			for j := 0; j < n; j++ {
+				rr.Entries = append(rr.Entries, model.Entry{J: i*n + j, V: big.NewRat(1, 1)})
+				cc.Entries = append(cc.Entries, model.Entry{J: j*n + i, V: big.NewRat(1, 1)})
+			}
+			m.Rows = append(m.Rows, rr, cc)
+		}
+		s := Solve(m)
+		if s.Status != Optimal || !s.Certified {
+			t.Fatalf("n=%d: %v %s", n, s.Status, s.Note)
+		}
+		for _, v := range s.X {
+			if !v.IsInt() {
+				t.Fatalf("assignment LP vertex is fractional")
+			}
+		}
+	}
+}
+
+// Highly degenerate 0/1 data: primal-only and the default (dual-first) path
+// must agree on status and objective, and every verdict must be certified.
+func TestDegenerateBinaryDataPrimalVsDual(t *testing.T) {
+	r := rand.New(rand.NewSource(404))
+	agree := 0
+	for it := 0; it < 6000; it++ {
+		n, mm := 3+r.Intn(6), 2+r.Intn(6)
+		m := model.New()
+		m.Maximize = r.Intn(2) == 0
+		for j := 0; j < n; j++ {
+			v := m.AddVar("x" + string(rune('a'+j)))
+			m.Vars[v].Obj = big.NewRat(int64(r.Intn(3)-1), 1)
+			m.Vars[v].Hi = big.NewRat(int64(1+r.Intn(2)), 1)
+		}
+		for i := 0; i < mm; i++ {
+			row := model.Row{Name: "r" + string(rune('a'+i))}
+			for j := 0; j < n; j++ {
+				if c := r.Intn(3) - 1; c != 0 {
+					row.Entries = append(row.Entries, model.Entry{J: j, V: big.NewRat(int64(c), 1)})
+				}
+			}
+			if len(row.Entries) == 0 {
+				row.Entries = []model.Entry{{J: 0, V: big.NewRat(1, 1)}}
+			}
+			b := big.NewRat(int64(r.Intn(3)), 1)
+			switch r.Intn(3) {
+			case 0:
+				row.Hi = b
+			case 1:
+				row.Lo = b
+			default:
+				row.Lo, row.Hi = b, new(big.Rat).Set(b)
+			}
+			m.Rows = append(m.Rows, row)
+		}
+		def := Solve(m)
+		if !def.Certified {
+			t.Fatalf("it %d default path uncertified: %v %s\n%s", it, def.Status, def.Note, model.Format(m))
+		}
+		box := exact.BoxOf(m)
+		sv := simplexNew(m, box)
+		res := sv.SolvePrimal()
+		switch def.Status {
+		case Optimal:
+			if res != 0 {
+				t.Fatalf("it %d primal-only %v but default optimal\n%s", it, res, model.Format(m))
+			}
+			_, _, obj, err := OptimalCert(m, box, sv.Statuses())
+			if err != nil || obj.Cmp(def.Obj) != 0 {
+				t.Fatalf("it %d primal-only optimum differs: %v %v vs %v\n%s", it, obj, err, def.Obj, model.Format(m))
+			}
+		case Infeasible:
+			if res != 1 {
+				t.Fatalf("it %d primal-only %v but default infeasible\n%s", it, res, model.Format(m))
+			}
+		case Unbounded:
+			if res != 2 {
+				t.Fatalf("it %d primal-only %v but default unbounded\n%s", it, res, model.Format(m))
+			}
+		}
+		agree++
+	}
+	t.Logf("%d agreeing cases", agree)
+}

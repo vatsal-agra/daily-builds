@@ -586,3 +586,76 @@ func PrimalFromBasis(m *Model, box Box, status []byte) (x, r []*big.Rat, err err
 	}
 	return z[:n], z[n:], nil
 }
+
+// ---------------------------------------------------------------- integrality (gcd) certificates
+
+// intRowGrid scales an all-integer row to integer coefficients and returns the
+// gcd g of the scaled coefficients and the scale factor L, or ok=false when the
+// row has a continuous variable (or no entries).
+func intRowGrid(m *Model, i int) (g, l *big.Int, ok bool) {
+	row := m.Rows[i]
+	if len(row.Entries) == 0 {
+		return nil, nil, false
+	}
+	l = big.NewInt(1)
+	for _, e := range row.Entries {
+		if !m.Vars[e.J].Int {
+			return nil, nil, false
+		}
+		d := e.V.Denom()
+		gg := new(big.Int).GCD(nil, nil, l, d)
+		l.Mul(l, new(big.Int).Div(d, gg))
+	}
+	g = new(big.Int)
+	for _, e := range row.Entries {
+		sc := new(big.Int).Mul(e.V.Num(), new(big.Int).Div(l, e.V.Denom()))
+		g.GCD(nil, nil, g, new(big.Int).Abs(sc))
+	}
+	return g, l, g.Sign() > 0
+}
+
+// CheckGCDRow verifies that row i can never be satisfied by integers: all its
+// variables are integer, and no multiple of the coefficient gcd lies in its
+// (two-sided) range. It holds on every bound box, so it needs no box.
+func CheckGCDRow(m *Model, i int) error {
+	if i < 0 || i >= len(m.Rows) {
+		return fmt.Errorf("gcd leaf references unknown row %d", i)
+	}
+	g, l, ok := intRowGrid(m, i)
+	if !ok {
+		return fmt.Errorf("row %s is not an all-integer row", m.Rows[i].Name)
+	}
+	row := m.Rows[i]
+	if row.Lo == nil || row.Hi == nil {
+		return fmt.Errorf("row %s has an open side, so it always has an integer solution on the lattice", row.Name)
+	}
+	lo := new(big.Rat).Mul(row.Lo, new(big.Rat).SetInt(l))
+	hi := new(big.Rat).Mul(row.Hi, new(big.Rat).SetInt(l))
+	gr := new(big.Rat).SetInt(g)
+	// smallest multiple of g that is >= lo: g * ceil(lo/g); infeasible if it exceeds hi
+	k := ceilQ(new(big.Rat).Quo(lo, gr))
+	first := new(big.Rat).Mul(k, gr)
+	if first.Cmp(hi) <= 0 {
+		return fmt.Errorf("row %s has the integer-lattice point %s", row.Name, first.RatString())
+	}
+	return nil
+}
+
+func ceilQ(r *big.Rat) *big.Rat {
+	q := new(big.Int).Div(r.Num(), r.Denom())
+	if !r.IsInt() {
+		q.Add(q, big.NewInt(1))
+	}
+	return new(big.Rat).SetInt(q)
+}
+
+// FindGCDInfeasibleRow returns the index of a row proven integer-infeasible
+// by CheckGCDRow, or -1.
+func FindGCDInfeasibleRow(m *Model) int {
+	for i := range m.Rows {
+		if CheckGCDRow(m, i) == nil {
+			return i
+		}
+	}
+	return -1
+}

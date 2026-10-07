@@ -14,6 +14,7 @@ usage:
   dantzig sens   <model.lp>            exact sensitivity analysis of the LP optimum
   dantzig gen    <kind> [args]         print a generated model (dantzig gen list)
   dantzig fmt    <model.lp>            parse and print the canonical form
+  dantzig export <model.lp>            print the model as float JSON (for other solvers)
   dantzig report <model.lp> <out.html> solve and write an HTML report
 
 solve flags:
@@ -41,6 +42,8 @@ func main() {
 		code, err = cmdFmt(os.Args[2:])
 	case "sens":
 		code, err = cmdSens(os.Args[2:])
+	case "export":
+		code, err = cmdExport(os.Args[2:])
 	case "gen":
 		code, err = cmdGen(os.Args[2:])
 	case "report":

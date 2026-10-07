@@ -3,6 +3,7 @@ package model
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"sort"
 	"strings"
@@ -131,6 +132,9 @@ func (m *Model) HasInts() bool {
 
 // Validate checks structural sanity (bounds ordering, indices).
 func (m *Model) Validate() error {
+	if err := m.checkMagnitudes(); err != nil {
+		return err
+	}
 	for _, v := range m.Vars {
 		if v.Lo != nil && v.Hi != nil && v.Lo.Cmp(v.Hi) > 0 {
 			return fmt.Errorf("variable %s has lower bound %s > upper bound %s", v.Name, v.Lo.RatString(), v.Hi.RatString())
@@ -171,14 +175,22 @@ func Float(r *big.Rat) float64 {
 	return f
 }
 
-// DecStr prints a rational as a decimal with up to 10 significant decimals.
+// DecStr prints a rational as a decimal: plain for ordinary magnitudes,
+// scientific with 10 significant digits for very large or small ones.
 func DecStr(r *big.Rat) string {
-	if r.IsInt() {
+	if r.IsInt() && len(r.Num().String()) <= 15 {
 		return r.Num().String()
 	}
+	f := Float(r)
+	if f != 0 && (math.Abs(f) >= 1e15 || math.Abs(f) < 1e-6) {
+		return new(big.Float).SetPrec(80).SetRat(r).Text('g', 10)
+	}
 	s := r.FloatString(10)
-	s = strings.TrimRight(s, "0")
-	return strings.TrimRight(s, ".")
+	if strings.Contains(s, ".") {
+		s = strings.TrimRight(s, "0")
+		s = strings.TrimRight(s, ".")
+	}
+	return s
 }
 
 // SortedEntries returns row entries ordered by variable index.
@@ -186,4 +198,53 @@ func SortedEntries(es []Entry) []Entry {
 	out := append([]Entry(nil), es...)
 	sort.Slice(out, func(a, b int) bool { return out[a].J < out[b].J })
 	return out
+}
+
+// Magnitude limits: the simplex runs in float64 (with exact verification
+// afterwards), so data must be representable and not vanish under its tolerances.
+const (
+	MaxMagnitude = 1e12 // largest allowed |value| anywhere
+	MinCoef      = 1e-6 // smallest allowed nonzero |matrix or objective coefficient|
+)
+
+func (m *Model) checkMagnitudes() error {
+	huge := func(r *big.Rat) bool {
+		if r == nil {
+			return false
+		}
+		f := Float(r)
+		return math.IsInf(f, 0) || math.Abs(f) > MaxMagnitude
+	}
+	small := func(r *big.Rat) bool {
+		if r == nil || r.Sign() == 0 {
+			return false
+		}
+		return math.Abs(Float(r)) < MinCoef
+	}
+	scale := "rescale your model (|value| must be at most 1e12, nonzero coefficients at least 1e-6)"
+	if huge(m.ObjConst) {
+		return fmt.Errorf("objective constant is too large: %s", scale)
+	}
+	for _, v := range m.Vars {
+		if huge(v.Obj) || huge(v.Lo) || huge(v.Hi) {
+			return fmt.Errorf("variable %s has a value that is too large for floating-point simplex: %s", v.Name, scale)
+		}
+		if small(v.Obj) {
+			return fmt.Errorf("objective coefficient of %s (%s) is too small to be handled reliably: %s", v.Name, RatStr(v.Obj), scale)
+		}
+	}
+	for _, r := range m.Rows {
+		if huge(r.Lo) || huge(r.Hi) {
+			return fmt.Errorf("row %s has a limit that is too large for floating-point simplex: %s", r.Name, scale)
+		}
+		for _, e := range r.Entries {
+			if huge(e.V) {
+				return fmt.Errorf("coefficient of %s in row %s is too large: %s", m.Vars[e.J].Name, r.Name, scale)
+			}
+			if small(e.V) {
+				return fmt.Errorf("coefficient of %s in row %s (%s) is too small to be handled reliably: %s", m.Vars[e.J].Name, r.Name, RatStr(e.V), scale)
+			}
+		}
+	}
+	return nil
 }

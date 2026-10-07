@@ -10,6 +10,7 @@ package simplex
 import (
 	"errors"
 	"math"
+	"time"
 )
 
 // Column statuses (same byte values as package exact).
@@ -47,12 +48,18 @@ const (
 
 var inf = math.Inf(1)
 
+type spEntry struct {
+	j int
+	v float64
+}
+
 // Problem is the float image of a model: A is m x n dense.
 type Problem struct {
 	M, N int
 	A    [][]float64
-	C    []float64 // minimisation cost, length N
-	Lo   []float64 // length N+M
+	sp   [][]spEntry // sparse row view of A (shared, read-only)
+	C    []float64   // minimisation cost, length N
+	Lo   []float64   // length N+M
 	Hi   []float64
 }
 
@@ -60,6 +67,7 @@ type Problem struct {
 type Solver struct {
 	M, N      int
 	A         [][]float64
+	sp        [][]spEntry // sparse row view of A (shared, read-only)
 	C         []float64
 	Lo        []float64
 	Hi        []float64
@@ -71,6 +79,8 @@ type Solver struct {
 	X         []float64   // N+M
 
 	Iters       int
+	iterBase    int       // Iters at the start of the current Solve
+	Deadline    time.Time // zero = none
 	sinceRefac  int
 	MaxIters    int
 	stall       int
@@ -88,6 +98,14 @@ func New(p *Problem) *Solver {
 	s.Lo = append([]float64(nil), p.Lo...)
 	s.Hi = append([]float64(nil), p.Hi...)
 	s.MaxIters = 50000 + 100*(p.M+p.N)
+	s.sp = make([][]spEntry, p.M)
+	for i := range p.A {
+		for j, v := range p.A[i] {
+			if v != 0 {
+				s.sp[i] = append(s.sp[i], spEntry{j, v})
+			}
+		}
+	}
 	s.setTrueCost()
 	s.ResetSlack()
 	return s
@@ -122,6 +140,17 @@ func (s *Solver) perturbCost(seed uint64) {
 	}
 	s.perturbed = true
 }
+
+// limitHit reports whether this Solve exceeded its iteration budget or deadline.
+func (s *Solver) limitHit() bool {
+	if s.Iters-s.iterBase > s.MaxIters {
+		return true
+	}
+	return !s.Deadline.IsZero() && s.Iters%16 == 0 && time.Now().After(s.Deadline)
+}
+
+// TimedOut reports whether the deadline has passed.
+func (s *Solver) TimedOut() bool { return !s.Deadline.IsZero() && time.Now().After(s.Deadline) }
 
 // Clone copies the mutable state (A and C are shared, read-only).
 func (s *Solver) Clone() *Solver {
@@ -290,10 +319,8 @@ func (s *Solver) Refactor() error {
 			if f == 0 {
 				continue
 			}
-			for j := 0; j < n; j++ {
-				if a := s.A[r][j]; a != 0 {
-					row[j] += f * a
-				}
+			for _, e := range s.sp[r] {
+				row[e.j] += f * e.v
 			}
 			row[n+r] -= f
 		}
@@ -425,6 +452,7 @@ func (s *Solver) DualFeasible(tol float64) bool {
 // Solve optimises from the current basis. cutoff (if finite) lets the dual
 // simplex stop once the objective provably exceeds it.
 func (s *Solver) Solve(cutoff float64) Result {
+	s.iterBase = s.Iters
 	s.setTrueCost()
 	s.refreshNonbasic()
 	s.computeXB()
@@ -456,7 +484,7 @@ func (s *Solver) primal() Result {
 	s.FarkasBasic = -1
 	confirmed := false
 	for {
-		if s.Iters > s.MaxIters {
+		if s.limitHit() {
 			return IterLimit
 		}
 		if s.sinceRefac >= refactorEvery {
@@ -648,4 +676,14 @@ func (s *Solver) primal() Result {
 			s.St[leave] = AtLower
 		}
 	}
+}
+
+// SolvePrimal runs only the primal simplex (phase 1 + 2) from the current
+// basis; exported so tests can cross-check it against the dual path.
+func (s *Solver) SolvePrimal() Result {
+	s.iterBase = s.Iters
+	s.setTrueCost()
+	s.refreshNonbasic()
+	s.computeXB()
+	return s.primal()
 }
