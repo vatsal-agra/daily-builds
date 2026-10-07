@@ -1,4 +1,23 @@
 # Dantzig
 
-Status: **Phase 1 (plan) complete** — see [PLAN.md](PLAN.md). A certifying LP/MIP solver in Go;
-every answer carries an exact rational certificate verified by an independent checker.
+A **certifying LP / MIP solver** in Go (standard library only). It solves linear and
+mixed-integer programs with a bounded-variable primal + dual simplex and branch & bound,
+and every answer ships with an **exact rational certificate** that an independent checker
+verifies with `math/big.Rat`.
+
+> Status: **Phase 2 complete** (4 required features built and working). Sections below grow
+> with each phase; see [PLAN.md](PLAN.md) for the full plan.
+
+## Quick start
+```
+go build -o dantzig ./cmd/dantzig
+./dantzig solve examples/knapsack.lp --proof knapsack.proof.json
+./dantzig check examples/knapsack.lp knapsack.proof.json
+./dantzig gen tsp 8 3 > tsp.lp && ./dantzig solve tsp.lp
+```
+
+## Done so far
+1. LP-format language (parser + writer, ranges, bounds, free/int/binary, fractions) with positioned errors
+2. Bounded-variable simplex: composite two-phase primal, dual simplex warm starts, cost perturbation on dual stalls
+3. Exact certificates: optimal (primal + dual), infeasible (Farkas), unbounded (ray)
+4. Branch & bound with a proof tree; `dantzig check` re-verifies the entire proof exactly
