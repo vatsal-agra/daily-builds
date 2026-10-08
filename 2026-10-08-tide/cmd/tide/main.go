@@ -25,7 +25,7 @@ import (
 const usage = `tide — a small time-series database
 
 usage:
-  tide serve  [-dir DIR] [-addr :8428] [-retention 30d] [-compact-every 1h] [-alerts FILE] [-demo]
+  tide serve  [-dir DIR] [-addr :8428] [-retention 720h] [-compact-every 1h] [-alerts FILE] [-alert-interval 15s] [-demo]
   tide gen    [-dir DIR] [-hosts N] [-hours H] [-interval 10s] [-seed N]
   tide query  [-dir DIR] [-now TIME] 'sum(rate(http_requests_total)) by (host) range 1h'
   tide stats  [-dir DIR]
@@ -67,7 +67,8 @@ func cmdServe(args []string) error {
 	addr := fs.String("addr", "127.0.0.1:8428", "listen address")
 	retention := fs.Duration("retention", 0, "drop blocks older than this (e.g. 720h); 0 = keep forever")
 	compactEvery := fs.Duration("compact-every", time.Hour, "merge blocks this often; 0 disables")
-	alertFile := fs.String("alerts", "", "alert rules file")
+	alertFile := fs.String("alerts", "", "alert rules file (JSON, see alerts.example.json)")
+	alertEvery := fs.Duration("alert-interval", 15*time.Second, "how often alert rules are evaluated")
 	demo := fs.Bool("demo", false, "seed 3h of synthetic fleet metrics and keep feeding live data")
 	fs.Parse(args)
 
@@ -89,6 +90,11 @@ func cmdServe(args []string) error {
 			st.Close()
 			return err
 		}
+		if *alertEvery <= 0 {
+			st.Close()
+			return errors.New("alert-interval must be positive")
+		}
+		am.Interval = *alertEvery
 		srv.Alerts = am
 		go am.Run(ctx, srv.Now)
 		fmt.Printf("tide: %d alert rules loaded from %s\n", am.RuleCount(), *alertFile)

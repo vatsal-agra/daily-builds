@@ -28,6 +28,8 @@ a re-run of the same probe.
 | R17 | Medium | Partial trailing bucket for `rate/increase/sum/count` plotted as a cliff on the right edge of every live chart (found by eye in the first screenshot). | Extensive functions omit buckets that end after the query end. Test: `TestPartialTrailingBucketOmittedForExtensiveFns`. |
 | R18 | High (caught while building) | Block precedence for duplicate timestamps followed *time* order, so an older-in-time but newer-written block lost. | Blocks ordered by write sequence (`seq` in file name). `TestCompactionDedupesAndShrinks` now builds a genuinely overlapping block. |
 
+| R19 | Medium | *Found in Phase 5 by the automated UI check:* on a phone the alert strip overflowed horizontally (long `expr` text under `white-space:nowrap`, grid track not shrinkable). | `minmax(0,1fr)` track, `white-space:normal` + `overflow-wrap:anywhere` on alert text. `scripts/ui_check.js` now guards it. |
+
 ## Known limitations (documented, not bugs)
 * Blocks are read fully into memory (no mmap / lazy loading) and compaction merges all blocks at once — fine up to a few GB, not for terabytes.
 * Series lookup is a linear scan with matchers, no inverted index.
