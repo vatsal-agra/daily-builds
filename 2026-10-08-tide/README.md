@@ -11,3 +11,5 @@ go build -o tide ./cmd/tide
 ./tide serve -demo          # http://127.0.0.1:8428
 ```
 See [PLAN.md](PLAN.md). Full docs arrive in the final phase.
+
+**Phase 3:** adversarial review done — 18 findings reproduced, fixed and regression-tested; see [REVIEW.md](REVIEW.md).

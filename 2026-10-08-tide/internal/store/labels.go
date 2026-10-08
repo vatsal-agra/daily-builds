@@ -78,14 +78,27 @@ func (ls Labels) String() string {
 
 var labelNameRE = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-// Validate checks names are legal, unique, and a metric name is present.
+// Limits that keep a single hostile or buggy writer from bloating the index.
+const (
+	MaxLabels   = 64
+	MaxNameLen  = 256
+	MaxValueLen = 2048
+)
+
+// Validate checks names are legal, unique, within limits, and a metric name is present.
 func (ls Labels) Validate() error {
 	if ls.Get(NameLabel) == "" {
 		return fmt.Errorf("missing metric name")
 	}
+	if len(ls) > MaxLabels {
+		return fmt.Errorf("too many labels (%d, max %d)", len(ls), MaxLabels)
+	}
 	for i, l := range ls {
-		if !labelNameRE.MatchString(l.Name) {
-			return fmt.Errorf("invalid label name %q", l.Name)
+		if !labelNameRE.MatchString(l.Name) || len(l.Name) > MaxNameLen {
+			return fmt.Errorf("invalid label name %.40q", l.Name)
+		}
+		if len(l.Value) > MaxValueLen {
+			return fmt.Errorf("value of label %q too long (%d bytes, max %d)", l.Name, len(l.Value), MaxValueLen)
 		}
 		if i > 0 && ls[i-1].Name == l.Name {
 			return fmt.Errorf("duplicate label %q", l.Name)

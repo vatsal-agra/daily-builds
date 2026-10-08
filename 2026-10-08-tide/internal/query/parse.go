@@ -356,6 +356,12 @@ func (p *parser) duration() (time.Duration, error) {
 	if err != nil {
 		return 0, p.errf(t, "%v", err)
 	}
+	if d <= 0 {
+		return 0, p.errf(t, "duration must be positive")
+	}
+	if d < time.Millisecond {
+		return 0, p.errf(t, "duration must be at least 1ms")
+	}
 	return d, nil
 }
 

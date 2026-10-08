@@ -5,8 +5,11 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"tide/internal/gorilla"
 )
 
 func lbl(name string, kv ...string) Labels {
@@ -200,14 +203,19 @@ func TestCompactionDedupesAndShrinks(t *testing.T) {
 	s.Flush()
 	fill(t, s, "m", 25, 25)
 	s.Flush()
-	// overlapping re-send with different values for ts 40..49 in a third block
-	var pts []Point
+	// A third block overlapping ts 20..29 with different values — what a crash
+	// window or an older writer could leave behind. Newest-written block wins.
+	s.Close()
+	enc := gorilla.NewEncoder()
 	for i := 20; i < 30; i++ {
-		pts = append(pts, Point{lbl("m", "h", "a"), int64(i) * 1000, 999})
+		enc.Append(int64(i)*1000, 999)
 	}
-	// head is empty after flush so these are accepted
-	s.Append(pts)
-	s.Flush()
+	if err := writeBlock(filepath.Join(dir, "blocks"), "b-20000-29000-"+fmt.Sprint(time.Now().UnixNano()+1e9)+".blk",
+		[]chunkSource{{labels: lbl("m", "h", "a"), chunks: [][]byte{enc.Bytes()}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	s = mustOpen(t, dir)
+	defer s.Close()
 	before := s.Stats()
 	res, err := s.Compact()
 	if err != nil || res.BlocksBefore != 3 || res.BlocksAfter != 1 || res.Duplicates != 10 {
@@ -358,3 +366,65 @@ func nan() float64 { var z float64; return z / z }
 
 // crash simulates kill -9: file handles vanish with no flush or clean shutdown.
 func (s *Store) crash() { s.wal.Close(); s.lock.Close() } // Append already fsynced; nothing is flushed here
+
+// ---- regressions found in adversarial review (see REVIEW.md) ----
+
+func TestResendAfterFlushIsRejected(t *testing.T) { // R3
+	s := mustOpen(t, t.TempDir())
+	defer s.Close()
+	fill(t, s, "m", 0, 10)
+	s.Flush()
+	r, _ := s.Append([]Point{{lbl("m", "h", "a"), 5000, 1}, {lbl("m", "h", "a"), 9000, 1}, {lbl("m", "h", "a"), 10_000, 7}})
+	if r.Accepted != 1 || r.OutOfOrder != 2 {
+		t.Fatalf("%+v", r)
+	}
+	s.Close()
+	s2 := mustOpen(t, s.opt.Dir) // ordering state must survive a restart
+	defer s2.Close()
+	r, _ = s2.Append([]Point{{lbl("m", "h", "a"), 10_000, 8}})
+	if r.OutOfOrder != 1 {
+		t.Fatalf("ordering forgotten after restart: %+v", r)
+	}
+}
+
+func TestWALReplaySkipsAlreadyFlushedSamples(t *testing.T) { // R3 / crash window
+	dir := t.TempDir()
+	s := mustOpen(t, dir)
+	fill(t, s, "m", 0, 30)
+	walCopy, _ := os.ReadFile(filepath.Join(dir, "wal.log"))
+	s.Flush()
+	s.Close()
+	os.WriteFile(filepath.Join(dir, "wal.log"), walCopy, 0o644)
+	s2 := mustOpen(t, dir)
+	defer s2.Close()
+	if st := s2.Stats(); st.HeadSamples != 0 || st.TotalSamples != 30 {
+		t.Fatalf("duplicates replayed into head: %+v", st)
+	}
+}
+
+func TestTimestampAndLabelLimits(t *testing.T) { // R2, R5
+	s := mustOpen(t, t.TempDir())
+	defer s.Close()
+	many := map[string]string{NameLabel: "m"}
+	for i := 0; i < MaxLabels+1; i++ {
+		many[fmt.Sprintf("l%d", i)] = "x"
+	}
+	long := NewLabels(map[string]string{NameLabel: "m", "k": string(make([]byte, MaxValueLen+1))})
+	r, _ := s.Append([]Point{
+		{lbl("m"), -1, 1}, {lbl("m"), MaxTimestamp + 1, 1}, {lbl("m"), 9_000_000_000_000_000_000, 1},
+		{NewLabels(many), 1000, 1}, {long, 1000, 1}, {lbl("m"), MaxTimestamp, 1}, {lbl("m"), 0, 1},
+	})
+	if r.Invalid != 5 || r.Accepted != 1 || r.OutOfOrder != 1 {
+		// ts=MaxTimestamp accepted first; ts=0 then arrives out of order
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestMaxSeries(t *testing.T) { // R5
+	s, _ := Open(Options{Dir: t.TempDir(), MaxSeries: 2})
+	defer s.Close()
+	r, _ := s.Append([]Point{{lbl("a"), 1, 1}, {lbl("b"), 1, 1}, {lbl("c"), 1, 1}, {lbl("a"), 2, 1}})
+	if r.Accepted != 3 || r.Invalid != 1 || !strings.Contains(r.FirstInvalid, "series limit") {
+		t.Fatalf("%+v", r)
+	}
+}

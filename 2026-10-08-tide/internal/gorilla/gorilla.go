@@ -120,6 +120,9 @@ func (e *Encoder) writeValue(vb uint64) {
 	e.w.writeBits(x>>trail, sig)
 }
 
+// Size returns the encoded size in bytes without copying.
+func (e *Encoder) Size() int { return 2 + len(e.w.buf) }
+
 // Bytes returns a snapshot of the chunk (header + bitstream). Safe to call
 // while the encoder is still being appended to.
 func (e *Encoder) Bytes() []byte {

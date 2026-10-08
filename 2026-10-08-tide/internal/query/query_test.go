@@ -1,6 +1,7 @@
 package query
 
 import (
+	"encoding/json"
 	"math"
 	"strings"
 	"testing"
@@ -284,5 +285,51 @@ func TestPartialTrailingBucketOmittedForExtensiveFns(t *testing.T) {
 	r = eval(t, s, `avg(c) range 10m step 1m at 940`, 0)
 	if p := r.Series[0].Points; p[len(p)-1].T != 900_000 {
 		t.Fatal("avg should keep the partial bucket")
+	}
+}
+
+// ---- regressions found in adversarial review (see REVIEW.md) ----
+
+func TestNoMatchEncodesEmptyArrayNotNull(t *testing.T) { // R1
+	s := newStore(t)
+	for _, q := range []string{`nothing`, `avg(nothing)`, `sum(avg(nothing)) by (x)`, `nothing at latest`} {
+		r := eval(t, s, q, 1000)
+		b, _ := json.Marshal(r)
+		if !strings.Contains(string(b), `"series":[]`) {
+			t.Errorf("%s -> %s", q, b)
+		}
+	}
+}
+
+func TestZeroDurationsRejected(t *testing.T) { // R4
+	for _, q := range []string{`avg(m) step 0s`, `avg(m) range 0m`, `avg(m) step 0ms`} {
+		if _, err := Parse(q); err == nil {
+			t.Errorf("%q accepted", q)
+		}
+	}
+}
+
+func TestOverflowToInfIsDroppedNotBrokenJSON(t *testing.T) { // R6
+	s := newStore(t)
+	var pts []store.Point
+	for i := 0; i < 3; i++ {
+		pts = append(pts, store.Point{Labels: ls("big"), T: int64(i) * 1000, V: 1e308})
+	}
+	s.Append(pts)
+	r := eval(t, s, `sum(big) range 1m step 1m at 60`, 0)
+	if _, err := json.Marshal(r); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Series) != 0 {
+		t.Fatalf("expected the overflowing bucket to be dropped: %+v", r.Series)
+	}
+}
+
+func TestMatrixStartIsBucketAligned(t *testing.T) { // R11
+	s := newStore(t)
+	s.Append([]store.Point{{Labels: ls("m"), T: 61_000, V: 1}})
+	r := eval(t, s, `avg(m) range 5m step 1m at 90`, 0)
+	if r.Start%60_000 != 0 || r.Series[0].Points[0].T < r.Start {
+		t.Fatalf("start=%d first=%d", r.Start, r.Series[0].Points[0].T)
 	}
 }

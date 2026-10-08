@@ -99,7 +99,7 @@ func cmdServe(args []string) error {
 	}
 	go maintenance(ctx, st, *compactEvery, *retention)
 
-	hs := &http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	hs := &http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 2 * time.Minute, IdleTimeout: 2 * time.Minute}
 	errc := make(chan error, 1)
 	go func() { errc <- hs.ListenAndServe() }()
 	fmt.Printf("tide: dashboard on http://%s\n", *addr)
@@ -112,10 +112,9 @@ func cmdServe(args []string) error {
 	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	hs.Shutdown(sctx)
-	fmt.Println("tide: flushing head to disk and shutting down")
-	if err := st.Flush(); err != nil {
-		return err
-	}
+	// No flush here: the WAL already holds the head durably, and flushing on
+	// every restart would litter the data dir with tiny blocks.
+	fmt.Println("tide: shutting down (head is durable in the WAL)")
 	return st.Close()
 }
 

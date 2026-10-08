@@ -45,7 +45,7 @@ func Eval(q *Query, src Source, now time.Time) (*Result, error) {
 	if q.AtLatest {
 		_, mx, ok := src.TimeRange()
 		if !ok {
-			return &Result{Query: q.Source, Kind: kind(q), Start: end, End: end}, nil
+			return &Result{Query: q.Source, Kind: kind(q), Start: end, End: end, Series: []ResultSeries{}}, nil
 		}
 		end = mx + q.AtOffset.Milliseconds()
 	} else if q.HasAt {
@@ -58,7 +58,7 @@ func Eval(q *Query, src Source, now time.Time) (*Result, error) {
 		return nil, fmt.Errorf("range too small")
 	}
 	start := end - rangeMs
-	res := &Result{Query: q.Source, Kind: kind(q), Start: start, End: end}
+	res := &Result{Query: q.Source, Kind: kind(q), Start: start, End: end, Series: []ResultSeries{}}
 
 	if q.Fn == "" {
 		ss, err := src.Select(q.Matchers, start, end)
@@ -83,6 +83,7 @@ func Eval(q *Query, src Source, now time.Time) (*Result, error) {
 		return nil, fmt.Errorf("too many points: range/step = %d (max %d); use a larger step", rangeMs/step, maxPoints)
 	}
 	res.StepMs = step
+	res.Start = floorDiv(start, step) * step // first bucket boundary, so the axis starts at a real point
 	// Buckets are aligned to multiples of step. rate/increase additionally
 	// need the sample preceding the first bucket as a baseline.
 	first := floorDiv(start, step) * step
@@ -96,7 +97,7 @@ func Eval(q *Query, src Source, now time.Time) (*Result, error) {
 	}
 	var per []seriesBuckets
 	for _, s := range ss {
-		vals := bucketize(q, s.Samples, first, end, step)
+		vals := finite(bucketize(q, s.Samples, first, end, step))
 		if len(vals) > 0 {
 			per = append(per, seriesBuckets{s.Labels, vals})
 		}
@@ -135,6 +136,10 @@ func Eval(q *Query, src Source, now time.Time) (*Result, error) {
 		for t, vs := range g.cols {
 			vals[t] = aggregate(q.Agg, vs)
 		}
+		vals = finite(vals)
+		if len(vals) == 0 {
+			continue
+		}
 		name := q.Agg + g.labels.String()
 		if len(g.labels) == 0 {
 			name = q.Agg + "()"
@@ -142,6 +147,16 @@ func Eval(q *Query, src Source, now time.Time) (*Result, error) {
 		res.Series = append(res.Series, ResultSeries{Labels: g.labels.Map(), Name: name, Points: sortedPoints(vals)})
 	}
 	return res, nil
+}
+
+// finite drops buckets whose value overflowed to ±Inf/NaN (JSON cannot carry them).
+func finite(m map[int64]float64) map[int64]float64 {
+	for t, v := range m {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			delete(m, t)
+		}
+	}
+	return m
 }
 
 func kind(q *Query) string {

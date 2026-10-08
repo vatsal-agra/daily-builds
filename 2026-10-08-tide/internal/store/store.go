@@ -40,6 +40,7 @@ type Options struct {
 	ChunkSize     int           // samples per chunk (default gorilla.MaxSamples)
 	BlockDuration time.Duration // auto-flush when head spans this long (default 2h)
 	FlushSamples  int           // auto-flush when head holds this many samples (default 1M)
+	MaxSeries     int           // refuse new series beyond this many (default 1M)
 }
 
 type chunk struct {
@@ -49,9 +50,9 @@ type chunk struct {
 
 type memSeries struct {
 	id     uint64
+	key    string
 	labels Labels
 	chunks []*chunk
-	lastT  int64
 	n      int
 }
 
@@ -63,6 +64,7 @@ type Store struct {
 	wal     *wal.WAL
 	head    map[string]*memSeries
 	byID    map[uint64]*memSeries
+	lastT   map[string]int64 // newest timestamp ever stored per series (head + blocks); enforces ordering across flushes
 	nextID  uint64
 	headMin int64
 	headMax int64
@@ -83,6 +85,13 @@ var (
 	ErrInvalid    = errors.New("invalid sample")
 )
 
+// Accepted timestamp window (unix ms): 1970 .. year 9999. Wider values risk
+// int64 overflow in delta-of-delta encoding and range arithmetic.
+const (
+	MinTimestamp = 0
+	MaxTimestamp = 253402300799999
+)
+
 const (
 	recSeries = 1
 	recSample = 2
@@ -101,6 +110,9 @@ func Open(opt Options) (*Store, error) {
 	if opt.FlushSamples <= 0 {
 		opt.FlushSamples = 1_000_000
 	}
+	if opt.MaxSeries <= 0 {
+		opt.MaxSeries = 1_000_000
+	}
 	if err := os.MkdirAll(filepath.Join(opt.Dir, "blocks"), 0o755); err != nil {
 		return nil, err
 	}
@@ -108,7 +120,7 @@ func Open(opt Options) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{lock: lock, opt: opt, head: map[string]*memSeries{}, byID: map[uint64]*memSeries{}, nextID: 1}
+	s := &Store{lock: lock, opt: opt, head: map[string]*memSeries{}, byID: map[uint64]*memSeries{}, lastT: map[string]int64{}, nextID: 1}
 	if err := s.loadBlocks(); err != nil {
 		lock.Close()
 		return nil, err
@@ -159,6 +171,16 @@ func (s *Store) loadBlocks() error {
 		s.blocks = append(s.blocks, b)
 	}
 	s.sortBlocks()
+	for _, b := range s.blocks {
+		for i, si := range b.idx.Series {
+			key := b.labels[i].Key()
+			for _, c := range si.Chunks {
+				if last, ok := s.lastT[key]; !ok || c.MaxT > last {
+					s.lastT[key] = c.MaxT
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -232,8 +254,8 @@ func (s *Store) replay(rec []byte) error {
 		if r.err != nil {
 			return r.err
 		}
-		ms := &memSeries{id: id, labels: ls}
-		s.head[ls.Key()] = ms
+		ms := &memSeries{id: id, key: ls.Key(), labels: ls}
+		s.head[ms.key] = ms
 		s.byID[id] = ms
 		if id >= s.nextID {
 			s.nextID = id + 1
@@ -249,6 +271,9 @@ func (s *Store) replay(rec []byte) error {
 		if ms == nil {
 			return fmt.Errorf("sample for unknown series %d", id)
 		}
+		if last, ok := s.lastT[ms.key]; ok && t <= last {
+			return nil // already persisted in a block (crash after block write, before WAL reset)
+		}
 		if err := s.appendHead(ms, t, v); err == nil {
 			s.recovery.walSamples++
 		}
@@ -261,9 +286,6 @@ func (s *Store) replay(rec []byte) error {
 // ---- head ----
 
 func (s *Store) appendHead(ms *memSeries, t int64, v float64) error {
-	if ms.n > 0 && t <= ms.lastT {
-		return ErrOutOfOrder
-	}
 	var c *chunk
 	if len(ms.chunks) > 0 {
 		c = ms.chunks[len(ms.chunks)-1]
@@ -276,7 +298,7 @@ func (s *Store) appendHead(ms *memSeries, t int64, v float64) error {
 		return err
 	}
 	c.maxT = t
-	ms.lastT = t
+	s.lastT[ms.key] = t
 	ms.n++
 	if s.headN == 0 || t < s.headMin {
 		s.headMin = t
@@ -302,9 +324,14 @@ func (s *Store) Append(points []Point) (AppendResult, error) {
 	var res AppendResult
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	wrote := false
 	for _, p := range points {
 		if math.IsNaN(p.V) || math.IsInf(p.V, 0) {
 			s.noteInvalid(&res, "non-finite value")
+			continue
+		}
+		if p.T < MinTimestamp || p.T > MaxTimestamp {
+			s.noteInvalid(&res, fmt.Sprintf("timestamp %d out of range", p.T))
 			continue
 		}
 		ls := p.Labels
@@ -313,9 +340,19 @@ func (s *Store) Append(points []Point) (AppendResult, error) {
 			continue
 		}
 		key := ls.Key()
+		last, known := s.lastT[key]
+		if known && p.T <= last {
+			s.rejected.outOfOrder++
+			res.OutOfOrder++
+			continue
+		}
 		ms := s.head[key]
 		if ms == nil {
-			ms = &memSeries{id: s.nextID, labels: ls}
+			if !known && len(s.lastT) >= s.opt.MaxSeries {
+				s.noteInvalid(&res, fmt.Sprintf("series limit (%d) reached", s.opt.MaxSeries))
+				continue
+			}
+			ms = &memSeries{id: s.nextID, key: key, labels: ls}
 			if err := s.wal.Append(encSeriesRec(ms.id, ls)); err != nil {
 				return res, err
 			}
@@ -323,22 +360,20 @@ func (s *Store) Append(points []Point) (AppendResult, error) {
 			s.head[key] = ms
 			s.byID[ms.id] = ms
 		}
-		if ms.n > 0 && p.T <= ms.lastT {
-			s.rejected.outOfOrder++
-			res.OutOfOrder++
-			continue
-		}
 		if err := s.wal.Append(encSampleRec(ms.id, p.T, p.V)); err != nil {
 			return res, err
 		}
+		wrote = true
 		if err := s.appendHead(ms, p.T, p.V); err != nil {
 			return res, err
 		}
 		s.accepted++
 		res.Accepted++
 	}
-	if err := s.wal.Sync(); err != nil {
-		return res, err
+	if wrote {
+		if err := s.wal.Sync(); err != nil {
+			return res, err
+		}
 	}
 	if s.headN > 0 && (s.headN >= s.opt.FlushSamples || time.Duration(s.headMax-s.headMin)*time.Millisecond >= s.opt.BlockDuration) {
 		if err := s.flushLocked(); err != nil {
@@ -601,7 +636,7 @@ func (s *Store) Stats() Stats {
 	for k, m := range s.head {
 		keys[k] = struct{}{}
 		for _, c := range m.chunks {
-			st.HeadChunkBytes += len(c.enc.Bytes())
+			st.HeadChunkBytes += c.enc.Size()
 		}
 	}
 	for _, b := range s.blocks {

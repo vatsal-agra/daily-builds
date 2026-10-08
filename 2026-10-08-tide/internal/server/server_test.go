@@ -106,6 +106,15 @@ func TestEndToEndHTTP(t *testing.T) {
 	if !strings.Contains(raw, `"host":"a"`) || strings.Contains(raw, `"host":"b"`) {
 		t.Fatal(raw)
 	}
+	if _, _, raw := do(t, "GET", ts.URL+"/query?q="+url.QueryEscape(`nope{x="y"}`), ""); !strings.Contains(raw, `"series":[]`) {
+		t.Fatalf("no-match must encode an empty array: %s", raw)
+	}
+	if _, _, raw := do(t, "GET", ts.URL+"/series?limit=1", ""); strings.Count(raw, `"host"`) != 1 {
+		t.Fatalf("series limit ignored: %s", raw)
+	}
+	if code, _, _ := do(t, "GET", ts.URL+"/series?limit=0", ""); code != 400 {
+		t.Fatal("limit=0 accepted")
+	}
 	code, m, _ = do(t, "POST", ts.URL+"/write", "garbage\nmore garbage")
 	if code != 400 {
 		t.Fatalf("all-bad write should be 400, got %d", code)

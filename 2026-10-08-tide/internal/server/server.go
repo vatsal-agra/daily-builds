@@ -60,9 +60,13 @@ func (s *Server) Handler() http.Handler {
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
+	b, err := json.Marshal(v) // marshal first so an encoding failure can't produce a truncated 200
+	if err != nil {
+		b, code = []byte(`{"error":"internal: cannot encode response"}`), 500
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(v)
+	w.Write(append(b, '\n'))
 }
 
 func writeErr(w http.ResponseWriter, code int, err error) {
@@ -134,8 +138,21 @@ func (s *Server) series(w http.ResponseWriter, r *http.Request) {
 		}
 		ms = q.Matchers
 	}
+	limit := 5000
+	if l := r.URL.Query().Get("limit"); l != "" {
+		n, err := strconv.Atoi(l)
+		if err != nil || n < 1 {
+			writeErr(w, 400, fmt.Errorf("bad limit"))
+			return
+		}
+		limit = n
+	}
 	out := []map[string]string{}
 	for _, ls := range s.Store.SeriesLabels(ms) {
+		if len(out) >= limit {
+			w.Header().Set("X-Tide-Truncated", "true")
+			break
+		}
 		out = append(out, ls.Map())
 	}
 	writeJSON(w, 200, out)

@@ -48,7 +48,7 @@ main{max-width:1500px;margin:0 auto;padding:20px 24px 60px}
 input.q{width:100%;padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13.5px}
 input.q.err{border-color:var(--bad)}
 .hint{font-size:12px;color:var(--muted);margin:-6px 0 14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.hint a{color:var(--accent);cursor:pointer;text-decoration:none;border-bottom:1px dotted var(--accent)}
+.hint a{overflow-wrap:anywhere;max-width:100%;color:var(--accent);cursor:pointer;text-decoration:none;border-bottom:1px dotted var(--accent)}
 #qerr{color:var(--bad);font-size:12.5px;margin:-8px 0 12px;min-height:0;font-family:ui-monospace,monospace;white-space:pre-wrap}
 .alerts{display:grid;gap:8px;margin-bottom:16px}
 .alert{border:1px solid var(--line);border-left:4px solid var(--warn);background:var(--panel);border-radius:10px;padding:8px 14px;display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
@@ -151,7 +151,7 @@ const EXAMPLES = [
   'increase(http_requests_total{route="/api/users",code="200"}) step 5m',
 ];
 let panels = load('tide.panels', null) || DEFAULTS.map(q => ({q: q.trim()}));
-const hidden = {}; // panel index -> Set of hidden series names
+const hidden = {}; // panel query -> Set of hidden series names
 let theme = load('tide.theme', null);
 if (theme) document.documentElement.dataset.theme = theme;
 $('#range').value = load('tide.range', '1h');
@@ -163,10 +163,12 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>'
 
 function withDefaults(q){
   q = q.trim();
-  if (!/\brange\b/.test(q)) q += ' range ' + $('#range').value;
-  if (!/\bat\b/.test(q) && $('#follow').value === 'latest') q += ' at latest';
+  const bare = q.replace(/"(?:[^"\\]|\\.)*"|`[^`]*`/g, '""'); // ignore words inside label values
+  if (!/\brange\b/.test(bare)) q += ' range ' + $('#range').value;
+  if (!/\bat\b/.test(bare) && $('#follow').value === 'latest') q += ' at latest';
   return q;
 }
+const persist = () => save('tide.panels', panels.filter(p => !p.adhoc).map(p => ({q: p.q})));
 async function api(path, opts){
   const r = await fetch(path, opts);
   const j = await r.json().catch(() => ({error: 'bad response ('+r.status+')'}));
@@ -290,7 +292,7 @@ function drawGrid(){
     const el = document.createElement('div'); el.className = 'panel';
     el.innerHTML = '<div class="ph"><div class="pt mono" title="click to load in the query box">'+esc(p.q)+'</div><div class="pm"></div><button class="ghost" title="Remove panel" aria-label="Remove panel">✕</button></div><div class="body"><div class="empty">loading…</div></div>';
     el.querySelector('.pt').onclick = () => { $('#q').value = p.q; $('#q').focus(); };
-    el.querySelector('button').onclick = () => { panels.splice(idx, 1); save('tide.panels', panels); drawGrid(); refreshAll(); };
+    el.querySelector('button').onclick = () => { panels.splice(idx, 1); persist(); drawGrid(); refreshAll(); };
     grid.append(el); p.el = el;
   });
 }
@@ -299,13 +301,13 @@ async function refreshPanel(p, idx){
   const body = p.el.querySelector('.body'), meta = p.el.querySelector('.pm');
   if (!r.ok){ body.innerHTML = '<div class="perr">'+esc(r.body.error || 'error')+'</div>'; meta.textContent = ''; return; }
   p.last = r.body;
-  hidden[idx] = hidden[idx] || new Set();
+  hidden[p.q] = hidden[p.q] || new Set();
   meta.textContent = r.body.series.length + ' series · ' + (r.ms || '?') + ' ms';
   drawPanel(p, idx);
 }
 function drawPanel(p, idx){
-  hidden[idx] = hidden[idx] || new Set();
-  renderChart(p.el.querySelector('.body'), p.last, hidden[idx], () => drawPanel(p, idx));
+  hidden[p.q] = hidden[p.q] || new Set();
+  renderChart(p.el.querySelector('.body'), p.last, hidden[p.q], () => drawPanel(p, idx));
 }
 function refreshAll(){ panels.forEach((p, i) => refreshPanel(p, i)); refreshStats(); refreshAlerts(); }
 
@@ -340,7 +342,7 @@ async function runQuery(addIt){
     err.textContent = msg; return;
   }
   $('#q').classList.remove('err'); err.textContent = '';
-  if (addIt){ panels.unshift({q}); save('tide.panels', panels); drawGrid(); refreshAll(); }
+  if (addIt){ panels.unshift({q}); persist(); drawGrid(); refreshAll(); }
   else { panels = panels.filter(p => p.adhoc !== true); panels.unshift({q, adhoc: true}); drawGrid(); refreshAll(); }
 }
 $('#run').onclick = () => runQuery(false);
