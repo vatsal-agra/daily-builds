@@ -179,7 +179,7 @@ func (s *Server) retention(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) alerts(w http.ResponseWriter, r *http.Request) {
 	if s.Alerts == nil {
-		writeJSON(w, 200, []any{})
+		writeJSON(w, 200, []AlertState{})
 		return
 	}
 	writeJSON(w, 200, s.Alerts.Snapshot())

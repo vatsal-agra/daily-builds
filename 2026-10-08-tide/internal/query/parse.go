@@ -30,6 +30,7 @@ type Query struct {
 	By       []string
 	HasBy    bool
 	Range    time.Duration
+	RangeSet bool          // true when the query text had an explicit range clause
 	Step     time.Duration // 0 = auto (or raw when Fn == "")
 	AtLatest bool          // evaluate at newest stored sample
 	AtMs     int64         // explicit end (ms), valid if HasAt
@@ -200,7 +201,7 @@ func Parse(src string) (*Query, error) {
 			if err != nil {
 				return nil, err
 			}
-			q.Range = d
+			q.Range, q.RangeSet = d, true
 		case "step":
 			d, err := p.duration()
 			if err != nil {

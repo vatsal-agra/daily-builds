@@ -327,7 +327,7 @@ async function refreshAlerts(){
   if (!r.ok || !Array.isArray(r.body) || !r.body.length){ box.innerHTML = ''; return; }
   const order = {firing: 0, pending: 1, ok: 2};
   box.innerHTML = r.body.filter(a => a.state !== 'ok' || r.body.length <= 3).sort((a,b) => order[a.state]-order[b.state]).map(a =>
-    '<div class="alert '+a.state+'"><span class="st">'+esc(a.state)+'</span><b>'+esc(a.name)+'</b><span class="mono">'+esc(a.expr)+'</span><span class="pm">'+(a.value==null?'':'value '+fmt(a.value)+' '+esc(a.op)+' '+fmt(a.threshold))+(a.error?' · '+esc(a.error):'')+'</span></div>').join('');
+    '<div class="alert '+a.state+'"><span class="st">'+esc(a.state)+'</span><b>'+esc(a.name)+'</b><span class="mono">'+esc(a.series||'')+'</span><span class="mono pm">'+esc(a.expr)+'</span><span class="pm">'+(a.value==null?'':'value '+fmt(a.value)+' '+esc(a.op)+' '+fmt(a.threshold))+(a.error?' · '+esc(a.error):'')+'</span></div>').join('');
 }
 
 // ---------- wiring ----------

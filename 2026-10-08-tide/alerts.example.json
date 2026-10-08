@@ -1,0 +1,8 @@
+[
+  {"name": "HighCPU", "expr": "avg(cpu_usage_percent) range 2m step 30s at latest", "op": ">", "threshold": 27, "for": "30s",
+   "summary": "a host averaged >27% CPU for 30s"},
+  {"name": "ErrorBurst", "expr": "sum(rate(http_requests_total{code=\"500\"})) by (host) range 2m step 30s at latest", "op": ">", "threshold": 0.9, "for": "1m",
+   "summary": "5xx rate above 0.9/s on a host"},
+  {"name": "MemoryLeak", "expr": "max(avg(mem_used_percent)) by (dc) range 5m step 1m at latest", "op": ">", "threshold": 75, "for": "5m"},
+  {"name": "SlowOrders", "expr": "p95(http_latency_ms{route=\"/api/orders\"}) range 2m step 1m at latest", "op": ">", "threshold": 120}
+]

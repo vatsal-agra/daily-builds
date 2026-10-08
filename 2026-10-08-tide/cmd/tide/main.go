@@ -86,6 +86,7 @@ func cmdServe(args []string) error {
 	if *alertFile != "" {
 		am, err := server.LoadAlerts(*alertFile, st)
 		if err != nil {
+			st.Close()
 			return err
 		}
 		srv.Alerts = am
@@ -94,6 +95,7 @@ func cmdServe(args []string) error {
 	}
 	if *demo {
 		if err := startDemo(ctx, st); err != nil {
+			st.Close()
 			return err
 		}
 	}
