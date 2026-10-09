@@ -23,7 +23,7 @@ coverage must integrate to the polygon's shoelace area, so correctness is a prop
 layout.Layout(text, size, width, align) ──► []PlacedGlyph (cmap + advances + kerning + wrap)
                                  ▼
 raster.Flatten(outline, scale)  ──► polylines (adaptive quadratic subdivision)
-raster.Fill(polylines)          ──► coverage []float (16 sub-scanlines × exact horizontal area, true non-zero)
+raster.Fill(polylines)          ──► coverage []float (32 sub-scanlines × exact horizontal area, true non-zero)
                                  ▼
 img: Gray/RGB canvas ► PNG encoder (own chunk writer, CRC32, filters)   |  SVG path export
 ttf.Build / Subset ► writes a valid TTF back out (round-trip oracle)
@@ -35,7 +35,7 @@ Packages: `ttf/` (parse+build), `raster/` (flatten, fill, SDF, LCD), `layout/`, 
 | # | Feature | Tier |
 |---|---------|------|
 | 1 | **TTF parser**: table directory + checksums, head/maxp/hhea/hmtx/loca (short+long), `glyf` simple glyphs (flag run-lengths, short/same deltas) **and composite glyphs** (offsets, scale/2x2, point-matching rejected cleanly), `cmap` formats 0/4/6/12, `name`, defensive bounds checks on malformed input | **required** |
-| 2 | **Anti-aliased rasterizer**: adaptive Bézier flattening, true non-zero winding, exact horizontal area coverage × 16 sub-scanlines, fractional glyph positioning | **required** |
+| 2 | **Anti-aliased rasterizer**: adaptive Bézier flattening, true non-zero winding, exact horizontal area coverage × 32 sub-scanlines, fractional glyph positioning | **required** |
 | 3 | **Text layout**: cmap lookup, hmtx advances, `kern` format-0 + GPOS pair adjustment (PairPos fmt 1 & 2 with ClassDef/Coverage), line wrapping, left/center/right/justify, line height from hhea, `.notdef` fallback, `\n`/tabs | **required** |
 | 4 | **Output pipeline + CLI**: from-scratch PNG encoder (gray/RGB, adaptive filters, CRC), SVG path export, `info`/`render`/`text`/`svg` commands, clear errors for bad files/args | **required** |
 | 5 | **Signed distance field** generation + atlas packing, with an SDF→threshold reconstruction check | stretch |
