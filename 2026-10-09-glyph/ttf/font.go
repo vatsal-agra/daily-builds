@@ -4,6 +4,7 @@ package ttf
 import (
 	"fmt"
 	"sort"
+	"sync"
 	"unicode/utf16"
 )
 
@@ -35,6 +36,7 @@ type Font struct {
 	kernPairs map[uint32]int
 	gpos      *gposKern
 	names     map[int]string
+	mu        sync.Mutex
 	cache     map[uint16]Outline
 }
 
@@ -296,4 +298,11 @@ func Checksum(b []byte) uint32 {
 		s += uint32(w[0])<<24 | uint32(w[1])<<16 | uint32(w[2])<<8 | uint32(w[3])
 	}
 	return s
+}
+
+// LSB returns the left side bearing of a glyph in font units.
+func (f *Font) LSB(gid uint16) (lsb int) {
+	defer func() { recover() }()
+	_, lsb = f.hmtx(int(gid))
+	return
 }

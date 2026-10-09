@@ -1,6 +1,6 @@
 # Glyph — TrueType font engine from scratch (Go)
 
-**Status: Phase 2 (core build) complete** — the four required features work end-to-end.
+**Status: Phase 3 (adversarial review) complete** — 9 findings in [REVIEW.md](REVIEW.md), all fixed with regression tests.
 See [PLAN.md](PLAN.md). The full README arrives in Phase 6.
 
 ## Try it

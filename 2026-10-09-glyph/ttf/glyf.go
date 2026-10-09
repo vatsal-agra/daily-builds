@@ -10,6 +10,8 @@ func (f *Font) Glyph(gid uint16) (o Outline, err error) {
 	if int(gid) >= f.NumGlyphs {
 		fail("glyph %d out of range (font has %d)", gid, f.NumGlyphs)
 	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	budget := maxComponents
 	return f.glyph(gid, 0, &budget), nil
 }
@@ -36,6 +38,11 @@ func (f *Font) glyph(gid uint16, depth int, budget *int) Outline {
 		out = f.compositeGlyph(g, depth, budget)
 	}
 	if depth == 0 {
+		// hmtx's left side bearing defines where the glyph sits relative to its origin:
+		// the outline is shifted so its xMin lands on lsb (what FreeType does).
+		if _, lsb := f.hmtx(int(gid)); lsb != i16(g, 2) {
+			out = out.Transform(1, 0, 0, 1, float64(lsb-i16(g, 2)), 0)
+		}
 		f.cache[gid] = out
 	}
 	return out

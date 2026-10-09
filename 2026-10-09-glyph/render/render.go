@@ -65,34 +65,43 @@ func (p *Painter) Glyph(gid uint16, fx float64) (*raster.Bitmap, error) {
 }
 
 // Text lays out and paints text, returning the canvas and the layout result.
+// The canvas grows to hold all ink (negative side bearings, slant overhang,
+// wrap widths narrower than one glyph) so nothing is ever clipped.
 func Text(f *ttf.Font, text string, st Style) (*img.Canvas, *layout.Result, error) {
 	res, err := layout.Layout(f, text, st.Options)
 	if err != nil {
 		return nil, nil, err
 	}
-	pad := st.Padding
-	if pad < 0 {
-		pad = 0
-	}
-	w := int(math.Ceil(res.Width)) + 2*pad
-	if st.Width > 0 {
-		w = int(math.Ceil(st.Width)) + 2*pad
-	}
-	extraR := int(math.Ceil(st.Slant*st.Size)) + 2 // slanted ink may overhang
-	w += extraR
-	h := int(math.Ceil(res.Height)) + 2*pad + 2
-	if w <= 0 || h <= 0 || w*h > MaxPixels {
-		return nil, nil, fmt.Errorf("canvas %dx%d is too large (limit %d pixels)", w, h, MaxPixels)
-	}
-	cv := img.NewCanvas(w, h, st.BG)
+	pad := max(st.Padding, 0)
 	pt := NewPainter(f, st)
+	type placed struct {
+		bm     *raster.Bitmap
+		px, py int
+	}
+	var ps []placed
+	minX, minY := 0, 0
+	maxX, maxY := int(math.Ceil(math.Max(res.Width, st.Width))), int(math.Ceil(res.Height))+1
 	for _, g := range res.Glyphs {
 		ix := math.Floor(g.X)
 		bm, err := pt.Glyph(g.GID, g.X-ix)
 		if err != nil {
 			return nil, nil, err
 		}
-		cv.Blend(bm, pad+int(ix), pad+int(math.Round(g.Y)), st.FG, st.Gamma)
+		if bm.W == 0 {
+			continue
+		}
+		p := placed{bm, int(ix), int(math.Round(g.Y))}
+		minX, minY = min(minX, p.px+bm.X0), min(minY, p.py+bm.Y0)
+		maxX, maxY = max(maxX, p.px+bm.X0+bm.W), max(maxY, p.py+bm.Y0+bm.H)
+		ps = append(ps, p)
+	}
+	w, h := maxX-minX+2*pad, maxY-minY+2*pad
+	if w <= 0 || h <= 0 || w > MaxPixels/h {
+		return nil, nil, fmt.Errorf("canvas %dx%d is too large (limit %d pixels)", w, h, MaxPixels)
+	}
+	cv := img.NewCanvas(w, h, st.BG)
+	for _, p := range ps {
+		cv.Blend(p.bm, pad-minX+p.px, pad-minY+p.py, st.FG, st.Gamma)
 	}
 	return cv, res, nil
 }

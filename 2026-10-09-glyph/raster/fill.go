@@ -148,6 +148,12 @@ func addSpan(acc, diff []float64, xa, xb float64, w int, wt float64) {
 	}
 }
 
+// MaxDim bounds the width/height of a rendered glyph bitmap; ink beyond that window
+// is clipped (only reachable with hostile outlines or absurd sizes).
+const MaxDim = 6000
+
+func clampInt(v, lo, hi float64) int { return int(math.Min(math.Max(v, lo), hi)) }
+
 // Render flattens and fills a glyph outline. The returned bitmap is tightly
 // cropped; X0/Y0 give its top-left pixel offset from the glyph origin.
 func Render(path Path, samples int) *Bitmap {
@@ -155,8 +161,8 @@ func Render(path Path, samples int) *Bitmap {
 	if !ok {
 		return &Bitmap{}
 	}
-	ix0, iy0 := int(math.Floor(x0))-1, int(math.Floor(y0))-1
-	ix1, iy1 := int(math.Ceil(x1))+1, int(math.Ceil(y1))+1
+	ix0, iy0 := clampInt(math.Floor(x0)-1, -MaxDim/2, MaxDim/2), clampInt(math.Floor(y0)-1, -MaxDim/2, MaxDim/2)
+	ix1, iy1 := clampInt(math.Ceil(x1)+1, float64(ix0+1), float64(ix0+MaxDim)), clampInt(math.Ceil(y1)+1, float64(iy0+1), float64(iy0+MaxDim))
 	w, h := ix1-ix0, iy1-iy0
 	shifted := make(Path, len(path))
 	for i, poly := range path {

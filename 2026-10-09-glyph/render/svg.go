@@ -70,6 +70,7 @@ func PathData(o ttf.Outline, m raster.Affine) string {
 }
 
 // SVG renders laid-out text as a standalone SVG document with exact outlines.
+// The viewBox is computed from the real outline extents, so nothing is clipped.
 func SVG(f *ttf.Font, text string, st Style) (string, error) {
 	res, err := layout.Layout(f, text, st.Options)
 	if err != nil {
@@ -77,15 +78,8 @@ func SVG(f *ttf.Font, text string, st Style) (string, error) {
 	}
 	scale := st.Size / float64(f.UnitsPerEm)
 	pad := float64(max(st.Padding, 0))
-	w := math.Ceil(res.Width) + 2*pad
-	if st.Width > 0 {
-		w = math.Ceil(st.Width) + 2*pad
-	}
-	h := math.Ceil(res.Height) + 2*pad
-	var sb strings.Builder
-	fmt.Fprintf(&sb, `<svg xmlns="http://www.w3.org/2000/svg" width="%s" height="%s" viewBox="0 0 %s %s">`+"\n", fnum(w), fnum(h), fnum(w), fnum(h))
-	fmt.Fprintf(&sb, `<rect width="100%%" height="100%%" fill="#%02x%02x%02x"/>`+"\n", st.BG.R, st.BG.G, st.BG.B)
-	fmt.Fprintf(&sb, `<g fill="#%02x%02x%02x" fill-rule="nonzero">`+"\n", st.FG.R, st.FG.G, st.FG.B)
+	minX, minY := 0.0, 0.0
+	maxX, maxY := math.Max(res.Width, st.Width), res.Height
 	for _, g := range res.Glyphs {
 		o, err := f.Glyph(g.GID)
 		if err != nil {
@@ -94,7 +88,25 @@ func SVG(f *ttf.Font, text string, st Style) (string, error) {
 		if len(o.Contours) == 0 {
 			continue
 		}
-		d := PathData(o, raster.Scale(scale, pad+g.X, pad+g.Y, st.Slant))
+		m := raster.Scale(scale, g.X, g.Y, st.Slant)
+		for _, c := range o.Contours {
+			for _, p := range c {
+				x, y := m.A*p.X+m.C*p.Y+m.E, m.B*p.X+m.D*p.Y+m.F
+				minX, maxX, minY, maxY = math.Min(minX, x), math.Max(maxX, x), math.Min(minY, y), math.Max(maxY, y)
+			}
+		}
+	}
+	w, h := math.Ceil(maxX-minX)+2*pad, math.Ceil(maxY-minY)+2*pad
+	var sb strings.Builder
+	fmt.Fprintf(&sb, `<svg xmlns="http://www.w3.org/2000/svg" width="%s" height="%s" viewBox="0 0 %s %s">`+"\n", fnum(w), fnum(h), fnum(w), fnum(h))
+	fmt.Fprintf(&sb, `<rect width="100%%" height="100%%" fill="#%02x%02x%02x"/>`+"\n", st.BG.R, st.BG.G, st.BG.B)
+	fmt.Fprintf(&sb, `<g fill="#%02x%02x%02x" fill-rule="nonzero">`+"\n", st.FG.R, st.FG.G, st.FG.B)
+	for _, g := range res.Glyphs {
+		o, _ := f.Glyph(g.GID)
+		if len(o.Contours) == 0 {
+			continue
+		}
+		d := PathData(o, raster.Scale(scale, pad-minX+g.X, pad-minY+g.Y, st.Slant))
 		fmt.Fprintf(&sb, `<path d="%s"/>`+"\n", d)
 	}
 	sb.WriteString("</g>\n</svg>\n")

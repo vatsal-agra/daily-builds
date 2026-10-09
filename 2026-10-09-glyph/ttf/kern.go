@@ -15,8 +15,8 @@ func (f *Font) parseKern() {
 		if length < 6 || p+length > len(k) {
 			break
 		}
-		format, horizontal, minimum, override := cov>>8, cov&1 != 0, cov&2 != 0, cov&8 != 0
-		if format == 0 && horizontal && !minimum && p+14 <= len(k) {
+		format, horizontal, minimum, cross, override := cov>>8, cov&1 != 0, cov&2 != 0, cov&4 != 0, cov&8 != 0
+		if format == 0 && horizontal && !minimum && !cross && p+14 <= len(k) {
 			np := u16(k, p+6)
 			for j := 0; j < np && p+14+6*j+6 <= p+length; j++ {
 				o := p + 14 + 6*j

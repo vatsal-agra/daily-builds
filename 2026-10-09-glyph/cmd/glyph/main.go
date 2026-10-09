@@ -78,17 +78,17 @@ func loadFont(path string) (*ttf.Font, error) {
 	return f, nil
 }
 
-func parseColor(s string) (img.RGB, error) {
-	s = strings.TrimPrefix(s, "#")
+func parseColor(orig string) (img.RGB, error) {
+	s := strings.TrimPrefix(orig, "#")
 	if len(s) == 3 {
 		s = string([]byte{s[0], s[0], s[1], s[1], s[2], s[2]})
 	}
 	var r, g, b uint8
 	if len(s) != 6 {
-		return img.RGB{}, fmt.Errorf("bad colour %q (want #rgb or #rrggbb)", s)
+		return img.RGB{}, fmt.Errorf("bad colour %q (want #rgb or #rrggbb)", orig)
 	}
 	if _, err := fmt.Sscanf(s, "%02x%02x%02x", &r, &g, &b); err != nil {
-		return img.RGB{}, fmt.Errorf("bad colour %q (want #rgb or #rrggbb)", s)
+		return img.RGB{}, fmt.Errorf("bad colour %q (want #rgb or #rrggbb)", orig)
 	}
 	return img.RGB{R: r, G: g, B: b}, nil
 }

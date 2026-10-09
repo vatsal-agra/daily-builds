@@ -24,10 +24,13 @@ func (f *Font) parseCmap() {
 		default:
 			continue
 		}
-		f.cmaps = append(f.cmaps, &cmapSub{plat, enc, format, c[off:]})
+		sub := &cmapSub{plat, enc, format, c[off:]}
+		if sub.valid() {
+			f.cmaps = append(f.cmaps, sub)
+		}
 	}
 	if len(f.cmaps) == 0 {
-		fail("cmap has no supported subtable (formats 0, 4, 6, 12)")
+		fail("cmap has no usable subtable (supported: formats 0, 4, 6, 12; ranges must be sorted and non-overlapping)")
 	}
 	rank := func(s *cmapSub) int {
 		switch {
@@ -184,4 +187,51 @@ func (s *cmapSub) mapped() []rune {
 		}
 	}
 	return out
+}
+
+// valid checks the structural invariants lookups rely on: sorted, non-overlapping,
+// in-bounds ranges. Beyond preventing misreads, this bounds the work done when
+// enumerating mapped runes (a hostile table cannot claim the same range 10^6 times).
+func (s *cmapSub) valid() (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	d := s.data
+	switch s.format {
+	case 0:
+		sub(d, 0, 262)
+	case 6:
+		sub(d, 0, 10+2*u16(d, 8))
+	case 4:
+		segX2 := u16(d, 6)
+		if segX2 == 0 || segX2%2 != 0 {
+			return false
+		}
+		sub(d, 0, 16+4*segX2) // end, pad, start, delta arrays (range offsets checked at lookup)
+		sub(d, 14+3*segX2+2, segX2)
+		prev := -1
+		for i := 0; i < segX2/2; i++ {
+			e, st := u16(d, 14+2*i), u16(d, 16+segX2+2*i)
+			if st > e || st <= prev {
+				return false
+			}
+			prev = e
+		}
+	case 12:
+		n := int(u32(d, 12))
+		if n > (len(d)-16)/12 {
+			return false
+		}
+		prev := -1
+		for i := 0; i < n; i++ {
+			st, en := int(u32(d, 16+12*i)), int(u32(d, 16+12*i+4))
+			if st > en || st <= prev || en > 0x10FFFF {
+				return false
+			}
+			prev = en
+		}
+	}
+	return true
 }
