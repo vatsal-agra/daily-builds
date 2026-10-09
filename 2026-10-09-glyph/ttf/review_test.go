@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-func be16(v int) []byte { return []byte{byte(v >> 8), byte(v)} }
-func be32(v int) []byte { return []byte{byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)} }
 func cat(parts ...[]byte) []byte {
 	var o []byte
 	for _, p := range parts {

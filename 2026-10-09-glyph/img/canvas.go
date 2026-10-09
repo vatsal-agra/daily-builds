@@ -115,3 +115,16 @@ func GrayPNG(bm *raster.Bitmap) ([]byte, error) {
 	err := EncodePNG(&b, bm.W, bm.H, 1, pix)
 	return b.b, err
 }
+
+// BlendLCD composites per-channel coverage (R,G,B stripes) with its top-left at
+// (ox+bm.X0, oy+bm.Y0).
+func (c *Canvas) BlendLCD(bm *raster.LCDBitmap, ox, oy int, fg RGB, gamma bool) {
+	fgc := [3]uint8{fg.R, fg.G, fg.B}
+	for y := 0; y < bm.H; y++ {
+		for x := 0; x < bm.W; x++ {
+			for k := 0; k < 3; k++ {
+				c.MixChannel(ox+bm.X0+x, oy+bm.Y0+y, k, fgc[k], bm.Pix[3*(y*bm.W+x)+k], gamma)
+			}
+		}
+	}
+}

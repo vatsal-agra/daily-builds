@@ -187,6 +187,9 @@ func cmdText(args []string) error {
 	if err := os.WriteFile(c.out, png, 0o644); err != nil {
 		return err
 	}
+	if len(res.Glyphs) == 0 {
+		fmt.Fprintln(os.Stderr, "glyph: warning: text has no printable characters; wrote a blank image")
+	}
 	fmt.Printf("wrote %s (%dx%d, %d glyphs, %d lines)\n", c.out, cv.W, cv.H, len(res.Glyphs), len(res.Lines))
 	return nil
 }

@@ -22,6 +22,7 @@ type Style struct {
 	Gamma   bool    // blend in linear light
 	Slant   float64 // synthetic oblique shear, e.g. 0.2
 	Samples int     // sub-scanlines per pixel (0 = default)
+	LCD     bool    // sub-pixel (RGB stripe) rendering
 }
 
 // DefaultStyle is black text on white at the given size.
@@ -40,10 +41,11 @@ type Painter struct {
 	scale float64
 	st    Style
 	cache map[cacheKey]*raster.Bitmap
+	lcd   map[cacheKey]*raster.LCDBitmap
 }
 
 func NewPainter(f *ttf.Font, st Style) *Painter {
-	return &Painter{f: f, scale: st.Size / float64(f.UnitsPerEm), st: st, cache: map[cacheKey]*raster.Bitmap{}}
+	return &Painter{f: f, scale: st.Size / float64(f.UnitsPerEm), st: st, cache: map[cacheKey]*raster.Bitmap{}, lcd: map[cacheKey]*raster.LCDBitmap{}}
 }
 
 // Glyph returns the coverage bitmap of gid with the pen at fractional offset (fx, 0),
@@ -64,6 +66,23 @@ func (p *Painter) Glyph(gid uint16, fx float64) (*raster.Bitmap, error) {
 	return bm, nil
 }
 
+// GlyphLCD is Glyph with per-channel sub-pixel coverage.
+func (p *Painter) GlyphLCD(gid uint16, fx float64) (*raster.LCDBitmap, error) {
+	q := int(math.Round(fx * 4))
+	k := cacheKey{gid, q}
+	if bm, ok := p.lcd[k]; ok {
+		return bm, nil
+	}
+	o, err := p.f.Glyph(gid)
+	if err != nil {
+		return nil, err
+	}
+	m := raster.Scale(p.scale, float64(q)/4, 0, p.st.Slant)
+	bm := raster.RenderLCD(raster.Flatten(o, m, 0), p.st.Samples)
+	p.lcd[k] = bm
+	return bm, nil
+}
+
 // Text lays out and paints text, returning the canvas and the layout result.
 // The canvas grows to hold all ink (negative side bearings, slant overhang,
 // wrap widths narrower than one glyph) so nothing is ever clipped.
@@ -76,6 +95,7 @@ func Text(f *ttf.Font, text string, st Style) (*img.Canvas, *layout.Result, erro
 	pt := NewPainter(f, st)
 	type placed struct {
 		bm     *raster.Bitmap
+		lcd    *raster.LCDBitmap
 		px, py int
 	}
 	var ps []placed
@@ -83,16 +103,24 @@ func Text(f *ttf.Font, text string, st Style) (*img.Canvas, *layout.Result, erro
 	maxX, maxY := int(math.Ceil(math.Max(res.Width, st.Width))), int(math.Ceil(res.Height))+1
 	for _, g := range res.Glyphs {
 		ix := math.Floor(g.X)
-		bm, err := pt.Glyph(g.GID, g.X-ix)
-		if err != nil {
-			return nil, nil, err
+		p := placed{px: int(ix), py: int(math.Round(g.Y))}
+		var bx, by, bw, bh int
+		if st.LCD {
+			if p.lcd, err = pt.GlyphLCD(g.GID, g.X-ix); err != nil {
+				return nil, nil, err
+			}
+			bx, by, bw, bh = p.lcd.X0, p.lcd.Y0, p.lcd.W, p.lcd.H
+		} else {
+			if p.bm, err = pt.Glyph(g.GID, g.X-ix); err != nil {
+				return nil, nil, err
+			}
+			bx, by, bw, bh = p.bm.X0, p.bm.Y0, p.bm.W, p.bm.H
 		}
-		if bm.W == 0 {
+		if bw == 0 {
 			continue
 		}
-		p := placed{bm, int(ix), int(math.Round(g.Y))}
-		minX, minY = min(minX, p.px+bm.X0), min(minY, p.py+bm.Y0)
-		maxX, maxY = max(maxX, p.px+bm.X0+bm.W), max(maxY, p.py+bm.Y0+bm.H)
+		minX, minY = min(minX, p.px+bx), min(minY, p.py+by)
+		maxX, maxY = max(maxX, p.px+bx+bw), max(maxY, p.py+by+bh)
 		ps = append(ps, p)
 	}
 	w, h := maxX-minX+2*pad, maxY-minY+2*pad
@@ -101,7 +129,11 @@ func Text(f *ttf.Font, text string, st Style) (*img.Canvas, *layout.Result, erro
 	}
 	cv := img.NewCanvas(w, h, st.BG)
 	for _, p := range ps {
-		cv.Blend(p.bm, pad-minX+p.px, pad-minY+p.py, st.FG, st.Gamma)
+		if p.lcd != nil {
+			cv.BlendLCD(p.lcd, pad-minX+p.px, pad-minY+p.py, st.FG, st.Gamma)
+		} else {
+			cv.Blend(p.bm, pad-minX+p.px, pad-minY+p.py, st.FG, st.Gamma)
+		}
 	}
 	return cv, res, nil
 }
