@@ -1,0 +1,284 @@
+{
+  "image": "atlas.png",
+  "size": 48,
+  "spread": 8,
+  "width": 256,
+  "height": 128,
+  "ascent": 48.288000000000004,
+  "descent": 13.152000000000001,
+  "lineHeight": 61.44,
+  "glyphs": [
+    {
+      "char": " ",
+      "code": 32,
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "bearingX": 0,
+      "bearingY": 0,
+      "advance": 12.624
+    },
+    {
+      "char": "D",
+      "code": 68,
+      "x": 94,
+      "y": 0,
+      "w": 48,
+      "h": 50,
+      "bearingX": -6,
+      "bearingY": -42,
+      "advance": 35.76
+    },
+    {
+      "char": "F",
+      "code": 70,
+      "x": 143,
+      "y": 0,
+      "w": 40,
+      "h": 50,
+      "bearingX": -6,
+      "bearingY": -42,
+      "advance": 26.304000000000002
+    },
+    {
+      "char": "Q",
+      "code": 81,
+      "x": 0,
+      "y": 0,
+      "w": 52,
+      "h": 62,
+      "bearingX": -6,
+      "bearingY": -43,
+      "advance": 38.208
+    },
+    {
+      "char": "S",
+      "code": 83,
+      "x": 53,
+      "y": 0,
+      "w": 40,
+      "h": 52,
+      "bearingX": -6,
+      "bearingY": -43,
+      "advance": 27.216
+    },
+    {
+      "char": "a",
+      "code": 97,
+      "x": 0,
+      "y": 63,
+      "w": 39,
+      "h": 42,
+      "bearingX": -7,
+      "bearingY": -33,
+      "advance": 24.768
+    },
+    {
+      "char": "r",
+      "code": 114,
+      "x": 84,
+      "y": 63,
+      "w": 36,
+      "h": 41,
+      "bearingX": -7,
+      "bearingY": -33,
+      "advance": 20.784
+    },
+    {
+      "char": "t",
+      "code": 116,
+      "x": 184,
+      "y": 0,
+      "w": 34,
+      "h": 48,
+      "bearingX": -7,
+      "bearingY": -39,
+      "advance": 18.576
+    },
+    {
+      "char": "u",
+      "code": 117,
+      "x": 40,
+      "y": 63,
+      "w": 43,
+      "h": 42,
+      "bearingX": -7,
+      "bearingY": -33,
+      "advance": 28.656000000000002
+    },
+    {
+      "char": "z",
+      "code": 122,
+      "x": 121,
+      "y": 63,
+      "w": 38,
+      "h": 40,
+      "bearingX": -7,
+      "bearingY": -32,
+      "advance": 24.528000000000002
+    }
+  ],
+  "kerning": [
+    {
+      "Left": "D",
+      "Right": "D",
+      "Value": -0.48
+    },
+    {
+      "Left": "D",
+      "Right": "F",
+      "Value": -0.48
+    },
+    {
+      "Left": "D",
+      "Right": "a",
+      "Value": -0.24
+    },
+    {
+      "Left": "F",
+      "Right": "Q",
+      "Value": -0.336
+    },
+    {
+      "Left": "F",
+      "Right": "a",
+      "Value": -1.92
+    },
+    {
+      "Left": "F",
+      "Right": "r",
+      "Value": -0.48
+    },
+    {
+      "Left": "F",
+      "Right": "u",
+      "Value": -0.48
+    },
+    {
+      "Left": "F",
+      "Right": "z",
+      "Value": -0.624
+    },
+    {
+      "Left": "Q",
+      "Right": "D",
+      "Value": -0.432
+    },
+    {
+      "Left": "Q",
+      "Right": "F",
+      "Value": -0.432
+    },
+    {
+      "Left": "S",
+      "Right": "r",
+      "Value": -0.28800000000000003
+    },
+    {
+      "Left": "S",
+      "Right": "t",
+      "Value": -0.192
+    },
+    {
+      "Left": "S",
+      "Right": "u",
+      "Value": -0.28800000000000003
+    },
+    {
+      "Left": "a",
+      "Right": "D",
+      "Value": -0.24
+    },
+    {
+      "Left": "a",
+      "Right": "F",
+      "Value": -0.24
+    },
+    {
+      "Left": "a",
+      "Right": "Q",
+      "Value": -0.528
+    },
+    {
+      "Left": "a",
+      "Right": "t",
+      "Value": -0.336
+    },
+    {
+      "Left": "a",
+      "Right": "u",
+      "Value": -0.28800000000000003
+    },
+    {
+      "Left": "r",
+      "Right": "D",
+      "Value": -1.008
+    },
+    {
+      "Left": "r",
+      "Right": "F",
+      "Value": -1.008
+    },
+    {
+      "Left": "r",
+      "Right": "a",
+      "Value": -0.336
+    },
+    {
+      "Left": "r",
+      "Right": "t",
+      "Value": 0.336
+    },
+    {
+      "Left": "t",
+      "Right": "t",
+      "Value": 0.48
+    },
+    {
+      "Left": "u",
+      "Right": "D",
+      "Value": -0.384
+    },
+    {
+      "Left": "u",
+      "Right": "F",
+      "Value": -0.384
+    },
+    {
+      "Left": "u",
+      "Right": "Q",
+      "Value": -0.5760000000000001
+    },
+    {
+      "Left": "u",
+      "Right": "u",
+      "Value": -0.192
+    },
+    {
+      "Left": "z",
+      "Right": "D",
+      "Value": -0.48
+    },
+    {
+      "Left": "z",
+      "Right": "F",
+      "Value": -0.48
+    },
+    {
+      "Left": "z",
+      "Right": "Q",
+      "Value": -0.192
+    },
+    {
+      "Left": "z",
+      "Right": "r",
+      "Value": -0.24
+    },
+    {
+      "Left": "z",
+      "Right": "z",
+      "Value": -0.24
+    }
+  ]
+}

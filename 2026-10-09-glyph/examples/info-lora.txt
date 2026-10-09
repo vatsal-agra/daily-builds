@@ -1,0 +1,13 @@
+family      Lora
+style       Regular
+full name   Lora Regular
+version     Version 3.008
+unitsPerEm  1000
+glyphs      888
+ascent      1006   descent -274   lineGap 0
+bbox        (-121,-271)-(1258,1114)
+weight      400
+cmap        platform 3 encoding 1 format 4, 778 mapped characters
+kerning     GPOS pair adjustment
+tables      GDEF GPOS GSUB OS/2 STAT cmap gasp glyf head hhea hmtx loca maxp name post prep
+checksums   OK

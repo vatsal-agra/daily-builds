@@ -1,6 +1,6 @@
 # Glyph — TrueType font engine from scratch (Go)
 
-**Status: Phase 4 (stretch + polish) complete** — 4 stretch features shipped on top of the 4 required; 9 review findings fixed ([REVIEW.md](REVIEW.md)).
+**Status: Phase 5 (verification) complete** — `./demo.sh` drives every feature and runs ~90 tests (race-clean); `./mutants.py` kills 23/23 injected bugs. 4 required + 4 stretch features shipped; 9 review findings fixed ([REVIEW.md](REVIEW.md)).
 See [PLAN.md](PLAN.md). The full README arrives in Phase 6.
 
 ## Try it

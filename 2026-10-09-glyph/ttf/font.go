@@ -45,6 +45,11 @@ const magicHead = 0x5F0F3CF5
 // Parse reads a TrueType font. Any structural problem yields an error wrapping
 // ErrMalformed; it never panics on bad input.
 func Parse(data []byte) (f *Font, err error) {
+	defer func() {
+		if err != nil {
+			f = nil
+		}
+	}()
 	defer catch(&err)
 	if len(data) < 12 {
 		fail("file too short (%d bytes)", len(data))
