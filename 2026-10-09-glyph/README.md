@@ -51,7 +51,7 @@ live in `testdata/fonts/`; any glyf-flavoured `.ttf` works.
 * **Hand-assembled binary fixtures** for things real fonts rarely exercise: composite transforms and point matching, cmap 0/4-rangeOffset/6/12, GPOS format 1/2/extension, hostile cmap ranges.
 * **Fuzzing** — hundreds of truncated / bit-flipped / header-smashed fonts per run: no panics, no hangs.
 * **Mutation check** (`mutants.py`) — 23 planted bugs (winding rule, delta signs, idDelta, kern sign, PNG filter, blend weights…), 23 killed. Its first run found two blind spots (LCD filter symmetry, justification measured from a self-reported width); the tests were strengthened until nothing survived.
-* **Adversarial review** — [REVIEW.md](REVIEW.md): 9 findings (unbounded cmap enumeration, unbounded bitmaps, clipped ink, data race, cross-stream kerning, ignored lsb…) all fixed with regression tests. Phase 5 found a 10th real bug: `Build` silently wrapped glyph deltas > int16.
+* **Adversarial review** — [REVIEW.md](REVIEW.md): 9 findings (unbounded cmap enumeration, unbounded bitmaps, clipped ink, data race, cross-stream kerning, ignored lsb…) all fixed with regression tests. The `Build` round-trip test found a 10th: the writer silently wrapped glyph deltas > int16.
 
 ## Why I built this today
 Nothing in this repo touches text: every earlier renderer drew shapes or scenes, none read a font. A font engine is a satisfying mix — fiddly binary formats, a classic graphics algorithm, and correctness that can be *measured* (area integrals, round-trips) rather than eyeballed. And at the end you can read your own words on screen, drawn from raw outline points, which is a hard feeling to beat.
