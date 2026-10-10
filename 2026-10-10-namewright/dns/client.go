@@ -17,7 +17,8 @@ type Client struct {
 	DO                 bool   // request DNSSEC records
 	Case0x20           bool   // randomise query-name case and require an exact echo
 	TCPOnly            bool
-	MaxTransferRecords int // AXFR safety cap (0 = default 1,000,000)
+	CD                 bool // set the Checking Disabled bit
+	MaxTransferRecords int  // AXFR safety cap (0 = default 1,000,000)
 }
 
 // ErrCase0x20 means a response did not echo the randomised question case.
@@ -52,6 +53,7 @@ func NewQuery(name string, t Type, rd bool) *Message {
 // answer is truncated it transparently retries over TCP.
 func (c *Client) Exchange(addr string, name string, t Type, rd bool) (*Message, error) {
 	q := NewQuery(name, t, rd)
+	q.CheckingDisabled = c.CD
 	if c.Case0x20 {
 		q.Question[0].Name = randomCase(q.Question[0].Name)
 	}

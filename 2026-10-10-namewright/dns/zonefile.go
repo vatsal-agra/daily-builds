@@ -623,11 +623,11 @@ func (st *zoneState) parseRData(t Type, toks []token) (RData, error) {
 		if err != nil {
 			return nil, err
 		}
-		ex, err := u(4, 32)
+		ex, err := parseSigTime(toks[4].text)
 		if err != nil {
 			return nil, err
 		}
-		in, err := u(5, 32)
+		in, err := parseSigTime(toks[5].text)
 		if err != nil {
 			return nil, err
 		}

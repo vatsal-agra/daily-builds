@@ -18,8 +18,10 @@ commands:
   testnet   start the mini internet plus a recursive front end on loopback
   check     validate a zone file
   axfr      pull a whole zone over TCP
-  sign      DNSSEC-sign a zone file
-  keygen    generate a DNSSEC key pair
+  keygen    generate a DNSSEC key pair (ed25519 / ecdsap256)
+  sign      DNSSEC-sign a zone file (DNSKEY + NSEC + RRSIG)
+  decode    decode a hex DNS message from stdin (debugging)
+  verify    check a signed zone: every RRSIG and the NSEC chain
   version   print version
 
 run 'namewright <command> -h' for flags.`
@@ -31,7 +33,7 @@ func main() {
 	}
 	cmds := map[string]func([]string) int{
 		"serve": cmdServe, "dig": cmdDig, "resolve": cmdResolve, "testnet": cmdTestnet,
-		"check": cmdCheck, "axfr": cmdAXFR, "sign": cmdSign, "keygen": cmdKeygen,
+		"check": cmdCheck, "axfr": cmdAXFR, "sign": cmdSign, "keygen": cmdKeygen, "verify": cmdVerify, "decode": cmdDecode,
 		"version": func([]string) int { fmt.Println("namewright 1.0"); return 0 },
 	}
 	if os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "help" {

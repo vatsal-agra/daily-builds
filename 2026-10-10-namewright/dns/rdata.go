@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // RData is the type-specific payload of a resource record.
@@ -435,8 +436,8 @@ func (d DS) String() string {
 	return fmt.Sprintf("%d %d %d %s", d.KeyTag, d.Algorithm, d.DigestType, strings.ToUpper(hex.EncodeToString(d.Digest)))
 }
 func (d RRSIG) String() string {
-	return fmt.Sprintf("%s %d %d %d %d %d %d %s %s", d.TypeCovered, d.Algorithm, d.Labels, d.OrigTTL,
-		d.Expiration, d.Inception, d.KeyTag, d.SignerName, base64.StdEncoding.EncodeToString(d.Signature))
+	return fmt.Sprintf("%s %d %d %d %s %s %d %s %s", d.TypeCovered, d.Algorithm, d.Labels, d.OrigTTL,
+		sigTime(d.Expiration), sigTime(d.Inception), d.KeyTag, d.SignerName, base64.StdEncoding.EncodeToString(d.Signature))
 }
 func (d NSEC) String() string {
 	ts := make([]string, len(d.Types))
@@ -486,6 +487,25 @@ func canonRData(r RR) []byte {
 
 // NewA etc. are small constructors used by tests and the signer.
 func MustAddr(s string) netip.Addr { return netip.MustParseAddr(s) }
+
+// sigTime renders an RRSIG timestamp as YYYYMMDDHHmmSS (UTC).
+func sigTime(v uint32) string { return time.Unix(int64(v), 0).UTC().Format("20060102150405") }
+
+// parseSigTime accepts YYYYMMDDHHmmSS or plain epoch seconds.
+func parseSigTime(s string) (uint32, error) {
+	if len(s) == 14 && allDigits(s) {
+		t, err := time.Parse("20060102150405", s)
+		if err != nil {
+			return 0, err
+		}
+		return uint32(t.Unix()), nil
+	}
+	v, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("bad signature time %q", s)
+	}
+	return uint32(v), nil
+}
 
 func ttlString(v uint32) string { return strconv.FormatUint(uint64(v), 10) }
 

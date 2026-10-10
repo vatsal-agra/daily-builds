@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"os"
@@ -71,6 +74,8 @@ func cmdServe(args []string) int {
 	rate := fs.Float64("rate", 0, "per-client UDP queries/second limit (0 = unlimited)")
 	burst := fs.Float64("burst", 20, "rate limit burst size")
 	policy := fs.String("policy", "", "response-policy file (blocklist)")
+	var secondaries multiFlag
+	fs.Var(&secondaries, "secondary", "origin=primary-host:port — keep a copy via AXFR/SOA polling (repeatable)")
 	recursive := fs.Bool("recursive", false, "also act as a recursive resolver for non-local names")
 	validate := fs.Bool("validate", false, "DNSSEC-validate recursive answers (needs -anchor)")
 	anchor := fs.String("anchor", "", "trust anchor file: DNSKEY or DS records for the root")
@@ -97,7 +102,7 @@ func cmdServe(args []string) int {
 		}
 		zs = append(zs, z)
 	}
-	if len(zs) == 0 && !*recursive {
+	if len(zs) == 0 && len(secondaries) == 0 && !*recursive {
 		return fail("nothing to serve: give at least one -zone or -recursive")
 	}
 	srv := dns.NewServer(zs...)
@@ -150,78 +155,105 @@ func cmdServe(args []string) int {
 	if err := srv.Start(*listen); err != nil {
 		return fail("%v", err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, spec := range secondaries {
+		origin, primary, ok := strings.Cut(spec, "=")
+		if !ok {
+			return fail("-secondary wants origin=host:port, got %q", spec)
+		}
+		sec := dns.NewSecondary(origin, primary, srv)
+		sec.Logf = func(f string, a ...any) { fmt.Printf("secondary: "+f+"\n", a...) }
+		go sec.Run(ctx)
+	}
 	fmt.Printf("namewright serving on %s (udp+tcp): %s\n", srv.Addr(), srv.Describe())
 	waitForSignal()
+	cancel()
 	srv.Close()
 	return 0
 }
 
-func cmdDig(args []string) int {
-	server := "127.0.0.1:53"
-	var name string
-	typ := dns.TypeA
-	tcp, dnssec, norec, short := false, false, false, false
+type digOpts struct {
+	server, name                  string
+	typ                           dns.Type
+	tcp, dnssec, cd, norec, short bool
+}
+
+// parseDigArgs understands: [@server[:port]] [-p port] [name|type ...] [+tcp] [+dnssec] [+cd] [+norec] [+short].
+// The type may come before or after the name ("dig A example.com").
+func parseDigArgs(args []string) (digOpts, error) {
+	o := digOpts{server: "127.0.0.1:53", typ: dns.TypeA}
 	port := ""
 	haveType := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case strings.HasPrefix(a, "@"):
-			server = a[1:]
+			o.server = a[1:]
 		case a == "-p" && i+1 < len(args):
 			port = args[i+1]
 			i++
 		case a == "+tcp":
-			tcp = true
+			o.tcp = true
 		case a == "+dnssec":
-			dnssec = true
+			o.dnssec = true
+		case a == "+cd":
+			o.cd = true
 		case a == "+norec":
-			norec = true
+			o.norec = true
 		case a == "+short":
-			short = true
+			o.short = true
 		case strings.HasPrefix(a, "+"):
-			return fail("unknown option %s", a)
+			return o, fmt.Errorf("unknown option %s", a)
 		default:
 			t, isType := dns.ParseType(a)
 			switch {
-			case isType && name != "" && !haveType:
-				typ, haveType = t, true
-			case isType && name == "" && !haveType && i+1 < len(args) && !strings.HasPrefix(args[i+1], "@") && !strings.HasPrefix(args[i+1], "+"):
-				typ, haveType = t, true // "dig A example.com"
-			case name == "":
-				name = a
+			case isType && o.name != "" && !haveType:
+				o.typ, haveType = t, true
+			case isType && o.name == "" && !haveType && i+1 < len(args) && !strings.HasPrefix(args[i+1], "@") && !strings.HasPrefix(args[i+1], "+"):
+				o.typ, haveType = t, true // "dig A example.com"
+			case o.name == "":
+				o.name = a
 			default:
-				return fail("unexpected argument %q", a)
+				return o, fmt.Errorf("unexpected argument %q", a)
 			}
 		}
 	}
-	if name == "" {
-		return fail("usage: dig [@server[:port]] [-p port] name [type] [+tcp] [+dnssec] [+norec] [+short]")
+	if o.name == "" {
+		return o, fmt.Errorf("usage: dig [@server[:port]] [-p port] [type] name [type] [+tcp] [+dnssec] [+cd] [+norec] [+short]")
 	}
-	if err := dns.ValidName(dns.CanonName(name)); err != nil {
-		return fail("%v", err)
+	if err := dns.ValidName(dns.CanonName(o.name)); err != nil {
+		return o, err
 	}
-	if _, _, err := net.SplitHostPort(server); err != nil {
+	if _, _, err := net.SplitHostPort(o.server); err != nil {
 		p := port
 		if p == "" {
 			p = "53"
 		}
-		server = net.JoinHostPort(strings.Trim(server, "[]"), p)
+		o.server = net.JoinHostPort(strings.Trim(o.server, "[]"), p)
 	}
-	c := &dns.Client{Timeout: 3 * time.Second, Retries: 1, UDPSize: 1232, DO: dnssec, TCPOnly: tcp}
-	start := time.Now()
-	m, err := c.Exchange(server, name, typ, !norec)
+	return o, nil
+}
+
+func cmdDig(args []string) int {
+	o, err := parseDigArgs(args)
 	if err != nil {
-		return fail("no usable answer from %s: %s", server, friendlyErr(err))
+		return fail("%v", err)
 	}
-	if short {
+	c := &dns.Client{Timeout: 3 * time.Second, Retries: 1, UDPSize: 1232, DO: o.dnssec, CD: o.cd, TCPOnly: o.tcp}
+	start := time.Now()
+	m, err := c.Exchange(o.server, o.name, o.typ, !o.norec)
+	if err != nil {
+		return fail("no usable answer from %s: %s", o.server, friendlyErr(err))
+	}
+	if o.short {
 		for _, r := range m.Answer {
 			fmt.Println(r.Data)
 		}
 		return 0
 	}
 	fmt.Print(m.Format())
-	fmt.Printf("\n;; Query time: %d msec\n;; SERVER: %s\n", time.Since(start).Milliseconds(), server)
+	fmt.Printf("\n;; Query time: %d msec\n;; SERVER: %s\n", time.Since(start).Milliseconds(), o.server)
 	return 0
 }
 
@@ -290,7 +322,10 @@ func cmdAXFR(args []string) int {
 	return 0
 }
 
-func loadWorld(dir string) (*miniverse.World, error) {
+func loadWorld(dir string, signed bool) (*miniverse.World, error) {
+	if signed {
+		return miniverse.BuildSigned(dir, miniverse.SignOptions{})
+	}
 	return miniverse.Build(dir, nil)
 }
 
@@ -298,6 +333,7 @@ func cmdResolve(args []string) int {
 	fs := flag.NewFlagSet("resolve", flag.ContinueOnError)
 	world := fs.String("world", "", "directory of mini-internet zone files (default: built-in copy)")
 	real := fs.Bool("real", false, "use the real internet root servers instead of the mini internet")
+	signed := fs.Bool("signed", false, "DNSSEC-sign the mini internet (root, com., example.com.) and validate")
 	quiet := fs.Bool("quiet", false, "no trace, answer only")
 	if err := fs.Parse(args); err != nil || fs.NArg() < 1 || fs.NArg() > 2 {
 		fmt.Fprintln(os.Stderr, "usage: namewright resolve [-world dir | -real] [-quiet] name [type]")
@@ -316,19 +352,25 @@ func cmdResolve(args []string) int {
 	if *real {
 		r = dns.NewResolver(realRoots())
 	} else {
-		w, err := loadWorld(*world)
+		w, err := loadWorld(*world, *signed)
 		if err != nil {
 			return fail("%v", err)
 		}
 		defer w.Close()
 		r = w.NewResolver()
+		if *signed {
+			r = w.NewValidatingResolver()
+		}
 	}
 	if !*quiet {
-		r.Trace = func(d int, m string) { fmt.Printf(";; %s%s\n", strings.Repeat("   ", d), m) }
+		r.Trace = func(d int, m string) { fmt.Printf(";; %s%s\n", strings.Repeat("   ", d), colorTrace(m)) }
 	}
 	resp, err := r.Resolve(name, typ)
 	if err != nil {
 		return fail("%v", err)
+	}
+	if *signed {
+		fmt.Printf("\n;; dnssec: %s\n", colorSec(resp.Security))
 	}
 	plural := "ies"
 	if resp.Queries == 1 {
@@ -354,16 +396,27 @@ func cmdTestnet(args []string) int {
 	fs := flag.NewFlagSet("testnet", flag.ContinueOnError)
 	world := fs.String("world", "", "directory of mini-internet zone files (default: built-in copy)")
 	listen := fs.String("listen", "127.0.0.1:5353", "address of the recursive front end")
+	signed := fs.Bool("signed", false, "DNSSEC-sign root, com. and example.com. and run a validating resolver")
+	anchorOut := fs.String("anchor-out", "", "with -signed: write the trust anchor (root DNSKEY) to this file")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	w, err := loadWorld(*world)
+	w, err := loadWorld(*world, *signed)
 	if err != nil {
 		return fail("%v", err)
 	}
 	defer w.Close()
 	front := dns.NewServer()
 	front.Resolver = w.NewResolver()
+	if *signed {
+		front.Resolver = w.NewValidatingResolver()
+		if *anchorOut != "" {
+			line := dns.RR{Name: ".", Type: dns.TypeDNSKEY, Class: dns.ClassIN, TTL: 3600, Data: w.AnchorKey}.String() + "\n"
+			if err := os.WriteFile(*anchorOut, []byte(line), 0o644); err != nil {
+				return fail("%v", err)
+			}
+		}
+	}
 	front.Logf = func(f string, a ...any) { fmt.Printf(time.Now().Format("15:04:05.000 ")+f+"\n", a...) }
 	if err := front.Start(*listen); err != nil {
 		return fail("%v", err)
@@ -372,6 +425,9 @@ func cmdTestnet(args []string) int {
 	fmt.Println("mini internet is up:")
 	for _, h := range w.Hosts {
 		fmt.Printf("  %-22s %-15s -> %s  zones: %s\n", h.Name, h.IP, h.Srv.Addr(), strings.Join(h.Zones, ", "))
+	}
+	if *signed {
+		fmt.Println("DNSSEC: root, com. and example.com. are signed; net., glueless.com., dnshost.net. and sub.example.com. are unsigned islands; resolver validates (try +dnssec)")
 	}
 	fmt.Printf("recursive resolver listening on %s — try: namewright dig @%s www.example.com A\n", front.Addr(), front.Addr())
 	waitForSignal()
@@ -387,4 +443,70 @@ func friendlyErr(err error) string {
 		return "timed out"
 	}
 	return err.Error()
+}
+
+// cmdDecode reads a hex-encoded DNS message on stdin, prints it dig-style and
+// prints the canonical re-encoding (used by the dnspython cross-check).
+func cmdDecode(args []string) int {
+	raw, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return fail("%v", err)
+	}
+	b, err := hex.DecodeString(strings.Join(strings.Fields(string(raw)), ""))
+	if err != nil {
+		return fail("input is not hex: %v", err)
+	}
+	m, err := dns.Unpack(b)
+	if err != nil {
+		return fail("cannot decode message: %v", err)
+	}
+	fmt.Print(m.Format())
+	again, err := m.Pack()
+	if err != nil {
+		return fail("cannot re-encode: %v", err)
+	}
+	fmt.Printf("\nwire: %x\n", again)
+	return 0
+}
+
+// color output only when stdout is a terminal and NO_COLOR is unset.
+var useColor = func() bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	fi, err := os.Stdout.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}()
+
+func paint(code, s string) string {
+	if !useColor {
+		return s
+	}
+	return "\x1b[" + code + "m" + s + "\x1b[0m"
+}
+
+func colorTrace(m string) string {
+	switch {
+	case strings.HasPrefix(m, "query "):
+		return paint("36", m)
+	case strings.HasPrefix(m, "referral"):
+		return paint("33", m)
+	case strings.HasPrefix(m, "cache"):
+		return paint("32", m)
+	case strings.HasPrefix(m, "glueless"), strings.HasPrefix(m, "follow"):
+		return paint("35", m)
+	}
+	return paint("2", m)
+}
+
+func colorSec(s dns.SecStatus) string {
+	switch s {
+	case dns.Secure:
+		return paint("1;32", s.String())
+	case dns.Bogus:
+		return paint("1;31", s.String())
+	case dns.Insecure:
+		return paint("33", s.String())
+	}
+	return s.String()
 }

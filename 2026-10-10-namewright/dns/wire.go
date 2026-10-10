@@ -24,6 +24,7 @@ const (
 	TypeDS     Type = 43
 	TypeRRSIG  Type = 46
 	TypeNSEC   Type = 47
+	TypeNSEC3  Type = 50
 	TypeDNSKEY Type = 48
 	TypeAXFR   Type = 252
 	TypeANY    Type = 255
@@ -48,7 +49,7 @@ const (
 var typeNames = map[Type]string{
 	TypeA: "A", TypeNS: "NS", TypeCNAME: "CNAME", TypeSOA: "SOA", TypePTR: "PTR",
 	TypeMX: "MX", TypeTXT: "TXT", TypeAAAA: "AAAA", TypeSRV: "SRV", TypeOPT: "OPT",
-	TypeDS: "DS", TypeRRSIG: "RRSIG", TypeNSEC: "NSEC", TypeDNSKEY: "DNSKEY",
+	TypeDS: "DS", TypeRRSIG: "RRSIG", TypeNSEC: "NSEC", TypeNSEC3: "NSEC3", TypeDNSKEY: "DNSKEY",
 	TypeAXFR: "AXFR", TypeANY: "ANY", TypeCAA: "CAA",
 }
 

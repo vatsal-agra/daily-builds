@@ -62,6 +62,13 @@ func (s *Server) SetZone(z *Zone) {
 	s.mu.Unlock()
 }
 
+// RemoveZone stops serving a zone.
+func (s *Server) RemoveZone(origin string) {
+	s.mu.Lock()
+	delete(s.zones, CanonName(origin))
+	s.mu.Unlock()
+}
+
 func (s *Server) Zone(origin string) *Zone {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -450,7 +457,13 @@ func (s *Server) Handle(req *Message, tcp bool, remote net.Addr) (*Message, int)
 			return finish(RcodeRefused)
 		}
 		resp.RecursionAvailable = true
-		rr, err := s.Resolver.Resolve(name, q.Type)
+		var rr *Response
+		var err error
+		if req.CheckingDisabled {
+			rr, err = s.Resolver.ResolveCD(name, q.Type)
+		} else {
+			rr, err = s.Resolver.Resolve(name, q.Type)
+		}
 		if err != nil {
 			return finish(RcodeServFail)
 		}
@@ -462,7 +475,7 @@ func (s *Server) Handle(req *Message, tcp bool, remote net.Addr) (*Message, int)
 		if !(hasEDNS && edns.DO) {
 			resp.Authority = stripSigs(resp.Authority)
 		}
-		resp.AuthenticData = rr.Security == Secure
+		resp.AuthenticData = rr.Security == Secure && (edns.DO || req.AuthenticData)
 		return finish(rr.Rcode)
 	}
 	resp.RecursionAvailable = s.Resolver != nil

@@ -50,9 +50,10 @@ type Resolver struct {
 	AnchorKeys   []DNSKEY
 	Now          func() time.Time
 
-	mu     sync.Mutex
-	bad    map[string]time.Time // servers that recently failed
-	flight map[cacheKey]*flightCall
+	mu       sync.Mutex
+	keyCache map[string]*zoneKeys // validated DNSKEY sets per zone
+	bad      map[string]time.Time // servers that recently failed
+	flight   map[cacheKey]*flightCall
 }
 
 // flightCall is one in-progress client resolution that duplicates can wait on.
@@ -65,6 +66,9 @@ type flightCall struct {
 type resState struct {
 	queries  int
 	inflight map[cacheKey]bool // lookups on this resolution's call stack, for loop detection
+	raw      int               // >0 while fetching DNSSEC material: no cache writes, no validation
+	// noValidate is the CD (checking disabled) mode: skip validation and leave the cache untouched
+	noValidate bool
 }
 
 var (
@@ -97,10 +101,29 @@ func (r *Resolver) addrOf(ip netip.Addr) string {
 // Resolve answers (name, type) recursively. It never panics on hostile input
 // and always terminates within the configured query budget.
 func (r *Resolver) Resolve(name string, t Type) (*Response, error) {
+	return r.resolveTop(name, t, false)
+}
+
+// ResolveCD is Resolve with DNSSEC checking disabled (the CD bit): data is
+// returned even if it would fail validation, and is not cached.
+func (r *Resolver) ResolveCD(name string, t Type) (*Response, error) {
+	return r.resolveTop(name, t, true)
+}
+
+func (r *Resolver) resolveTop(name string, t Type, cd bool) (*Response, error) {
 	if err := ValidName(name); err != nil {
 		return nil, err
 	}
+	if t == TypeAXFR || t == TypeOPT || t == 251 {
+		return nil, fmt.Errorf("resolver: query type %s cannot be resolved recursively", t)
+	}
+	if r.Validate && !r.hasAnchor() {
+		return nil, ErrNoTrustAnchor
+	}
 	key := cacheKey{CanonName(name), t}
+	if cd {
+		key.t |= 0x8000 // CD lookups must not share results with validating ones (0x8000 is outside real type space used here)
+	}
 	r.mu.Lock()
 	if call, ok := r.flight[key]; ok { // identical lookup already running: share its result
 		r.mu.Unlock()
@@ -123,7 +146,7 @@ func (r *Resolver) Resolve(name string, t Type) (*Response, error) {
 		close(call.done)
 	}()
 	call.err = errors.New("resolver: internal error")
-	st := &resState{inflight: map[cacheKey]bool{}}
+	st := &resState{inflight: map[cacheKey]bool{}, noValidate: cd}
 	call.resp, call.err = r.resolve(key.name, t, 0, st)
 	if call.resp != nil {
 		call.resp.Queries = st.queries
@@ -167,7 +190,11 @@ func (r *Resolver) resolve(name string, t Type, depth int, st *resState) (*Respo
 			resp.Rcode, resp.Authority, resp.Security = step.rcode, step.soa, sec
 			return resp, nil
 		case kindCNAME:
-			name = CanonName(step.rrs[len(step.rrs)-1].Data.(CNAME).Target)
+			for _, x := range step.rrs {
+				if c, ok := x.Data.(CNAME); ok {
+					name = CanonName(c.Target)
+				}
+			}
 			r.tracef(depth, "follow CNAME -> %s", name)
 		case kindBogus:
 			f := r.servfail(orig, t, step.why)
@@ -185,6 +212,7 @@ const (
 	kindCNAME
 	kindNegative
 	kindBogus
+	kindRaw // unvalidated, uncached response handed to the DNSSEC machinery
 )
 
 type stepResult struct {
@@ -194,28 +222,31 @@ type stepResult struct {
 	rcode Rcode
 	sec   SecStatus
 	why   string
+	raw   *Message // kindRaw only
+	from  string   // zone whose server produced raw
 }
 
 // step produces the next piece of the answer for exactly (name, t): either the
 // data, a CNAME to follow, or a negative result. It consults the cache first.
 func (r *Resolver) step(name string, t Type, depth int, st *resState) (*stepResult, error) {
-	if res, ok := r.fromCache(name, t, depth); ok {
+	if res, ok := r.fromCache(name, t, depth, st); ok {
 		return res, nil
 	}
 	return r.iterate(name, t, depth, st)
 }
 
-func (r *Resolver) fromCache(name string, t Type, depth int) (*stepResult, bool) {
-	if n, ok := r.Cache.GetNeg(name, t); ok {
+func (r *Resolver) fromCache(name string, t Type, depth int, st *resState) (*stepResult, bool) {
+	needSec := r.validating(st)
+	if n, ok := r.Cache.GetNeg(name, t); ok && !(needSec && n.Security == Indeterminate) {
 		r.tracef(depth, "cache: negative %s %s (%s)", name, t, n.Rcode)
 		return &stepResult{kind: kindNegative, rcode: n.Rcode, soa: n.SOA, sec: n.Security}, true
 	}
-	if rrs, sigs, sec, ok := r.Cache.Get(name, t); ok {
+	if rrs, sigs, sec, ok := r.Cache.Get(name, t); ok && !(needSec && sec == Indeterminate) {
 		r.tracef(depth, "cache: %s %s (%d records)", name, t, len(rrs))
 		return &stepResult{kind: kindAnswer, rrs: withSigsIf(r.Validate, rrs, sigs), sec: sec}, true
 	}
 	if t != TypeCNAME {
-		if rrs, sigs, sec, ok := r.Cache.Get(name, TypeCNAME); ok {
+		if rrs, sigs, sec, ok := r.Cache.Get(name, TypeCNAME); ok && !(needSec && sec == Indeterminate) {
 			r.tracef(depth, "cache: %s CNAME -> %s", name, rrs[0].Data.(CNAME).Target)
 			return &stepResult{kind: kindCNAME, rrs: withSigsIf(r.Validate, rrs, sigs), sec: sec}, true
 		}
@@ -345,6 +376,9 @@ func (r *Resolver) iterate(name string, t Type, depth int, st *resState) (*stepR
 	defer delete(st.inflight, key)
 
 	deleg := r.bestDelegation(name)
+	if t == TypeDS && name != "." {
+		deleg = r.bestDelegation(Parent(name)) // DS lives on the parent side of the cut
+	}
 	for referrals := 0; referrals < 32; referrals++ {
 		r.tracef(depth, "zone %s: %d nameserver(s)", deleg.zone, len(deleg.hosts))
 		// glueless nameservers: resolve addresses on demand
@@ -389,7 +423,7 @@ func (r *Resolver) iterate(name string, t Type, depth int, st *resState) (*stepR
 				r.markBad(dial)
 				continue
 			}
-			res, nd, why := r.classify(msg, name, t, deleg, depth)
+			res, nd, why := r.classify(msg, name, t, deleg, depth, st)
 			switch {
 			case res != nil:
 				result, answered = res, true
@@ -434,7 +468,8 @@ func (r *Resolver) query(dial, name string, t Type) (*Message, error) {
 
 // classify interprets a server response. Exactly one of (result, next) is
 // non-nil on success; otherwise why explains the rejection.
-func (r *Resolver) classify(m *Message, name string, t Type, cur *delegation, depth int) (*stepResult, *delegation, string) {
+func (r *Resolver) classify(m *Message, name string, t Type, cur *delegation, depth int, st *resState) (*stepResult, *delegation, string) {
+	validate := r.validating(st)
 	if m.Rcode != RcodeSuccess && m.Rcode != RcodeNXDomain {
 		return nil, nil, "rcode " + m.Rcode.String()
 	}
@@ -478,6 +513,9 @@ func (r *Resolver) classify(m *Message, name string, t Type, cur *delegation, de
 		chain = append(chain, *cn)
 		cur_ = CanonName(cn.Data.(CNAME).Target)
 	}
+	if len(chain) > 0 && st.raw > 0 {
+		return &stepResult{kind: kindRaw, raw: m, from: cur.zone}, nil, ""
+	}
 	if len(chain) > 0 {
 		owners := map[cacheKey]bool{}
 		for _, c := range chain {
@@ -489,14 +527,16 @@ func (r *Resolver) classify(m *Message, name string, t Type, cur *delegation, de
 			}
 		}
 		sec := Indeterminate
-		if r.Validate {
+		if validate {
 			var why string
-			sec, why = r.validateAnswer(m, chain, sigs, name, depth)
+			sec, why = r.validateAnswer(m, chain, sigs, name, cur.zone, depth, st)
 			if sec == Bogus {
 				return &stepResult{kind: kindBogus, why: why}, nil, ""
 			}
 		}
-		r.cacheChain(chain, sigs, sec)
+		if !st.noValidate {
+			r.cacheChain(chain, sigs, sec)
+		}
 		// the step result covers the first name; later hops are served via cache
 		var first []RR
 		fname := CanonName(chain[0].Name)
@@ -514,7 +554,7 @@ func (r *Resolver) classify(m *Message, name string, t Type, cur *delegation, de
 		if first[0].Type == TypeCNAME && t != TypeCNAME {
 			kind = kindCNAME
 		}
-		if !r.Validate {
+		if !validate {
 			first = stripSigs(first)
 		}
 		return &stepResult{kind: kind, rrs: first, sec: sec}, nil, ""
@@ -537,18 +577,21 @@ func (r *Resolver) classify(m *Message, name string, t Type, cur *delegation, de
 			if m.Rcode == RcodeNXDomain && !m.Authoritative {
 				return nil, nil, "non-authoritative NXDOMAIN"
 			}
+			if st.raw > 0 {
+				return &stepResult{kind: kindRaw, raw: m, from: cur.zone}, nil, ""
+			}
 			sec := Indeterminate
-			if r.Validate {
+			if validate {
 				var why string
-				sec, why = r.validateNegative(m, name, t, depth)
+				sec, why = r.validateNegative(m, name, t, cur.zone, depth, st)
 				if sec == Bogus {
 					return &stepResult{kind: kindBogus, why: why}, nil, ""
 				}
 			}
-			if len(soa) > 0 {
+			if len(soa) > 0 && !st.noValidate {
 				r.Cache.PutNeg(name, t, m.Rcode, soa, sec)
 			}
-			if r.Validate {
+			if validate {
 				soa = append(soa, selectSigs(m.Authority, TypeSOA)...)
 			}
 			return &stepResult{kind: kindNegative, rcode: m.Rcode, soa: soa, sec: sec}, nil, ""
@@ -576,11 +619,6 @@ func (r *Resolver) classify(m *Message, name string, t Type, cur *delegation, de
 		}
 		nsset = append(nsset, n)
 		nd.hosts = append(nd.hosts, CanonName(n.Data.(NS).Host))
-	}
-	if r.Validate {
-		if bad := r.checkReferral(m, zone, cur, depth); bad != "" {
-			return &stepResult{kind: kindBogus, why: bad}, nil, ""
-		}
 	}
 	r.Cache.PutSetTrust(nsset, nil, Indeterminate, TrustGlue)
 	// glue: in-bailiwick of the *responding* zone only

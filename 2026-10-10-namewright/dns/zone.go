@@ -79,6 +79,9 @@ func NewZone(origin string, rrs []RR) (*Zone, error) {
 		}
 		// TTL harmonisation within RRsets (RFC 2181 §5.2)
 		for t, set := range n.rrsets {
+			if t == TypeRRSIG {
+				continue // each signature carries the TTL of the RRset it covers
+			}
 			min := set[0].TTL
 			mixed := false
 			for _, r := range set {
