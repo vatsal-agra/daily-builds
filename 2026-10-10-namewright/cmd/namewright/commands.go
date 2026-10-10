@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -181,11 +182,15 @@ func cmdDig(args []string) int {
 		case strings.HasPrefix(a, "+"):
 			return fail("unknown option %s", a)
 		default:
-			if t, ok := dns.ParseType(a); ok && name != "" && !haveType {
+			t, isType := dns.ParseType(a)
+			switch {
+			case isType && name != "" && !haveType:
 				typ, haveType = t, true
-			} else if name == "" {
+			case isType && name == "" && !haveType && i+1 < len(args) && !strings.HasPrefix(args[i+1], "@") && !strings.HasPrefix(args[i+1], "+"):
+				typ, haveType = t, true // "dig A example.com"
+			case name == "":
 				name = a
-			} else {
+			default:
 				return fail("unexpected argument %q", a)
 			}
 		}
@@ -207,7 +212,7 @@ func cmdDig(args []string) int {
 	start := time.Now()
 	m, err := c.Exchange(server, name, typ, !norec)
 	if err != nil {
-		return fail("query to %s failed: %v", server, err)
+		return fail("no usable answer from %s: %s", server, friendlyErr(err))
 	}
 	if short {
 		for _, r := range m.Answer {
@@ -291,7 +296,7 @@ func loadWorld(dir string) (*miniverse.World, error) {
 
 func cmdResolve(args []string) int {
 	fs := flag.NewFlagSet("resolve", flag.ContinueOnError)
-	world := fs.String("world", "testdata/internet", "directory with the mini-internet zone files")
+	world := fs.String("world", "", "directory of mini-internet zone files (default: built-in copy)")
 	real := fs.Bool("real", false, "use the real internet root servers instead of the mini internet")
 	quiet := fs.Bool("quiet", false, "no trace, answer only")
 	if err := fs.Parse(args); err != nil || fs.NArg() < 1 || fs.NArg() > 2 {
@@ -325,7 +330,11 @@ func cmdResolve(args []string) int {
 	if err != nil {
 		return fail("%v", err)
 	}
-	fmt.Printf("\n;; status: %s, %d upstream queries%s\n", resp.Rcode, resp.Queries, map[bool]string{true: " (cache)", false: ""}[resp.Cached])
+	plural := "ies"
+	if resp.Queries == 1 {
+		plural = "y"
+	}
+	fmt.Printf("\n;; status: %s, %d upstream quer%s%s\n", resp.Rcode, resp.Queries, plural, map[bool]string{true: " (all from cache)", false: ""}[resp.Cached && resp.Queries == 0])
 	if resp.Why != "" {
 		fmt.Printf(";; reason: %s\n", resp.Why)
 	}
@@ -343,7 +352,7 @@ func cmdResolve(args []string) int {
 
 func cmdTestnet(args []string) int {
 	fs := flag.NewFlagSet("testnet", flag.ContinueOnError)
-	world := fs.String("world", "testdata/internet", "directory with the mini-internet zone files")
+	world := fs.String("world", "", "directory of mini-internet zone files (default: built-in copy)")
 	listen := fs.String("listen", "127.0.0.1:5353", "address of the recursive front end")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -367,4 +376,15 @@ func cmdTestnet(args []string) int {
 	fmt.Printf("recursive resolver listening on %s — try: namewright dig @%s www.example.com A\n", front.Addr(), front.Addr())
 	waitForSignal()
 	return 0
+}
+
+func friendlyErr(err error) string {
+	var ne net.Error
+	switch {
+	case strings.Contains(err.Error(), "connection refused"):
+		return "connection refused (is a server listening there?)"
+	case errors.As(err, &ne) && ne.Timeout():
+		return "timed out"
+	}
+	return err.Error()
 }

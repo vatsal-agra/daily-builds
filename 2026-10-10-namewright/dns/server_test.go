@@ -10,7 +10,7 @@ import (
 	"namewright/miniverse"
 )
 
-const internetDir = "../testdata/internet"
+const internetDir = "../miniverse/internet"
 
 func world(t *testing.T) *miniverse.World {
 	t.Helper()

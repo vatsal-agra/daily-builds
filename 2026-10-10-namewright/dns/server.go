@@ -37,6 +37,11 @@ type Server struct {
 	// Resolver, if set, turns the server into a recursive resolver for names
 	// outside its authoritative zones (queries with RD set).
 	Resolver *Resolver
+	// MaxTCPConns bounds concurrent TCP connections (0 = 1024).
+	MaxTCPConns int
+
+	connMu sync.Mutex
+	conns  map[net.Conn]struct{}
 
 	statMu sync.Mutex
 	stats  map[string]int
@@ -142,6 +147,11 @@ func (s *Server) Close() {
 	}
 	s.udp.Close()
 	s.tcp.Close()
+	s.connMu.Lock()
+	for c := range s.conns {
+		c.Close() // unblock handlers waiting on idle clients
+	}
+	s.connMu.Unlock()
 	s.wg.Wait()
 }
 
@@ -179,15 +189,39 @@ func (s *Server) serveUDP() {
 
 func (s *Server) serveTCP() {
 	defer s.wg.Done()
+	limit := s.MaxTCPConns
+	if limit <= 0 {
+		limit = 1024
+	}
+	slots := make(chan struct{}, limit)
 	for {
 		c, err := s.tcp.Accept()
 		if err != nil {
 			return
 		}
+		select {
+		case slots <- struct{}{}:
+		default:
+			s.count("tcp-rejected")
+			c.Close()
+			continue
+		}
+		s.connMu.Lock()
+		if s.conns == nil {
+			s.conns = map[net.Conn]struct{}{}
+		}
+		s.conns[c] = struct{}{}
+		s.connMu.Unlock()
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-			defer c.Close()
+			defer func() { <-slots }()
+			defer func() {
+				s.connMu.Lock()
+				delete(s.conns, c)
+				s.connMu.Unlock()
+				c.Close()
+			}()
 			s.tcpConn(c)
 		}()
 	}
@@ -406,6 +440,10 @@ func (s *Server) Handle(req *Message, tcp bool, remote net.Addr) (*Message, int)
 		}
 	}
 	z := s.findZone(name)
+	if z != nil && q.Type == TypeDS && z.Origin == name && name != "." {
+		// DS lives on the parent side of the zone cut
+		z = s.findZone(Parent(name))
+	}
 	if z == nil {
 		if s.Resolver == nil || !req.RecursionDesired {
 			resp.RecursionAvailable = s.Resolver != nil

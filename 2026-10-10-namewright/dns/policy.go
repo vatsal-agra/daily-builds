@@ -29,6 +29,9 @@ func NewRateLimiter(rate, burst float64) *RateLimiter {
 
 // Allow consumes one token for client and reports whether the query may proceed.
 func (l *RateLimiter) Allow(client string) bool {
+	if a, err := netip.ParseAddr(client); err == nil {
+		client = a.Unmap().String()
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.Now()

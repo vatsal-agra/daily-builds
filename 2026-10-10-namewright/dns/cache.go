@@ -19,6 +19,7 @@ type posEntry struct {
 	stored   time.Time
 	expires  time.Time
 	Security SecStatus
+	trust    Trust
 }
 
 // Neg is a cached negative answer (RFC 2308).
@@ -81,6 +82,12 @@ func (c *Cache) evictLocked() {
 // PutSet stores one RRset (all same owner and type) and its signatures.
 // The set TTL is the minimum across records. A zero TTL is not cached.
 func (c *Cache) PutSet(rrs []RR, sigs []RR, sec SecStatus) {
+	c.PutSetTrust(rrs, sigs, sec, TrustAnswer)
+}
+
+// PutSetTrust is PutSet with an RFC 2181 §5.4.1 trust rank: data from a
+// lower-ranked source (glue) never replaces unexpired higher-ranked data.
+func (c *Cache) PutSetTrust(rrs []RR, sigs []RR, sec SecStatus, tr Trust) {
 	if len(rrs) == 0 {
 		return
 	}
@@ -102,9 +109,12 @@ func (c *Cache) PutSet(rrs []RR, sigs []RR, sec SecStatus) {
 	copy(set, rrs)
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if old := c.pos[k]; old != nil && old.trust > tr && now.Before(old.expires) {
+		return
+	}
 	c.evictLocked()
 	c.pos[k] = &posEntry{rrs: set, sigs: append([]RR(nil), sigs...), stored: now,
-		expires: now.Add(time.Duration(ttl) * time.Second), Security: sec}
+		expires: now.Add(time.Duration(ttl) * time.Second), Security: sec, trust: tr}
 	delete(c.neg, k)
 	delete(c.neg, cacheKey{k.name, nxKey})
 }
@@ -205,6 +215,15 @@ func (c *Cache) GetNeg(name string, t Type) (*Neg, bool) {
 	return nil, false
 }
 
+// Delete removes the positive and negative entries for (name, t).
+func (c *Cache) Delete(name string, t Type) {
+	k := cacheKey{CanonName(name), t}
+	c.mu.Lock()
+	delete(c.pos, k)
+	delete(c.neg, k)
+	c.mu.Unlock()
+}
+
 // Flush drops everything.
 func (c *Cache) Flush() {
 	c.mu.Lock()
@@ -212,3 +231,10 @@ func (c *Cache) Flush() {
 	c.neg = map[cacheKey]*Neg{}
 	c.mu.Unlock()
 }
+
+type Trust int
+
+const (
+	TrustGlue   Trust = 1
+	TrustAnswer Trust = 2
+)

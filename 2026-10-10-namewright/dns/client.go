@@ -11,13 +11,17 @@ import (
 
 // Client sends a single query to a single server.
 type Client struct {
-	Timeout  time.Duration
-	Retries  int    // extra UDP attempts after the first
-	UDPSize  uint16 // advertised EDNS buffer (0 = no EDNS)
-	DO       bool   // request DNSSEC records
-	Case0x20 bool   // randomise query-name case and require an exact echo
-	TCPOnly  bool
+	Timeout            time.Duration
+	Retries            int    // extra UDP attempts after the first
+	UDPSize            uint16 // advertised EDNS buffer (0 = no EDNS)
+	DO                 bool   // request DNSSEC records
+	Case0x20           bool   // randomise query-name case and require an exact echo
+	TCPOnly            bool
+	MaxTransferRecords int // AXFR safety cap (0 = default 1,000,000)
 }
+
+// ErrCase0x20 means a response did not echo the randomised question case.
+var ErrCase0x20 = errors.New("dns: response failed 0x20 case check")
 
 func randID() uint16 {
 	var b [2]byte
@@ -93,7 +97,7 @@ func (c *Client) check(resp *Message, q *Message) error {
 	}
 	if c.Case0x20 {
 		if resp.Question[0].Name != q.Question[0].Name {
-			return errors.New("dns: response failed 0x20 case check")
+			return ErrCase0x20
 		}
 	} else if CompareNames(resp.Question[0].Name, q.Question[0].Name) != 0 {
 		return errors.New("dns: response question mismatch")
@@ -118,8 +122,14 @@ func (c *Client) udp(addr string, wire []byte, q *Message, timeout time.Duration
 			return nil, err
 		}
 		resp, err := Unpack(buf[:n])
-		if err != nil || c.check(resp, q) != nil {
-			continue // ignore spoofed / garbled datagrams and keep waiting until the deadline
+		if err != nil {
+			continue // garbled datagram: keep waiting until the deadline
+		}
+		if cerr := c.check(resp, q); cerr != nil {
+			if errors.Is(cerr, ErrCase0x20) {
+				return nil, cerr // right id and question, wrong case: a non-preserving server
+			}
+			continue // spoofed / mismatched datagram
 		}
 		return resp, nil
 	}
@@ -169,6 +179,10 @@ func (c *Client) Transfer(addr, zone string) ([]RR, error) {
 	if err := writeFramed(conn, wire); err != nil {
 		return nil, err
 	}
+	maxRecs := c.MaxTransferRecords
+	if maxRecs <= 0 {
+		maxRecs = 1_000_000
+	}
 	var rrs []RR
 	soas := 0
 	for soas < 2 {
@@ -187,6 +201,9 @@ func (c *Client) Transfer(addr, zone string) ([]RR, error) {
 			return nil, fmt.Errorf("axfr refused: %s", m.Rcode)
 		}
 		for _, r := range m.Answer {
+			if len(rrs) >= maxRecs {
+				return nil, fmt.Errorf("axfr: transfer exceeds the %d-record limit", maxRecs)
+			}
 			rrs = append(rrs, r)
 			if r.Type == TypeSOA {
 				soas++

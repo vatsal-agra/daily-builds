@@ -8,7 +8,7 @@ import (
 
 func loadExample(t *testing.T) *Zone {
 	t.Helper()
-	src, err := os.ReadFile("../testdata/internet/example.com.zone")
+	src, err := os.ReadFile("../miniverse/internet/example.com.zone")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -104,6 +104,19 @@ func CanonName(s string) string {
 	if s == "" {
 		return "."
 	}
+	if strings.IndexByte(s, '\\') >= 0 {
+		// unify escape spellings: \097 and a are the same label byte
+		abs := s
+		if !strings.HasSuffix(abs, ".") || escapedDot(abs) {
+			abs += "."
+		}
+		if labels, err := splitName(abs); err == nil {
+			for i := range labels {
+				labels[i] = lowerBytes(labels[i])
+			}
+			return joinLabels(labels)
+		}
+	}
 	b := []byte(s)
 	for i, c := range b {
 		if c >= 'A' && c <= 'Z' {

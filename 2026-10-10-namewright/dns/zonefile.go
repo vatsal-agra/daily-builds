@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/netip"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -256,6 +257,7 @@ type zoneState struct {
 // ParseZone parses master-file text into resource records. origin is the
 // initial $ORIGIN (may be empty if the file sets one before use).
 func ParseZone(src, origin, file string) ([]RR, error) {
+	src = strings.TrimPrefix(src, "\ufeff")
 	lines, err := lex(src, file)
 	if err != nil {
 		return nil, err
@@ -662,6 +664,7 @@ func (st *zoneState) parseRData(t Type, toks []token) (RData, error) {
 			}
 			ts = append(ts, ty)
 		}
+		sort.Slice(ts, func(i, j int) bool { return ts[i] < ts[j] })
 		return NSEC{n, ts}, nil
 	}
 	return nil, fmt.Errorf("no presentation parser for type %s (use the \\# generic form)", t)

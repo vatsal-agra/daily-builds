@@ -5,7 +5,9 @@
 package miniverse
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/netip"
 	"os"
@@ -14,6 +16,9 @@ import (
 
 	"namewright/dns"
 )
+
+//go:embed internet/*.zone
+var embedded embed.FS
 
 // Host is one nameserver in the world.
 type Host struct {
@@ -41,7 +46,8 @@ func Layout() []*Host {
 	}
 }
 
-// Build loads zone files from dir and starts every server on 127.0.0.1.
+// Build loads zone files from dir (or the embedded copy when dir is "") and
+// starts every server on 127.0.0.1.
 // tweak, if non-nil, may modify each zone's records before the zone is built
 // (used to insert DNSSEC material).
 func Build(dir string, tweak func(origin string, rrs []dns.RR) []dns.RR) (*World, error) {
@@ -50,7 +56,14 @@ func Build(dir string, tweak func(origin string, rrs []dns.RR) []dns.RR) (*World
 		var zones []*dns.Zone
 		for _, zn := range h.Zones {
 			path := filepath.Join(dir, zn+".zone")
-			src, err := os.ReadFile(path)
+			var src []byte
+			var err error
+			if dir == "" {
+				path = "internet/" + zn + ".zone"
+				src, err = fs.ReadFile(embedded, path)
+			} else {
+				src, err = os.ReadFile(path)
+			}
 			if err != nil {
 				w.Close()
 				return nil, err

@@ -50,14 +50,21 @@ type Resolver struct {
 	AnchorKeys   []DNSKEY
 	Now          func() time.Time
 
-	mu       sync.Mutex
-	inflight map[cacheKey]bool
-	bad      map[string]time.Time // servers that recently failed
+	mu     sync.Mutex
+	bad    map[string]time.Time // servers that recently failed
+	flight map[cacheKey]*flightCall
+}
+
+// flightCall is one in-progress client resolution that duplicates can wait on.
+type flightCall struct {
+	done chan struct{}
+	resp *Response
+	err  error
 }
 
 type resState struct {
-	queries int
-	trace   bool
+	queries  int
+	inflight map[cacheKey]bool // lookups on this resolution's call stack, for loop detection
 }
 
 var (
@@ -70,7 +77,7 @@ func NewResolver(roots []RootHint) *Resolver {
 		Roots: roots, Cache: NewCache(),
 		Client:     &Client{Timeout: 1500 * time.Millisecond, Retries: 1, UDPSize: 1232, Case0x20: true},
 		MaxQueries: 64, MaxDepth: 8, MaxCNAME: 16, Now: time.Now,
-		inflight: map[cacheKey]bool{}, bad: map[string]time.Time{},
+		bad: map[string]time.Time{}, flight: map[cacheKey]*flightCall{},
 	}
 }
 
@@ -93,12 +100,35 @@ func (r *Resolver) Resolve(name string, t Type) (*Response, error) {
 	if err := ValidName(name); err != nil {
 		return nil, err
 	}
-	st := &resState{}
-	resp, err := r.resolve(CanonName(name), t, 0, st)
-	if resp != nil {
-		resp.Queries = st.queries
+	key := cacheKey{CanonName(name), t}
+	r.mu.Lock()
+	if call, ok := r.flight[key]; ok { // identical lookup already running: share its result
+		r.mu.Unlock()
+		<-call.done
+		if call.resp == nil {
+			return nil, call.err
+		}
+		cp := *call.resp
+		cp.Queries = 0
+		return &cp, call.err
 	}
-	return resp, err
+	call := &flightCall{done: make(chan struct{})}
+	r.flight[key] = call
+	r.mu.Unlock()
+
+	defer func() { // also runs on panic so waiters are never stranded
+		r.mu.Lock()
+		delete(r.flight, key)
+		r.mu.Unlock()
+		close(call.done)
+	}()
+	call.err = errors.New("resolver: internal error")
+	st := &resState{inflight: map[cacheKey]bool{}}
+	call.resp, call.err = r.resolve(key.name, t, 0, st)
+	if call.resp != nil {
+		call.resp.Queries = st.queries
+	}
+	return call.resp, call.err
 }
 
 func (r *Resolver) servfail(name string, t Type, why string) *Response {
@@ -254,12 +284,27 @@ func (r *Resolver) bestDelegation(name string) *delegation {
 				}
 			}
 		}
+		// An NS set whose in-bailiwick servers have no cached address cannot be
+		// used (their address can only be learned from themselves): go up a
+		// level so the parent's referral supplies fresh glue.
+		if len(d.allAddrs()) == 0 && allInBailiwick(d.missing(), zone) {
+			continue
+		}
 		return d
 	}
 	return r.rootDelegation()
 }
 
-// hostsNeedingAddrs lists NS hosts of d that have no known address.
+func allInBailiwick(hosts []string, zone string) bool {
+	for _, h := range hosts {
+		if !IsSubdomain(h, zone) {
+			return false
+		}
+	}
+	return true
+}
+
+// missing lists NS hosts of d that have no known address.
 func (d *delegation) missing() []string {
 	var out []string
 	for _, h := range d.hosts {
@@ -293,14 +338,11 @@ func (r *Resolver) iterate(name string, t Type, depth int, st *resState) (*stepR
 		return nil, errors.New("nameserver lookup nested too deeply")
 	}
 	key := cacheKey{name, t}
-	r.mu.Lock()
-	if r.inflight[key] {
-		r.mu.Unlock()
+	if st.inflight[key] {
 		return nil, fmt.Errorf("dependency loop resolving %s %s", name, t)
 	}
-	r.inflight[key] = true
-	r.mu.Unlock()
-	defer func() { r.mu.Lock(); delete(r.inflight, key); r.mu.Unlock() }()
+	st.inflight[key] = true
+	defer delete(st.inflight, key)
 
 	deleg := r.bestDelegation(name)
 	for referrals := 0; referrals < 32; referrals++ {
@@ -332,13 +374,10 @@ func (r *Resolver) iterate(name string, t Type, depth int, st *resState) (*stepR
 		var next *delegation
 		answered := false
 		var result *stepResult
-		tried := 0
+		// servers that failed recently go last, but are never skipped outright
+		sort.SliceStable(addrs, func(i, j int) bool { return !r.isBad(r.addrOf(addrs[i])) && r.isBad(r.addrOf(addrs[j])) })
 		for _, ip := range addrs {
 			dial := r.addrOf(ip)
-			if r.isBad(dial) && tried < len(addrs)-1 {
-				continue
-			}
-			tried++
 			if st.queries >= r.MaxQueries {
 				return nil, ErrTooManyQueries
 			}
@@ -384,7 +423,13 @@ func (r *Resolver) query(dial, name string, t Type) (*Message, error) {
 			c.UDPSize = 1232
 		}
 	}
-	return c.Exchange(dial, name, t, false)
+	m, err := c.Exchange(dial, name, t, false)
+	if err != nil && c.Case0x20 && errors.Is(err, ErrCase0x20) {
+		// the server does not preserve question case: retry without randomisation
+		c.Case0x20 = false
+		return c.Exchange(dial, name, t, false)
+	}
+	return m, err
 }
 
 // classify interprets a server response. Exactly one of (result, next) is
@@ -537,7 +582,7 @@ func (r *Resolver) classify(m *Message, name string, t Type, cur *delegation, de
 			return &stepResult{kind: kindBogus, why: bad}, nil, ""
 		}
 	}
-	r.Cache.PutSet(nsset, nil, Indeterminate)
+	r.Cache.PutSetTrust(nsset, nil, Indeterminate, TrustGlue)
 	// glue: in-bailiwick of the *responding* zone only
 	glue := map[cacheKey][]RR{}
 	for _, a := range m.Additional {
@@ -564,7 +609,7 @@ func (r *Resolver) classify(m *Message, name string, t Type, cur *delegation, de
 		}
 	}
 	for _, set := range glue {
-		r.Cache.PutSet(set, nil, Indeterminate)
+		r.Cache.PutSetTrust(set, nil, Indeterminate, TrustGlue)
 	}
 	r.tracef(depth, "referral to %s (%s)", zone, strings.Join(nd.hosts, ", "))
 	return nil, nd, ""
