@@ -149,7 +149,7 @@ func (r *Resolver) computeZoneSecurity(zone string, depth int, st *resState) ([]
 		if err := r.verifySet(set, sigsFor(msg.Answer, ".", TypeDNSKEY), candidates, "."); err != nil {
 			return bogus("root DNSKEY RRset: %v", err)
 		}
-		return keysOf(set), Secure, "", ttlOf(set)
+		return keysOf(set), Secure, "", capBySigs(ttlOf(set), sigsFor(msg.Answer, ".", TypeDNSKEY), r.now())
 	}
 
 	parent := r.bestDelegation(Parent(zone)).zone
@@ -223,7 +223,26 @@ func (r *Resolver) computeZoneSecurity(zone string, depth int, st *resState) ([]
 	if err := r.verifySet(keySet, sigsFor(keyMsg.Answer, zone, TypeDNSKEY), candidates, zone); err != nil {
 		return bogus("DNSKEY RRset of %s: %v", zone, err)
 	}
-	return keysOf(keySet), Secure, "", ttlOf(keySet)
+	return keysOf(keySet), Secure, "", capBySigs(ttlOf(keySet), sigsFor(keyMsg.Answer, zone, TypeDNSKEY), r.now())
+}
+
+// sigLifetime is the shortest time any of the signatures remains valid.
+func sigLifetime(sigs []RR, now time.Time) (time.Duration, bool) {
+	var min time.Duration
+	for i, s := range sigs {
+		d := time.Duration(int32(s.Data.(RRSIG).Expiration-uint32(now.Unix()))) * time.Second
+		if i == 0 || d < min {
+			min = d
+		}
+	}
+	return min, len(sigs) > 0
+}
+
+func capBySigs(ttl time.Duration, sigs []RR, now time.Time) time.Duration {
+	if life, ok := sigLifetime(sigs, now); ok && life < ttl {
+		return life
+	}
+	return ttl
 }
 
 func keysOf(set []RR) []DNSKEY {

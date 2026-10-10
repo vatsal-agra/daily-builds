@@ -72,7 +72,7 @@ func TestReviewAllServersMarkedBadStillTried(t *testing.T) {
 	}
 }
 
-// R3: empty non-terminals were only detected one level up from an existing node.
+// (suspected, then refuted) empty non-terminals deeper than one level: kept as a guard.
 func TestReviewDeepEmptyNonTerminal(t *testing.T) {
 	z, err := dns.LoadZone("$ORIGIN z.org.\n$TTL 1\n@ SOA n h 1 1 1 1 1\n@ NS n\nn A 1.1.1.1\nx.y.k A 1.1.1.1\ny.k A 1.1.1.2", "z.org.", "t")
 	if err != nil {
@@ -322,7 +322,7 @@ func TestReviewEscapedNameEquivalence(t *testing.T) {
 	}
 }
 
-// R14: if a zone's NS set is cached but the glue for its in-bailiwick
+// R3: if a zone's NS set is cached but the glue for its in-bailiwick
 // nameservers is gone (shorter glue TTL, eviction, or a concurrent resolver
 // caching the NS set a moment before its glue), resolution deadlocked: the
 // nameserver's address can only be found by asking that nameserver.
@@ -340,7 +340,7 @@ func TestReviewLostGlueFallsBackToParent(t *testing.T) {
 	}
 }
 
-// R15: a burst of identical client queries must collapse into one upstream walk.
+// R14: a burst of identical client queries must collapse into one upstream walk.
 func TestReviewSingleflight(t *testing.T) {
 	w := world(t)
 	r := w.NewResolver()
@@ -356,5 +356,20 @@ func TestReviewSingleflight(t *testing.T) {
 	root := w.Host("a.root-servers.net").Srv.Stats()["queries"]
 	if root > 3 {
 		t.Errorf("root saw %d queries for 40 identical concurrent lookups; want coalescing", root)
+	}
+}
+
+// R16: RRSIG TTLs were "harmonised" across different covered types, so a 600s A
+// RRset was served with a 300s signature TTL. Each RRSIG must carry its RRset's TTL.
+func TestReviewRRSIGTTLMatchesCoveredRRset(t *testing.T) {
+	z, _, _ := signedExample(t, dns.AlgED25519)
+	for _, r := range z.Records() {
+		if r.Type != dns.TypeRRSIG {
+			continue
+		}
+		sig := r.Data.(dns.RRSIG)
+		if r.TTL != sig.OrigTTL {
+			t.Errorf("%s RRSIG(%s) TTL %d != original TTL %d", r.Name, sig.TypeCovered, r.TTL, sig.OrigTTL)
+		}
 	}
 }

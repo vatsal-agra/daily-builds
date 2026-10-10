@@ -7,7 +7,7 @@ exercised the CLI with bad input, ran the suite under `-race`, and diffed my zon
 dnspython's on all five sample zones. Results below; "Test" names the regression test that failed
 against the phase-2 code and passes now.
 
-## Defects found and fixed
+## Defects found and fixed (first pass: R1–R14)
 
 | ID | Sev | Finding | Evidence | Fix | Test |
 |----|-----|---------|----------|-----|------|
@@ -51,3 +51,25 @@ implemented. Zone `$INCLUDE`/`$GENERATE` are rejected with a clear error rather 
 
 After the fixes: full suite under `-race` ×3 green, CLI battery (11 bad-input invocations) gives one-line
 errors with correct exit codes, fuzzers re-run clean, and none of R1–R14 reproduce.
+
+---
+
+# Second pass: re-reviewing the Phase 4 code (DNSSEC, secondary, policy)
+
+Same method: suspicion → failing test → fix. These were found *after* the stretch features landed.
+
+| ID | Sev | Finding | Fix | Test |
+|----|-----|---------|-----|------|
+| R15 | **High** | Validated answers were cached for their record TTL even when the covering RRSIG expires sooner, so a resolver would keep serving "secure" data after its signatures lapsed (RFC 4035 §5.3.3). Same for cached DNSKEY sets. | TTLs clamped to the remaining signature lifetime, both for what is cached and what is returned; key-cache lifetime capped likewise | `TestSecureCacheEntriesDieWithTheirSignatures` |
+| R16 | Med | Zone loading "harmonised" TTLs across the whole RRSIG RRset at a name, so every signature at a node took the smallest covered TTL (visible: `web.example.com. 300 IN RRSIG A … 600`). | RRSIGs excluded from harmonisation; each keeps its covered RRset's TTL | `TestReviewRRSIGTTLMatchesCoveredRRset` |
+| R17 | **High** | (caught by the first validating run) the CNAME-follow step took the *last* record of a step result as the CNAME; with RRSIGs appended that is an RRSIG → type-assertion **panic** in the resolver. | CNAME located by type, not position | every DNSSEC resolver test |
+
+Design checks that held up (CD results never write to the cache; unvalidated entries are misses for validating lookups — covered by `expectBogus`). Also verified in this pass: wildcard-NODATA validation (`TestWildcardNODATAValidates`), rate-limiter and
+policy behaviour (`TestRateLimitingOnServer`, `TestResponsePolicy`), secondary expiry/serial-regression
+handling (`TestSecondaryFollowsPrimary`), and the whole DNSSEC implementation against dnspython
+(`tests/crosscheck.py`: dnspython validates our RRSIGs for Ed25519 + ECDSA, wildcard expansion, NSEC and DS digests;
+and `namewright verify` accepts zones signed by dnspython — which would be impossible if the canonical-form code differed).
+
+Known DNSSEC limitations (documented, fail-closed where it matters): NSEC3 is not supported (a secure zone answering
+with NSEC3 yields BOGUS with an explicit reason), no RFC 5011 key rollover tracking, RSA verifies but cannot sign,
+no signature-inception clock-skew tolerance.

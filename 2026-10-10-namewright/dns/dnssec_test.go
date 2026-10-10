@@ -606,3 +606,44 @@ func signedWorldWithDS(t *testing.T, ds dns.DS) *miniverse.World {
 	t.Cleanup(w.Close)
 	return w
 }
+
+// R15 (found while re-reviewing the DNSSEC code): validated answers were cached for
+// their record TTL even if the covering signature expires sooner.
+func TestSecureCacheEntriesDieWithTheirSignatures(t *testing.T) {
+	base := time.Now()
+	w := signedWorld(t, miniverse.SignOptions{Inception: base.Add(-time.Hour), Expiration: base.Add(120 * time.Second)})
+	r := w.NewValidatingResolver()
+	now := base
+	r.Now = func() time.Time { return now }
+	r.Cache.Now = r.Now
+	first, _ := r.Resolve("web.example.com.", dns.TypeA)
+	if first.Security != dns.Secure {
+		t.Fatalf("%+v", first)
+	}
+	for _, a := range first.Answer {
+		if a.Type == dns.TypeA && a.TTL > 120 {
+			t.Errorf("A TTL %d exceeds the 120s signature lifetime", a.TTL)
+		}
+	}
+	now = base.Add(60 * time.Second)
+	if again, _ := r.Resolve("web.example.com.", dns.TypeA); !again.Cached || again.Security != dns.Secure {
+		t.Errorf("should still be cached and secure at +60s: %+v", again)
+	}
+	now = base.Add(150 * time.Second) // signatures expired
+	after, _ := r.Resolve("web.example.com.", dns.TypeA)
+	if after.Cached || after.Security == dns.Secure {
+		t.Errorf("served from cache after signatures expired: %+v", after)
+	}
+	if after.Rcode != dns.RcodeServFail || !strings.Contains(after.Why, "expired") {
+		t.Errorf("expected bogus/expired after expiry, got %+v", after)
+	}
+}
+
+func TestWildcardNODATAValidates(t *testing.T) {
+	w := signedWorld(t, miniverse.SignOptions{})
+	r := w.NewValidatingResolver()
+	resp, _ := r.Resolve("x.dev.example.com.", dns.TypeMX)
+	if resp.Rcode != dns.RcodeSuccess || len(resp.Answer) != 0 || resp.Security != dns.Secure {
+		t.Errorf("wildcard NODATA: %+v", resp)
+	}
+}

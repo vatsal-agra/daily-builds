@@ -38,3 +38,10 @@ tests/ + demo.sh    unit + integration tests, dnspython cross-check script
 | 6 | Zone transfer client + secondary server (AXFR pull, serial check via SOA) | stretch |
 | 7 | Query-rate limiting / response policy zone (RPZ-like blocklist) in the server | stretch |
 | 8 | Fuzzing of the decoder (Go native fuzz) with invariants: no panic, re-encode round trip | stretch |
+
+## Outcome
+
+All 4 required and all 4 stretch features shipped (see README.md). Notable scope additions beyond the plan:
+singleflight/trust-ranking/0x20-fallback in the resolver, response-size-aware packing, CHAOS identity queries,
+`decode`/`check`/`keygen`/`sign`/`verify` CLI tools, an embedded mini internet, and a dnspython cross-check harness.
+No feature was shrunk or swapped.

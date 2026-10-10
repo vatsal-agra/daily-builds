@@ -534,6 +534,9 @@ func (r *Resolver) classify(m *Message, name string, t Type, cur *delegation, de
 				return &stepResult{kind: kindBogus, why: why}, nil, ""
 			}
 		}
+		if sec == Secure {
+			chain = r.clampToSignatures(chain, sigs)
+		}
 		if !st.noValidate {
 			r.cacheChain(chain, sigs, sec)
 		}
@@ -673,6 +676,25 @@ func selectSigs(rrs []RR, covered Type) []RR {
 	return out
 }
 
+// clampToSignatures lowers each RRset's TTL to the remaining lifetime of its signatures.
+func (r *Resolver) clampToSignatures(chain, sigs []RR) []RR {
+	out := append([]RR(nil), chain...)
+	for i, c := range out {
+		var ks []RR
+		for _, s := range sigs {
+			if CanonName(s.Name) == CanonName(c.Name) && s.Data.(RRSIG).TypeCovered == c.Type {
+				ks = append(ks, s)
+			}
+		}
+		if life, ok := sigLifetime(ks, r.now()); ok {
+			if secs := uint32(life / time.Second); life > 0 && c.TTL > secs {
+				out[i].TTL = secs
+			}
+		}
+	}
+	return out
+}
+
 // cacheChain stores each RRset of the validated chain separately.
 func (r *Resolver) cacheChain(chain, sigs []RR, sec SecStatus) {
 	sets := map[cacheKey][]RR{}
@@ -691,6 +713,20 @@ func (r *Resolver) cacheChain(chain, sigs []RR, sec SecStatus) {
 				ks = append(ks, s)
 			}
 		}
-		r.Cache.PutSet(sets[k], ks, sec)
+		set := sets[k]
+		if sec == Secure {
+			// RFC 4035 §5.3.3: never cache validated data beyond its signatures' lifetime
+			life, ok := sigLifetime(ks, r.now())
+			if !ok || life <= 0 {
+				continue
+			}
+			set = append([]RR(nil), set...)
+			for i := range set {
+				if secs := uint32(life / time.Second); set[i].TTL > secs {
+					set[i].TTL = secs
+				}
+			}
+		}
+		r.Cache.PutSet(set, ks, sec)
 	}
 }
