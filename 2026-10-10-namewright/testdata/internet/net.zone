@@ -1,0 +1,6 @@
+$ORIGIN net.
+$TTL 3600
+@   IN SOA a.gtld-servers.net. hostmaster.gtld-servers.net. 2026101001 1800 900 604800 300
+    IN NS  a.gtld-servers.net.
+dnshost  IN NS ns.dnshost.net.
+ns.dnshost IN A 198.51.100.20

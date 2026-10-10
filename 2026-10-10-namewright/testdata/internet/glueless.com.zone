@@ -1,0 +1,8 @@
+$ORIGIN glueless.com.
+$TTL 3600
+@     IN SOA ns.dnshost.net. root.dnshost.net. 5 3600 600 86400 60
+      IN NS  ns.dnshost.net.
+www   IN A   192.0.2.200
+blog  IN A   192.0.2.201
+loop1 IN CNAME loop2
+loop2 IN CNAME loop1

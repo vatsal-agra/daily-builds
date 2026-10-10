@@ -1,0 +1,14 @@
+; The miniature internet's root zone (served at 198.51.100.1)
+$TTL 86400
+.                IN SOA a.root-servers.net. nstld.root-servers.net. (
+                        2026101001 ; serial
+                        1800       ; refresh
+                        900        ; retry
+                        604800     ; expire
+                        86400 )    ; minimum
+                 IN NS  a.root-servers.net.
+a.root-servers.net. IN A 198.51.100.1
+
+com.             IN NS  a.gtld-servers.net.
+net.             IN NS  a.gtld-servers.net.
+a.gtld-servers.net. IN A 198.51.100.2

@@ -1,0 +1,6 @@
+$ORIGIN sub.example.com.
+$TTL 600
+@   IN SOA ns.sub.example.com. admin.example.com. 7 3600 600 86400 120
+    IN NS  ns.sub.example.com.
+ns  IN A   198.51.100.11
+host IN A  192.0.2.111

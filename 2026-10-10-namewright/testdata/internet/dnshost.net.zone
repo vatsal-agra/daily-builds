@@ -1,0 +1,5 @@
+$ORIGIN dnshost.net.
+$TTL 3600
+@   IN SOA ns.dnshost.net. root.dnshost.net. 1 3600 600 86400 60
+    IN NS  ns.dnshost.net.
+ns  IN A   198.51.100.20

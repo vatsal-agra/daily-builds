@@ -1,0 +1,13 @@
+$ORIGIN com.
+$TTL 3600
+@   IN SOA a.gtld-servers.net. hostmaster.gtld-servers.net. 2026101001 1800 900 604800 300
+    IN NS  a.gtld-servers.net.
+
+; example.com is delegated with in-bailiwick glue
+example      IN NS ns1.example.com.
+ns1.example   IN A  198.51.100.10
+
+; glueless.com is delegated to a nameserver under .net (no glue available)
+glueless     IN NS ns.dnshost.net.
+
+; unsigned and signed delegations are exercised in the DNSSEC tests
