@@ -1,0 +1,5 @@
+let x = input();
+let r = x;
+if (x < 0) { r = 0; }
+if (x >= 100) { r = 100; }
+return r;

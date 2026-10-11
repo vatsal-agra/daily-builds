@@ -26,3 +26,12 @@ unsound shortcuts. Each finding below was **reproduced first**, then fixed (stat
 ## Gate: fresh run-through
 After the fixes `tests/test_review.py` replays every item above (R1–R9) and `tests/run_all.py` is green; the
 original repro programs no longer misbehave.
+
+## Addendum — found while building the stretch features (Phase 4)
+
+| # | Finding | Fix |
+|---|---------|-----|
+| R10 | `delve solve` crashed with `AttributeError` on any formula containing `/` or `%`: it hand-built a half-initialized `State`. | `State.initial()` is the single constructor; regression test `test_division_guarded`. |
+| R11 | Decimal literal `128` at 8 bits still wrapped silently to -128 (R1's range was too generous: it allowed up to 2^W-1 for decimals). | Decimals must fit the signed range; hex/binary literals may use the full unsigned range (`0x80`). `-128` still works. Tests updated and `test_decimal_128_rejected_hex_allowed` added. |
+| R12 | HTML report source view had doubled line spacing (newlines inside `<pre>` between flex rows) — spotted on a screenshot. | Rows are joined without newlines; empty lines keep their height. |
+| R13 | `examples/triage.dl` claimed "two planted bugs" but contains one. | Comment corrected. |

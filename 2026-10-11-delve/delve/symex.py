@@ -17,6 +17,14 @@ class State:
     __slots__ = ("env", "k", "pc", "frames", "inputs", "in_names", "counts", "loops", "outputs",
                  "lines", "branches", "model", "depth", "trace")
 
+    @staticmethod
+    def initial(k=None):
+        st = State()
+        st.env, st.pc, st.frames, st.inputs, st.in_names = {}, [], None, {}, []
+        st.counts, st.loops, st.outputs, st.lines, st.branches = {}, {}, [], set(), set()
+        st.model, st.depth, st.trace, st.k = {}, 0, (), k
+        return st
+
     def fork(self):
         s = State.__new__(State)
         s.env = dict(self.env)
@@ -106,12 +114,7 @@ class Explorer:
 
     # ---------------------------------------------------------- explore
     def explore(self):
-        st = State()
-        st.env, st.pc, st.frames, st.inputs, st.in_names = {}, [], None, {}, []
-        st.counts, st.loops, st.outputs, st.lines, st.branches = {}, {}, [], set(), set()
-        st.model, st.depth, st.trace = {}, 0, ()
-        st.k = push_block(self.prog.main, None)
-        work = [st]
+        work = [State.initial(push_block(self.prog.main, None))]
         t0 = time.time()
         while work:
             if len(self.paths) >= self.max_paths:

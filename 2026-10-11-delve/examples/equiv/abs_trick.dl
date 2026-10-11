@@ -1,0 +1,4 @@
+// branch-free abs via the sign mask: (x ^ m) - m  where m = x >> 31  (here: width-1)
+let x = input();
+let m = x >> 7;
+return (x ^ m) - m;

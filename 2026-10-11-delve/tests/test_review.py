@@ -102,3 +102,11 @@ class ReviewTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LiteralRangeTests(unittest.TestCase):
+    def test_decimal_128_rejected_hex_allowed(self):
+        with self.assertRaises(DelveError): Interp(parse("return 128;"), 8)
+        self.assertEqual(Interp(parse("return 0x80;"), 8).run({}).value, 128)       # bit pattern -128
+        self.assertEqual(Interp(parse("return -128;"), 8).run({}).value, 128)
+        with self.assertRaises(DelveError): Interp(parse("return 0x100;"), 8)

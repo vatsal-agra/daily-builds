@@ -139,7 +139,7 @@ def html_report(ex, name="program"):
     h.append("<h2>Source coverage</h2><pre>")
     for i, t in enumerate(src, 1):
         cls = "bug" if i in bug_lines else "cov" if i in cov["lines"] else "unc" if i in cov["all_lines"] else ""
-        h.append("<div class='ln %s'><i>%d</i><span>%s</span></div>" % (cls, i, E(t)))
+        h.append("<div class='ln %s'><i>%d</i><span>%s</span></div>" % (cls, i, E(t) or " "))
     h.append("</pre><h2>Paths and generated tests</h2><div class=scroll><table><tr><th>#<th>inputs<th>outcome<th>path condition")
     for p in ex.paths:
         if p.status == "error":
@@ -149,4 +149,4 @@ def html_report(ex, name="program"):
             res = "<span class='tag ok'>%s</span>" % ("return %d" % rv if rv is not None else "finish")
         h.append("<tr><td>%d<td class=m>%s<td>%s<td class=m>%s" % (p.id, E(fmt_inputs(p.inputs, p.in_names, w)), res, E(fmt_pc(p.pc, 4))))
     h.append("</table></div></main></html>")
-    return "\n".join(h)
+    return "".join(h)

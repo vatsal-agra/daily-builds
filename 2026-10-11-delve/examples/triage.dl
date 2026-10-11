@@ -1,4 +1,4 @@
-// Classify a "risk score" from three readings. Contains two planted bugs.
+// Classify a "risk score" from three readings. Contains one planted bug (line 15).
 let age  = input(0, 120);
 let dose = input();
 let kg   = input(1, 100);

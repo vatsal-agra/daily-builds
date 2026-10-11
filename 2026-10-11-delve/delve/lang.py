@@ -32,7 +32,8 @@ def lex(src):
             raise DelveError("unexpected character %r" % src[pos], line)
         text = m.group(0)
         if m.group("num"):
-            toks.append(("num", int(m.group("num").replace("_", ""), 0), line))
+            txt = m.group("num").replace("_", "")
+            toks.append(("num", int(txt, 0), line, txt[:2].lower() in ("0x", "0b")))
         elif m.group("id"):
             t = m.group("id")
             toks.append(("kw" if t in KEYWORDS else "id", t, line))
@@ -274,7 +275,7 @@ class Parser:
 
     def primary(self):
         t = self.next()
-        if t[0] == "num": return ("num", t[1])
+        if t[0] == "num": return ("num", t[1], t[3])      # t[3]: written in hex/binary (may use the unsigned range)
         if t[0] == "kw" and t[1] in ("true", "false"): return ("num", 1 if t[1] == "true" else 0)
         if t[0] == "op" and t[1] == "(":
             e = self.expr(); self.expect_op(")"); return e
@@ -304,13 +305,15 @@ def parse(src):
 
 def check_literals(prog, width):
     """Reject integer literals that do not fit in `width` bits (instead of silently wrapping)."""
-    lo, hi = -(1 << (width - 1)), (1 << width) - 1
+    lo, shi, uhi = -(1 << (width - 1)), (1 << (width - 1)) - 1, (1 << width) - 1
 
     def expr(e, line):
         k = e[0]
         if k == "num":
+            hi = uhi if len(e) > 2 and e[2] else shi
             if not lo <= e[1] <= hi:
-                raise DelveError("literal %d does not fit in %d bits (allowed %d..%d)" % (e[1], width, lo, hi), line)
+                raise DelveError("literal %d does not fit in %d bits (allowed %d..%d%s)" % (
+                    e[1], width, lo, hi, "" if hi == uhi else "; use hex for unsigned patterns"), line)
         elif k == "un": expr(e[2], line)
         elif k == "bin": expr(e[2], line); expr(e[3], line)
         elif k in ("and", "or"): expr(e[1], line); expr(e[2], line)

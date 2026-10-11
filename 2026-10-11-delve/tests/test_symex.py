@@ -23,7 +23,7 @@ class InterpTests(unittest.TestCase):
         return Interp(parse(src), w).run(inputs or {})
 
     def test_arith_wrap_and_return(self):
-        r = self.run_src("let a = 100; let b = a & 255; return b ^ 5;")
+        r = self.run_src("let a = 100; let b = a & 0xFF; return b ^ 5;")
         self.assertEqual(r.value, 100 ^ 5)
         self.assertIsNone(r.trap)
 
