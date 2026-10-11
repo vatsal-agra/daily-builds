@@ -311,8 +311,22 @@ def children_postorder(root):
     return order
 
 
+_VARS = {}
+
+
 def variables(root):
-    return {t.val: t.w for t in children_postorder(root) if t.op == "var"}
+    """{name: width} of free variables, memoized per term (terms are immutable)."""
+    hit = _VARS.get(root.id)
+    if hit is not None: return hit
+    out = {}
+    for t in children_postorder(root):
+        h = _VARS.get(t.id)
+        if h is not None:
+            out.update(h)
+        elif t.op == "var":
+            out[t.val] = t.w
+    _VARS[root.id] = out
+    return out
 
 
 def evaluate(root, env):
@@ -341,6 +355,12 @@ def show(t, depth=6):
     sym = {"add": "+", "sub": "-", "mul": "*", "and": "&", "or": "|", "xor": "^", "udiv": "/u", "urem": "%u",
            "sdiv": "/", "srem": "%", "shl": "<<", "lshr": ">>u", "ashr": ">>", "eq": "==", "ult": "<u",
            "ule": "<=u", "slt": "<", "sle": "<=", "band": "&&", "bor": "||"}
+    if t.op == "not" and t.args[0].op in ("slt", "sle", "ult", "ule"):
+        c = t.args[0]
+        flip = {"slt": "sle", "sle": "slt", "ult": "ule", "ule": "ult"}[c.op]
+        return "(%s %s %s)" % (show(c.args[1], depth - 1), sym[flip], show(c.args[0], depth - 1))
+    if t.op == "not" and t.args[0].op == "eq":
+        return "(%s != %s)" % (show(t.args[0].args[0], depth - 1), show(t.args[0].args[1], depth - 1))
     if t.op in sym:
         return "(%s %s %s)" % (show(t.args[0], depth - 1), sym[t.op], show(t.args[1], depth - 1))
     return "%s(%s)" % (t.op, ", ".join(show(a, depth - 1) for a in t.args))

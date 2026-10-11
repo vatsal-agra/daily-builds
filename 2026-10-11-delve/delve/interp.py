@@ -1,7 +1,7 @@
 """Concrete W-bit interpreter for DelveLang. It is the ground truth every symbolic
 finding is replayed against."""
 from . import terms as tm
-from .lang import DelveError
+from .lang import DelveError, check_literals
 
 BINOPS = {"+": "add", "-": "sub", "*": "mul", "/": "sdiv", "%": "srem", "&": "and", "|": "or", "^": "xor",
           "<<": "shl", ">>": "ashr", ">>>": "lshr"}
@@ -47,6 +47,7 @@ class Result:
 
 class Interp:
     def __init__(self, prog, width=8, max_steps=200000, max_depth=200):
+        check_literals(prog, width)
         self.prog, self.w = prog, width
         self.m = tm.mask(width)
         self.max_steps, self.max_depth = max_steps, max_depth

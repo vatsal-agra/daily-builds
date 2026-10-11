@@ -23,6 +23,23 @@ def source_lines(ex):
     return ex.prog.source.split("\n")
 
 
+def complete(ex):
+    """True when the exploration was exhaustive (nothing cut off, nothing abandoned)."""
+    return not (ex.truncated or ex.hit_limit or ex.unknown)
+
+
+def verdict(ex):
+    if not ex.paths:
+        return "No bugs found (there is no feasible execution to examine)."
+    if complete(ex):
+        return "No bugs found. Exploration was exhaustive: no trap is reachable for ANY input at this width."
+    why = []
+    if ex.truncated: why.append("%d path(s) cut at the loop/call bound" % ex.truncated)
+    if ex.hit_limit: why.append("stopped at " + ex.hit_limit)
+    if ex.unknown: why.append("%d path(s) abandoned by the solver budget" % ex.unknown)
+    return "No bugs found within the explored paths — NOT a proof (%s)." % "; ".join(why)
+
+
 def text_report(ex, name="program", show_paths=True):
     w = ex.w
     out = []
@@ -34,6 +51,9 @@ def text_report(ex, name="program", show_paths=True):
     A("paths explored: %d complete, %d ending in a trap, %d pruned infeasible, %d cut by loop/call bound"
       % (len(feasible), len(errors), ex.pruned, ex.truncated))
     if ex.hit_limit: A("!! exploration stopped early: " + ex.hit_limit)
+    if ex.unknown: A("!! %d path(s) abandoned: solver conflict budget exceeded (raise --solver-budget)" % ex.unknown)
+    if not ex.paths and not ex.bugs and not ex.hit_limit and not ex.unknown:
+        A("!! no feasible execution exists: every path is blocked by assume() / an empty input range, or hits the loop bound")
     cov = ex.coverage()
     A("coverage: %d/%d lines, %d/%d branch outcomes" % (len(cov["lines"]), len(cov["all_lines"]),
                                                        len(cov["branches"]), len(cov["all_branches"])))
@@ -48,10 +68,7 @@ def text_report(ex, name="program", show_paths=True):
             A("  [%s] line %d: %s" % (kind, line, src[line - 1].strip() if 0 < line <= len(src) else ""))
             A("      triggered by: %s   (%s; reached on %d path%s)" % (fmt_inputs(b.inputs, b.in_names, w), mark, b.hits, "" if b.hits == 1 else "s"))
     else:
-        bounded = " (up to the loop bound)" if ex.truncated or any(True for _ in ex.all_branches) else ""
-        A("No bugs found%s." % ("" if ex.hit_limit else bounded))
-        if ex.truncated:
-            A("  note: %d path(s) were cut off at the loop/call bound, so absence of bugs is only proven within it." % ex.truncated)
+        A(verdict(ex))
     A("")
     if show_paths:
         A("GENERATED TESTS (one per feasible path):")
@@ -114,7 +131,7 @@ def html_report(ex, name="program"):
     if ex.hit_limit: h.append("<p class=sub>⚠ exploration stopped early: %s</p>" % E(ex.hit_limit))
     h.append("<h2>Bugs</h2>")
     if not ex.bugs:
-        h.append("<p class=clean>No bugs found%s.</p>" % (" within the loop bound" if ex.truncated else ""))
+        h.append("<p class=clean>%s</p>" % E(verdict(ex)))
     for (kind, line), b in sorted(ex.bugs.items(), key=lambda kv: kv[0][1]):
         tag = "<span class='tag ok'>replay-confirmed</span>" if b.confirmed else "<span class='tag err'>unconfirmed</span>"
         h.append("<div class=bug><h3>%s · line %d %s</h3><code>%s</code><br><small>trigger: <code>%s</code></small></div>" % (

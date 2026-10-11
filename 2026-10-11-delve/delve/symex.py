@@ -4,9 +4,9 @@ division by zero, signed overflow, invalid shift) with concrete witnesses, and g
 one concrete test per feasible path."""
 import time
 from . import terms as tm
-from .bitblast import Smt
+from .bitblast import Smt, Unknown
 from .interp import Interp, input_label, BINOPS
-from .lang import DelveError
+from .lang import DelveError, check_literals
 
 
 class Dead(Exception):
@@ -70,11 +70,13 @@ def push_block(stmts, k):
 
 class Explorer:
     def __init__(self, prog, width=8, loop_bound=8, max_paths=2000, max_depth=24, timeout=60.0,
-                 check_overflow=True, minimize=True, smt=None, strategy="dfs"):
+                 check_overflow=True, minimize=True, smt=None, strategy="dfs", solver_budget=100000):
+        check_literals(prog, width)
         self.prog, self.w = prog, width
         self.loop_bound, self.max_paths, self.max_depth = loop_bound, max_paths, max_depth
         self.timeout, self.check_overflow, self.minimize = timeout, check_overflow, minimize
-        self.smt = smt or Smt()
+        self.smt = smt or Smt(solver_budget)
+        self.unknown = 0
         self.strategy = strategy
         self.paths, self.bugs = [], {}
         self.truncated = 0
@@ -123,6 +125,8 @@ class Explorer:
                 work.extend(self.run(s))
             except Dead:
                 self.pruned += 1
+            except Unknown:
+                self.unknown += 1
         self.stats = dict(self.smt.stats)
         self.stats.update({k: v for k, v in self.smt.b.sat.stats.items() if k in ("conflicts", "decisions")})
         return self
@@ -175,6 +179,9 @@ class Explorer:
                 else:
                     raise DelveError("bad statement " + kind)
             except Dead:
+                return []
+            except Unknown:
+                self.unknown += 1
                 return []
 
     # ----------------------------------------------------- statements
@@ -256,9 +263,13 @@ class Explorer:
     def witness(self, s, extra):
         """Concrete inputs satisfying pc + extra (minimized for readability)."""
         conds = s.pc + extra
-        names = [n for n in s.in_names]
-        m = self.smt.minimize(conds, names) if self.minimize else self.smt.check(conds)[1]
-        return m or {}
+        m = None
+        if self.minimize:
+            try:
+                m = self.smt.minimize(conds, list(s.in_names))
+            except Unknown:
+                m = None            # too hard to minimize: fall back to any model
+        return m or self.smt.check(conds)[1] or {}
 
     def require(self, s, kind, line, ok, guard):
         """Check that `ok` holds whenever `guard` does. Records a bug (+ an error-path test)
@@ -285,7 +296,10 @@ class Explorer:
         ok, m = self.smt.check(s.pc)
         if not ok: raise Dead()
         if self.minimize:
-            mm = self.smt.minimize(s.pc, s.in_names)
+            try:
+                mm = self.smt.minimize(s.pc, s.in_names)
+            except Unknown:
+                mm = None
             if mm is not None: m = mm
         p = PathInfo(len(self.paths) + 1, status, s, m, ret=ret)
         self.paths.append(p)

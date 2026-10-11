@@ -36,6 +36,10 @@ def cmd_run(a):
         try: inputs[k] = int(v, 0) & tm.mask(a.width)
         except ValueError: raise DelveError("bad integer %r for input %s" % (v, k))
     r = Interp(prog, a.width).run(inputs)
+    unknown = sorted(set(inputs) - set(r.input_names))
+    if unknown:
+        print("warning: unknown input name(s) %s; this run reads: %s" % (
+            ", ".join(unknown), ", ".join(r.input_names) or "(none)"), file=sys.stderr)
     for o in r.outputs: print(o)
     if r.infeasible: print("(execution violated an assume() or input range)"); return 3
     if r.exhausted: print("(step budget exhausted — possible infinite loop)"); return 3
@@ -48,7 +52,8 @@ def cmd_analyze(a):
     check_width(a.width)
     prog = load(a.file)
     ex = Explorer(prog, a.width, loop_bound=a.loop_bound, max_paths=a.max_paths, timeout=a.timeout,
-                  check_overflow=not a.no_overflow, minimize=not a.no_minimize, max_depth=a.call_depth)
+                  check_overflow=not a.no_overflow, minimize=not a.no_minimize, max_depth=a.call_depth,
+                  solver_budget=a.solver_budget)
     ex.explore()
     ok = ex.verify()
     print(text_report(ex, a.file, show_paths=not a.quiet))
@@ -88,6 +93,22 @@ def cmd_replay(a):
     return 1 if bad else 0
 
 
+def run_big_stack(fn, arg):
+    """Run in a thread with a large stack so deeply nested programs do not crash the interpreter."""
+    import threading
+    out = {}
+    threading.stack_size(512 * 1024 * 1024)
+    sys.setrecursionlimit(200000)
+
+    def target():
+        try: out["v"] = fn(arg)
+        except BaseException as e: out["e"] = e
+    t = threading.Thread(target=target)
+    t.start(); t.join()
+    if "e" in out: raise out["e"]
+    return out["v"]
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="delve", description="Symbolic execution with a from-scratch bit-vector SMT solver")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -97,6 +118,7 @@ def main(argv=None):
     an.add_argument("file"); add_common(an)
     an.add_argument("--loop-bound", type=int, default=8); an.add_argument("--call-depth", type=int, default=24)
     an.add_argument("--max-paths", type=int, default=2000); an.add_argument("--timeout", type=float, default=60.0)
+    an.add_argument("--solver-budget", type=int, default=100000, help="SAT conflicts allowed per query")
     an.add_argument("--no-overflow", action="store_true", help="do not treat signed overflow as a bug")
     an.add_argument("--no-minimize", action="store_true", help="skip input minimization (faster)")
     an.add_argument("--tests", metavar="FILE.json"); an.add_argument("--html", metavar="FILE.html")
@@ -107,7 +129,7 @@ def main(argv=None):
     extras.register(sub, add_common)
     a = ap.parse_args(argv)
     try:
-        return a.fn(a)
+        return run_big_stack(a.fn, a)
     except DelveError as e:
         print("error: %s" % e, file=sys.stderr)
         return 64

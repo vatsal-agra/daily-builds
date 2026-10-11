@@ -220,10 +220,15 @@ class Blaster:
         return v
 
 
+class Unknown(Exception):
+    """The SAT solver exhausted its conflict budget before deciding a query."""
+
+
 class Smt:
     """Satisfiability queries over lists of boolean terms (conjunctions)."""
 
-    def __init__(self):
+    def __init__(self, budget=100000):
+        self.budget = budget
         self.b = Blaster()
         self.cache = {}
         self.vars = {}
@@ -249,7 +254,7 @@ class Smt:
             lits.append(self.b.lit(c))
             for n, w in tm.variables(c).items(): self.vars[n] = self.b_var(n, w)
         self.stats["sat_calls"] += 1
-        sat = self.b.sat.solve(lits)
+        sat = self.solve(lits)
         if not sat:
             self.cache[key] = (False, None)
             return False, None
@@ -257,6 +262,12 @@ class Smt:
         # inputs that only appear in other queries default to 0 (validated by caller)
         self.cache[key] = (True, model)
         return True, model
+
+    def solve(self, lits):
+        r = self.b.sat.solve(lits, conflict_budget=self.budget)
+        if r is None:
+            raise Unknown()
+        return r
 
     def b_var(self, name, w):
         return tm.var(name, w)
@@ -282,10 +293,10 @@ def _minimize(self, conds, names):
         v = self.vars[name]
         bits = b.cache[v.id]
         w = len(bits)
-        if not b.sat.solve(base + fixed): return None
+        if not self.solve(base + fixed): return None
         order = []
         if w > 1:
-            neg = not b.sat.solve(base + fixed + [-bits[-1]])
+            neg = not self.solve(base + fixed + [-bits[-1]])
             fixed.append(bits[-1] if neg else -bits[-1])
             want = (lambda l: l) if neg else (lambda l: -l)       # negative: prefer 1s; else prefer 0s
             order = range(w - 2, -1, -1)
@@ -294,9 +305,9 @@ def _minimize(self, conds, names):
             order = [0]
         for i in order:
             trial = want(bits[i])
-            fixed.append(trial if b.sat.solve(base + fixed + [trial]) else -trial)
+            fixed.append(trial if self.solve(base + fixed + [trial]) else -trial)
     self.stats["sat_calls"] += 1
-    if not b.sat.solve(base + fixed): return None
+    if not self.solve(base + fixed): return None
     return {n: b.value(self.vars[n]) for n in present}
 
 

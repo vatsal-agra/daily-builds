@@ -220,6 +220,7 @@ class Parser:
 
     def parse_if(self):
         line = self.next()[2]
+        self.pending = []          # an `else if` must not inherit calls hoisted from the outer condition
         c = self.cond_expr()
         pre = self.pending
         then = self.block()
@@ -299,3 +300,31 @@ class Parser:
 
 def parse(src):
     return Parser(src).parse()
+
+
+def check_literals(prog, width):
+    """Reject integer literals that do not fit in `width` bits (instead of silently wrapping)."""
+    lo, hi = -(1 << (width - 1)), (1 << width) - 1
+
+    def expr(e, line):
+        k = e[0]
+        if k == "num":
+            if not lo <= e[1] <= hi:
+                raise DelveError("literal %d does not fit in %d bits (allowed %d..%d)" % (e[1], width, lo, hi), line)
+        elif k == "un": expr(e[2], line)
+        elif k == "bin": expr(e[2], line); expr(e[3], line)
+        elif k in ("and", "or"): expr(e[1], line); expr(e[2], line)
+        elif k == "cond": [expr(x, line) for x in e[1:]]
+
+    def block(stmts):
+        for s in stmts:
+            k = s[0]
+            line = s[3] if k == "while" else s[-1]
+            if k == "let": expr(s[2], line)
+            elif k == "input" and s[3] is not None: expr(s[3], line); expr(s[4], line)
+            elif k in ("assert", "assume", "print", "return"): expr(s[1], line)
+            elif k == "call": [expr(a, line) for a in s[3]]
+            elif k == "if": expr(s[1], line); block(s[2]); block(s[3])
+            elif k == "while": expr(s[1], line); block(s[2])
+    block(prog.main)
+    for _, body, _ in prog.funcs.values(): block(body)
