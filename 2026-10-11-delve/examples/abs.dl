@@ -1,0 +1,6 @@
+// Classic: abs() is wrong for the most negative value.
+fn abs(x) { if (x < 0) { return 0 - x; } return x; }
+let n = input();
+let a = abs(n);
+assert(a >= 0);
+return a;

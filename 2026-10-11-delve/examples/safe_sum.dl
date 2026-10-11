@@ -1,0 +1,6 @@
+// Sum of 1..n with a guarded range: provably free of traps (up to the loop bound).
+let n = input(0, 10);
+let i = 0; let total = 0;
+while (i < n) { i = i + 1; total = total + i; }
+assert(total == n * (n + 1) / 2);
+return total;

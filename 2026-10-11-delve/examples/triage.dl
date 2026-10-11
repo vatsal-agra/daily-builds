@@ -1,0 +1,18 @@
+// Classify a "risk score" from three readings. Contains two planted bugs.
+let age  = input(0, 120);
+let dose = input();
+let kg   = input(1, 100);
+
+fn clamp(v, lo, hi) {
+    if (v < lo) { return lo; }
+    if (v > hi) { return hi; }
+    return v;
+}
+
+let per_kg = dose / kg;            // fine: kg >= 1
+let score = clamp(per_kg, 0, 50);
+if (age > 65) { score = score * 2; }
+if (age < 12) { score = score / (age - 5); }   // BUG: age == 5 divides by zero
+print(score);
+assert(score <= 100);
+return score;
