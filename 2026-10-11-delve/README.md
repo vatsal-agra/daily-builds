@@ -3,3 +3,5 @@ Symbolic execution engine with a from-scratch bit-vector SMT solver (own CDCL SA
 
 Status after Phase 4: required features 1–4 plus stretch features (equivalence checker, formula solver, HTML report, solver stats/caching) are done; see PLAN.md / REVIEW.md.
 Try: `python3 -m delve analyze examples/triage.dl` · `python3 -m delve equiv examples/equiv/clamp_a.dl examples/equiv/clamp_b.dl` · tests: `python3 tests/run_all.py`
+
+Phase 5: `./demo.sh` (CLI-level checks of every feature) and `python3 tests/run_all.py` (54 tests: SAT vs brute force, bit-blaster vs concrete semantics, random-program path-partition fuzzing) are green.
