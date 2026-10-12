@@ -17,6 +17,7 @@ pub struct TraceLine {
     pub pc: usize,
     pub depth: usize,
     pub text: String,
+    pub call: Option<u32>,
 }
 
 #[derive(Default)]
@@ -65,7 +66,7 @@ impl Profile {
             }
         }
         if self.trace.len() < self.trace_limit {
-            self.trace.push(TraceLine { step: self.total, func, pc, depth, text: instr_text(ins, &|f| format!("#{f}")) });
+            self.trace.push(TraceLine { step: self.total, func, pc, depth, text: instr_text(ins, &|f| format!("#{f}")), call: if let Instr::Call(f) = ins { Some(*f) } else { None } });
         }
     }
 
@@ -135,10 +136,10 @@ impl Profile {
         }
         h.push_str("</section>");
 
-        h.push_str("<section><h2>Functions</h2><table><thead><tr><th>function</th><th class=\"n\">calls</th><th class=\"n\">instructions</th><th>share</th></tr></thead><tbody>");
+        h.push_str("<section><h2>Functions</h2><table><thead><tr><th>function</th><th class=\"n\">calls</th><th class=\"n\">instructions</th><th class=\"n\">%</th><th>share</th></tr></thead><tbody>");
         for (f, s) in &funcs {
             let pct = s.instrs as f64 * 100.0 / self.total.max(1) as f64;
-            write!(h, "<tr><td><code>{}</code></td><td class=\"n\">{}</td><td class=\"n\">{}</td><td><div class=\"bar\"><i style=\"width:{:.1}%\"></i><span>{:.1}%</span></div></td></tr>", esc(&m.func_label(*f)), s.calls, s.instrs, s.instrs as f64 / max_f as f64 * 100.0, pct).unwrap();
+            write!(h, "<tr><td><code>{}</code></td><td class=\"n\">{}</td><td class=\"n\">{}</td><td class=\"n\">{:.1}%</td><td><div class=\"bar\"><i style=\"width:{:.1}%\"></i></div></td></tr>", esc(&m.func_label(*f)), s.calls, s.instrs, pct, s.instrs as f64 / max_f as f64 * 100.0).unwrap();
         }
         h.push_str("</tbody></table></section>");
 
@@ -160,7 +161,7 @@ impl Profile {
         if !self.trace.is_empty() {
             write!(h, "<section><h2>First {} instructions</h2><pre class=\"trace\">", self.trace.len()).unwrap();
             for t in &self.trace {
-                writeln!(h, "<span class=\"mu\">{:>6} {:<10}</span>{}{}", t.step, esc(&m.func_label(t.func)), "  ".repeat(t.depth.saturating_sub(1).min(12)), esc(&t.text)).unwrap();
+                writeln!(h, "<span class=\"mu\">{:>6} {:<10}</span>{}{}", t.step, esc(&m.func_label(t.func)), "  ".repeat(t.depth.saturating_sub(1).min(12)), esc(&match t.call { Some(f) => format!("call {}", m.func_label(f)), None => t.text.clone() })).unwrap();
             }
             h.push_str("</pre></section>");
         }

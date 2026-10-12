@@ -12,4 +12,6 @@ Quick try: `cargo build --release && ./target/release/wick run examples/fib.wat 
 **Phase 3 (adversarial review) done** — 15 findings fixed, see REVIEW.md. Added: conformance corpus replayed on V8,
 validator mutation-differential (31k mutants, 0 disagreements), hostile-input battery, clang-vs-native end-to-end test.
 
+**Phase 4 done** — stretch features shipped: disassembler (round-trip verified), profiler + HTML report, fuel metering. Report polished (readable share column, named call targets in trace).
+
 Full README comes in the ship phase. See PLAN.md.
