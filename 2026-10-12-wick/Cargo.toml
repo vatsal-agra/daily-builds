@@ -1,6 +1,17 @@
 [package]
 name = "wick"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+description = "A from-scratch WebAssembly toolchain: WAT assembler, validator, interpreter, disassembler, differential fuzzer"
 
-[dependencies]
+[lib]
+name = "wick"
+path = "src/lib.rs"
+
+[[bin]]
+name = "wick"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+debug = false
