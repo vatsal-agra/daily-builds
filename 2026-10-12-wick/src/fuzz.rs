@@ -778,3 +778,115 @@ pub fn run_case_json(seed: u64, case: &Case) -> String {
     write!(o, "],\"pages\":{},\"hash\":{},\"globals\":[{}]}}", mem.pages(), fnv32(&mem.data), globals.join(",")).unwrap();
     o
 }
+
+// ---------------------------------------------------------------------------------------------
+// AST-level mutation: produce *almost valid* modules to stress the validator's type checking.
+
+fn random_instr(r: &mut Rng, nlocals: u32, nfuncs: u32, nglobals: u32) -> Instr {
+    let all = num::all();
+    match r.below(22) {
+        0 => Instr::Nop,
+        1 => Instr::Drop,
+        2 => Instr::Select,
+        3 => Instr::I32Const(r.next() as i32),
+        4 => Instr::I64Const(r.next() as i64),
+        5 => Instr::F32Const(r.next() as u32),
+        6 => Instr::F64Const(r.next()),
+        7 => Instr::LocalGet(r.below(nlocals as u64 + 2) as u32),
+        8 => Instr::LocalSet(r.below(nlocals as u64 + 2) as u32),
+        9 => Instr::LocalTee(r.below(nlocals as u64 + 2) as u32),
+        10 => Instr::GlobalGet(r.below(nglobals as u64 + 1) as u32),
+        11 => Instr::GlobalSet(r.below(nglobals as u64 + 1) as u32),
+        12 => Instr::Br(r.below(4) as u32),
+        13 => Instr::BrIf(r.below(4) as u32),
+        14 => Instr::Return,
+        15 => Instr::Call(r.below(nfuncs as u64 + 1) as u32),
+        16 | 17 => Instr::Num(all[r.below(all.len() as u64) as usize].code),
+        18 => {
+            let m = num::MEM_OPS[r.below(num::MEM_OPS.len() as u64) as usize];
+            Instr::Mem { op: m.0, align: r.below(4) as u32, offset: r.below(16) as u32 }
+        }
+        19 => match r.below(4) {
+            0 => Instr::End,
+            1 => Instr::Else,
+            2 => Instr::Block(BlockType::Empty),
+            _ => Instr::If(BlockType::Val(rand_type(r))),
+        },
+        20 => Instr::BrTable(vec![r.below(3) as u32, r.below(3) as u32], r.below(3) as u32),
+        _ => Instr::Unreachable,
+    }
+}
+
+pub fn mutate_module(m: &Module, r: &mut Rng) -> Module {
+    let mut m = m.clone();
+    let rounds = 1 + r.below(2);
+    for _ in 0..rounds {
+        let which = r.below(100);
+        if which < 85 && !m.codes.is_empty() {
+            let fi = r.below(m.codes.len() as u64) as usize;
+            let nfuncs = (m.num_imported_funcs() + m.funcs.len()) as u32;
+            let nglobals = m.all_globals().len() as u32;
+            let nparams = m.types[m.funcs[fi] as usize].params.len() as u32;
+            let code = &mut m.codes[fi];
+            let nlocals = nparams + code.locals.len() as u32;
+            if code.body.is_empty() {
+                continue;
+            }
+            let pos = r.below(code.body.len() as u64) as usize;
+            match r.below(8) {
+                0 => {
+                    code.body.remove(pos);
+                }
+                1 => {
+                    let i = code.body[pos].clone();
+                    code.body.insert(pos, i);
+                }
+                2 if pos + 1 < code.body.len() => code.body.swap(pos, pos + 1),
+                3 | 4 => code.body[pos] = random_instr(r, nlocals, nfuncs, nglobals),
+                5 => {
+                    let i = random_instr(r, nlocals, nfuncs, nglobals);
+                    code.body.insert(pos, i)
+                }
+                6 => {
+                    // tweak an immediate
+                    code.body[pos] = match &code.body[pos] {
+                        Instr::LocalGet(x) => Instr::LocalGet(x + 1),
+                        Instr::LocalSet(x) => Instr::LocalSet(x.saturating_sub(1)),
+                        Instr::Br(x) => Instr::Br(x + 1),
+                        Instr::BrIf(x) => Instr::BrIf(x + 1),
+                        Instr::Block(_) => Instr::Block(BlockType::Val(rand_type(r))),
+                        Instr::If(_) => Instr::If(BlockType::Val(rand_type(r))),
+                        Instr::Loop(_) => Instr::Loop(BlockType::Val(rand_type(r))),
+                        Instr::I32Const(v) => Instr::I64Const(*v as i64),
+                        Instr::Call(f) => Instr::Call(f + 1),
+                        other => other.clone(),
+                    };
+                }
+                _ => {
+                    // change the function's locals
+                    if !code.locals.is_empty() {
+                        let k = r.below(code.locals.len() as u64) as usize;
+                        code.locals[k] = rand_type(r);
+                    }
+                }
+            }
+        } else if which < 90 && !m.funcs.is_empty() {
+            let i = r.below(m.funcs.len() as u64) as usize;
+            m.funcs[i] = r.below(m.types.len() as u64) as u32;
+        } else if which < 94 && !m.globals.is_empty() {
+            let i = r.below(m.globals.len() as u64) as usize;
+            if r.chance(50) {
+                m.globals[i].ty.mutable = !m.globals[i].ty.mutable;
+            } else {
+                m.globals[i].ty.ty = rand_type(r);
+            }
+        } else if which < 97 && !m.elems.is_empty() {
+            let i = r.below(m.elems.len() as u64) as usize;
+            m.elems[i].funcs[0] = r.below(m.funcs.len() as u64 + 2) as u32;
+        } else if !m.exports.is_empty() {
+            let i = r.below(m.exports.len() as u64) as usize;
+            m.exports[i].index += r.below(3) as u32;
+        }
+    }
+    m
+}

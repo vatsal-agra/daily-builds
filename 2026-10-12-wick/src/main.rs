@@ -20,6 +20,8 @@ USAGE:
   wick info <file>                                  list sections, imports and exports
   wick fuzz --count N [--seed S] --out DIR          generate random programs + Wick's results
                                                     (compare against V8 with: node diff/diff.js DIR)
+  wick mutants --count N --per K --out DIR          write almost-valid mutant modules (validator testing)
+  wick check-batch DIR                              accept/reject verdict for every .wasm in DIR
 
 Files ending in .wasm (or starting with \\0asm) are binary; anything else is parsed as WAT.
 Float args accept decimal, inf, nan and bits:0xHEX (exact IEEE bit pattern).";
@@ -31,7 +33,7 @@ fn die(msg: impl std::fmt::Display, code: i32) -> ! {
 
 fn load(path: &str) -> Module {
     let data = std::fs::read(path).unwrap_or_else(|e| die(format!("cannot read {path}: {e}"), 1));
-    if data.starts_with(b"\0asm") {
+    if data.starts_with(b"\0asm") || path.ends_with(".wasm") {
         decode::decode(&data).unwrap_or_else(|e| die(format!("{path}: {e}"), 1))
     } else {
         let src = String::from_utf8(data).unwrap_or_else(|_| die(format!("{path}: not valid UTF-8 text and not a wasm binary"), 1));
@@ -40,34 +42,7 @@ fn load(path: &str) -> Module {
 }
 
 fn host_imports() -> Imports {
-    let mut im = Imports::default();
-    im.func("env", "print_i32", &[ValType::I32], &[], |a| {
-        if let Value::I32(v) = a[0] {
-            println!("{v}")
-        }
-        Ok(vec![])
-    });
-    im.func("env", "print_i64", &[ValType::I64], &[], |a| {
-        if let Value::I64(v) = a[0] {
-            println!("{v}")
-        }
-        Ok(vec![])
-    });
-    im.func("env", "print_f32", &[ValType::F32], &[], |a| {
-        println!("{}", a[0]);
-        Ok(vec![])
-    });
-    im.func("env", "print_f64", &[ValType::F64], &[], |a| {
-        println!("{}", a[0]);
-        Ok(vec![])
-    });
-    im.func("env", "print_char", &[ValType::I32], &[], |a| {
-        if let Value::I32(v) = a[0] {
-            print!("{}", char::from_u32(v as u32).unwrap_or('\u{fffd}'))
-        }
-        Ok(vec![])
-    });
-    im
+    wick::interp::standard_imports()
 }
 
 fn main() {
@@ -133,6 +108,8 @@ fn main() {
         }
         "run" => run_cmd(rest),
         "fuzz" => fuzz_cmd(rest),
+        "check-batch" => check_batch(rest),
+        "mutants" => mutants_cmd(rest),
         other => die(format!("unknown command `{other}`\n\n{USAGE}"), 1),
     }
 }
@@ -276,4 +253,73 @@ fn fuzz_cmd(rest: &[String]) {
         std::fs::write(format!("{out}/case{s}.wat"), disasm::disassemble(&case.module)).unwrap();
     }
     eprintln!("generated {count} case(s) in {out} (seeds {seed}..{}), {skipped} skipped", seed + count - 1);
+}
+
+/// Verdicts for every `*.wasm` in a directory, one `name<TAB>verdict` line each. Used by the
+/// validator differential test (`diff/validate_diff.js`). Modules that validate are also
+/// instantiated and every export is called with zero arguments under a fuel limit, so a validator
+/// that wrongly accepts a module shows up as an interpreter panic here.
+fn check_batch(rest: &[String]) {
+    let dir = rest.first().unwrap_or_else(|| die("check-batch needs a directory", 1));
+    let mut names: Vec<_> = std::fs::read_dir(dir).unwrap_or_else(|e| die(format!("cannot read {dir}: {e}"), 1)).filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.extension().map_or(false, |x| x == "wasm")).collect();
+    names.sort();
+    std::panic::set_hook(Box::new(|_| {}));
+    for p in names {
+        let data = std::fs::read(&p).unwrap();
+        let verdict = std::panic::catch_unwind(|| {
+            let m = match decode::decode(&data) {
+                Err(e) => return format!("REJECT decode: {e}"),
+                Ok(m) => m,
+            };
+            if let Err(e) = validate::validate(&m) {
+                return format!("REJECT validate: {e}");
+            }
+            // accepted: execute exports defensively
+            let mut inst = match Instance::new(m, host_imports()) {
+                Ok(i) => i,
+                Err(_) => return "ACCEPT".to_string(),
+            };
+            let exports: Vec<String> = inst.module.exports.iter().filter(|e| e.kind == ExportKind::Func).map(|e| e.name.clone()).collect();
+            for name in exports {
+                let ft = inst.export_func_type(&name).unwrap();
+                let args: Vec<Value> = ft.params.iter().map(|t| Value::zero(*t)).collect();
+                inst.fuel = 200_000;
+                let _ = inst.invoke(&name, &args);
+            }
+            "ACCEPT".to_string()
+        })
+        .unwrap_or_else(|_| "PANIC".to_string());
+        println!("{}\t{}", p.file_name().unwrap().to_string_lossy(), verdict);
+    }
+}
+
+/// `wick mutants --count N --seed S --per K --out DIR`: write K AST-mutated (almost valid) variants
+/// of each of N generated programs, for the validator differential test.
+fn mutants_cmd(rest: &[String]) {
+    let (mut count, mut seed, mut per, mut out) = (100u64, 1u64, 10u64, None);
+    let mut i = 0;
+    while i < rest.len() {
+        let a = rest[i].as_str();
+        i += 1;
+        let v = rest.get(i).cloned();
+        match a {
+            "--count" => count = v.and_then(|v| v.parse().ok()).unwrap_or_else(|| die("--count needs a number", 1)),
+            "--seed" => seed = v.and_then(|v| v.parse().ok()).unwrap_or_else(|| die("--seed needs a number", 1)),
+            "--per" => per = v.and_then(|v| v.parse().ok()).unwrap_or_else(|| die("--per needs a number", 1)),
+            "--out" => out = Some(v.unwrap_or_else(|| die("--out needs a directory", 1))),
+            s => die(format!("unknown option {s}"), 1),
+        }
+        i += 1;
+    }
+    let out = out.unwrap_or_else(|| die("mutants needs --out DIR", 1));
+    std::fs::create_dir_all(&out).unwrap_or_else(|e| die(format!("cannot create {out}: {e}"), 1));
+    for k in 0..count {
+        let case = fuzz::generate(seed + k);
+        let mut rng = fuzz::Rng(seed + k + 0x77);
+        for j in 0..per {
+            let m = fuzz::mutate_module(&case.module, &mut rng);
+            std::fs::write(format!("{out}/mut{}_{j}.wasm", seed + k), encode::encode(&m)).unwrap();
+        }
+    }
+    eprintln!("wrote {} mutants to {out}", count * per);
 }

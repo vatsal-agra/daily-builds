@@ -10,6 +10,10 @@ pub const PAGE: usize = 65536;
 /// Hard cap on memory growth (pages) regardless of declared maximum: 512 MiB.
 pub const MEM_CAP_PAGES: u32 = 8192;
 pub const MAX_CALL_DEPTH: usize = 10_000;
+/// Value-stack limit in 8-byte slots (128 MiB), so huge frames cannot exhaust host memory.
+pub const MAX_STACK_SLOTS: usize = 16 * 1024 * 1024;
+/// Largest table accepted at instantiation.
+pub const MAX_TABLE_ELEMS: u32 = 10_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
@@ -74,18 +78,21 @@ impl std::fmt::Display for Value {
         match self {
             Value::I32(v) => write!(f, "i32:{v}"),
             Value::I64(v) => write!(f, "i64:{v}"),
-            Value::F32(v) => write!(f, "f32:{}", fmt_float(*v as f64, v.is_nan())),
+            Value::F32(v) => write!(f, "f32:{}", fmt_float(*v, v.is_nan())),
             Value::F64(v) => write!(f, "f64:{}", fmt_float(*v, v.is_nan())),
         }
     }
 }
-fn fmt_float(v: f64, nan: bool) -> String {
+fn fmt_float<F: std::fmt::Display + std::fmt::LowerExp + Copy + Into<f64>>(v: F, nan: bool) -> String {
+    let x: f64 = v.into();
     if nan {
         "nan".into()
-    } else if v == 0.0 && v.is_sign_negative() {
-        "-0".into()
-    } else if v.is_infinite() {
-        if v > 0.0 { "inf".into() } else { "-inf".into() }
+    } else if x == 0.0 {
+        if x.is_sign_negative() { "-0".into() } else { "0".into() }
+    } else if x.is_infinite() {
+        if x > 0.0 { "inf".into() } else { "-inf".into() }
+    } else if x.abs() >= 1e16 || x.abs() < 1e-5 {
+        format!("{v:e}")
     } else {
         format!("{v}")
     }
@@ -302,9 +309,15 @@ impl Instance {
             }
         }
         if let Some(l) = module.mems.first() {
+            if l.min > MEM_CAP_PAGES {
+                return Err(InstanceError::Link(format!("memory of {} pages exceeds this engine's {MEM_CAP_PAGES}-page limit", l.min)));
+            }
             memory = Some(Memory::new(l.min, l.max));
         }
         if let Some(l) = module.tables.first() {
+            if l.min > MAX_TABLE_ELEMS {
+                return Err(InstanceError::Link(format!("table of {} elements exceeds this engine's {MAX_TABLE_ELEMS}-element limit", l.min)));
+            }
             table = Some(Table { elems: vec![None; l.min as usize], max: l.max });
         }
         for g in &module.globals {
@@ -378,6 +391,9 @@ impl Instance {
         let ft = self.module.types[t as usize].clone();
         if (fidx as usize) < self.n_imp {
             let r = (self.hosts[fidx as usize].f)(args)?;
+            if r.len() != ft.results.len() || r.iter().zip(&ft.results).any(|(v, t)| v.ty() != *t) {
+                return Err(Trap::Host("host function returned values that do not match its signature".into()));
+            }
             return Ok(r);
         }
         for a in args {
@@ -401,18 +417,14 @@ impl Instance {
         macro_rules! enter {
             ($f:expr) => {{
                 let f: u32 = $f;
-                if frames.len() >= MAX_CALL_DEPTH {
+                let c = &compiled[f as usize - n_imp];
+                if frames.len() >= MAX_CALL_DEPTH || stack.len() + c.nlocals >= MAX_STACK_SLOTS {
                     return Err(Trap::StackExhausted);
                 }
-                let c = &compiled[f as usize - n_imp];
                 let base = stack.len() - c.nparams;
-                let ft = &module.types[func_types[f as usize] as usize];
-                let code = &module.codes[f as usize - n_imp];
                 for _ in c.nparams..c.nlocals {
                     stack.push(0);
                 }
-                let _ = ft;
-                let _ = code;
                 let label_base = labels.len();
                 labels.push(Label { cont: module.codes[f as usize - n_imp].body.len() as u32, arity: c.nresults as u32, height: stack.len() as u32, is_loop: false });
                 Frame { func: f, pc: 0, base, label_base }
@@ -673,3 +685,36 @@ fn bt_arity(m: &Module, bt: &BlockType) -> (usize, usize) {
         }
     }
 }
+
+/// The `env` print functions the CLI provides (`print_i32/i64/f32/f64/char`).
+pub fn standard_imports() -> Imports {
+    let mut im = Imports::default();
+    im.func("env", "print_i32", &[ValType::I32], &[], |a| {
+        if let Value::I32(v) = a[0] {
+            println!("{v}")
+        }
+        Ok(vec![])
+    });
+    im.func("env", "print_i64", &[ValType::I64], &[], |a| {
+        if let Value::I64(v) = a[0] {
+            println!("{v}")
+        }
+        Ok(vec![])
+    });
+    im.func("env", "print_f32", &[ValType::F32], &[], |a| {
+        println!("{}", a[0]);
+        Ok(vec![])
+    });
+    im.func("env", "print_f64", &[ValType::F64], &[], |a| {
+        println!("{}", a[0]);
+        Ok(vec![])
+    });
+    im.func("env", "print_char", &[ValType::I32], &[], |a| {
+        if let Value::I32(v) = a[0] {
+            print!("{}", char::from_u32(v as u32).unwrap_or('\u{fffd}'))
+        }
+        Ok(vec![])
+    });
+    im
+}
+

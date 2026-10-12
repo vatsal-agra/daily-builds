@@ -168,6 +168,9 @@ impl<'a> Rd<'a> {
             0x24 => Instr::GlobalSet(self.u32()?),
             0x28..=0x3E => {
                 let align = self.u32()?;
+                if align & 0x40 != 0 {
+                    return Err(DecodeError { offset: at, msg: "multi-memory (explicit memory index in memarg) is not supported".into() });
+                }
                 let offset = self.u32()?;
                 Instr::Mem { op, align, offset }
             }
@@ -242,6 +245,7 @@ pub fn decode(data: &[u8]) -> Result<Module, DecodeError> {
     let mut last_id = 0u8;
     let mut func_decl_count: Option<usize> = None;
     let mut have_code = false;
+    let mut data_count: Option<usize> = None;
     while pos < data.len() {
         let mut hdr = Rd { d: data, pos, end: data.len() };
         let id = hdr.byte()?;
@@ -254,13 +258,20 @@ pub fn decode(data: &[u8]) -> Result<Module, DecodeError> {
         pos = end;
         let mut r = Rd { d: data, pos: start, end };
         if id != 0 {
-            if id > 11 {
+            if id > 12 {
                 return Err(DecodeError { offset: hdr.pos, msg: format!("unknown section id {id}") });
             }
-            if id <= last_id {
+            // The data-count section (12) sits between element (9) and code (10).
+            let rank = match id {
+                12 => 10,
+                10 => 11,
+                11 => 12,
+                n => n,
+            };
+            if rank <= last_id {
                 return Err(DecodeError { offset: start, msg: format!("section {id} out of order or duplicated") });
             }
-            last_id = id;
+            last_id = rank;
         }
         match id {
             0 => {
@@ -433,10 +444,16 @@ pub fn decode(data: &[u8]) -> Result<Module, DecodeError> {
                     m.datas.push(Data { mem, offset, bytes });
                 }
             }
+            12 => data_count = Some(r.u32()? as usize),
             _ => unreachable!(),
         }
         if r.pos != end {
             return Err(DecodeError { offset: r.pos, msg: format!("section {id} size mismatch: {} unread bytes", end - r.pos) });
+        }
+    }
+    if let Some(n) = data_count {
+        if n != m.datas.len() {
+            return Err(DecodeError { offset: data.len(), msg: format!("data count section says {n} segment(s) but the data section has {}", m.datas.len()) });
         }
     }
     let ndecl = func_decl_count.unwrap_or(0);

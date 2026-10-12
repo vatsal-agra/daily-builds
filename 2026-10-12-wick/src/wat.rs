@@ -58,6 +58,8 @@ fn err<T>(p: Pos, msg: impl Into<String>) -> R<T> {
 
 // ---------------------------------------------------------------- lexer / s-expr parser
 
+const MAX_NESTING: usize = 400;
+
 struct Lexer<'a> {
     s: &'a [u8],
     i: usize,
@@ -178,7 +180,10 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn parse_list(&mut self, open: Pos) -> R<Vec<Node>> {
+    fn parse_list(&mut self, open: Pos, depth: usize) -> R<Vec<Node>> {
+        if depth > MAX_NESTING {
+            return err(open, format!("expressions nested more than {MAX_NESTING} levels deep"));
+        }
         let mut items = vec![];
         loop {
             self.skip_ws()?;
@@ -191,7 +196,7 @@ impl<'a> Lexer<'a> {
                 }
                 Some(b'(') => {
                     self.bump();
-                    let inner = self.parse_list(p)?;
+                    let inner = self.parse_list(p, depth + 1)?;
                     items.push(Node::List(inner, p));
                 }
                 Some(b'"') => {
@@ -231,7 +236,7 @@ fn lex(src: &str) -> R<Vec<Node>> {
             None => return Ok(top),
             Some(b'(') => {
                 lx.bump();
-                let l = lx.parse_list(p)?;
+                let l = lx.parse_list(p, 1)?;
                 top.push(Node::List(l, p));
             }
             Some(b')') => return err(p, "unexpected `)`"),
@@ -338,14 +343,27 @@ pub fn parse_float(s: &str, is32: bool) -> Option<u64> {
         }
         if is32 {
             let f: f32 = clean.parse().ok()?;
-            let b = f.to_bits() as u64 | sign32;
-            return Some(b);
+            if f.is_infinite() {
+                return None; // finite literal that overflows: "constant out of range"
+            }
+            return Some(f.to_bits() as u64 | sign32);
         }
-        clean.parse().ok()?
+        let f: f64 = clean.parse().ok()?;
+        if f.is_infinite() {
+            return None;
+        }
+        f
     };
     if is32 {
-        Some((v as f32).to_bits() as u64 | sign32)
+        let f = v as f32;
+        if f.is_infinite() {
+            return None;
+        }
+        Some(f.to_bits() as u64 | sign32)
     } else {
+        if v.is_infinite() {
+            return None;
+        }
         Some(v.to_bits() | sign64)
     }
 }
@@ -438,6 +456,10 @@ fn lookup(map: &HashMap<String, u32>, a: &str, what: &str, p: Pos) -> R<u32> {
             None => err(p, format!("expected {what} index or $name, found `{a}`")),
         }
     }
+}
+
+fn is_index_like(n: &Node) -> bool {
+    matches!(n, Node::Atom(a, _) if a.starts_with('$') || a.chars().next().map_or(false, |c| c.is_ascii_digit()))
 }
 
 fn expect_atom(n: &Node, what: &str) -> R<String> {
@@ -562,21 +584,18 @@ impl B {
     }
 
     fn block_type(&mut self, items: &[Node], i: &mut usize) -> R<BlockType> {
-        let start = *i;
-        let has_type = items.get(*i).map_or(false, |n| n.head() == Some("type"));
-        let tu = self.typeuse(items, i)?;
-        if has_type {
+        if items.get(*i).map_or(false, |n| n.head() == Some("type")) {
+            let tu = self.typeuse(items, i)?;
             return Ok(BlockType::Type(tu.idx));
         }
-        let ft = self.m.types[tu.idx as usize].clone();
-        let consumed = *i > start;
-        if !consumed || (ft.params.is_empty() && ft.results.is_empty()) {
+        let (params, _, results) = self.params_results(items, i)?;
+        if params.is_empty() && results.is_empty() {
             return Ok(BlockType::Empty);
         }
-        if ft.params.is_empty() && ft.results.len() == 1 {
-            return Ok(BlockType::Val(ft.results[0]));
+        if params.is_empty() && results.len() == 1 {
+            return Ok(BlockType::Val(results[0]));
         }
-        Ok(BlockType::Type(tu.idx))
+        Ok(BlockType::Type(self.find_or_add_type(FuncType { params, results })))
     }
 
     fn label_depth(&self, fc: &FnCtx, a: &str, p: Pos) -> R<u32> {
@@ -758,7 +777,7 @@ impl B {
             }
             "br_table" => {
                 let mut ls = vec![];
-                while let Some(Node::Atom(a, ap)) = items.get(i) {
+                while let Some(Node::Atom(a, ap)) = items.get(i).filter(|n| is_index_like(n)) {
                     ls.push(self.label_depth(fc, a, *ap)?);
                     i += 1;
                 }
@@ -771,7 +790,7 @@ impl B {
             }
             "call_indirect" => {
                 let mut table = 0;
-                if let Some(Node::Atom(a, ap)) = items.get(i) {
+                if let Some(Node::Atom(a, ap)) = items.get(i).filter(|n| is_index_like(n)) {
                     table = lookup(&self.names.tables, a, "table", *ap)?;
                     i += 1;
                 }
@@ -908,6 +927,9 @@ fn inline_ie(items: &[Node], i: &mut usize) -> R<(Vec<String>, Option<(String, S
 
 pub fn parse_module(src: &str) -> Result<Module, WatError> {
     let top = lex(src)?;
+    if top.is_empty() {
+        return err(Pos { line: 1, col: 1 }, "no module found: the input is empty or only comments");
+    }
     // Accept either `(module ...)` or a bare list of fields.
     let (fields, mpos): (Vec<Node>, Pos) = if top.len() == 1 && top[0].head() == Some("module") {
         let Node::List(l, p) = &top[0] else { unreachable!() };

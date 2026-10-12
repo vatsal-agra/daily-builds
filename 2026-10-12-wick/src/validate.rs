@@ -294,6 +294,9 @@ impl<'a> Checker<'a> {
 fn validate_func(ctx: &Ctx, ft: &FuncType, code: &Code) -> V<()> {
     let mut locals = ft.params.clone();
     locals.extend(code.locals.iter().copied());
+    if locals.len() > 50_000 {
+        return Err(ValidationError { func: None, instr: None, msg: format!("too many locals ({})", locals.len()) });
+    }
     let mut c = Checker { ctx, vals: vec![], ctrls: vec![], pos: 0 };
     c.ctrls.push(Frame { kind: Kind::Func, start: vec![], end: ft.results.clone(), height: 0, unreachable: false });
     for (pos, ins) in code.body.iter().enumerate() {
