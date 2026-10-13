@@ -16,6 +16,11 @@ import (
 	"time"
 )
 
+// maxConsecutiveKeyUpdates bounds how many KeyUpdate messages a peer may send back-to-back; each
+// update_requested forces us to derive keys and answer, so an unbounded stream is a CPU/bandwidth
+// amplifier.
+const maxConsecutiveKeyUpdates = 32
+
 // ErrTruncated is returned by Read when the transport closes without a close_notify alert.
 var ErrTruncated = errors.New("tls13: connection closed without close_notify (possible truncation attack)")
 
@@ -49,6 +54,7 @@ type Conn struct {
 	resMaster      []byte
 	clientRandom   []byte
 	state          ConnectionState
+	kuRun          int // KeyUpdates received since the last application data
 	kuSent, kuRecv atomic.Int32
 	tickets        atomic.Int32
 }
@@ -420,6 +426,7 @@ func (c *Conn) Read(p []byte) (int, error) {
 		switch typ {
 		case recApplicationData:
 			c.appBuf = data
+			c.kuRun = 0
 		case recAlert:
 			if err := c.handleAlert(data); err != nil {
 				if pe := (*ProtocolError)(nil); errors.As(err, &pe) {
@@ -471,7 +478,7 @@ func (c *Conn) Write(p []byte) (int, error) {
 		return 0, c.writeErr
 	}
 	total := 0
-	for len(p) > 0 || total == 0 {
+	for len(p) > 0 {
 		if c.out.seq >= c.cfg.keyUpdateAfter() {
 			if err := c.keyUpdateLocked(false); err != nil {
 				return total, err
@@ -564,6 +571,9 @@ func (c *Conn) processPostHandshake() error {
 			next := c.suite.nextTrafficSecret(c.in.secret)
 			if err := c.setReadSecret(next, "KeyUpdate"); err != nil {
 				return err
+			}
+			if c.kuRun++; c.kuRun > maxConsecutiveKeyUpdates {
+				return fail(AlertUnexpectedMessage, "peer sent %d KeyUpdates without any application data", c.kuRun)
 			}
 			c.kuRecv.Add(1)
 			c.logTraffic(false, int(c.kuRecv.Load()), next)

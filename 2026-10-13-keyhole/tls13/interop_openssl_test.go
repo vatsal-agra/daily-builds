@@ -1,7 +1,6 @@
 package tls13_test
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -141,7 +140,7 @@ func TestServerAgainstOpenSSLClient(t *testing.T) {
 				"-servername", "localhost", "-verify_return_error", "-verify_hostname", "localhost", "-alpn", "http/1.1",
 				"-keylogfile", keylog, "-keymatexport", "keyhole-test", "-keymatexportlen", "32", "-ign_eof")
 			cmd.Stdin = strings.NewReader("hello from openssl\n")
-			var stdout, stderr bytes.Buffer
+			var stdout, stderr lockedBuf
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
 			// -ign_eof keeps s_client open after stdin EOF; end it ourselves after the echo arrives.
 			if err := cmd.Start(); err != nil {
@@ -181,3 +180,5 @@ func TestServerAgainstOpenSSLClient(t *testing.T) {
 		})
 	}
 }
+
+func writeCert(certPath, keyPath string, c *tls13.Certificate) error { return pki.WriteFiles(certPath, keyPath, c) }
