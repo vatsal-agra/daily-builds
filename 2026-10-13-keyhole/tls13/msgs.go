@@ -138,7 +138,11 @@ func (m *clientHello) marshal() []byte {
 			b.u16(s)
 		}
 	})
-	b.vec8(func(b *builder) { b.raw([]byte{0}) })
+	comp := m.compression
+	if comp == nil {
+		comp = []byte{0}
+	}
+	b.vec8(func(b *builder) { b.raw(comp) })
 	bindersAt := -1
 	b.vec16(func(b *builder) {
 		ext := func(id uint16, f func(*builder)) {
