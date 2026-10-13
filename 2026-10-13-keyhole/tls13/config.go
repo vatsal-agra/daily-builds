@@ -60,6 +60,9 @@ type Config struct {
 	KeyUpdateAfter uint64
 	// RecordPadBlock, if >0, pads every protected record to a multiple of this many bytes.
 	RecordPadBlock int
+	// MaxRecordPlaintext caps the plaintext carried by each record we send (default and maximum
+	// 16384). Small values force fragmentation, which is useful for interoperability testing.
+	MaxRecordPlaintext int
 	// MaxHandshakeBytes caps one handshake message (default 128 KiB).
 	MaxHandshakeBytes int
 
@@ -106,6 +109,13 @@ func (c *Config) groups() []uint16 {
 		return out
 	}
 	return []uint16{X25519, CurveP256}
+}
+
+func (c *Config) maxFrag() int {
+	if c.MaxRecordPlaintext > 0 && c.MaxRecordPlaintext < maxPlaintext {
+		return c.MaxRecordPlaintext
+	}
+	return maxPlaintext
 }
 
 func (c *Config) maxHS() int {

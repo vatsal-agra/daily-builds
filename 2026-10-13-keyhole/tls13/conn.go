@@ -132,8 +132,8 @@ func (c *Conn) writeRecordLocked(typ uint8, data []byte) error {
 	for first || len(data) > 0 {
 		first = false
 		n := len(data)
-		if n > maxPlaintext {
-			n = maxPlaintext
+		if n > c.cfg.maxFrag() {
+			n = c.cfg.maxFrag()
 		}
 		pad := 0
 		if c.out.protected() && c.cfg.RecordPadBlock > 0 {
@@ -485,8 +485,8 @@ func (c *Conn) Write(p []byte) (int, error) {
 			}
 		}
 		n := len(p)
-		if n > maxPlaintext {
-			n = maxPlaintext
+		if n > c.cfg.maxFrag() {
+			n = c.cfg.maxFrag()
 		}
 		if err := c.writeRecordLocked(recApplicationData, p[:n]); err != nil {
 			return total, err

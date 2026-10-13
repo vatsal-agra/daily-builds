@@ -181,4 +181,6 @@ func TestServerAgainstOpenSSLClient(t *testing.T) {
 	}
 }
 
-func writeCert(certPath, keyPath string, c *tls13.Certificate) error { return pki.WriteFiles(certPath, keyPath, c) }
+func writeCert(certPath, keyPath string, c *tls13.Certificate) error {
+	return pki.WriteFiles(certPath, keyPath, c)
+}

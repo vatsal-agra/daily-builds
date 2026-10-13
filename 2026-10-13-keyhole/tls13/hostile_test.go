@@ -485,3 +485,11 @@ func TestClientHostileServers(t *testing.T) {
 		wantProto(t, err, AlertUnsupportedExtension)
 	})
 }
+
+func selfSignedFuzz() (Certificate, *x509.CertPool) {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "x"}, DNSNames: []string{"x"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour), KeyUsage: x509.KeyUsageDigitalSignature}
+	der, _ := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	return Certificate{Chain: [][]byte{der}, Key: key}, nil
+}
