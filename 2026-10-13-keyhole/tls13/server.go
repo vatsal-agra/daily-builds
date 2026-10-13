@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"time"
 )
@@ -40,8 +41,11 @@ func (c *Conn) findPSK(ch *clientHello) *pskCandidate {
 		if age < -time.Minute || age > ticketLifetime {
 			continue
 		}
-		if st.serverName != "" && ch.serverName != "" && st.serverName != ch.serverName {
+		if st.serverName != ch.serverName { // a ticket is only valid for the name it was issued under
 			continue
+		}
+		if c.cfg.ClientAuth == RequireClientCert && len(st.clientCert) == 0 {
+			continue // issued to an unauthenticated client: must not skip mutual authentication
 		}
 		if suiteByID(st.suite) == nil {
 			continue
@@ -76,6 +80,12 @@ func (c *Conn) serverHandshake() error {
 	cfg := c.cfg
 	if len(cfg.Certificates) == 0 && cfg.GetCertificate == nil {
 		return errors.New("tls13: server has no certificates configured")
+	}
+	if n := len(cfg.TicketKey); n != 0 && n != 32 {
+		return fmt.Errorf("tls13: Config.TicketKey must be 32 bytes, got %d", n)
+	}
+	if !cfg.NoTickets && cfg.sealKey() == nil {
+		return errors.New("tls13: cannot generate a ticket key (Config.Rand failed)")
 	}
 	msg, err := c.readHS(hsClientHello)
 	if err != nil {
@@ -198,6 +208,11 @@ func (c *Conn) serverHandshake() error {
 		}
 		psk, pskIdx = cand.state.psk, cand.idx
 		c.state.DidResume = true
+		if len(cand.state.clientCert) > 0 { // restore the identity authenticated by the original handshake
+			if cc, err := x509.ParseCertificate(cand.state.clientCert); err == nil {
+				c.state.PeerCertificates = []*x509.Certificate{cc}
+			}
+		}
 	}
 
 	// ALPN / SNI.
@@ -357,6 +372,9 @@ func (c *Conn) pickCertificate(ch *clientHello) (*Certificate, uint16, error) {
 	var cands []*Certificate
 	if c.cfg.GetCertificate != nil {
 		cert, err := c.cfg.GetCertificate(ch.serverName)
+		if err == nil && cert == nil {
+			err = errors.New("GetCertificate returned no certificate")
+		}
 		if err != nil {
 			return nil, 0, fail(AlertUnrecognizedName, "no certificate for %q: %v", ch.serverName, err)
 		}
@@ -435,12 +453,15 @@ func (c *Conn) sendTicket() error {
 	ageAdd := uint32(ageAddB[0])<<24 | uint32(ageAddB[1])<<16 | uint32(ageAddB[2])<<8 | uint32(ageAddB[3])
 	st := &sessionState{suite: c.suite.id, created: c.cfg.now(), ageAdd: ageAdd,
 		psk: c.suite.resumptionPSK(c.resMaster, nonce), serverName: c.state.ServerName, alpn: c.state.NegotiatedProtocol}
+	if len(c.state.PeerCertificates) > 0 {
+		st.clientCert = c.state.PeerCertificates[0].Raw
+	}
 	t, err := sealTicket(c.cfg.sealKey(), c.cfg.rand(), st)
 	if err != nil {
 		return err
 	}
 	m := &newSessionTicket{lifetime: uint32(ticketLifetime / time.Second), ageAdd: ageAdd, nonce: nonce, ticket: t}
 	msg := m.marshal()
-	c.trace("send", "handshake", "NewSessionTicket", DescribeHandshake(msg), len(msg))
+	c.traceHS("send", msg)
 	return c.writeRecordLocked(recHandshake, msg)
 }

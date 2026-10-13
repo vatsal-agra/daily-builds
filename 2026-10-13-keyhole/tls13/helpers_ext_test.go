@@ -61,7 +61,7 @@ func listen(t testing.TB) net.Listener {
 
 // echoServer accepts connections and echoes until EOF. Errors from each connection are sent on errs.
 func echoServer(t testing.TB, l net.Listener, cfg *tls13.Config) (conns chan *tls13.Conn, errs chan error) {
-	conns, errs = make(chan *tls13.Conn, 16), make(chan error, 16)
+	conns, errs = make(chan *tls13.Conn, 512), make(chan error, 512)
 	go func() {
 		for {
 			raw, err := l.Accept()

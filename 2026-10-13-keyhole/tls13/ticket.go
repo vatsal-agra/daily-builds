@@ -3,6 +3,7 @@ package tls13
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/x509"
 	"io"
 	"sync"
 	"time"
@@ -16,11 +17,12 @@ type sessionState struct {
 	psk        []byte // resumption PSK already derived with this ticket's nonce
 	serverName string
 	alpn       string
+	clientCert []byte // DER of the authenticated client's leaf certificate, if any
 }
 
 func (s *sessionState) marshal() []byte {
 	var b builder
-	b.u8(1) // format version
+	b.u8(2) // format version
 	b.u16(s.suite)
 	b.u32(uint32(s.created.Unix() >> 32))
 	b.u32(uint32(s.created.Unix()))
@@ -28,12 +30,13 @@ func (s *sessionState) marshal() []byte {
 	b.vec8(func(b *builder) { b.raw(s.psk) })
 	b.vec16(func(b *builder) { b.raw([]byte(s.serverName)) })
 	b.vec8(func(b *builder) { b.raw([]byte(s.alpn)) })
+	b.vec24(func(b *builder) { b.raw(s.clientCert) })
 	return b.b
 }
 
 func parseSessionState(b []byte) (*sessionState, bool) {
 	p := newParser(b)
-	if p.u8() != 1 {
+	if p.u8() != 2 {
 		return nil, false
 	}
 	s := &sessionState{suite: p.u16()}
@@ -43,6 +46,7 @@ func parseSessionState(b []byte) (*sessionState, bool) {
 	s.psk = p.vecBytes(1)
 	s.serverName = string(p.vecBytes(2))
 	s.alpn = string(p.vecBytes(1))
+	s.clientCert = p.vecBytes(3)
 	return s, p.ok() && p.empty()
 }
 
@@ -87,6 +91,10 @@ type ClientSession struct {
 	Received time.Time
 	Lifetime time.Duration
 	ALPN     string
+
+	// What the original handshake established about the server, re-checked before every reuse.
+	Verified  bool                // the chain was verified (not InsecureSkipVerify)
+	PeerChain []*x509.Certificate // certificates presented by the server
 }
 
 // SessionCache stores client tickets by server name. Tickets are single-use (RFC 8446 §C.4).

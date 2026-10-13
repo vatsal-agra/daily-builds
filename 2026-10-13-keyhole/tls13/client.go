@@ -70,7 +70,10 @@ func (c *Conn) clientHandshake() error {
 	var sess *ClientSession
 	if cfg.SessionCache != nil && cfg.ServerName != "" {
 		if s := cfg.SessionCache.Take(cfg.ServerName, cfg.now()); s != nil && offersSuite(ch.suites, s.Suite) {
-			sess = s
+			if chains, ok := c.reverifySession(s); ok {
+				sess = s
+				c.resumeChains = chains
+			}
 		}
 	}
 	if err := c.sealClientHello(ch, sess); err != nil {
@@ -169,6 +172,8 @@ func (c *Conn) clientHandshake() error {
 		}
 		psk = sess.PSK
 		c.state.DidResume = true
+		c.state.PeerCertificates = sess.PeerChain
+		c.state.VerifiedChains = c.resumeChains
 	}
 	c.state.KeyShareGroup = kx.group
 	c.state.CipherSuite = c.suite.id
@@ -429,19 +434,33 @@ func (c *Conn) sendClientAuth(req *certificateRequest) error {
 	return c.sendHS((&certificateVerify{alg: alg, sig: sig}).marshal())
 }
 
+// parseLeaf parses the leaf on every call: Certificate values are shared between connections, so
+// caching into the struct would be a data race.
 func (cert *Certificate) parseLeaf() (*x509.Certificate, error) {
-	if cert.leaf != nil {
-		return cert.leaf, nil
+	if len(cert.Chain) == 0 || cert.Key == nil {
+		return nil, errors.New("tls13: certificate needs a chain and a private key")
 	}
-	if len(cert.Chain) == 0 {
-		return nil, errors.New("tls13: certificate has no chain")
+	return x509.ParseCertificate(cert.Chain[0])
+}
+
+// reverifySession decides whether a cached ticket may be offered by *this* configuration. A session
+// is a bearer credential for whatever authentication its first handshake did, so a verifying
+// client may only reuse one whose server certificate it would accept right now (same roots, name
+// and clock) — otherwise a cache shared with an InsecureSkipVerify client would bypass verification.
+func (c *Conn) reverifySession(s *ClientSession) ([][]*x509.Certificate, bool) {
+	if c.cfg.InsecureSkipVerify {
+		return nil, true
 	}
-	l, err := x509.ParseCertificate(cert.Chain[0])
-	if err != nil {
-		return nil, err
+	if !s.Verified || len(s.PeerChain) == 0 {
+		return nil, false
 	}
-	cert.leaf = l
-	return l, nil
+	inter := x509.NewCertPool()
+	for _, ic := range s.PeerChain[1:] {
+		inter.AddCert(ic)
+	}
+	chains, err := s.PeerChain[0].Verify(x509.VerifyOptions{Roots: c.cfg.RootCAs, Intermediates: inter, DNSName: c.cfg.ServerName,
+		CurrentTime: c.cfg.now(), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}})
+	return chains, err == nil
 }
 
 // storeTicket records a NewSessionTicket for later resumption.
@@ -457,5 +476,6 @@ func (c *Conn) storeTicket(m *newSessionTicket) {
 	c.cfg.SessionCache.Put(c.cfg.ServerName, &ClientSession{
 		Ticket: m.ticket, Suite: c.suite.id, PSK: c.suite.resumptionPSK(c.resMaster, m.nonce),
 		AgeAdd: m.ageAdd, Received: c.cfg.now(), Lifetime: life, ALPN: c.state.NegotiatedProtocol,
+		Verified: !c.cfg.InsecureSkipVerify && len(c.state.VerifiedChains) > 0, PeerChain: c.state.PeerCertificates,
 	})
 }

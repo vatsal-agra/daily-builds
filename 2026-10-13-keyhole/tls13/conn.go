@@ -38,6 +38,7 @@ type Conn struct {
 	outMu   sync.Mutex
 	in, out halfConn
 
+	rbuf      []byte // raw bytes read but not yet a whole record
 	hsBuf     []byte // received handshake bytes not yet consumed
 	appBuf    []byte
 	outBuf    []byte
@@ -54,6 +55,7 @@ type Conn struct {
 	resMaster      []byte
 	clientRandom   []byte
 	state          ConnectionState
+	resumeChains   [][]*x509.Certificate
 	kuRun          int // KeyUpdates received since the last application data
 	kuSent, kuRecv atomic.Int32
 	tickets        atomic.Int32
@@ -74,6 +76,9 @@ func newConn(raw net.Conn, cfg *Config, client bool) *Conn {
 
 // Dial connects to addr over TCP and completes a TLS 1.3 handshake.
 func Dial(addr string, cfg *Config) (*Conn, error) {
+	if cfg == nil {
+		cfg = &Config{}
+	}
 	raw, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		return nil, err
@@ -169,8 +174,14 @@ func recName(typ uint8, enc bool) string {
 func (c *Conn) sendHS(msg []byte) error {
 	c.prevLen = len(c.transcript)
 	c.transcript = append(c.transcript, msg...)
-	c.trace("send", "handshake", HandshakeName(msg[0]), DescribeHandshake(msg), len(msg))
+	c.traceHS("send", msg)
 	return c.writeRecordLocked(recHandshake, msg)
+}
+
+func (c *Conn) traceHS(dir string, msg []byte) {
+	if c.cfg.Trace != nil {
+		c.trace(dir, "handshake", HandshakeName(msg[0]), DescribeHandshake(msg), len(msg))
+	}
 }
 
 func (c *Conn) sendCCS() error {
@@ -214,7 +225,7 @@ func (c *Conn) readRecord() (typ uint8, data []byte, err error) {
 	for {
 		var hdr [recHeaderLen]byte
 		var body []byte
-		hdr, body, err = readRawRecord(c.rd)
+		hdr, body, err = c.readRawBuffered()
 		if err != nil {
 			return 0, nil, err
 		}
@@ -255,6 +266,34 @@ func (c *Conn) readRecord() (typ uint8, data []byte, err error) {
 	}
 }
 
+// readRawBuffered reads one record, keeping partial bytes in c.rbuf so that a read-deadline timeout
+// can be retried without losing or desynchronising the stream.
+func (c *Conn) readRawBuffered() (hdr [recHeaderLen]byte, body []byte, err error) {
+	for {
+		if len(c.rbuf) >= recHeaderLen {
+			copy(hdr[:], c.rbuf)
+			n, herr := checkRecordHeader(hdr)
+			if herr != nil {
+				return hdr, nil, herr
+			}
+			if len(c.rbuf) >= recHeaderLen+n {
+				body = append([]byte(nil), c.rbuf[recHeaderLen:recHeaderLen+n]...)
+				c.rbuf = c.rbuf[recHeaderLen+n:]
+				return hdr, body, nil
+			}
+		}
+		var tmp [8192]byte
+		m, rerr := c.rd.Read(tmp[:])
+		c.rbuf = append(c.rbuf, tmp[:m]...)
+		if rerr != nil && m == 0 {
+			if rerr == io.EOF && len(c.rbuf) > 0 {
+				rerr = io.ErrUnexpectedEOF
+			}
+			return hdr, nil, rerr
+		}
+	}
+}
+
 // handleAlert interprets an alert record. Returns a terminal error, or nil to continue.
 func (c *Conn) handleAlert(data []byte) error {
 	if len(data) != 2 {
@@ -288,6 +327,9 @@ func (c *Conn) nextHandshakeMsg() ([]byte, error) {
 		typ, data, err := c.readRecord()
 		if err != nil {
 			return nil, c.mapReadErr(err)
+		}
+		if len(c.hsBuf) > 0 && typ != recHandshake {
+			return nil, fail(AlertUnexpectedMessage, "%s record inside a fragmented handshake message", recName(typ, false))
 		}
 		switch typ {
 		case recHandshake:
@@ -324,7 +366,7 @@ func (c *Conn) readHS(want uint8) ([]byte, error) {
 	}
 	c.prevLen = len(c.transcript)
 	c.transcript = append(c.transcript, msg...)
-	c.trace("recv", "handshake", HandshakeName(msg[0]), DescribeHandshake(msg), len(msg))
+	c.traceHS("recv", msg)
 	if want != 0 && msg[0] != want {
 		return nil, fail(AlertUnexpectedMessage, "got %s, expected %s", HandshakeName(msg[0]), HandshakeName(want))
 	}
@@ -420,7 +462,15 @@ func (c *Conn) Read(p []byte) (int, error) {
 		}
 		typ, data, err := c.readRecord()
 		if err != nil {
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
+				return 0, err // transient: partial bytes stay buffered, the caller may retry
+			}
 			c.readErr = c.failRead(err)
+			return 0, c.readErr
+		}
+		if len(c.hsBuf) > 0 && typ != recHandshake {
+			c.readErr = c.failRead(fail(AlertUnexpectedMessage, "%s record inside a fragmented handshake message", recName(typ, false)))
 			return 0, c.readErr
 		}
 		switch typ {
@@ -520,9 +570,11 @@ func (c *Conn) Close() error {
 		return c.raw.Close()
 	}
 	var err error
+	// Bound the wait for a Write that is blocked on a stalled peer: expire the deadline *before*
+	// contending for outMu so that the blocked Write fails and releases it.
+	c.raw.SetWriteDeadline(time.Now().Add(2 * time.Second))
 	c.outMu.Lock()
 	if !c.closeSent && c.writeErr == nil {
-		c.raw.SetWriteDeadline(time.Now().Add(2 * time.Second))
 		c.sendAlertLocked(AlertCloseNotify)
 	}
 	c.outMu.Unlock()
@@ -552,7 +604,7 @@ func (c *Conn) processPostHandshake() error {
 		}
 		msg := append([]byte(nil), c.hsBuf[:4+n]...)
 		c.hsBuf = c.hsBuf[4+n:]
-		c.trace("recv", "handshake", HandshakeName(msg[0]), DescribeHandshake(msg), len(msg))
+		c.traceHS("recv", msg)
 		switch {
 		case msg[0] == hsNewSessionTicket && c.isClient:
 			m, err := parseNewSessionTicket(msg)
@@ -606,7 +658,7 @@ func (c *Conn) KeyUpdate(requestPeer bool) error {
 
 func (c *Conn) keyUpdateLocked(requestPeer bool) error {
 	msg := keyUpdateMsg(requestPeer)
-	c.trace("send", "handshake", "KeyUpdate", DescribeHandshake(msg), len(msg))
+	c.traceHS("send", msg)
 	if err := c.writeRecordLocked(recHandshake, msg); err != nil {
 		return err
 	}
@@ -623,6 +675,12 @@ func (c *Conn) keyUpdateLocked(requestPeer bool) error {
 func (c *Conn) ExportKeyingMaterial(label string, context []byte, n int) ([]byte, error) {
 	if !c.hsDone.Load() {
 		return nil, errors.New("tls13: handshake not complete")
+	}
+	if n < 0 || n > 255*c.suite.hashLen() || n > 0xffff {
+		return nil, errors.New("tls13: invalid exporter output length")
+	}
+	if len(label) > 200 || len(context) > 0xffff {
+		return nil, errors.New("tls13: exporter label or context too long")
 	}
 	return c.suite.exporter(c.exporterMaster, label, context, n), nil
 }

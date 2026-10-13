@@ -13,7 +13,6 @@ import (
 type Certificate struct {
 	Chain [][]byte
 	Key   crypto.Signer
-	leaf  *x509.Certificate
 }
 
 // ClientAuthMode controls server-side client-certificate handling.
@@ -138,11 +137,16 @@ func (c *Config) sealKey() []byte {
 	if len(c.TicketKey) == 32 {
 		return c.TicketKey
 	}
+	if len(c.TicketKey) != 0 {
+		return nil // rejected by validateServer
+	}
 	ticketKeyMu.Lock()
 	defer ticketKeyMu.Unlock()
 	if c.ticketKey == nil {
 		k := make([]byte, 32)
-		io.ReadFull(c.rand(), k)
+		if _, err := io.ReadFull(c.rand(), k); err != nil {
+			return nil
+		}
 		c.ticketKey = k
 	}
 	return c.ticketKey

@@ -493,3 +493,23 @@ func selfSignedFuzz() (Certificate, *x509.CertPool) {
 	der, _ := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
 	return Certificate{Chain: [][]byte{der}, Key: key}, nil
 }
+
+// RFC 8446 §5.1: a handshake message split across records must not be interleaved with other records.
+func TestServerRejectsInterleavedRecordInsideHandshakeMessage(t *testing.T) {
+	for _, other := range []struct {
+		name string
+		rec  []byte
+	}{
+		{"alert", record(recAlert, []byte{1, 0})},
+		{"application data", record(recApplicationData, []byte("x"))},
+	} {
+		t.Run(other.name, func(t *testing.T) {
+			conn, res := rawServer(t, nil)
+			raw := goodClientHello(t).marshal()
+			conn.Write(record(recHandshake, raw[:50]))
+			conn.Write(other.rec)
+			expectAlert(t, conn, AlertUnexpectedMessage)
+			expectServerErr(t, res, AlertUnexpectedMessage)
+		})
+	}
+}

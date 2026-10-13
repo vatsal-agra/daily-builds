@@ -47,8 +47,8 @@ func TestResumptionBetweenKeyholePeers(t *testing.T) {
 				t.Fatal(err)
 			}
 			st := c2.ConnectionState()
-			if !st.DidResume || len(st.PeerCertificates) != 0 || st.SignatureAlgorithm != 0 {
-				t.Fatalf("expected PSK resumption without certificates, got %+v", st)
+			if !st.DidResume || len(st.PeerCertificates) != 1 || len(st.VerifiedChains) == 0 || st.SignatureAlgorithm != 0 {
+				t.Fatalf("expected PSK resumption with the original (re-verified) chain and no new CertificateVerify, got %+v", st)
 			}
 			roundTrip(t, c2, []byte("second"))
 			// tickets are single-use: the cache entry was consumed, and replaced by the new connection's ticket

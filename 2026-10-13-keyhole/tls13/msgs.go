@@ -715,8 +715,11 @@ func keyUpdateMsg(requestPeer bool) []byte {
 
 func parseKeyUpdate(msg []byte) (requested bool, err error) {
 	_, body := splitHandshake(msg)
-	if len(body) != 1 || body[0] > 1 {
-		return false, fail(AlertIllegalParameter, "malformed KeyUpdate")
+	if len(body) != 1 {
+		return false, fail(AlertDecodeError, "KeyUpdate must be exactly one byte")
+	}
+	if body[0] > 1 {
+		return false, fail(AlertIllegalParameter, "KeyUpdate request_update value %d", body[0])
 	}
 	return body[0] == 1, nil
 }

@@ -95,23 +95,28 @@ func (h *halfConn) open(hdr [recHeaderLen]byte, body []byte) (uint8, []byte, err
 }
 
 // readRawRecord reads one record header+body from r.
-func readRawRecord(r io.Reader) (hdr [recHeaderLen]byte, body []byte, err error) {
-	if _, err = io.ReadFull(r, hdr[:]); err != nil {
-		return
-	}
+func checkRecordHeader(hdr [recHeaderLen]byte) (int, error) {
 	n := int(binary.BigEndian.Uint16(hdr[3:]))
 	switch hdr[0] {
 	case recChangeCipherSpec, recAlert, recHandshake, recApplicationData:
 	default:
-		err = fail(AlertUnexpectedMessage, "unknown record type %d", hdr[0])
-		return
+		return 0, fail(AlertUnexpectedMessage, "unknown record type %d", hdr[0])
 	}
 	if hdr[1] != 3 {
-		err = fail(AlertProtocolVersion, "record version %02x%02x is not TLS", hdr[1], hdr[2])
-		return
+		return 0, fail(AlertProtocolVersion, "record version %02x%02x is not TLS", hdr[1], hdr[2])
 	}
 	if n > maxCiphertext {
-		err = fail(AlertRecordOverflow, "record length %d exceeds limit", n)
+		return 0, fail(AlertRecordOverflow, "record length %d exceeds limit", n)
+	}
+	return n, nil
+}
+
+func readRawRecord(r io.Reader) (hdr [recHeaderLen]byte, body []byte, err error) {
+	if _, err = io.ReadFull(r, hdr[:]); err != nil {
+		return
+	}
+	var n int
+	if n, err = checkRecordHeader(hdr); err != nil {
 		return
 	}
 	body = make([]byte, n)

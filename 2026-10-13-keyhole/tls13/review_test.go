@@ -365,3 +365,201 @@ func BenchmarkChaChaThroughput(b *testing.B) {
 	}
 	c.Close()
 }
+
+// One server Config (and its Certificate values) is shared by every connection; the race detector
+// must stay quiet when many handshakes run at once.
+func TestManyConcurrentHandshakesShareOneConfig(t *testing.T) {
+	p := newPKI(t, "ecdsa-p256")
+	l := listen(t)
+	scfg := serverCfg(p)
+	echoServer(t, l, scfg)
+	cache := tls13.NewSessionCache()
+	var wg sync.WaitGroup
+	for i := 0; i < 24; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ccfg := clientCfg(p)
+			ccfg.SessionCache = cache
+			c, err := dialWith(t, l, ccfg)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			roundTrip(t, c, []byte("concurrent"))
+			c.Close()
+		}()
+	}
+	wg.Wait()
+}
+
+// Close must not hang behind a Write that is blocked because the peer stopped reading.
+func TestCloseUnblocksStuckWriter(t *testing.T) {
+	p := newPKI(t, "ecdsa-p256")
+	l := listen(t)
+	go func() { // a server that handshakes and then never reads
+		raw, _ := l.Accept()
+		sc := tls13.Server(raw, serverCfg(p))
+		sc.Handshake()
+		time.Sleep(10 * time.Second)
+	}()
+	raw, _ := net.Dial("tcp", l.Addr().String())
+	c := tls13.Client(raw, clientCfg(p))
+	if err := c.Handshake(); err != nil {
+		t.Fatal(err)
+	}
+	go func() { // fill the socket buffers until Write blocks
+		buf := make([]byte, 1<<20)
+		for {
+			if _, err := c.Write(buf); err != nil {
+				return
+			}
+		}
+	}()
+	time.Sleep(500 * time.Millisecond)
+	done := make(chan struct{})
+	go func() { c.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(8 * time.Second):
+		t.Fatal("Close() hung behind a blocked Write")
+	}
+}
+
+func TestResumptionCannotBypassCertificateVerification(t *testing.T) {
+	legit := newPKI(t, "ecdsa-p256")
+	rogueCA, _ := pki.NewCA("Rogue CA", "ecdsa-p256")
+	rogueCert, _, _ := rogueCA.Issue(pki.Options{CommonName: "localhost", DNSNames: []string{"localhost"}})
+	l := listen(t)
+	echoServer(t, l, &tls13.Config{Certificates: []tls13.Certificate{*rogueCert}, TicketKey: bytes.Repeat([]byte{3}, 32)})
+	cache := tls13.NewSessionCache()
+	lax := &tls13.Config{ServerName: "localhost", InsecureSkipVerify: true, SessionCache: cache}
+	c1, err := dialWith(t, l, lax)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTrip(t, c1, []byte("x"))
+	c1.Close()
+	strict := &tls13.Config{ServerName: "localhost", RootCAs: legit.pool, SessionCache: cache}
+	if c2, err := dialWith(t, l, strict); err == nil {
+		t.Fatalf("verifying client accepted an unverified session (resumed=%v)", c2.ConnectionState().DidResume)
+	}
+}
+
+func TestTicketsDoNotBypassMutualTLSOrSNI(t *testing.T) {
+	p := newPKI(t, "ecdsa-p256")
+	key := bytes.Repeat([]byte{5}, 32)
+	open := serverCfg(p)
+	open.TicketKey = key
+	strict := serverCfg(p)
+	strict.TicketKey = key
+	strict.ClientAuth = tls13.RequireClientCert
+	strict.ClientCAs = p.pool
+	l1, l2 := listen(t), listen(t)
+	echoServer(t, l1, open)
+	echoServer(t, l2, strict)
+	cache := tls13.NewSessionCache()
+	ccfg := clientCfg(p)
+	ccfg.SessionCache = cache
+	c, err := dialWith(t, l1, ccfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTrip(t, c, []byte("x"))
+	c.Close()
+	c, err = dialWith(t, l2, ccfg) // ticket from the anonymous server must not satisfy mTLS
+	if err == nil {
+		// TLS 1.3: the client finishes first, so the server's rejection shows up on the first read.
+		c.Write([]byte("x"))
+		_, err = c.Read(make([]byte, 1))
+	}
+	wantAlert(t, err, false, tls13.AlertCertificateRequired)
+
+	// an authenticated session keeps its identity across resumption
+	ccfg.ClientCertificate = p.client
+	c, err = dialWith(t, l2, ccfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTrip(t, c, []byte("y"))
+	c.Close()
+	conns := make(chan *tls13.Conn, 1)
+	_ = conns
+	c, err = dialWith(t, l2, ccfg)
+	if err != nil || !c.ConnectionState().DidResume {
+		t.Fatalf("mTLS resumption: %v", err)
+	}
+}
+
+func TestReadTimeoutIsRetryable(t *testing.T) {
+	p := newPKI(t, "ecdsa-p256")
+	l := listen(t)
+	go func() {
+		raw, _ := l.Accept()
+		sc := tls13.Server(raw, serverCfg(p))
+		sc.Handshake()
+		time.Sleep(300 * time.Millisecond)
+		sc.Write([]byte("late"))
+		time.Sleep(time.Second)
+	}()
+	raw, _ := net.Dial("tcp", l.Addr().String())
+	c := tls13.Client(raw, clientCfg(p))
+	if err := c.Handshake(); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 8)
+	raw.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	if _, err := c.Read(buf); err == nil {
+		t.Fatal("expected a timeout")
+	}
+	raw.SetReadDeadline(time.Now().Add(3 * time.Second))
+	n, err := c.Read(buf)
+	if err != nil || string(buf[:n]) != "late" {
+		t.Fatalf("connection did not survive a read timeout: %q %v", buf[:n], err)
+	}
+}
+
+func TestAPIMisuseDoesNotPanic(t *testing.T) {
+	p := newPKI(t, "ecdsa-p256")
+	if _, err := tls13.Dial("127.0.0.1:1", nil); err == nil {
+		t.Fatal("expected a dial error")
+	}
+	l := listen(t)
+	_, errs := echoServer(t, l, &tls13.Config{GetCertificate: func(string) (*tls13.Certificate, error) { return nil, nil }})
+	if _, err := dialWith(t, l, clientCfg(p)); err == nil {
+		t.Fatal("handshake with no certificate succeeded")
+	}
+	<-errs
+	l2 := listen(t)
+	_, errs = echoServer(t, l2, &tls13.Config{Certificates: []tls13.Certificate{{Chain: p.server.Chain}}}) // no key
+	if _, err := dialWith(t, l2, clientCfg(p)); err == nil {
+		t.Fatal("handshake with keyless certificate succeeded")
+	}
+	<-errs
+	l3 := listen(t)
+	scfg := serverCfg(p)
+	scfg.TicketKey = []byte("short")
+	_, errs = echoServer(t, l3, scfg)
+	if _, err := dialWith(t, l3, clientCfg(p)); err == nil {
+		t.Fatal("bad TicketKey accepted")
+	}
+	<-errs
+	c, err := dialWith(t, listenEcho(t, p), clientCfg(p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []int{-1, 1 << 20} {
+		if _, err := c.ExportKeyingMaterial("label", nil, n); err == nil {
+			t.Fatalf("ExportKeyingMaterial(%d) accepted", n)
+		}
+	}
+	if _, err := c.ExportKeyingMaterial(strings.Repeat("x", 300), nil, 16); err == nil {
+		t.Fatal("over-long label accepted")
+	}
+}
+
+func listenEcho(t testing.TB, p *testPKI) net.Listener {
+	l := listen(t)
+	echoServer(t, l, serverCfg(p))
+	return l
+}
