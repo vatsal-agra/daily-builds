@@ -30,7 +30,7 @@ On-disk layout (1 KiB blocks): `[super][journal][inode bitmap][block bitmap][ino
 (`.`/`..` stored for real), file / dir / symlink, hard links, sparse files, full data journaling.
 
 ## Features
-Required (core):
+Required (core) — all four shipped:
 1. **R1 Filesystem core** — mkfs/mount, inode + bitmap allocators, indirect mapping, directories, files, symlinks
    (resolution with loop limit), hard links, rename (incl. dir moves, cycle check), truncate, sparse files.
 2. **R2 Write-ahead journal** — every operation is one atomic transaction; CRC-protected descriptor/commit,
@@ -40,7 +40,7 @@ Required (core):
 4. **R4 Crash-consistency fuzzer + differential fuzzer** — reference model oracle; record/replay of device
    events; crash at every event with adversarial persistence subsets and torn writes; recover + fsck + state ∈ {S_c, S_c+1}.
 
-Stretch:
+Stretch — all four shipped:
 5. **S1 fsck repair** — fix corrupted images (bit-flipped bitmaps, bad nlink, out-of-range / duplicated pointers,
    dangling entries, wrong `..`), reconnect orphans into `/lost+found`; verified by a corruption injector.
 6. **S2 Mutation self-test** — injectable journal bugs (no CRC check, missing barrier, early clear, skip replay);
@@ -51,3 +51,6 @@ Stretch:
 ## Done means
 `./verify.sh` green: unit tests, differential fuzz over several seeds, crash fuzz over several seeds with zero
 failures, all mutants killed, repair fuzz, CLI end-to-end demo, HTML map rendered and checked in Chromium.
+
+## Outcome
+All 4 required and all 4 stretch features shipped; see README.md and REVIEW.md. Plan deviation: none of the required items were replaced or shrunk.

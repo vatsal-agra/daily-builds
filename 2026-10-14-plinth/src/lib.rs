@@ -6,5 +6,7 @@ pub mod fuzz;
 pub mod journal;
 pub mod layout;
 pub mod model;
+pub mod repair;
+pub mod report;
 pub mod rng;
 pub mod vfs;

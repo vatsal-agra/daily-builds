@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plinth Block Map</title>
+<style>
+:root{
+  --bg:#0e1116;--panel:#161b22;--panel2:#1c232c;--line:#2a3340;--ink:#e6edf3;--mute:#8b98a8;--accent:#7cc4ff;
+  --free:#1b222b;--super:#ff7b72;--journal:#d2a8ff;--ibm:#ffa657;--bbm:#f2cc60;--itable:#e3b341;--data:#56d364;--ind:#2ea8a0;--dir:#58a6ff;--bad:#ff5d5d;
+}
+@media (prefers-color-scheme: light){:root{--bg:#f4f6f8;--panel:#fff;--panel2:#eef1f4;--line:#d5dbe2;--ink:#18202a;--mute:#5d6b7b;--accent:#0969da;--free:#d3dae3;}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:22px 28px 6px;display:flex;flex-wrap:wrap;gap:12px 28px;align-items:baseline}
+h1{margin:0;font-size:22px;letter-spacing:.2px}
+h1 small{color:var(--mute);font-weight:400;font-size:13px;margin-left:10px}
+.badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600}
+.ok{background:#12351f;color:#56d364}.warn{background:#3d2a0b;color:#e3b341}.bad{background:#40161a;color:#ff7b72}
+main{padding:10px 28px 40px;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:18px}
+@media (max-width:1000px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h2{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--mute);font-weight:600}
+#mapwrap{position:relative}
+canvas{width:100%;display:block;border-radius:8px;background:var(--panel);image-rendering:pixelated;cursor:crosshair}
+#tip{position:fixed;pointer-events:none;background:#000d;color:#fff;padding:6px 10px;border-radius:8px;font-size:12px;display:none;z-index:9;max-width:340px;backdrop-filter:blur(4px)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px;color:var(--mute);font-size:12px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+.stat{background:var(--panel2);border-radius:10px;padding:10px 12px}
+.stat b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.stat span{color:var(--mute);font-size:12px}
+.bar{height:10px;border-radius:6px;background:var(--free);overflow:hidden;margin-top:6px}.bar>div{height:100%;background:linear-gradient(90deg,var(--data),var(--accent))}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{position:sticky;top:0;background:var(--panel);text-align:left;color:var(--mute);font-weight:600;font-size:12px;padding:6px 8px;cursor:pointer;user-select:none}
+td{padding:5px 8px;border-top:1px solid var(--line);white-space:nowrap;font-variant-numeric:tabular-nums}
+tr.f{cursor:pointer}tr.f:hover td,tr.sel td{background:var(--panel2)}
+td.p{max-width:200px;overflow:hidden;text-overflow:ellipsis}
+#files{max-height:420px;overflow:auto;border-radius:8px}
+.issue{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;padding:6px 8px;border-left:3px solid var(--bad);background:var(--panel2);margin:6px 0;border-radius:0 6px 6px 0;word-break:break-word}
+.detail{font-size:13px;color:var(--mute);min-height:44px}.detail b{color:var(--ink)}
+input[type=search]{width:100%;margin-bottom:8px;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink)}
+.ext{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--mute)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Plinth <small id="sub"></small></h1>
+  <span id="verdict" class="badge"></span>
+  <span id="jstate" class="badge"></span>
+</header>
+<main>
+  <section class="card">
+    <h2>Block map <span id="hover" style="text-transform:none;letter-spacing:0;color:var(--mute);font-weight:400"></span></h2>
+    <div id="mapwrap"><canvas id="map"></canvas></div>
+    <div class="legend" id="legend"></div>
+    <div class="detail" id="detail" style="margin-top:12px">Hover a block to see its owner. Click a file on the right to light up its extents.</div>
+  </section>
+  <aside style="display:grid;gap:18px;align-content:start">
+    <section class="card"><h2>Volume</h2><div class="stats" id="stats"></div>
+      <div class="bar"><div id="usebar"></div></div><div class="detail" id="usetxt"></div></section>
+    <section class="card" id="issuecard" style="display:none"><h2>fsck issues</h2><div id="issues"></div></section>
+    <section class="card"><h2>Inodes</h2><input type="search" id="q" placeholder="filter by path…"><div id="files"><table><thead><tr><th data-k="path">path</th><th data-k="kind">type</th><th data-k="size">size</th><th data-k="blocks">blk</th><th data-k="nlink">nl</th></tr></thead><tbody id="rows"></tbody></table></div></section>
+  </aside>
+</main>
+<div id="tip"></div>
+<script>
+const D = /*DATA*/null;
+const COL = {0:'--free',1:'--super',2:'--journal',3:'--ibm',4:'--bbm',5:'--itable',6:'--data',7:'--ind',8:'--dir'};
+const NAME = {0:'free',1:'superblock',2:'journal',3:'inode bitmap',4:'block bitmap',5:'inode table',6:'file data',7:'indirect block',8:'directory data'};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString();
+const human = n => n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KiB':(n/1048576).toFixed(2)+' MiB';
+document.title = '{{TITLE}} — Plinth Block Map';
+if (!D || D.error) {
+  document.body.innerHTML = '<div style="padding:40px"><h1>Not a Plinth image</h1><p>'+(D&&D.error||'no data')+'</p></div>';
+} else {
+  const N = D.sb.nblocks, files = D.files, byIno = new Map(files.map(f => [f.ino, f]));
+  $('sub').textContent = '{{TITLE}} · ' + fmt(N) + ' blocks · ' + human(N*1024);
+  $('verdict').className = 'badge ' + (D.issues.length ? 'bad' : 'ok');
+  $('verdict').textContent = D.issues.length ? D.issues.length + ' fsck issue' + (D.issues.length>1?'s':'') : 'fsck clean';
+  $('jstate').className = 'badge ' + (D.journal_pending ? 'warn' : 'ok');
+  $('jstate').textContent = D.journal_pending ? 'journal: transaction pending replay' : 'journal: empty';
+  const used = D.stats.used, dataBlocks = N - D.sb.data_start;
+  const st = [['files',D.stats.files],['dirs',D.stats.dirs],['symlinks',D.stats.symlinks],['data blocks used',used+'/'+dataBlocks],['sparse holes',D.stats.holes],['free inodes',D.sb.free_inodes],['txn clock',D.sb.clock],['journal blocks',D.sb.journal_len]];
+  $('stats').innerHTML = st.map(([k,v]) => '<div class="stat"><b>'+v+'</b><span>'+k+'</span></div>').join('');
+  $('usebar').style.width = (100*used/Math.max(1,dataBlocks)).toFixed(1)+'%';
+  $('usetxt').textContent = (100*used/Math.max(1,dataBlocks)).toFixed(1)+'% of the data area in use · '+fmt(D.sb.free_blocks)+' blocks free';
+  if (D.issues.length) { $('issuecard').style.display=''; $('issues').innerHTML = D.issues.slice(0,60).map(i=>'<div class="issue"></div>').join(''); [...$('issues').children].forEach((el,i)=>el.textContent=D.issues[i]); if (D.issues.length>60) $('issues').insertAdjacentHTML('beforeend','<div class="detail">… and '+(D.issues.length-60)+' more</div>'); }
+  $('legend').innerHTML = Object.keys(NAME).map(k => '<span><i style="background:var('+COL[k]+')"></i>'+NAME[k]+'</span>').join('');
+
+  const cv = $('map'), ctx = cv.getContext('2d');
+  let cols, cell, sel = null, hot = null;
+  function layout() {
+    const w = $('mapwrap').clientWidth;
+    cell = Math.max(3, Math.min(14, Math.floor(w / Math.ceil(Math.sqrt(N*2.2)))));
+    cols = Math.max(1, Math.floor(w / cell));
+    const rows = Math.ceil(N / cols);
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = w*dpr; cv.height = rows*cell*dpr; cv.style.height = rows*cell+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    draw();
+  }
+  function draw() {
+    ctx.clearRect(0,0,cv.width,cv.height);
+    const colors = {}; for (const k in COL) colors[k] = css(COL[k]);
+    const dim = sel !== null;
+    for (let b = 0; b < N; b++) {
+      const c = D.cat[b], x = (b % cols) * cell, y = Math.floor(b / cols) * cell;
+      let on = !dim || (D.own[b] === sel);
+      ctx.globalAlpha = on ? 1 : 0.18;
+      ctx.fillStyle = colors[c];
+      ctx.fillRect(x, y, cell-1, cell-1);
+    }
+    ctx.globalAlpha = 1;
+    if (hot !== null) { ctx.strokeStyle = css('--ink'); ctx.lineWidth = 2; ctx.strokeRect((hot%cols)*cell, Math.floor(hot/cols)*cell, cell-1, cell-1); }
+  }
+  function blockAt(e) {
+    const r = cv.getBoundingClientRect();
+    const x = Math.floor((e.clientX - r.left) / cell), y = Math.floor((e.clientY - r.top) / cell);
+    const b = y*cols + x; return (x>=0 && x<cols && b>=0 && b<N) ? b : null;
+  }
+  function describe(b) {
+    const c = +D.cat[b], ino = D.own[b], f = byIno.get(ino);
+    let s = '<b>block '+b+'</b> · '+NAME[c];
+    if (f) s += '<br>'+(c==7?'indirect block of ':'')+'<b>'+f.path+'</b> (inode '+ino+', '+f.kind+', '+human(f.size)+')';
+    return s;
+  }
+  const tip = $('tip');
+  cv.addEventListener('mousemove', e => { const b = blockAt(e); if (b === null) { tip.style.display='none'; return; }
+    hot = b; draw(); tip.innerHTML = describe(b); tip.style.display='block'; tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY+14)+'px'; });
+  cv.addEventListener('mouseleave', () => { hot = null; tip.style.display='none'; draw(); });
+  cv.addEventListener('click', e => { const b = blockAt(e); if (b !== null && D.own[b]) select(D.own[b]); else select(null); });
+  window.addEventListener('resize', layout);
+
+  function select(ino) {
+    sel = (ino === sel) ? null : ino;
+    [...document.querySelectorAll('tr.f')].forEach(r => r.classList.toggle('sel', +r.dataset.ino === sel));
+    const f = byIno.get(sel);
+    $('detail').innerHTML = f ? '<b>'+f.path+'</b> — inode '+f.ino+' · '+f.kind+' · '+human(f.size)+' · '+f.blocks+' blocks · '+f.nlink+' link(s) · perm '+f.perm.toString(8)+(f.holes?' · '+f.holes+' hole block(s)':'')+
+      '<div class="ext">extents (start+len): '+(f.extents.map(e=>e[0]+'+'+e[1]).join('  ')||'none')+'</div>' : 'Hover a block to see its owner. Click a file on the right to light up its extents.';
+    draw();
+  }
+  let sortK = 'path', sortDir = 1;
+  function rows() {
+    const q = $('q').value.toLowerCase();
+    const list = files.filter(f => f.path.toLowerCase().includes(q)).sort((a,b) => (a[sortK] > b[sortK] ? 1 : a[sortK] < b[sortK] ? -1 : 0) * sortDir);
+    $('rows').innerHTML = '';
+    for (const f of list) {
+      const tr = document.createElement('tr'); tr.className = 'f'; tr.dataset.ino = f.ino;
+      if (f.ino === sel) tr.classList.add('sel');
+      [[f.path,'p'],[f.kind,''],[human(f.size),''],[f.blocks,''],[f.nlink,'']].forEach(([t,c]) => { const td = document.createElement('td'); td.textContent = t; if (c) td.className = c; td.title = t; tr.appendChild(td); });
+      tr.onclick = () => select(f.ino);
+      $('rows').appendChild(tr);
+    }
+  }
+  document.querySelectorAll('th').forEach(th => th.onclick = () => { const k = th.dataset.k; sortDir = (sortK===k) ? -sortDir : 1; sortK = k; rows(); });
+  $('q').oninput = rows;
+  rows(); layout();
+}
+</script>
+</body>
+</html>
