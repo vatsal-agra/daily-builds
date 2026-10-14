@@ -6,7 +6,7 @@ fn crash_fuzz_correct_journal_is_clean() {
     for seed in 1..=3 {
         let o = CrashOpts { seed, ops: 40, ..Default::default() };
         let r = crash_fuzz(&o);
-        eprintln!("seed {seed}: events={} writes={} flushes={} states={} replays={} torn={} failures={}", r.events, r.writes, r.flushes, r.states_checked, r.replays, r.torn_states, r.failures.len());
+        eprintln!("seed {seed}: events={} writes={} flushes={} states={} replays={} nested={} torn={} failures={}", r.events, r.writes, r.flushes, r.states_checked, r.replays, r.nested_states, r.torn_states, r.failures.len());
         assert!(r.workload_errors.is_empty(), "{:?}", r.workload_errors);
         assert!(r.failures.is_empty(), "{:#?}", r.failures);
         assert!(r.replays > 0);

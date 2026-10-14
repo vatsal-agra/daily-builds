@@ -75,7 +75,7 @@ fn join(dir: &str, n: &str) -> String {
 pub fn gen_op(rng: &mut Rng, model: &Model, cfg: &GenCfg) -> Op {
     let list = model.listing();
     let dirs: Vec<&String> = list.iter().filter(|e| e.1 == Kind::Dir).map(|e| &e.0).collect();
-    let files: Vec<&(String, Kind, u64)> = list.iter().filter(|e| e.1 == Kind::File).collect();
+    let files: Vec<&(String, Kind, u64)> = list.iter().filter(|e| e.1 == Kind::File || (e.1 == Kind::Symlink && rng.chance(40))).collect();
     let non_root: Vec<&(String, Kind, u64)> = list.iter().filter(|e| e.0 != "/").collect();
     let fresh = |rng: &mut Rng| -> String {
         let d = if rng.chance(90) { (*rng.pick(&dirs)).clone() } else { rng.pick(&list).0.clone() };
@@ -238,13 +238,15 @@ pub struct CrashOpts {
     pub nblocks: u32,
     pub journal_len: u32,
     pub bug: Bug,
+    /// Also crash *during recovery* (double fault) for every 7th of the replayed states.
+    pub nested: bool,
     /// Stop after this many failures (0 = collect all).
     pub max_failures: usize,
 }
 
 impl Default for CrashOpts {
     fn default() -> Self {
-        CrashOpts { seed: 1, ops: 40, variants: 4, nblocks: 1024, journal_len: 64, bug: Bug::None, max_failures: 5 }
+        CrashOpts { seed: 1, ops: 40, variants: 4, nblocks: 1024, journal_len: 64, bug: Bug::None, nested: true, max_failures: 5 }
     }
 }
 
@@ -265,6 +267,7 @@ pub struct CrashReport {
     pub flushes: usize,
     pub states_checked: usize,
     pub replays: usize,
+    pub nested_states: usize,
     pub torn_states: usize,
     pub failures: Vec<CrashFailure>,
     pub workload_errors: Vec<String>,
@@ -272,13 +275,86 @@ pub struct CrashReport {
     pub trace: Vec<String>,
 }
 
+/// Enumerate every disk state reachable by crashing before event `idx` (for every idx): the durable
+/// image plus none / all / random subsets (shuffled order) of the writes still in flight, plus one
+/// variant where a random in-flight write is torn at sector granularity.
+fn explore<F: FnMut(usize, &str, Vec<u8>) -> bool>(
+    base: &[u8],
+    events: &[Event],
+    variants: usize,
+    rng: &mut Rng,
+    mut visit: F,
+) {
+    let mut durable = base.to_vec();
+    let mut pending: Vec<(u32, &Block)> = Vec::new();
+    for idx in 0..=events.len() {
+        let n = pending.len();
+        let mut plans: Vec<(String, Vec<usize>, Option<usize>)> = vec![("none-persisted".into(), vec![], None)];
+        if n > 0 {
+            plans.push(("all-persisted".into(), (0..n).collect(), None));
+            for v in 0..variants {
+                let mut sel: Vec<usize> = (0..n).filter(|_| rng.chance(50)).collect();
+                rng.shuffle(&mut sel);
+                plans.push((format!("random-subset#{v}"), sel, None));
+            }
+            let mut sel: Vec<usize> = (0..n).filter(|_| rng.chance(60)).collect();
+            if sel.is_empty() {
+                sel.push(rng.below(n as u64) as usize);
+            }
+            rng.shuffle(&mut sel);
+            let torn = rng.below(sel.len() as u64) as usize;
+            plans.push(("torn-write".into(), sel, Some(torn)));
+        }
+        for (name, sel, torn) in plans {
+            let mut img = durable.clone();
+            for (k, &pi) in sel.iter().enumerate() {
+                let (b, data) = pending[pi];
+                let o = b as usize * BS;
+                if torn == Some(k) {
+                    img[o..o + 512].copy_from_slice(&data[..512]);
+                } else {
+                    img[o..o + BS].copy_from_slice(&data[..]);
+                }
+            }
+            if !visit(idx, &name, img) {
+                return;
+            }
+        }
+        if idx == events.len() {
+            break;
+        }
+        match &events[idx] {
+            Event::Write(b, d) => pending.push((*b, d)),
+            Event::Flush => {
+                for (b, d) in pending.drain(..) {
+                    let o = b as usize * BS;
+                    durable[o..o + BS].copy_from_slice(&d[..]);
+                }
+            }
+            Event::Mark => {}
+        }
+    }
+}
+
+struct Verdict {
+    replayed: bool,
+    /// crash states explored inside recovery itself
+    nested: usize,
+}
+
+/// Mount a crashed image and verify it. With `nested`, additionally crash *during recovery* at every
+/// point and verify the double-crashed image recovers to an allowed state too.
 fn check_crash_image(
     image: Vec<u8>,
     bug: Bug,
     allowed: &[&Dump],
     probe: Option<u64>,
-) -> std::result::Result<bool, String> {
-    let mut fs = Fs::mount_with(MemDev::from_bytes(image), bug).map_err(|e| format!("mount failed: {e}"))?;
+    nested: Option<&mut Rng>,
+) -> std::result::Result<Verdict, String> {
+    let mut rec = MemDev::from_bytes(image.clone());
+    rec.start_recording();
+    let mut fs = Fs::mount_with(rec, bug).map_err(|e| format!("mount failed: {e}"))?;
+    let recovery_events = fs.dev.log.take().unwrap_or_default();
     let replayed = fs.replayed.is_some();
     let rep = crate::fsck::analyze(&mut fs.dev);
     if let Some(i) = rep.issues.first() {
@@ -295,8 +371,6 @@ fn check_crash_image(
     }
     if let Some(sd) = probe {
         // the recovered filesystem must remain fully usable
-        let mut m = Model::new();
-        let _ = &mut m;
         let name = format!("/probe{sd}");
         fs.create(&name).map_err(|e| format!("post-recovery create failed: {e}"))?;
         fs.write(&name, 0, &Rng::new(sd).bytes(3000)).map_err(|e| format!("post-recovery write failed: {e}"))?;
@@ -305,7 +379,26 @@ fn check_crash_image(
             return Err(format!("fsck after post-recovery writes: {i}"));
         }
     }
-    Ok(replayed)
+    let mut nested_n = 0;
+    if let Some(rng) = nested {
+        if replayed {
+            let mut err: Option<String> = None;
+            explore(&image, &recovery_events, 2, rng, |idx, name, img2| {
+                nested_n += 1;
+                match check_crash_image(img2, bug, allowed, None, None) {
+                    Ok(_) => true,
+                    Err(e) => {
+                        err = Some(format!("crash during recovery (before recovery event {idx}, {name}): {e}"));
+                        false
+                    }
+                }
+            });
+            if let Some(e) = err {
+                return Err(e);
+            }
+        }
+    }
+    Ok(Verdict { replayed, nested: nested_n })
 }
 
 pub fn crash_fuzz(o: &CrashOpts) -> CrashReport {
@@ -342,78 +435,52 @@ pub fn crash_fuzz(o: &CrashOpts) -> CrashReport {
     }
     let events = fs.dev.log.take().unwrap();
     rep.events = events.len();
-    rep.trace = events.iter().map(|e| match e { Event::Write(b, _) => format!("W{b}"), Event::Flush => "F".into(), Event::Mark => "M".into() }).collect();
     rep.writes = events.iter().filter(|e| matches!(e, Event::Write(..))).count();
     rep.flushes = events.iter().filter(|e| matches!(e, Event::Flush)).count();
-
-    // Walk the event stream maintaining the durable image and the set of in-flight writes.
-    let mut durable = base;
-    let mut pending: Vec<(u32, &Block)> = Vec::new();
+    rep.trace = events
+        .iter()
+        .map(|e| match e {
+            Event::Write(b, _) => format!("W{b}"),
+            Event::Flush => "F".into(),
+            Event::Mark => "M".into(),
+        })
+        .collect();
+    // ops completed before each event
+    let mut done_at = Vec::with_capacity(events.len() + 1);
     let mut done = 0usize;
-    let mut crng = Rng::new(o.seed ^ 0xC4A5);
-    let check_here = |idx: usize, done: usize, durable: &Vec<u8>, pending: &Vec<(u32, &Block)>, rep: &mut CrashReport, crng: &mut Rng| {
-        let allowed_owned: Vec<&Dump> = if done + 1 < states.len() { vec![&states[done], &states[done + 1]] } else { vec![&states[done]] };
-        let mut variants: Vec<(String, Vec<usize>, bool)> = Vec::new();
-        let n = pending.len();
-        variants.push(("none-persisted".into(), vec![], false));
-        if n > 0 {
-            variants.push(("all-persisted".into(), (0..n).collect(), false));
-            for v in 0..o.variants {
-                let mut sel: Vec<usize> = (0..n).filter(|_| crng.chance(50)).collect();
-                crng.shuffle(&mut sel);
-                variants.push((format!("random-subset#{v}"), sel, false));
-            }
-            // torn: the last in-flight write only half lands (sector granularity), preceding ones random
-            let mut sel: Vec<usize> = (0..n - 1).filter(|_| crng.chance(50)).collect();
-            sel.push(n - 1);
-            variants.push(("torn-last".into(), sel, true));
-        }
-        for (vname, sel, torn) in variants {
-            let mut img = durable.clone();
-            for (k, &pi) in sel.iter().enumerate() {
-                let (b, data) = pending[pi];
-                let o2 = b as usize * BS;
-                if torn && k == sel.len() - 1 {
-                    img[o2..o2 + 512].copy_from_slice(&data[..512]);
-                } else {
-                    img[o2..o2 + BS].copy_from_slice(&data[..]);
-                }
-            }
-            if torn {
-                rep.torn_states += 1;
-            }
-            rep.states_checked += 1;
-            let probe = if rep.states_checked % 16 == 0 { Some(idx as u64) } else { None };
-            let keep = if rep.failures.len() < 3 { Some(img.clone()) } else { None };
-            match check_crash_image(img, o.bug, &allowed_owned, probe) {
-                Ok(replayed) => {
-                    if replayed {
-                        rep.replays += 1;
-                    }
-                }
-                Err(what) => rep.failures.push(CrashFailure { event: idx, ops_done: done, variant: vname, what, image: keep.unwrap_or_default() }),
-            }
-        }
-    };
-
-    for (idx, ev) in events.iter().enumerate() {
-        // crash point: just before event idx
-        check_here(idx, done, &durable, &pending, &mut rep, &mut crng);
-        if o.max_failures > 0 && rep.failures.len() >= o.max_failures {
-            return rep;
-        }
-        match ev {
-            Event::Write(b, d) => pending.push((*b, d)),
-            Event::Flush => {
-                for (b, d) in pending.drain(..) {
-                    let o2 = b as usize * BS;
-                    durable[o2..o2 + BS].copy_from_slice(&d[..]);
-                }
-            }
-            Event::Mark => done += 1,
+    for e in &events {
+        done_at.push(done);
+        if matches!(e, Event::Mark) {
+            done += 1;
         }
     }
-    check_here(events.len(), done, &durable, &pending, &mut rep, &mut crng);
+    done_at.push(done);
+
+    let mut crng = Rng::new(o.seed ^ 0xC4A5);
+    let mut nrng = Rng::new(o.seed ^ 0x9E57);
+    let mut count = 0usize;
+    explore(&base, &events, o.variants, &mut crng, |idx, name, img| {
+        let done = done_at[idx];
+        let allowed: Vec<&Dump> = if done + 1 < states.len() { vec![&states[done], &states[done + 1]] } else { vec![&states[done]] };
+        count += 1;
+        rep.states_checked += 1;
+        if name == "torn-write" {
+            rep.torn_states += 1;
+        }
+        let probe = if count % 16 == 0 { Some(idx as u64) } else { None };
+        let want_nested = o.nested && count % 7 == 0;
+        let keep = if rep.failures.len() < 3 { Some(img.clone()) } else { None };
+        match check_crash_image(img, o.bug, &allowed, probe, if want_nested { Some(&mut nrng) } else { None }) {
+            Ok(v) => {
+                if v.replayed {
+                    rep.replays += 1;
+                }
+                rep.nested_states += v.nested;
+            }
+            Err(what) => rep.failures.push(CrashFailure { event: idx, ops_done: done, variant: name.to_string(), what, image: keep.unwrap_or_default() }),
+        }
+        !(o.max_failures > 0 && rep.failures.len() >= o.max_failures)
+    });
     rep
 }
 

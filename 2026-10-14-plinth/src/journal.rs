@@ -28,6 +28,8 @@ pub enum Bug {
     EarlyClear,
     /// Mount does not replay the journal at all.
     SkipReplay,
+    /// Recovery retires the journal before its own home-block writes are durable.
+    ReplayNoFlush,
 }
 
 impl Bug {
@@ -38,10 +40,11 @@ impl Bug {
             "no-journal-flush" => Bug::NoJournalFlush,
             "early-clear" => Bug::EarlyClear,
             "skip-replay" => Bug::SkipReplay,
+            "replay-no-flush" => Bug::ReplayNoFlush,
             _ => return None,
         })
     }
-    pub const ALL_MUTANTS: [Bug; 4] = [Bug::NoCrc, Bug::NoJournalFlush, Bug::EarlyClear, Bug::SkipReplay];
+    pub const ALL_MUTANTS: [Bug; 5] = [Bug::NoCrc, Bug::NoJournalFlush, Bug::EarlyClear, Bug::SkipReplay, Bug::ReplayNoFlush];
     pub fn name(self) -> &'static str {
         match self {
             Bug::None => "none",
@@ -49,6 +52,7 @@ impl Bug {
             Bug::NoJournalFlush => "no-journal-flush",
             Bug::EarlyClear => "early-clear",
             Bug::SkipReplay => "skip-replay",
+            Bug::ReplayNoFlush => "replay-no-flush",
         }
     }
 }
@@ -139,7 +143,8 @@ pub fn replay<D: BlockDev>(dev: &mut D, sb: &Superblock, bug: Bug) -> io::Result
         return Ok(None);
     }
     let targets: Vec<u32> = (0..n).map(|i| get_u32(&desc, 24 + i * 4)).collect();
-    if targets.iter().any(|&t| t >= sb.nblocks) {
+    let jr = sb.journal_start..sb.journal_start + sb.journal_len;
+    if targets.iter().any(|&t| t >= sb.nblocks || jr.contains(&t)) {
         return Ok(None);
     }
     let mut com = ZERO;
@@ -162,7 +167,9 @@ pub fn replay<D: BlockDev>(dev: &mut D, sb: &Superblock, bug: Bug) -> io::Result
     for (t, d) in targets.iter().zip(datas.iter()) {
         dev.write(*t, d)?;
     }
-    dev.flush()?;
+    if bug != Bug::ReplayNoFlush {
+        dev.flush()?;
+    }
     dev.write(js, &ZERO)?;
     dev.flush()?;
     Ok(Some(n))

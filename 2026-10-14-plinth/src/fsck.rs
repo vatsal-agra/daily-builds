@@ -260,6 +260,17 @@ pub fn analyze_image(image: Vec<u8>) -> Analysis {
                 }
             }
         }
+        if inode.mtime > sb.clock {
+            issue!("bad-mtime", ino as u32, "inode {ino} has modification time {} from the future (clock {})", inode.mtime, sb.clock);
+        }
+        if kind != Kind::Dir && inode.size % BS as u64 != 0 {
+            let l = (inode.size / BS as u64) as usize;
+            if let Some(&p) = map.get(l) {
+                if p != 0 && a.blk(p)[(inode.size % BS as u64) as usize..].iter().any(|&x| x != 0) {
+                    issue!("dirty-tail", ino as u32, "inode {ino} has non-zero bytes past its end in its last block (would reappear when the file grows)");
+                }
+            }
+        }
         if kind != Kind::Dir {
             let holes = (0..size_blocks as usize).filter(|&l| map.get(l).copied().unwrap_or(0) == 0).count();
             a.stats.sparse_holes += holes as u64;

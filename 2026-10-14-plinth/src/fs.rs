@@ -8,7 +8,8 @@ use crate::layout::*;
 use crate::vfs::{assign_groups, Dump, DumpNode, Vfs};
 use std::collections::{BTreeMap, VecDeque};
 
-pub const WRITE_CHUNK: usize = 32 * BS;
+/// Upper bound on data blocks per write transaction (smaller journals shrink it, see `chunk_bytes`).
+pub const WRITE_CHUNK_BLOCKS: usize = 32;
 const MAX_SYMLINK_HOPS: u32 = 8;
 const MAX_SYMLINK_LEN: usize = BS;
 
@@ -55,6 +56,9 @@ pub struct Fs<D: BlockDev> {
     pub replayed: Option<usize>,
     tx: Option<TxMap>,
     hint: u32,
+    /// Set after an I/O failure during commit: the on-disk journal may hold a transaction that the
+    /// checkpoint did not finish, so further writes could overwrite it. Remount to recover.
+    poisoned: Option<String>,
 }
 
 impl<D: BlockDev> Fs<D> {
@@ -100,7 +104,7 @@ impl<D: BlockDev> Fs<D> {
         dev.write(root_blk, &rd)?;
         dev.write(0, &sb.encode())?;
         dev.flush()?;
-        Ok(Fs { dev, sb, bug: Bug::None, replayed: None, tx: None, hint: root_blk + 1 })
+        Ok(Fs { dev, sb, bug: Bug::None, replayed: None, tx: None, hint: root_blk + 1, poisoned: None })
     }
 
     pub fn mount(dev: D) -> Result<Fs<D>> {
@@ -124,7 +128,7 @@ impl<D: BlockDev> Fs<D> {
             }
         }
         let hint = sb.data_start;
-        Ok(Fs { dev, sb, bug, replayed, tx: None, hint })
+        Ok(Fs { dev, sb, bug, replayed, tx: None, hint, poisoned: None })
     }
 
     pub fn into_dev(self) -> D {
@@ -146,6 +150,9 @@ impl<D: BlockDev> Fs<D> {
 
     fn txn<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
         assert!(self.tx.is_none(), "nested transaction");
+        if let Some(why) = &self.poisoned {
+            return Err(FsError::Io(format!("filesystem is read-only after an earlier I/O failure ({why}); remount to recover")));
+        }
         self.tx = Some(BTreeMap::new());
         match f(self) {
             Ok(v) => {
@@ -182,7 +189,9 @@ impl<D: BlockDev> Fs<D> {
         }
         let seq = self.sb.clock;
         if let Err(e) = journal::commit(&mut self.dev, &self.sb, &dirty, seq, self.bug) {
-            self.abort();
+            // The transaction may be durable in the journal but only partly checkpointed. Do not
+            // let a later transaction overwrite it: refuse writes until a remount replays it.
+            self.poisoned = Some(e.to_string());
             return Err(e.into());
         }
         Ok(())
@@ -314,6 +323,9 @@ impl<D: BlockDev> Fs<D> {
         let i = self.get_inode(ino)?;
         if i.kind().is_none() {
             return Err(FsError::Corrupt(format!("inode {ino} is free but referenced")));
+        }
+        if i.size > MAX_FILE_SIZE {
+            return Err(FsError::Corrupt(format!("inode {ino} has impossible size {}", i.size)));
         }
         Ok(i)
     }
@@ -841,6 +853,13 @@ impl<D: BlockDev> Fs<D> {
         })
     }
 
+    /// Bytes per atomic write chunk: as many as fit in one transaction after reserving room for
+    /// indirect blocks, bitmap blocks, the inode block and the superblock.
+    pub fn chunk_bytes(&self) -> usize {
+        let room = journal::max_tx_blocks(&self.sb).saturating_sub(8 + self.sb.bbm_len as usize);
+        room.clamp(1, WRITE_CHUNK_BLOCKS) * BS
+    }
+
     fn file_target(&mut self, p: &str) -> Result<u32> {
         let ino = self.resolve(p, true)?;
         match self.live_inode(ino)?.kind() {
@@ -855,9 +874,10 @@ impl<D: BlockDev> Fs<D> {
             self.txn(|fs| fs.file_target(p).map(|_| ()))?;
             return Ok(());
         }
+        let chunk = self.chunk_bytes();
         let mut done = 0usize;
         while done < data.len() {
-            let n = WRITE_CHUNK.min(data.len() - done);
+            let n = chunk.min(data.len() - done);
             let at = off.checked_add(done as u64).ok_or(FsError::TooBig)?;
             self.txn(|fs| {
                 let ino = fs.file_target(p)?;
@@ -943,7 +963,12 @@ impl<D: BlockDev> Fs<D> {
             if skind == Kind::Dir {
                 // moving a directory beneath itself would orphan it
                 let mut cur = dp;
+                let mut steps = 0u32;
                 loop {
+                    steps += 1;
+                    if steps > fs.sb.ninodes {
+                        return Err(FsError::Corrupt("directory '..' chain does not reach the root".into()));
+                    }
                     if cur == sino {
                         return Err(FsError::Invalid("cannot move a directory into itself".into()));
                     }

@@ -12,3 +12,5 @@ Journaling filesystem + crash-consistency lab (Rust, zero deps). See [PLAN.md](P
 | R4 | Differential fuzzer vs. reference model + crash-state fuzzer (record/replay, subsets, torn writes) | `src/model.rs`, `src/fuzz.rs` |
 
 Try: `cargo test --release`.
+
+**Phase 3 (adversarial review) done** — see [REVIEW.md](REVIEW.md): 7 real defects (one critical, found by the crash fuzzer itself), 5 verification gaps closed, 5 mutants.

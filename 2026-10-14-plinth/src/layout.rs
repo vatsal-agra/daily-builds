@@ -18,6 +18,8 @@ pub const MAX_FILE_SIZE: u64 = MAX_FILE_BLOCKS * BS as u64;
 pub const BITS_PER_BLOCK: u32 = (BS * 8) as u32;
 pub const MAX_LINKS: u16 = 60000;
 
+/// Smallest journal that can still hold the largest single metadata operation (rename).
+pub const MIN_JOURNAL: u32 = 24;
 pub const JDESC_MAGIC: &[u8; 8] = b"PLJDESC1";
 pub const JCOMMIT_MAGIC: &[u8; 8] = b"PLJCOMT1";
 /// Max data blocks one transaction can carry (descriptor holds 250 target numbers).
@@ -199,10 +201,13 @@ impl Superblock {
         if ninodes < 2 || ninodes > BITS_PER_BLOCK {
             return Err(format!("inode count must be in 2..={}", BITS_PER_BLOCK));
         }
-        if journal_len < 8 || journal_len as usize > JDESC_CAP + 2 {
-            return Err(format!("journal length must be in 8..={}", JDESC_CAP + 2));
+        if journal_len < MIN_JOURNAL || journal_len as usize > JDESC_CAP + 2 {
+            return Err(format!("journal length must be in {MIN_JOURNAL}..={}", JDESC_CAP + 2));
         }
         let bbm_len = (nblocks + BITS_PER_BLOCK - 1) / BITS_PER_BLOCK;
+        if journal_len < 14 + bbm_len {
+            return Err(format!("journal of {journal_len} blocks is too small for {bbm_len} bitmap blocks (need >= {})", 14 + bbm_len));
+        }
         let itable_len = (ninodes + IPB as u32 - 1) / IPB as u32;
         let journal_start = 1;
         let ibm_start = journal_start + journal_len;

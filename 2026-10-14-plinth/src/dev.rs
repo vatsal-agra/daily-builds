@@ -85,6 +85,8 @@ impl BlockDev for MemDev {
 pub struct FileDev {
     f: std::fs::File,
     n: u32,
+    /// `PLINTH_NOSYNC=1` skips fsync (benchmarks and tests only; defeats durability).
+    nosync: bool,
 }
 
 impl FileDev {
@@ -94,12 +96,12 @@ impl FileDev {
         if len % BS as u64 != 0 || len == 0 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "image size is not a multiple of the block size"));
         }
-        Ok(FileDev { f, n: (len / BS as u64) as u32 })
+        Ok(FileDev { f, n: (len / BS as u64) as u32, nosync: std::env::var_os("PLINTH_NOSYNC").is_some() })
     }
     pub fn create(path: &str, nblocks: u32) -> io::Result<FileDev> {
         let f = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(true).open(path)?;
         f.set_len(nblocks as u64 * BS as u64)?;
-        Ok(FileDev { f, n: nblocks })
+        Ok(FileDev { f, n: nblocks, nosync: std::env::var_os("PLINTH_NOSYNC").is_some() })
     }
 }
 
@@ -120,6 +122,43 @@ impl BlockDev for FileDev {
         self.f.write_all_at(buf, b as u64 * BS as u64)
     }
     fn flush(&mut self) -> io::Result<()> {
+        if self.nosync {
+            return Ok(());
+        }
         self.f.sync_data()
+    }
+}
+
+/// Wraps a device and makes the Nth write (1-based, counting from now) and every later one fail.
+pub struct FaultDev<D: BlockDev> {
+    pub inner: D,
+    pub fail_at: Option<u64>,
+    pub writes: u64,
+}
+
+impl<D: BlockDev> FaultDev<D> {
+    pub fn new(inner: D) -> FaultDev<D> {
+        FaultDev { inner, fail_at: None, writes: 0 }
+    }
+}
+
+impl<D: BlockDev> BlockDev for FaultDev<D> {
+    fn nblocks(&self) -> u32 {
+        self.inner.nblocks()
+    }
+    fn read(&mut self, b: u32, buf: &mut Block) -> io::Result<()> {
+        self.inner.read(b, buf)
+    }
+    fn write(&mut self, b: u32, buf: &Block) -> io::Result<()> {
+        self.writes += 1;
+        if let Some(n) = self.fail_at {
+            if self.writes >= n {
+                return Err(io::Error::new(io::ErrorKind::Other, "injected write failure"));
+            }
+        }
+        self.inner.write(b, buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
     }
 }
