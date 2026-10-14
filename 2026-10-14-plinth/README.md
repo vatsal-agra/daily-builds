@@ -61,7 +61,7 @@ Set `PLINTH_NOSYNC=1` to skip `fsync` (fast demos; defeats durability). Paths in
 |-|---------|--------|
 | R1 | Filesystem core: mkfs/mount, allocators, direct/indirect/double-indirect mapping, directories (growing past 12 blocks), files, symlinks, hard links, rename (dir moves, cycle check, replace rules), truncate, sparse files | ✅ |
 | R2 | Write-ahead journal with CRC, 3-barrier commit, idempotent replay, rollback, poison-on-I/O-error | ✅ |
-| R3 | fsck: 25 issue codes — bitmaps both ways, link counts, double-claimed/out-of-range/past-EOF blocks, orphans, dangling/duplicate entries, `.`/`..`, multi-parent dirs, sizes, dirty EOF tail, mtimes, free counters | ✅ |
+| R3 | fsck: 28 issue codes — bitmaps both ways, link counts, double-claimed/out-of-range/past-EOF blocks, orphans, dangling/duplicate entries, `.`/`..`, multi-parent dirs, sizes, dirty EOF tail, mtimes, free counters | ✅ |
 | R4 | Crash-consistency fuzzer (record/replay, subsets, torn writes, double faults) + model-differential fuzzer | ✅ |
 | S1 | `fsck --repair`: fixes bitmaps/counters/nlink/pointers/dup blocks/dangling entries/`..`; reconnects orphans (whole subtrees) into `/lost+found`; idempotent; verified against a 16-kind corruption injector | ✅ |
 | S2 | Mutation self-test: 5 injectable journal bugs, all must be killed (`replay-no-flush` only dies to the double-fault mode) | ✅ |
