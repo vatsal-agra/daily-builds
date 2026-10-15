@@ -41,5 +41,5 @@ Required: 1–4. Stretch: 5–8 (aim for at least 5, 6, 7).
 - Go unit tests per opcode group against hand-computed truth tables (flags exhaustively for ALU ops over all 8-bit operands).
 - `cputest.s` self-checking ROM run headless: result reported via serial + screen.
 - PPU golden checks (pixel assertions from assembled ROMs), timer/interrupt timing tests, MBC bank-switch ROM.
-- Assembler↔disassembler round trip over all 501 opcodes.
+- Assembler↔disassembler round trip over all 500 opcodes (244 base + 256 CB).
 - Playwright check of the web player.
