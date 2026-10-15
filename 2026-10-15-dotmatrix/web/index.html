@@ -32,6 +32,14 @@
   button.primary:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--accent); }
   main { display: grid; gap: 14px; padding: 14px 16px 28px; grid-template-columns: minmax(300px, 520px) minmax(320px, 1fr) minmax(300px, 420px); align-items: start; }
   @media (max-width: 1200px) { main { grid-template-columns: minmax(300px, 520px) 1fr; } .inspector { grid-column: 1 / -1; } }
+  @media (max-width: 460px) {
+    .bezel { padding: 12px 12px 12px; margin: 8px; }
+    .screenwrap { padding: 10px 12px 8px; }
+    .pad { grid-template-columns: 1fr 1fr; grid-template-areas: "d a" "s s"; row-gap: 6px; }
+    .dpad { grid-area: d; justify-self: start; }
+    .ab { grid-area: a; justify-self: end; }
+    .ss { grid-area: s; gap: 18px; }
+  }
   @media (max-width: 760px) { main { grid-template-columns: 1fr; padding: 10px 12px 24px; } header { position: static; } }
   section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
   section > h2 { margin: 0; padding: 8px 12px; font-size: 12px; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
@@ -309,7 +317,8 @@ function initUI() {
   window.addEventListener("blur", () => { for (let i = 0; i < 8; i++) press(i, false); });
   document.addEventListener("pointerdown", ensureAudio, { once: true });
   document.addEventListener("keydown", ensureAudio, { once: true });
-  window.__dm = { get ready() { return mounted; }, press, api: dm.api, get fps() { return fps; } };
+  window.__dm = { get ready() { return mounted; }, press, api: dm.api, get fps() { return fps; },
+    toggleBreak(a) { breaks.has(a) ? breaks.delete(a) : breaks.add(a); dm.api.setBreakpoints(JSON.stringify([...breaks])); refreshInspector(true); } };
   assemble();
   requestAnimationFrame(loop);
 }
@@ -386,7 +395,7 @@ function setPaused(p) {
   paused = p; $("runPause").textContent = p ? "Run" : "Pause";
   $("runPause").classList.toggle("primary", !p);
   if (audioCtx && audioCtx.state === "suspended" && !p) audioCtx.resume();
-  if (!p) { lastT = 0; accumulator = 0; }
+  if (!p) { lastT = 0; accumulator = 0; showMsg(""); }
 }
 
 function runOne() {

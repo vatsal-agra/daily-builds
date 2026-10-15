@@ -160,6 +160,27 @@ func TestMBC1RAM(t *testing.T) {
 	}
 }
 
+func TestRAMEnableOnlyOnLowNibbleA(t *testing.T) {
+	for _, typ := range []int{3, 0x13, 0x1B} {
+		c := markedROM(t, typ, 4, 3)
+		for _, v := range []byte{0x00, 0x0B, 0x01, 0xFF, 0x0F, 0x0C} {
+			c.WriteReg(0x0000, v)
+			c.WriteRAM(0xA000, 0x5A)
+			if c.ReadRAM(0xA000) != 0xFF {
+				t.Errorf("type %02X: value %02X enabled RAM", typ, v)
+			}
+		}
+		for _, v := range []byte{0x0A, 0x1A, 0xFA} {
+			c.WriteReg(0x0000, 0x00)
+			c.WriteReg(0x0000, v)
+			c.WriteRAM(0xA000, 0x5A)
+			if c.ReadRAM(0xA000) != 0x5A {
+				t.Errorf("type %02X: value %02X did not enable RAM", typ, v)
+			}
+		}
+	}
+}
+
 func TestMBC3(t *testing.T) {
 	c := markedROM(t, 0x10, 128, 3)
 	c.WriteReg(0x2000, 0x7F)

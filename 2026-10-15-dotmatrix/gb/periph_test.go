@@ -65,28 +65,13 @@ main:
 
 func TestInterruptPriorityAndVectors(t *testing.T) {
 	for bit := 0; bit < 5; bit++ {
-		g := buildRaw(t, fmt.Sprintf(`
-	.org 0x%02X
-	ld a, %d
-	halt
-	.org 0x100
-	jp main
-	.org 0x150
-main:
-	ld sp, 0xDFF0
-	ld a, 0x1F
-	ldh [0xFF], a
-	ldh [0x0F], a   ; all five pending: lowest bit must win
-	ei
-	nop
-	halt
-`, 0x40+8*bit, 100+bit))
-		_ = g
-		// above: all five pending => always vector 0x40. Build single-source variant:
-		g = buildRaw(t, fmt.Sprintf(`
-	.org 0x%02X
-	ld b, %d
-	halt
+		// Every vector slot is padded with RST $38 so that jumping to a wrong
+		// (e.g. mis-spaced) vector can't slide into the right handler through NOPs.
+		var vectors string
+		for v := 0; v < 5; v++ {
+			vectors += fmt.Sprintf("\t.org 0x%02X\n\tld b, %d\n\thalt\n\t.db 0xFF, 0xFF, 0xFF, 0xFF, 0xFF\n", 0x40+8*v, 10+v)
+		}
+		g := buildRaw(t, vectors+fmt.Sprintf(`
 	.org 0x100
 	jp main
 	.org 0x150
@@ -99,11 +84,12 @@ main:
 	ei
 	nop
 	halt
-`, 0x40+8*bit, 10+bit, 1<<bit))
-		runUntilHalt(t, g, 100000)
-		g.Step() // ensure settled
+`, 1<<bit))
+		for i := 0; i < 400 && g.b == 0; i++ {
+			g.Step()
+		}
 		if int(g.b) != 10+bit {
-			t.Errorf("interrupt bit %d: B=%d, vector not taken", bit, g.b)
+			t.Errorf("interrupt bit %d: B=%d, vector 0x%02X not taken", bit, g.b, 0x40+8*bit)
 		}
 	}
 	// priority: VBlank (bit0) before Timer (bit2); the other stays pending.
@@ -151,6 +137,24 @@ func TestInterruptDispatchCost(t *testing.T) {
 	}
 	if lo, hi := g.peek(0xDFEE), g.peek(0xDFEF); uint16(hi)<<8|uint16(lo) != 0x150 {
 		t.Errorf("pushed return address %02X%02X", hi, lo)
+	}
+}
+
+func TestSerialTransferCompletes(t *testing.T) {
+	g := onlyOp(t, 0)
+	g.ifl = 0
+	g.writeIO(0xFF01, 0x42)
+	g.writeIO(0xFF02, 0x81)
+	g.advance(4000)
+	if g.readIO(0xFF02)&0x80 == 0 || len(g.Serial) != 0 {
+		t.Fatal("transfer finished too early")
+	}
+	g.advance(200)
+	if g.readIO(0xFF02)&0x80 != 0 || string(g.Serial) != "B" || g.ifl&IntSerial == 0 {
+		t.Fatalf("after transfer: SC=%02X serial=%q IF=%02X", g.readIO(0xFF02), g.Serial, g.ifl)
+	}
+	if g.readIO(0xFF01) != 0xFF {
+		t.Errorf("with no peer connected SB must read FF after a transfer, got %02X", g.readIO(0xFF01))
 	}
 }
 
@@ -383,6 +387,10 @@ func TestMemoryMap(t *testing.T) {
 	if g.read(0xC456) != 0xA5 {
 		t.Errorf("write through echo")
 	}
+	g.write(0xD123, 0x3C) // top of WRAM is mirrored at the top of echo RAM
+	if g.read(0xF123) != 0x3C || g.read(0xFDFF) != g.read(0xDDFF) {
+		t.Errorf("echo RAM must mirror all of C000-DDFF (F123=%02X)", g.read(0xF123))
+	}
 	if g.read(0xFEA5) != 0xFF {
 		t.Errorf("prohibited area should read FF")
 	}
@@ -403,5 +411,29 @@ func TestMemoryMap(t *testing.T) {
 	g.write(0x0150, ^before)
 	if g.read(0x0150) != before {
 		t.Errorf("ROM write modified ROM")
+	}
+}
+
+func TestBreakpointResumeSkipsOnceThenRearms(t *testing.T) {
+	g := buildRaw(t, "\t.org 0x100\n\tjp main\n\t.org 0x150\nmain:\n\tnop\n.loop:\n\tinc b\n\tjr .loop\n")
+	g.Dbg = NewDebugger()
+	loop := uint16(0x151)
+	g.Dbg.AddBreak(loop, nil)
+	hits := 0
+	for i := 0; i < 40 && hits < 3; i++ {
+		err := g.StepChecked()
+		if _, ok := err.(*StopError); ok {
+			if g.pc != loop {
+				t.Fatalf("stopped at %04X", g.pc)
+			}
+			hits++
+			continue // plain resume: no ResumeFromStop needed
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if hits != 3 {
+		t.Fatalf("breakpoint hit %d times, want 3 (resume must skip it once, then re-arm)", hits)
 	}
 }

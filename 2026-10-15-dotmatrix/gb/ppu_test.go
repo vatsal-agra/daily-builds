@@ -342,13 +342,13 @@ func TestSprites(t *testing.T) {
 	g.writeIO(0xFF47, 0xE4)
 	g.writeIO(0xFF48, 0xE4)
 	g.writeIO(0xFF49, 0x1B)
-	// tile 1: colour = x (0..7)&3 +? use gradient with transparent column 0
-	setTile(g, 0x8010, func(x, y int) int { return []int{0, 1, 2, 3, 3, 2, 1, 0}[x] })
+	// tile 1 is deliberately NOT mirror-symmetric so X flips are visible
+	setTile(g, 0x8010, func(x, y int) int { return []int{0, 1, 2, 3, 0, 0, 0, 1}[x] })
 	g.writeIO(0xFF40, 0x93)         // BG + OBJ on, 8x8
 	oamSet(g, 0, 16+10, 8+20, 1, 0) // at (20,10)
 	fb := frame(t, g)
 	for x := 0; x < 8; x++ {
-		want := []int{0, 1, 2, 3, 3, 2, 1, 0}[x]
+		want := []int{0, 1, 2, 3, 0, 0, 0, 1}[x]
 		if int(px(fb, 20+x, 10)) != want {
 			t.Fatalf("sprite px %d = %d want %d", x, px(fb, 20+x, 10), want)
 		}
@@ -356,9 +356,11 @@ func TestSprites(t *testing.T) {
 	// X flip + OBP1
 	oamSet(g, 0, 16+10, 8+20, 1, 0x20|0x10)
 	fb = frame(t, g)
-	// flipped x=1 -> source col 6 -> colour 1 -> OBP1 (0x1B): colour1 -> (0x1B>>2)&3 = 2
-	if px(fb, 20+1, 10) != 2 {
-		t.Errorf("xflip/obp1: %d", px(fb, 21, 10))
+	// mirrored source columns 7..0 = 1,0,0,0,3,2,1,0 ; OBP1 = 0x1B maps colours 1->2, 2->1, 3->0
+	for x, want := range []byte{2, 0, 0, 0, 0, 1, 2, 0} {
+		if px(fb, 20+x, 10) != want {
+			t.Errorf("x-flipped sprite column %d = %d, want %d", x, px(fb, 20+x, 10), want)
+		}
 	}
 	// Y flip: sprite with distinct rows
 	setTile(g, 0x8020, func(x, y int) int { return y & 3 })

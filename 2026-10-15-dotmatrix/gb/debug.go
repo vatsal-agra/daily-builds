@@ -332,6 +332,7 @@ func (g *GB) StepChecked() error {
 			for _, b := range d.Breaks {
 				if b.Addr == g.pc && !g.halted && (b.Cond == nil || b.Cond.Eval(g)) {
 					b.Hits++
+					d.skipBreak = true // the next StepChecked resumes past this breakpoint
 					return &StopError{"breakpoint", g.pc, fmt.Sprintf("breakpoint %d at %04X", b.ID, g.pc)}
 				}
 			}

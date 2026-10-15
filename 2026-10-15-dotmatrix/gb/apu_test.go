@@ -239,10 +239,15 @@ func TestWaveChannel(t *testing.T) {
 	// quarter volume is quieter than full
 	g.writeIO(0xFF1C, 0x20)
 	full := peak(runAudio(g, ClockHz/20), 0)
+	g.writeIO(0xFF1C, 0x40)
+	half := peak(runAudio(g, ClockHz/20), 0)
 	g.writeIO(0xFF1C, 0x60)
 	quarter := peak(runAudio(g, ClockHz/20), 0)
-	if !(quarter < full/2) {
-		t.Errorf("quarter volume peak %d not well below full %d", quarter, full)
+	if r := float64(half) / float64(full); r < 0.4 || r > 0.6 {
+		t.Errorf("50%% volume code gives %.2f of full amplitude", r)
+	}
+	if r := float64(quarter) / float64(full); r < 0.15 || r > 0.35 {
+		t.Errorf("25%% volume code gives %.2f of full amplitude", r)
 	}
 	// DAC off turns the channel off
 	g.writeIO(0xFF1A, 0x00)
@@ -283,24 +288,31 @@ func TestNoiseChannel(t *testing.T) {
 	if same {
 		t.Error("7-bit LFSR mode sounds identical to 15-bit mode")
 	}
-	// the 7-bit LFSR repeats with period 127 steps
-	c := &a.APU.ch4
-	c.narrow = true
-	c.lfsr = 0x7FFF
-	seen := map[uint16]int{}
-	period := 0
-	for i := 0; i < 300; i++ {
-		x := (c.lfsr ^ c.lfsr>>1) & 1
-		c.lfsr = c.lfsr>>1 | x<<14
-		c.lfsr = c.lfsr&^(1<<6) | x<<6
-		if p, ok := seen[c.lfsr]; ok {
-			period = i - p
-			break
+	// Drive the real channel and observe its LFSR: 7-bit mode must repeat every 127 steps, 15-bit every 32767.
+	period := func(mode byte, limit int) int {
+		m := newAPUMachine(t)
+		m.writeIO(0xFF21, 0xF0)
+		m.writeIO(0xFF22, mode) // shift 0, divisor code from mode
+		m.writeIO(0xFF23, 0x80)
+		c := &m.APU.ch4
+		step := noiseDivisor[mode&7] << (mode >> 4)
+		for i := 0; i < 40; i++ { // flush the all-ones start state into the real cycle
+			m.APU.advanceChannels(step)
 		}
-		seen[c.lfsr] = i
+		start := c.lfsr
+		for i := 1; i <= limit; i++ {
+			m.APU.advanceChannels(step)
+			if c.lfsr == start {
+				return i
+			}
+		}
+		return -1
 	}
-	if period != 127 {
-		t.Errorf("7-bit LFSR period %d, want 127", period)
+	if p := period(0x08, 400); p != 127 {
+		t.Errorf("7-bit LFSR period %d, want 127", p)
+	}
+	if p := period(0x00, 40000); p != 32767 {
+		t.Errorf("15-bit LFSR period %d, want 32767", p)
 	}
 }
 
