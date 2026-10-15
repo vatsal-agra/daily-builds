@@ -61,8 +61,11 @@ type GB struct {
 	// Cycles is the total number of T-cycles executed.
 	Cycles uint64
 
-	// Frames counts completed frames (VBlank entries).
+	// Frames counts completed frames (VBlank entries). With the LCD off a
+	// "frame" still elapses every CyclesPerFrame so callers never spin forever.
 	Frames uint64
+
+	lcdOffCycles int
 
 	Dbg *Debugger
 }
@@ -128,6 +131,13 @@ func (g *GB) advance(t int) {
 		g.tickSerial()
 	}
 	g.tickPPU(t)
+	if !g.PPU.lcdOn() {
+		g.lcdOffCycles += t
+		if g.lcdOffCycles >= CyclesPerFrame {
+			g.lcdOffCycles -= CyclesPerFrame
+			g.Frames++
+		}
+	}
 	g.APU.tick(t)
 	g.Cart.tickRTC(t)
 	g.Cycles += uint64(t)

@@ -3,7 +3,7 @@
 A from-scratch **Game Boy (DMG) emulator** in Go, shipped with its own **SM83 assembler and disassembler** —
 so every ROM it runs is written in this repo. No external ROMs, no dependencies (stdlib only).
 
-> **Status: Phase 2 complete (core build).** Required features 1–4 work end to end. See [PLAN.md](PLAN.md).
+> **Status: Phase 3 complete (adversarial review).** Required features 1–4 work end to end; see [REVIEW.md](REVIEW.md) for what the review found and fixed. See [PLAN.md](PLAN.md).
 
 ## Quick start
 

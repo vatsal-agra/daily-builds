@@ -227,6 +227,9 @@ func init() {
 		}
 		byMnemonic[t.Mnemonic] = append(byMnemonic[t.Mnemonic], t)
 	}
+	// STOP is followed by a padding byte that is normally 00; "stop $xx" keeps
+	// other values lossless. Only the assembler uses this form.
+	byMnemonic["stop"] = append(byMnemonic["stop"], &Template{Mnemonic: "stop", Ops: []string{phD8}, Opcode: 0x10, Size: 2})
 }
 
 // Text renders a template with the given operand strings substituted for

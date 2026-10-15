@@ -76,6 +76,9 @@ func openMachine(path string) (*gb.GB, *asm.Result, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if !cart.Info.HeaderOK {
+		fmt.Fprintln(os.Stderr, "warning: header checksum is wrong (real hardware would refuse to boot this ROM)")
+	}
 	return gb.New(cart), res, nil
 }
 

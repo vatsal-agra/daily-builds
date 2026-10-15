@@ -508,3 +508,18 @@ main:
 		t.Errorf("bottom half not shifted by 4: %d %d", px(fb, 0, 100), px(fb, 2, 100))
 	}
 }
+
+// Regression: with the LCD off no VBlank ever occurs, but RunFrame must still
+// return once a frame's worth of time has passed (it used to spin forever).
+func TestRunFrameWithLCDOff(t *testing.T) {
+	g := buildRaw(t, "\t.org 0x100\n\tjp main\n\t.org 0x150\nmain:\n\txor a\n\tldh [0x40], a\n\tjr $\n")
+	before := g.Cycles
+	for i := 0; i < 3; i++ {
+		if err := g.RunFrame(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if g.Cycles-before > 4*CyclesPerFrame {
+		t.Errorf("3 frames with the LCD off took %d cycles", g.Cycles-before)
+	}
+}

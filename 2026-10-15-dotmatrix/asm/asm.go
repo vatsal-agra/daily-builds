@@ -141,6 +141,18 @@ type item struct {
 	fill  int
 }
 
+func (a *assembler) dedupe() ErrorList {
+	seen := map[Error]bool{}
+	var out ErrorList
+	for _, e := range a.errs {
+		if !seen[e] {
+			seen[e] = true
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 func (a *assembler) errf(loc Loc, format string, args ...any) {
 	a.errs = append(a.errs, Error{loc, fmt.Sprintf(format, args...)})
 }
@@ -160,12 +172,15 @@ func Assemble(name, source string, opt Options) (*Result, error) {
 	}
 	a.pass1(lines)
 	a.resolveDeferred()
+	a.pass2() // keep going after pass-1 errors so one run reports as much as possible
 	if len(a.errs) > 0 {
-		return nil, a.errs
-	}
-	a.pass2()
-	if len(a.errs) > 0 {
-		return nil, a.errs
+		sort.SliceStable(a.errs, func(i, j int) bool {
+			if a.errs[i].Loc.File != a.errs[j].Loc.File {
+				return false
+			}
+			return a.errs[i].Loc.Line < a.errs[j].Loc.Line
+		})
+		return nil, a.dedupe()
 	}
 	res := a.finish()
 	if len(a.errs) > 0 {
@@ -479,6 +494,10 @@ func (a *assembler) line1(ln srcLine) {
 		return
 	}
 	lw := strings.ToLower(word)
+	switch lw { // bare directive spellings used by many assemblers
+	case "db", "dw", "ds":
+		lw = "." + lw
+	}
 	if strings.HasPrefix(lw, ".") {
 		a.directive(loc, lw, rest)
 		return
@@ -709,7 +728,18 @@ func (a *assembler) instruction(loc Loc, mn, rest string) {
 			a.errf(loc, "empty operand in %s", mn)
 			return
 		}
+		if msg := badOperandSyntax(p); msg != "" {
+			a.errf(loc, "%s: %s", mn, msg)
+			return
+		}
 		ops[i] = parseOperand(p)
+	}
+	// ldh [c],a / ldh a,[c] and jp [hl] are accepted spellings of ld [c],a / ld a,[c] / jp hl
+	if mn == "ldh" && len(ops) == 2 && (ops[0].text == "[c]" || ops[1].text == "[c]") && (ops[0].kind == "lit" || ops[1].kind == "lit") {
+		mn = "ld"
+	}
+	if mn == "jp" && len(ops) == 1 && ops[0].kind == "lit" && ops[0].text == "[hl]" {
+		ops[0].text = "hl"
 	}
 	// optional accumulator operand normalisation
 	switch mn {
@@ -747,11 +777,39 @@ func (a *assembler) instruction(loc Loc, mn, rest string) {
 		}
 	}
 	if chosen == nil {
+		switch mn {
+		case "bit", "res", "set", "rst":
+			for _, o := range ops {
+				if o.kind == "expr" {
+					if _, err := evalExpr(o.text, a.pc, a.lookupFn(a.lastGlob)); err != nil {
+						a.errf(loc, "%s operand %q: %v (it must be a constant defined before this line)", mn, o.text, err)
+						return
+					}
+				}
+			}
+		}
 		a.errf(loc, "no form of %q accepts operands (%s)", mn, rest)
 		return
 	}
 	a.items = append(a.items, item{kind: kInstr, loc: loc, pc: a.pc, bank: a.bank, glob: a.lastGlob, tmpl: chosen, ops: ops})
 	a.advance(chosen.Size)
+}
+
+// badOperandSyntax catches common spelling mistakes before template matching.
+func badOperandSyntax(p string) string {
+	if strings.Count(p, "[") != strings.Count(p, "]") {
+		return fmt.Sprintf("unbalanced brackets in %q", p)
+	}
+	if strings.Count(p, "(") != strings.Count(p, ")") {
+		return fmt.Sprintf("unbalanced parentheses in %q", p)
+	}
+	if len(p) > 2 && p[0] == '(' && p[len(p)-1] == ')' {
+		inner := strings.ToLower(strings.ReplaceAll(p[1:len(p)-1], " ", ""))
+		if _, ok := litWords["["+inner+"]"]; ok || reserved[inner] {
+			return fmt.Sprintf("%q: memory operands are written with square brackets, e.g. [%s]", p, strings.TrimSpace(p[1:len(p)-1]))
+		}
+	}
+	return ""
 }
 
 func isNumLit(p string) bool {
@@ -798,8 +856,8 @@ func (a *assembler) matches(loc Loc, t *Template, ops []operand) bool {
 // ---- pass 2: emit ------------------------------------------------------
 
 func offsetOf(bank, pc int) int {
-	if pc < 0x4000 {
-		return pc
+	if pc < 0x4000 || bank == 0 {
+		return pc // bank 0 is "flat": code may run straight on into bank 1
 	}
 	return bank*0x4000 + (pc - 0x4000)
 }
@@ -807,8 +865,8 @@ func offsetOf(bank, pc int) int {
 func (a *assembler) put(loc Loc, bank, pc int, bs ...byte) {
 	for i, b := range bs {
 		addr := pc + i
-		if addr >= 0x8000 || (bank == 0 && addr >= 0x4000) {
-			a.errf(loc, "code/data runs past the end of its ROM bank at %#04x", addr)
+		if addr >= 0x8000 {
+			a.errf(loc, "code/data runs past the end of the 32 KiB address window at %#04x", addr)
 			return
 		}
 		off := offsetOf(bank, addr)

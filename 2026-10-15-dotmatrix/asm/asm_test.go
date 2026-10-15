@@ -3,6 +3,7 @@ package asm
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
 )
@@ -101,6 +102,37 @@ end:
 	}
 	if r.Symbols["start.loop"] != 2 || r.Symbols["end"] != 10 {
 		t.Errorf("symbols: %v", r.Symbols)
+	}
+}
+
+func TestAliases(t *testing.T) {
+	r := mustAsm(t, "ldh [c], a\nldh a, [c]\njp [hl]\nldd a, [hl]\nldi [hl], a")
+	want := []byte{0xE2, 0xF2, 0xE9, 0x3A, 0x22}
+	if !bytes.Equal(r.ROM[:len(want)], want) {
+		t.Errorf("got % X want % X", r.ROM[:len(want)], want)
+	}
+}
+
+func TestReportsAllErrors(t *testing.T) {
+	_, err := Assemble("t.s", "ld a, hl\nnop\nbogus\njr nowhere\nld a, 999\n", Options{NoHeader: true})
+	if err == nil {
+		t.Fatal("expected errors")
+	}
+	list := err.(ErrorList)
+	if len(list) != 4 {
+		t.Fatalf("want 4 diagnostics (one per bad line), got %d:\n%v", len(list), err)
+	}
+	for i, line := range []int{1, 3, 4, 5} {
+		if list[i].Loc.Line != line {
+			t.Errorf("diagnostic %d at line %d, want %d (not sorted by line?)", i, list[i].Loc.Line, line)
+		}
+	}
+}
+
+func TestMacroRecursionIsBounded(t *testing.T) {
+	_, err := Assemble("t.s", ".macro boom\nboom\n.endm\nboom\n", Options{NoHeader: true})
+	if err == nil || !strings.Contains(err.Error(), "nesting too deep") {
+		t.Errorf("recursive macro: %v", err)
 	}
 }
 
@@ -221,7 +253,11 @@ func TestErrors(t *testing.T) {
 		"jr far\n.ds 200\nfar:":            "jr target",
 		".org 0x100\nnop\n.org 0x100\nnop": "overlapping",
 		"bit 8, a":                         "no form",
-		"ld a, (1":                         "missing",
+		"ld a, (1":                         "unbalanced",
+		"ld a, (hl)":                       "square brackets",
+		"ld a, [hl":                        "unbalanced",
+		"bit n, a\nn equ 3":                "must be a constant",
+		"ld a, [hl+1]":                     "register name",
 		".db 256":                          "does not fit",
 		"ld [hl], [hl]":                    "no form",
 		"push sp":                          "no form",
@@ -290,10 +326,40 @@ func TestRoundTripAllOpcodes(t *testing.T) {
 	}
 }
 
+// Disassembling arbitrary bytes and re-assembling the text must reproduce the
+// bytes exactly (illegal opcodes become .db, STOP keeps its operand byte).
+func TestRandomBytesRoundTrip(t *testing.T) {
+	r := rand.New(rand.NewSource(42))
+	data := make([]byte, 20000)
+	r.Read(data)
+	lines := DisassembleBytes(data, 0x200)
+	var sb strings.Builder
+	sb.WriteString(".org 0x200\n")
+	total := 0
+	for _, l := range lines {
+		if total+l.Len > len(data) {
+			break // last instruction would read past the buffer
+		}
+		sb.WriteString(l.Text + "\n")
+		total += l.Len
+	}
+	res, err := Assemble("rt.s", sb.String(), Options{NoHeader: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(res.ROM[0x200:0x200+total], data[:total]) {
+		for i := 0; i < total; i++ {
+			if res.ROM[0x200+i] != data[i] {
+				t.Fatalf("first mismatch at offset %d: got %02X want %02X", i, res.ROM[0x200+i], data[i])
+			}
+		}
+	}
+}
+
 func TestIllegalOpcodesDisassemble(t *testing.T) {
 	for _, op := range []byte{0xD3, 0xDB, 0xDD, 0xE3, 0xE4, 0xEB, 0xEC, 0xED, 0xF4, 0xFC, 0xFD} {
 		txt, n := Disassemble(func(uint16) byte { return op }, 0)
-		if n != 1 || !strings.HasPrefix(txt, "db $") {
+		if n != 1 || !strings.HasPrefix(txt, ".db $") {
 			t.Errorf("op %02X: %q %d", op, txt, n)
 		}
 	}

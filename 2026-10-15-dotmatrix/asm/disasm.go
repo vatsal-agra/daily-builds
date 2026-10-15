@@ -15,7 +15,10 @@ func Disassemble(read func(uint16) byte, pc uint16) (string, int) {
 		t = byOpcode[op]
 	}
 	if t == nil {
-		return fmt.Sprintf("db $%02X", op), 1
+		return fmt.Sprintf(".db $%02X", op), 1
+	}
+	if op == 0x10 && b1 != 0 {
+		return fmt.Sprintf("stop $%02X", b1), 2
 	}
 	base := pc + 1
 	if t.CB {

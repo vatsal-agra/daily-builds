@@ -39,7 +39,13 @@ func evalExpr(s string, pc int, lookup symLookup) (int, error) {
 
 type undefinedError struct{ name string }
 
-func (e *undefinedError) Error() string { return "undefined symbol " + strconv.Quote(e.name) }
+func (e *undefinedError) Error() string {
+	switch strings.ToLower(e.name) {
+	case "a", "b", "c", "d", "e", "h", "l", "af", "bc", "de", "hl", "sp", "nz", "z", "nc":
+		return "register name " + strconv.Quote(e.name) + " used where a value is expected (memory operands are written [hl], not (hl))"
+	}
+	return "undefined symbol " + strconv.Quote(e.name)
+}
 
 func (p *exprParser) skip() {
 	for p.pos < len(p.s) && (p.s[p.pos] == ' ' || p.s[p.pos] == '\t') {
