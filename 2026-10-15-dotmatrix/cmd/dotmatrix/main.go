@@ -17,10 +17,14 @@ usage:
         -png FILE        write the final frame as PNG   -scale N  (default 3)
         -ascii           print the final frame as text
         -serial          print bytes sent over the link port
+        -wav FILE        record audio to a 16-bit stereo WAV
         -keys SPEC       scripted input, e.g. "10:start,12:-start,30:right" (frame:[-]button)
+        -savestate FILE  write a full save state at exit   -loadstate FILE  resume from one
         -save FILE       battery RAM save file (loaded if present, written at exit)
         -until-serial S  stop early once the serial output contains S
   dotmatrix trace <file.gb|file.s> [-n N] [-from ADDR]   print an instruction trace
+  dotmatrix debug <file.gb|file.s>                       interactive debugger (reads stdin; 'help' inside)
+  dotmatrix serve [-addr 127.0.0.1:8080]                 browser player + live assembler IDE
   dotmatrix test  <file.gb|file.s> [-frames N]           run a self-checking ROM; exit 0 on PASS
 
 buttons: right left up down a b select start
@@ -43,6 +47,10 @@ func main() {
 		err = cmdRun(os.Args[2:])
 	case "trace":
 		err = cmdTrace(os.Args[2:])
+	case "serve":
+		err = cmdServe(os.Args[2:])
+	case "debug":
+		err = cmdDebug(os.Args[2:])
 	case "test":
 		err = cmdTest(os.Args[2:])
 	case "-h", "--help", "help":

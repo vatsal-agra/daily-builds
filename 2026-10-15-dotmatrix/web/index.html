@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dotmatrix — Game Boy emulator &amp; assembler</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'%3E%3Cg fill='%239bbc0f'%3E%3Crect width='2' height='2'/%3E%3Crect x='3' width='2' height='2' opacity='.4'/%3E%3Crect x='6' width='2' height='2'/%3E%3Crect y='3' width='2' height='2' opacity='.4'/%3E%3Crect x='3' y='3' width='2' height='2'/%3E%3Crect x='6' y='3' width='2' height='2' opacity='.4'/%3E%3Crect y='6' width='2' height='2'/%3E%3Crect x='3' y='6' width='2' height='2' opacity='.4'/%3E%3Crect x='6' y='6' width='2' height='2'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0e1218; --panel: #151b24; --panel2: #1b2330; --line: #263142;
+    --text: #d8e1ec; --muted: #8697ab; --accent: #9bbc0f; --accent2: #6fa8dc;
+    --bad: #ff6b6b; --good: #7ee787; --warn: #f2cc60;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --gb0: #e0f8d0; --gb1: #88c070; --gb2: #346856; --gb3: #081820;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { min-height: 100vh; }
+  header { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
+  .logo { font-weight: 700; letter-spacing: .5px; font-size: 18px; display: flex; align-items: center; gap: 10px; }
+  .logo i { width: 18px; height: 18px; display: inline-grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
+  .logo i b { background: var(--accent); border-radius: 1px; }
+  .logo i b:nth-child(2n) { opacity: .35; }
+  .logo small { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .spacer { flex: 1; }
+  button, select, input[type=text] { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent2); }
+  button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent2); outline-offset: 1px; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); color: #11160a; border-color: var(--accent); font-weight: 600; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--accent); }
+  main { display: grid; gap: 14px; padding: 14px 16px 28px; grid-template-columns: minmax(300px, 520px) minmax(320px, 1fr) minmax(300px, 420px); align-items: start; }
+  @media (max-width: 1200px) { main { grid-template-columns: minmax(300px, 520px) 1fr; } .inspector { grid-column: 1 / -1; } }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; padding: 10px 12px 24px; } header { position: static; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  section > h2 { margin: 0; padding: 8px 12px; font-size: 12px; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  .tabs { display: flex; gap: 2px; padding: 0 6px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 8px 10px; }
+  .tabs button[aria-selected=true] { color: var(--text); border-bottom-color: var(--accent); }
+  .pane { padding: 10px 12px; }
+  .pane[hidden] { display: none; }
+
+  /* console */
+  .bezel { background: #3a4150; border-radius: 12px 12px 36px 12px; padding: 18px 22px 16px; margin: 12px; box-shadow: inset 0 0 0 2px #4b5465, 0 6px 18px rgba(0,0,0,.45); }
+  .screenwrap { background: #202733; border-radius: 6px 6px 22px 6px; padding: 14px 18px 10px; }
+  .screen { position: relative; background: var(--gb0); width: 100%; aspect-ratio: 160 / 144; border-radius: 2px; box-shadow: inset 0 0 14px rgba(8,24,32,.35); overflow: hidden; }
+  canvas#lcd { width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+  .screen .msg { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; padding: 14px; color: var(--gb3); font: 600 13px var(--mono); background: var(--gb0); }
+  .screen .msg.show { display: flex; }
+  .brand { color: #8f9bb0; font: italic 700 13px system-ui; margin: 8px 0 0 4px; letter-spacing: .5px; }
+  .brand b { color: #b36a8a; font-style: normal; }
+  .pad { display: grid; grid-template-columns: 120px 1fr 120px; align-items: center; gap: 8px; margin-top: 8px; user-select: none; touch-action: none; }
+  .dpad { position: relative; width: 108px; height: 108px; }
+  .dpad button { position: absolute; width: 36px; height: 36px; padding: 0; background: #11151c; border: 0; border-radius: 4px; color: #6c7a90; font-size: 14px; }
+  .dpad button.on, .ab button.on, .ss button.on { background: var(--accent); color: #11160a; }
+  .dpad .u { left: 36px; top: 0; } .dpad .d { left: 36px; top: 72px; } .dpad .l { left: 0; top: 36px; } .dpad .r { left: 72px; top: 36px; }
+  .dpad::after { content: ""; position: absolute; left: 36px; top: 36px; width: 36px; height: 36px; background: #11151c; }
+  .ss { display: flex; gap: 12px; justify-content: center; }
+  .ss button { background: #566074; border: 0; border-radius: 10px; font-size: 10px; letter-spacing: .6px; color: #d4dbe6; padding: 3px 10px; transform: rotate(-22deg); }
+  .ab { position: relative; width: 112px; height: 78px; justify-self: end; }
+  .ab button { position: absolute; width: 44px; height: 44px; border-radius: 50%; background: #b36a8a; border: 0; color: #2b1220; font-weight: 700; }
+  .ab .b { left: 6px; top: 32px; } .ab .a { left: 62px; top: 8px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 12px; align-items: center; }
+  .controls .grow { flex: 1; }
+  .status { padding: 0 14px 12px; color: var(--muted); font: 12px var(--mono); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .status b { color: var(--text); font-weight: 500; }
+  .leds { display: inline-flex; gap: 4px; align-items: center; }
+  .leds i { width: 8px; height: 8px; border-radius: 50%; background: #2c3646; display: inline-block; }
+  .leds i.on { background: var(--good); box-shadow: 0 0 6px var(--good); }
+
+  /* editor */
+  .editor { display: grid; grid-template-columns: auto 1fr; height: 460px; background: #0b0f14; font: 13px/1.5 var(--mono); }
+  .gutter { padding: 8px 8px 8px 10px; text-align: right; color: #4a586b; user-select: none; overflow: hidden; white-space: pre; border-right: 1px solid var(--line); }
+  .gutter .err { color: var(--bad); font-weight: 700; }
+  textarea#src { width: 100%; height: 100%; resize: none; border: 0; padding: 8px 10px; background: transparent; color: var(--text); font: inherit; white-space: pre; overflow: auto; tab-size: 8; outline-offset: -2px; }
+  .out { font: 12px/1.5 var(--mono); white-space: pre-wrap; padding: 10px 12px; min-height: 90px; max-height: 200px; overflow: auto; border-top: 1px solid var(--line); background: #0b0f14; }
+  .out .e { color: var(--bad); cursor: pointer; } .out .ok { color: var(--good); } .out .dim { color: var(--muted); }
+  .rowbar { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; align-items: center; border-bottom: 1px solid var(--line); }
+  .rowbar .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+  kbd { font: 11px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--panel2); }
+
+  /* inspector */
+  .regs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; font: 13px var(--mono); }
+  .regs div { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; display: flex; justify-content: space-between; }
+  .regs span { color: var(--muted); } 
+  .flags { display: flex; gap: 6px; margin: 8px 0; font: 12px var(--mono); flex-wrap: wrap; }
+  .flags i { font-style: normal; padding: 2px 8px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--line); color: var(--muted); }
+  .flags i.on { background: var(--accent); color: #11160a; border-color: var(--accent); }
+  table.dis { width: 100%; border-collapse: collapse; font: 12px var(--mono); }
+  table.dis td { padding: 1px 6px; white-space: nowrap; }
+  table.dis tr.pc { background: rgba(155,188,15,.18); }
+  table.dis tr.pc td:first-child::before { content: "▶ "; color: var(--accent); }
+  table.dis td.a { color: var(--accent2); cursor: pointer; } table.dis td.a.bp { color: var(--bad); font-weight: 700; }
+  table.dis td.b { color: var(--muted); } table.dis td.lbl { color: var(--warn); }
+  .mem { font: 12px/1.55 var(--mono); white-space: pre; overflow: auto; max-height: 300px; }
+  .mem .z { color: #4a586b; } .mem .asc { color: var(--muted); }
+  canvas#tiles { width: 100%; image-rendering: pixelated; background: #0b0f14; border: 1px solid var(--line); border-radius: 4px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font: 12px var(--mono); margin-top: 8px; color: var(--muted); }
+  .kv b { color: var(--text); font-weight: 500; }
+  .note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+  .loading { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); z-index: 20; color: var(--muted); font: 14px var(--mono); }
+  .loading.hide { display: none; }
+</style>
+</head>
+<body>
+<div class="loading" id="loading">loading WebAssembly core…</div>
+<header>
+  <div class="logo"><i aria-hidden="true"><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b></i>Dotmatrix <small>Game Boy emulator + SM83 assembler</small></div>
+  <div class="spacer"></div>
+  <label>Example <select id="example" aria-label="Load an example program"></select></label>
+  <label class="fileBtn"><button id="openRom" type="button">Open .gb ROM…</button><input id="romFile" type="file" accept=".gb,.gbc,.bin" hidden></label>
+</header>
+
+<main>
+  <section aria-label="Console">
+    <h2>Console <span id="romName" style="color:var(--text);text-transform:none;letter-spacing:0"></span></h2>
+    <div class="bezel">
+      <div class="screenwrap">
+        <div class="screen">
+          <canvas id="lcd" width="160" height="144" aria-label="Game Boy screen"></canvas>
+          <div class="msg" id="screenMsg"></div>
+        </div>
+        <div class="brand">DOTMATRIX<b> </b> DOT MATRIX WITH STEREO SOUND</div>
+      </div>
+      <div class="pad">
+        <div class="dpad" aria-label="Directional pad">
+          <button class="u" data-btn="2" aria-label="Up">▲</button><button class="l" data-btn="1" aria-label="Left">◀</button>
+          <button class="r" data-btn="0" aria-label="Right">▶</button><button class="d" data-btn="3" aria-label="Down">▼</button>
+        </div>
+        <div class="ss"><button data-btn="6">SELECT</button><button data-btn="7">START</button></div>
+        <div class="ab"><button class="b" data-btn="5" aria-label="B">B</button><button class="a" data-btn="4" aria-label="A">A</button></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button id="runPause" class="primary" type="button">Pause</button>
+      <button id="stepFrame" type="button" title="Run exactly one frame">Frame ⏭</button>
+      <button id="stepInstr" type="button" title="Execute one instruction (F10)">Step</button>
+      <button id="reset" type="button">Reset</button>
+      <span class="grow"></span>
+      <button id="mute" type="button" aria-pressed="false">🔊 Sound</button>
+    </div>
+    <div class="controls">
+      <button id="qsave" type="button">Quick save</button>
+      <button id="qload" type="button">Quick load</button>
+      <button id="dlState" type="button">Download state</button>
+      <label><button id="upStateBtn" type="button">Load state file…</button><input id="stateFile" type="file" hidden></label>
+    </div>
+    <div class="status" id="status" aria-live="polite"></div>
+  </section>
+
+  <section aria-label="Assembler">
+    <h2>SM83 assembler</h2>
+    <div class="rowbar">
+      <button id="assemble" class="primary" type="button">Assemble &amp; run</button>
+      <span class="hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> · <code>.include "lib.inc"</code> is built in</span>
+    </div>
+    <div class="editor"><div class="gutter" id="gutter" aria-hidden="true">1</div><textarea id="src" spellcheck="false" aria-label="Assembly source"></textarea></div>
+    <div class="out" id="out" role="log" aria-live="polite"><span class="dim">Pick an example or write your own — errors appear here with line numbers.</span></div>
+  </section>
+
+  <section class="inspector" aria-label="Inspector">
+    <div class="tabs" role="tablist" id="tabs">
+      <button role="tab" aria-selected="true" data-tab="cpu">CPU</button>
+      <button role="tab" aria-selected="false" data-tab="dis">Disassembly</button>
+      <button role="tab" aria-selected="false" data-tab="mem">Memory</button>
+      <button role="tab" aria-selected="false" data-tab="tiles">Tiles</button>
+      <button role="tab" aria-selected="false" data-tab="serial">Serial</button>
+    </div>
+    <div class="pane" data-pane="cpu">
+      <div class="regs" id="regs"></div>
+      <div class="flags" id="flags"></div>
+      <div class="kv" id="kv"></div>
+      <p class="note">Registers refresh while paused or at ~5 Hz while running.</p>
+    </div>
+    <div class="pane" data-pane="dis" hidden>
+      <p class="note" style="margin:0 0 6px">Click an address to toggle a breakpoint; execution pauses before that instruction runs.</p>
+      <table class="dis" id="dis"></table>
+    </div>
+    <div class="pane" data-pane="mem" hidden>
+      <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+        <select id="memRegion" aria-label="Memory region">
+          <option value="0">ROM bank 0 (0000)</option><option value="16384">ROM bank N (4000)</option><option value="32768">VRAM (8000)</option>
+          <option value="49152" selected>WRAM (C000)</option><option value="65024">OAM (FE00)</option><option value="65280">I/O (FF00)</option><option value="65408">HRAM (FF80)</option>
+        </select>
+        <input id="memAddr" type="text" size="6" value="C000" aria-label="Start address (hex)">
+      </div>
+      <div class="mem" id="mem"></div>
+    </div>
+    <div class="pane" data-pane="tiles" hidden>
+      <canvas id="tiles" width="128" height="192" aria-label="Tile data viewer"></canvas>
+      <p class="note">All 384 tiles from VRAM <code>8000–97FF</code>, shaded through BGP.</p>
+    </div>
+    <div class="pane" data-pane="serial" hidden>
+      <div class="mem" id="serial" style="white-space:pre-wrap;min-height:120px">(nothing sent over the link port yet)</div>
+    </div>
+  </section>
+</main>
+
+<script src="wasm_exec.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const KEYS = { ArrowRight: 0, ArrowLeft: 1, ArrowUp: 2, ArrowDown: 3, KeyX: 4, KeyZ: 5, Backspace: 6, ShiftRight: 6, Enter: 7 };
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+};
+const dm = { api: null };
+let running = true, mounted = false, breaks = new Set(), lastErr = "";
+let paused = false;
+const rgba = new Uint8ClampedArray(160 * 144 * 4);
+const img = new ImageData(rgba, 160, 144);
+const ctx = $("lcd").getContext("2d");
+let audioCtx = null, nextAudio = 0, muted = false;
+let accumulator = 0, lastT = 0, fpsFrames = 0, fpsT = 0, fps = 0;
+const FRAME_MS = 1000 / 59.7275;
+
+// ---------- boot ----------
+(async function boot() {
+  const go = new Go();
+  try {
+    const resp = await fetch("dotmatrix.wasm");
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const { instance } = await WebAssembly.instantiateStreaming(resp.clone(), go.importObject).catch(async () =>
+      WebAssembly.instantiate(await resp.arrayBuffer(), go.importObject));
+    const ready = new Promise(r => document.addEventListener("dotmatrix-ready", r, { once: true }));
+    go.run(instance);
+    await ready;
+  } catch (e) {
+    $("loading").textContent = "Could not load the WebAssembly core: " + e.message;
+    return;
+  }
+  dm.api = window.dotmatrix;
+  $("loading").classList.add("hide");
+  initUI();
+})();
+
+function initUI() {
+  const names = JSON.parse(dm.api.examples());
+  const sel = $("example");
+  names.forEach(n => { const o = document.createElement("option"); o.value = n; o.textContent = n; sel.appendChild(o); });
+  const saved = store.get("dm.src");
+  const startEx = store.get("dm.example") || "snake.asm";
+  sel.value = names.includes(startEx) ? startEx : names[0];
+  $("src").value = saved && store.get("dm.edited") === "1" ? saved : dm.api.exampleSource(sel.value);
+  updateGutter();
+  sel.addEventListener("change", () => {
+    $("src").value = dm.api.exampleSource(sel.value);
+    store.set("dm.example", sel.value); store.set("dm.edited", "0");
+    updateGutter(); assemble();
+  });
+  $("assemble").addEventListener("click", assemble);
+  $("src").addEventListener("input", () => { updateGutter(); store.set("dm.src", $("src").value); store.set("dm.edited", "1"); });
+  $("src").addEventListener("scroll", () => { $("gutter").scrollTop = $("src").scrollTop; });
+  $("src").addEventListener("keydown", e => {
+    if (e.key === "Tab") { e.preventDefault(); const t = e.target, s = t.selectionStart; t.setRangeText("\t", s, t.selectionEnd, "end"); updateGutter(); }
+  });
+  $("openRom").addEventListener("click", () => $("romFile").click());
+  $("romFile").addEventListener("change", async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = JSON.parse(dm.api.loadROM(new Uint8Array(await f.arrayBuffer())));
+    afterLoad(r, f.name); e.target.value = "";
+  });
+  $("runPause").addEventListener("click", () => setPaused(!paused));
+  $("stepFrame").addEventListener("click", () => { setPaused(true); runOne(); refreshInspector(); });
+  $("stepInstr").addEventListener("click", stepInstr);
+  $("reset").addEventListener("click", () => { dm.api.reset(); setPaused(false); showMsg(""); });
+  $("mute").addEventListener("click", () => { muted = !muted; $("mute").textContent = muted ? "🔇 Muted" : "🔊 Sound"; $("mute").setAttribute("aria-pressed", muted); });
+  $("qsave").addEventListener("click", () => {
+    const s = dm.api.saveState(); if (!s.length) return;
+    let bin = ""; for (let i = 0; i < s.length; i += 8192) bin += String.fromCharCode.apply(null, s.subarray(i, i + 8192));
+    const ok = store.set("dm.state", btoa(bin)); setStatusNote(ok ? "state saved to this browser" : "could not save (storage full or blocked)");
+  });
+  $("qload").addEventListener("click", () => {
+    const b = store.get("dm.state"); if (!b) { setStatusNote("no quick save yet"); return; }
+    const bin = atob(b), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    const err = dm.api.loadState(u); setStatusNote(err ? "load failed: " + err : "state restored");
+  });
+  $("dlState").addEventListener("click", () => {
+    const s = dm.api.saveState(); if (!s.length) return;
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([s])); a.download = "dotmatrix.dmst"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  $("upStateBtn").addEventListener("click", () => $("stateFile").click());
+  $("stateFile").addEventListener("change", async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const err = dm.api.loadState(new Uint8Array(await f.arrayBuffer())); setStatusNote(err ? "load failed: " + err : "state restored"); e.target.value = "";
+  });
+  document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click", () => selectTab(b.dataset.tab)));
+  $("memRegion").addEventListener("change", e => { $("memAddr").value = (+e.target.value).toString(16).toUpperCase().padStart(4, "0"); drawMem(); });
+  $("memAddr").addEventListener("change", drawMem);
+  // on-screen pad
+  document.querySelectorAll("[data-btn]").forEach(b => {
+    const i = +b.dataset.btn;
+    const on = e => { e.preventDefault(); press(i, true); try { b.setPointerCapture(e.pointerId); } catch (_) {} };
+    const off = e => { e.preventDefault(); press(i, false); };
+    b.addEventListener("pointerdown", on); b.addEventListener("pointerup", off); b.addEventListener("pointercancel", off);
+  });
+  window.addEventListener("keydown", e => {
+    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT" || e.target.tagName === "SELECT") {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.target.id === "src") { e.preventDefault(); assemble(); }
+      return;
+    }
+    if (e.key === "F10") { e.preventDefault(); stepInstr(); return; }
+    if (e.code in KEYS) { e.preventDefault(); press(KEYS[e.code], true); }
+  });
+  window.addEventListener("keyup", e => { if (e.code in KEYS && e.target.tagName !== "TEXTAREA") { e.preventDefault(); press(KEYS[e.code], false); } });
+  window.addEventListener("blur", () => { for (let i = 0; i < 8; i++) press(i, false); });
+  document.addEventListener("pointerdown", ensureAudio, { once: true });
+  document.addEventListener("keydown", ensureAudio, { once: true });
+  window.__dm = { get ready() { return mounted; }, press, api: dm.api, get fps() { return fps; } };
+  assemble();
+  requestAnimationFrame(loop);
+}
+
+function ensureAudio() {
+  if (audioCtx) return;
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+  try { audioCtx = new AC({ sampleRate: 44100 }); nextAudio = 0; } catch (e) { audioCtx = null; }
+}
+
+// ---------- program loading ----------
+function assemble() {
+  const r = JSON.parse(dm.api.assemble($("src").value));
+  const out = $("out");
+  if (!r.ok) {
+    const lines = (r.error || "").split("\n");
+    out.innerHTML = "";
+    lines.forEach(l => {
+      const m = /^[^:]+:(\d+):/.exec(l);
+      const d = document.createElement("div"); d.className = "e"; d.textContent = l;
+      if (m) d.addEventListener("click", () => gotoLine(+m[1]));
+      out.appendChild(d);
+    });
+    markErrors((r.lines || []));
+    showMsg("assembly failed — see the error list");
+    return;
+  }
+  markErrors([]);
+  afterLoad(r, "editor.asm");
+  out.innerHTML = `<span class="ok">✔ assembled ${r.size} bytes</span> <span class="dim">— “${esc(r.title || "untitled")}”, ${esc(r.type)}${r.headerOK ? "" : ", header checksum BAD"}</span>`;
+}
+
+function afterLoad(r, name) {
+  if (!r.ok) { showMsg("could not load ROM: " + r.error); $("out").innerHTML = `<div class="e">${esc(r.error)}</div>`; return; }
+  mounted = true; breaks.clear(); dm.api.setBreakpoints("[]");
+  $("romName").textContent = "· " + (r.title || name);
+  $("serial").textContent = "(nothing sent over the link port yet)";
+  showMsg(""); setPaused(false); lastT = 0;
+  refreshInspector();
+}
+
+function showMsg(t) { const m = $("screenMsg"); m.textContent = t; m.classList.toggle("show", !!t); }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function setStatusNote(t) { statusNote = t; statusNoteT = performance.now(); }
+let statusNote = "", statusNoteT = 0;
+
+// ---------- editor ----------
+let errLines = new Set();
+function updateGutter() {
+  const n = $("src").value.split("\n").length;
+  let s = ""; for (let i = 1; i <= n; i++) s += (errLines.has(i) ? `<span class="err">${i}</span>` : i) + "\n";
+  $("gutter").innerHTML = s;
+}
+function markErrors(lines) { errLines = new Set(lines); updateGutter(); }
+function gotoLine(n) {
+  const t = $("src"), lines = t.value.split("\n"); let pos = 0;
+  for (let i = 0; i < n - 1 && i < lines.length; i++) pos += lines[i].length + 1;
+  t.focus(); t.setSelectionRange(pos, pos + (lines[n - 1] || "").length);
+  t.scrollTop = Math.max(0, (n - 4) * 19.5);
+}
+
+// ---------- input ----------
+const held = new Set();
+function press(i, down) {
+  if (!mounted) return;
+  if (down === held.has(i)) return;
+  down ? held.add(i) : held.delete(i);
+  dm.api.setButton(i, down);
+  document.querySelectorAll(`[data-btn="${i}"]`).forEach(b => b.classList.toggle("on", down));
+}
+
+// ---------- run loop ----------
+function setPaused(p) {
+  paused = p; $("runPause").textContent = p ? "Run" : "Pause";
+  $("runPause").classList.toggle("primary", !p);
+  if (audioCtx && audioCtx.state === "suspended" && !p) audioCtx.resume();
+  if (!p) { lastT = 0; accumulator = 0; }
+}
+
+function runOne() {
+  const err = dm.api.frame(rgba);
+  ctx.putImageData(img, 0, 0);
+  pumpAudio();
+  fpsFrames++;
+  if (err) {
+    setPaused(true); lastErr = err;
+    showMsg(/^breakpoint|^watch/.test(err) ? "⏸ " + err : "⚠ " + err);
+    refreshInspector(true);
+    return false;
+  }
+  return true;
+}
+
+function stepInstr() {
+  if (!mounted) return;
+  setPaused(true); showMsg("");
+  const err = dm.api.step(rgba); ctx.putImageData(img, 0, 0);
+  if (err) { showMsg("⚠ " + err); }
+  refreshInspector(true);
+}
+
+function loop(t) {
+  requestAnimationFrame(loop);
+  if (!mounted) return;
+  if (!lastT) lastT = t;
+  const dt = Math.min(100, t - lastT); lastT = t;
+  if (!paused) {
+    accumulator += dt;
+    let n = 0;
+    while (accumulator >= FRAME_MS && n < 4) { accumulator -= FRAME_MS; n++; if (!runOne()) break; }
+    if (n === 4) accumulator = 0;
+  }
+  if (t - fpsT > 1000) { fps = Math.round(fpsFrames * 1000 / (t - fpsT)); fpsFrames = 0; fpsT = t; }
+  if (t - lastInspect > (paused ? 120 : 200)) { lastInspect = t; refreshInspector(); }
+}
+let lastInspect = 0;
+
+// ---------- audio ----------
+function pumpAudio() {
+  const bytes = dm.api.audio();
+  if (!audioCtx || muted || paused || !bytes.length) return;
+  const n = bytes.length >> 2;
+  const buf = audioCtx.createBuffer(2, n, 44100);
+  const L = buf.getChannelData(0), R = buf.getChannelData(1);
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let i = 0; i < n; i++) { L[i] = dv.getInt16(i * 4, true) / 32768; R[i] = dv.getInt16(i * 4 + 2, true) / 32768; }
+  const src = audioCtx.createBufferSource(); src.buffer = buf; src.connect(audioCtx.destination);
+  const now = audioCtx.currentTime;
+  if (nextAudio < now + 0.02 || nextAudio > now + 0.25) nextAudio = now + 0.06; // (re)sync after stalls
+  src.start(nextAudio); nextAudio += n / 44100;
+}
+
+// ---------- inspector ----------
+function selectTab(name) {
+  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === name));
+  document.querySelectorAll(".pane").forEach(p => p.hidden = p.dataset.pane !== name);
+  refreshInspector(true);
+}
+const hex = (v, w = 2) => v.toString(16).toUpperCase().padStart(w, "0");
+function curTab() { const b = document.querySelector("#tabs button[aria-selected=true]"); return b ? b.dataset.tab : "cpu"; }
+
+function refreshInspector(force) {
+  if (!mounted) return;
+  const s = JSON.parse(dm.api.state()); if (!s) return;
+  // status line
+  const note = performance.now() - statusNoteT < 4000 ? statusNote : "";
+  $("status").innerHTML = `<span>fps <b>${fps}</b></span><span>frame <b>${s.frames}</b></span><span>LY <b>${s.ly}</b></span>` +
+    `<span class="leds" title="Pulse 1, Pulse 2, Wave, Noise">${s.audio.map((o, i) => `<i class="${o ? "on" : ""}"></i>`).join("")}</span>` +
+    (note ? `<span style="color:var(--accent)">${esc(note)}</span>` : "");
+  const tab = curTab();
+  if (tab === "cpu") {
+    const r16 = (h, l) => (s[h] << 8) | s[l];
+    const cells = [["AF", r16("a", "f")], ["BC", r16("b", "c")], ["DE", r16("d", "e")], ["HL", r16("h", "l")], ["SP", s.sp], ["PC", s.pc], ["IF", s.if, 2], ["IE", s.ie, 2]];
+    $("regs").innerHTML = cells.map(([n, v, w]) => `<div><span>${n}</span>${hex(v, w || 4)}</div>`).join("");
+    $("flags").innerHTML = [["Z", 0x80], ["N", 0x40], ["H", 0x20], ["C", 0x10]].map(([n, m]) => `<i class="${s.f & m ? "on" : ""}">${n}</i>`).join("") +
+      `<i class="${s.ime ? "on" : ""}">IME</i><i class="${s.halted ? "on" : ""}">HALT</i>`;
+    $("kv").innerHTML = `<span>LCDC</span><b>${hex(s.lcdc)} ${s.lcdc & 0x80 ? "(LCD on)" : "(LCD off)"}</b><span>STAT mode</span><b>${s.stat & 3}</b><span>cycles</span><b>${s.cycles.toLocaleString()}</b>`;
+  } else if (tab === "dis") drawDis(s);
+  else if (tab === "mem") drawMem();
+  else if (tab === "tiles") drawTiles();
+  else if (tab === "serial" && s.serial) $("serial").textContent = s.serial;
+}
+
+function drawDis(s) {
+  // start a few instructions before PC by decoding from PC-12 and resyncing at PC (best effort)
+  const rows = JSON.parse(dm.api.disasm(s.pc, 14));
+  $("dis").innerHTML = rows.map((r, i) =>
+    `<tr class="${i === 0 ? "pc" : ""}"><td class="a ${breaks.has(r.addr) ? "bp" : ""}" data-a="${r.addr}">${breaks.has(r.addr) ? "●" : ""}${hex(r.addr, 4)}</td><td class="b">${r.bytes}</td><td>${esc(r.text)}${r.label ? ` <span class="lbl">; ${esc(r.label)}</span>` : ""}</td></tr>`).join("");
+  $("dis").querySelectorAll("td.a").forEach(td => td.addEventListener("click", () => {
+    const a = +td.dataset.a; breaks.has(a) ? breaks.delete(a) : breaks.add(a);
+    dm.api.setBreakpoints(JSON.stringify([...breaks])); refreshInspector(true);
+  }));
+}
+
+function drawMem() {
+  let a = parseInt($("memAddr").value, 16); if (isNaN(a) || a < 0) a = 0; a = Math.min(a & 0xFFF0, 0xFF00);
+  const b = dm.api.peek(a, 256); let s = "";
+  for (let r = 0; r < 16; r++) {
+    s += `<span class="z">${hex(a + r * 16, 4)}</span> `;
+    let asc = "";
+    for (let c = 0; c < 16; c++) { const v = b[r * 16 + c]; s += (v === 0 ? `<span class="z">00</span>` : hex(v)) + " "; asc += v >= 32 && v < 127 ? esc(String.fromCharCode(v)) : "."; }
+    s += ` <span class="asc">${asc}</span>\n`;
+  }
+  $("mem").innerHTML = s;
+}
+
+const tileCtx = $("tiles").getContext("2d"); const tileImg = tileCtx.createImageData(128, 192);
+const SHADES = [[0xe0, 0xf8, 0xd0], [0x88, 0xc0, 0x70], [0x34, 0x68, 0x56], [0x08, 0x18, 0x20]];
+function drawTiles() {
+  const v = dm.api.vram(); const bgp = dm.api.peek(0xFF47, 1)[0];
+  for (let t = 0; t < 384; t++) {
+    const tx = (t % 16) * 8, ty = Math.floor(t / 16) * 8;
+    for (let y = 0; y < 8; y++) {
+      const lo = v[t * 16 + y * 2], hi = v[t * 16 + y * 2 + 1];
+      for (let x = 0; x < 8; x++) {
+        const ci = ((lo >> (7 - x)) & 1) | (((hi >> (7 - x)) & 1) << 1);
+        const c = SHADES[(bgp >> (ci * 2)) & 3], o = ((ty + y) * 128 + tx + x) * 4;
+        tileImg.data[o] = c[0]; tileImg.data[o + 1] = c[1]; tileImg.data[o + 2] = c[2]; tileImg.data[o + 3] = 255;
+      }
+    }
+  }
+  tileCtx.putImageData(tileImg, 0, 0);
+}
+</script>
+</body>
+</html>

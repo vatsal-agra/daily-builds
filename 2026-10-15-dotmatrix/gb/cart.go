@@ -8,9 +8,9 @@ import (
 
 // Cart is a parsed cartridge with its memory bank controller.
 type Cart struct {
-	ROM  []byte
+	ROM  []byte `state:"-"`
 	RAM  []byte
-	Info Header
+	Info Header `state:"-"`
 
 	mbc        int // 0 none, 1, 3, 5
 	hasBattery bool

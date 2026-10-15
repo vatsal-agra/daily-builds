@@ -2,6 +2,9 @@ package gb
 
 // read is a CPU-visible read: honours PPU access blocking and OAM DMA.
 func (g *GB) read(addr uint16) byte {
+	if g.Dbg != nil {
+		g.Dbg.noteRead(g, addr)
+	}
 	if g.dma.active && g.dma.start == 0 && addr < 0xFF00 {
 		// While OAM DMA runs the CPU only sees HRAM and IO; everything else floats high.
 		return 0xFF
@@ -46,7 +49,7 @@ func (g *GB) peek(addr uint16) byte {
 
 func (g *GB) write(addr uint16, v byte) {
 	if g.Dbg != nil {
-		g.Dbg.noteWrite(addr, v)
+		g.Dbg.noteWrite(g, addr, v)
 	}
 	if g.dma.active && g.dma.start == 0 && addr < 0xFF00 {
 		return

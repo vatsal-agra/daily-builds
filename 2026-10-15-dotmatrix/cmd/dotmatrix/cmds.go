@@ -231,8 +231,11 @@ func cmdRun(args []string) error {
 	scale := fs.Int("scale", 3, "PNG scale factor")
 	ascii := fs.Bool("ascii", false, "print final frame as text")
 	serial := fs.Bool("serial", false, "print serial output")
+	wav := fs.String("wav", "", "record audio to a 16-bit stereo WAV")
 	keys := fs.String("keys", "", "scripted input frame:button,...")
 	save := fs.String("save", "", "battery save file")
+	saveState := fs.String("savestate", "", "write a save state at exit")
+	loadState := fs.String("loadstate", "", "load a save state before running")
 	until := fs.String("until-serial", "", "stop when serial output contains this text")
 	pos, err := parseArgs(fs, args)
 	if err != nil {
@@ -256,6 +259,18 @@ func cmdRun(args []string) error {
 		if b, err := os.ReadFile(*save); err == nil {
 			copy(g.Cart.RAM, b)
 		}
+	}
+	if *loadState != "" {
+		b, err := os.ReadFile(*loadState)
+		if err != nil {
+			return err
+		}
+		if err := g.LoadState(b); err != nil {
+			return fmt.Errorf("%s: %w", *loadState, err)
+		}
+	}
+	if *wav != "" {
+		g.APU.StartRecording()
 	}
 	var runErr error
 	for f := 0; f < *frames; f++ {
@@ -289,8 +304,18 @@ func cmdRun(args []string) error {
 			return err
 		}
 	}
+	if *wav != "" {
+		if err := os.WriteFile(*wav, g.APU.WAV(), 0o644); err != nil {
+			return err
+		}
+	}
 	if *save != "" && g.Cart.Battery() {
 		if err := os.WriteFile(*save, g.Cart.RAM, 0o644); err != nil {
+			return err
+		}
+	}
+	if *saveState != "" {
+		if err := os.WriteFile(*saveState, g.SaveState(), 0o644); err != nil {
 			return err
 		}
 	}

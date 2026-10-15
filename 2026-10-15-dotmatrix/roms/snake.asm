@@ -58,6 +58,7 @@ start:
 	xor a
 	ldh [rLCDC], a            ; LCD off: free VRAM access
 	call load_font
+	call audio_init
 	ld a, 0xE4
 	ldh [rBGP], a
 	xor a
@@ -294,11 +295,13 @@ step:
 	ld [period], a
 .no_speed:
 	call draw_score
+	call sfx_eat
 	call place_food
 .ret_ok:
 	or 1                      ; NZ: continue
 	ret
 .won:
+	call sfx_die
 	call draw_score
 	ld a, 1
 	ld [eating], a
@@ -306,6 +309,7 @@ step:
 	ld hl, s_win
 	jr .finish
 .dead:
+	call sfx_die
 	xor a
 	ld hl, s_dead
 .finish:
@@ -689,6 +693,48 @@ load_font:
 	ld a, b
 	or c
 	jr nz, .copy
+	ret
+
+; ---- sound ---------------------------------------------------------------------
+audio_init:
+	ld a, 0x80
+	ldh [0x26], a             ; NR52: APU on
+	ld a, 0x77
+	ldh [0x24], a             ; NR50: full volume both sides
+	ld a, 0xFF
+	ldh [0x25], a             ; NR51: all channels to both speakers
+	ret
+
+; short bright blip on channel 2
+sfx_eat:
+	ld a, 0x80
+	ldh [0x16], a             ; 50% duty
+	ld a, 0xA1
+	ldh [0x17], a             ; volume 10, fading
+	xor a
+	ldh [0x18], a
+	ld a, 0x87
+	ldh [0x19], a             ; trigger, freq 0x700
+	ret
+
+; falling tone on channel 1 plus a noise burst on channel 4
+sfx_die:
+	ld a, 0x79
+	ldh [0x10], a             ; sweep: period 7, down, shift 1
+	ld a, 0x80
+	ldh [0x11], a
+	ld a, 0xF4
+	ldh [0x12], a
+	xor a
+	ldh [0x13], a
+	ld a, 0x86
+	ldh [0x14], a
+	ld a, 0xF3
+	ldh [0x21], a
+	ld a, 0x5A
+	ldh [0x22], a
+	ld a, 0x80
+	ldh [0x23], a
 	ret
 
 s_title: .db "SNAKE", 0

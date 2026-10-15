@@ -1021,6 +1021,10 @@ var nintendoLogo = []byte{
 }
 
 func (a *assembler) finish() *Result {
+	if len(a.rom) == 0 {
+		a.errf(Loc{"<input>", 1}, "nothing to assemble: the program has no instructions or data")
+		return nil
+	}
 	size := a.maxOff
 	if size < 0x150 && !a.opt.NoHeader {
 		size = 0x150
