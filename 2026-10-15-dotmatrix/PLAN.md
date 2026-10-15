@@ -18,8 +18,9 @@ gb/         emulator core: cpu.go (all 245+256 opcodes), bus.go (memory map, DMA
             timer.go, ppu.go (scanline renderer w/ modes + STAT), joypad.go, apu.go (4 channels -> PCM), 
             debug.go (breakpoints, trace, watch)
 cmd/dotmatrix/   CLI: asm, dis, run (headless frames -> PNG/WAV), trace, info, serve (web player)
-cmd/wasm/        GOOS=js build exposing the core to the browser
-roms/       *.s sources: cputest.s (self-checking), snake.s (game), plus tiny feature ROMs
+cmd/wasm/        GOOS=js build exposing the core + assembler to the browser
+verify/     verify.sh (36 end-to-end checks), web_e2e.js (Playwright), mutants.py (mutation testing)
+roms/       *.asm sources: cputest.asm (self-checking), mbc1test.asm (banks + battery RAM), snake.asm (game), lib.inc
 web/        player page (canvas, keyboard, debugger panel)
 ```
 
@@ -43,3 +44,9 @@ Required: 1–4. Stretch: 5–8 (aim for at least 5, 6, 7).
 - PPU golden checks (pixel assertions from assembled ROMs), timer/interrupt timing tests, MBC bank-switch ROM.
 - Assembler↔disassembler round trip over all 500 opcodes (244 base + 256 CB).
 - Playwright check of the web player.
+
+## Outcome (end of day)
+All 8 features shipped: required 1–4 and stretch 5–8. Deviations from the plan: ROM sources use the `.asm` extension
+(Go treats `.s` files inside a package directory as Go assembly); the web core is embedded gzipped (`dotmatrix.wasm.gz`);
+the opcode count is 500 + the CB prefix (244 base + 256 CB), not 501. See README.md for the final feature list and
+REVIEW.md for the adversarial pass.
