@@ -193,7 +193,7 @@ func (p *Program) Run(maxInstrs int64) (ir.Result, Stats) {
 		}
 	}
 	if mainIdx < 0 {
-		return ir.Result{Trap: "no @main"}, st
+		return ir.Result{Trap: "no parameterless function @main"}, st
 	}
 	nregs := p.NumRegs + p.Scratch
 	regs := make([]int64, nregs)
@@ -304,6 +304,9 @@ func (p *Program) Run(maxInstrs int64) (ir.Result, Stats) {
 				regs[r] = poison
 			}
 		case Print:
+			if out.Len() > ir.MaxOutput {
+				return trap(ir.TrapOutput)
+			}
 			out.WriteString(strconv.FormatInt(val(in.A), 10))
 			out.WriteByte('\n')
 		}

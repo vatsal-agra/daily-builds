@@ -67,12 +67,12 @@ func lex(src string) ([]token, error) {
 			if i < len(rs) && (unicode.IsLetter(rs[i]) || rs[i] == '_') {
 				return nil, &Error{l, cl, "malformed number"}
 			}
-			n, err := strconv.ParseInt(string(rs[st:i]), 10, 64)
-			if err != nil {
-				// allow exactly 9223372036854775808 only via unary minus? keep simple: reject
+			u, err := strconv.ParseUint(string(rs[st:i]), 10, 64)
+			if err != nil || u > 1<<63 {
 				return nil, &Error{l, cl, "integer literal out of range"}
 			}
-			toks = append(toks, token{kind: tInt, n: n, s: string(rs[st:i]), line: l, col: cl})
+			// 2^63 is only representable as -9223372036854775808; the parser checks the sign
+			toks = append(toks, token{kind: tInt, n: int64(u), s: string(rs[st:i]), line: l, col: cl})
 		case unicode.IsLetter(c) || c == '_':
 			l, cl := line, col
 			st := i
@@ -537,12 +537,16 @@ func (p *parser) unary() (expr, error) {
 	t := p.peek()
 	if t.kind == tOp && (t.s == "-" || t.s == "!" || t.s == "~") {
 		p.next()
+		if nt := p.peek(); t.s == "-" && nt.kind == tInt { // negative literal, including -2^63
+			p.next()
+			return &numLit{pos{t.line, t.col}, -nt.n}, nil
+		}
 		x, err := p.unary()
 		if err != nil {
 			return nil, err
 		}
 		if n, ok := x.(*numLit); ok && t.s == "-" {
-			return &numLit{pos{t.line, t.col}, -n.n}, nil
+			return &numLit{pos{t.line, t.col}, -n.n}, nil // -(-2^63) wraps to itself, as intended
 		}
 		return &unaryEx{pos{t.line, t.col}, t.s, x}, nil
 	}
@@ -554,6 +558,9 @@ func (p *parser) primary() (expr, error) {
 	ps := pos{t.line, t.col}
 	switch {
 	case t.kind == tInt:
+		if t.n == -1<<63 { // literal 2^63 without a preceding minus
+			return nil, p.errAt(t, "integer literal out of range (only -9223372036854775808 may use 2^63)")
+		}
 		return &numLit{ps, t.n}, nil
 	case t.kind == tOp && t.s == "(":
 		e, err := p.expr(0)

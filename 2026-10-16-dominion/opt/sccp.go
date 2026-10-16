@@ -196,15 +196,17 @@ func SCCP(f *ir.Func) int {
 	}
 	// rewrite
 	n := 0
+	repl := ir.NewReplacer()
 	f.ForEachInstr(func(b *ir.Block, v *ir.Value) {
 		if !execBlock[b] || !v.HasResult() || v.Op == ir.OpAlloca {
 			return
 		}
 		if l := state[v.ID]; l.k == latConst {
-			f.ReplaceAllUses(v, f.Const(l.c))
+			repl.Add(v, f.Const(l.c))
 			n++
 		}
 	})
+	f.Apply(repl)
 	for _, b := range f.Blocks {
 		if !execBlock[b] {
 			continue

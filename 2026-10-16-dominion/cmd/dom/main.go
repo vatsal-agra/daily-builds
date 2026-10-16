@@ -29,7 +29,8 @@ usage:
 optimisation levels: -O0 none · -O1 basic · -O2 full (inlining, GVN, LICM) · -O3 adds tail-recursion elimination and unrolling
 `
 
-const fuel = 2_000_000_000
+// fuel is the instruction budget for running programs (settable with -fuel).
+var fuel int64 = 200_000_000
 
 func die(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, "dom: "+format+"\n", a...)
@@ -144,6 +145,7 @@ func cmdRun(args []string) {
 		fs.IntVar(&regs, "regs", 12, "allocatable registers")
 		fs.BoolVar(&interp, "interp", false, "use the IR interpreter instead of the VM")
 		fs.BoolVar(&stats, "stats", false, "print execution statistics")
+		fs.Int64Var(&fuel, "fuel", fuel, "instruction budget before 'fuel exhausted'")
 	})
 	m := load(file)
 	optimize(m, lvl, "", false)

@@ -32,6 +32,10 @@ const (
 	TrapOOB     = "out-of-bounds access"
 	TrapFuel    = "fuel exhausted"
 	TrapStack   = "stack overflow"
+	TrapOutput  = "output limit exceeded"
+
+	// MaxOutput bounds the bytes a program may print.
+	MaxOutput = 1 << 20
 )
 
 type trapErr struct{ msg string }
@@ -50,7 +54,7 @@ const MaxCallDepth = 400
 func (m *Module) Run(fuel int64) (res Result) {
 	main := m.Func("main")
 	if main == nil || len(main.Params) != 0 {
-		return Result{Trap: "no parameterless @main"}
+		return Result{Trap: "no parameterless function @main"}
 	}
 	return m.RunFunc(main, nil, fuel)
 }
@@ -136,6 +140,9 @@ func (in *interp) call(f *Func, args []int64) int64 {
 				}
 				vals[v.ID] = in.call(c, as)
 			case OpPrint:
+				if in.out.Len() > MaxOutput {
+					panic(trapErr{TrapOutput})
+				}
 				in.out.WriteString(strconv.FormatInt(get(v.Args[0]), 10))
 				in.out.WriteByte('\n')
 			default:

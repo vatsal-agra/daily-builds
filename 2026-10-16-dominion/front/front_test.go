@@ -96,3 +96,24 @@ func TestErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestMinInt64AndShadowInit(t *testing.T) {
+	r := run(t, `fn main(){ var m = -9223372036854775808; print(m); print(-m); print(m - 1); return -(-9223372036854775807 - 1) == m; }`)
+	if r.Out != "-9223372036854775808\n-9223372036854775808\n9223372036854775807\n" || r.Ret != 1 {
+		t.Fatalf("got %v", r)
+	}
+	if _, err := Compile(`fn main(){ return 9223372036854775808; }`); err == nil {
+		t.Fatal("positive 2^63 must be rejected")
+	}
+	r = run(t, `fn main(){ var x=1; { var x = x + 1; print(x);} return x; }`)
+	if r.Out != "2\n" || r.Ret != 1 {
+		t.Fatalf("self-referential shadow init: %v", r)
+	}
+}
+
+func TestOutputLimit(t *testing.T) {
+	m, _ := Compile(`fn main(){ while 1 { print(123456789); } return 0; }`)
+	if r := m.Run(1 << 40); r.Trap != ir.TrapOutput {
+		t.Fatalf("want output limit trap, got %v", r.Trap)
+	}
+}

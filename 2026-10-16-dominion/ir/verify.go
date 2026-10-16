@@ -68,23 +68,23 @@ func (f *Func) VerifyIn(m *Module) error {
 			predCount[[2]*Block{b, s}]++
 		}
 	}
+	predSeen := map[[2]*Block]int{}
 	for _, b := range f.Blocks {
-		cnt := map[*Block]int{}
 		for _, p := range b.Preds {
 			if !inFn[p] {
 				return fail("block %s has a stale predecessor %s", b.Name, p.Name)
 			}
-			cnt[p]++
+			predSeen[[2]*Block{p, b}]++
 		}
-		for p, n := range cnt {
-			if predCount[[2]*Block{p, b}] != n {
-				return fail("pred list of %s disagrees with successors of %s", b.Name, p.Name)
-			}
+	}
+	for k, n := range predCount {
+		if predSeen[k] != n {
+			return fail("pred list of %s disagrees with successors of %s", k[1].Name, k[0].Name)
 		}
-		for k, n := range predCount {
-			if k[1] == b && cnt[k[0]] != n {
-				return fail("block %s missing predecessor %s", b.Name, k[0].Name)
-			}
+	}
+	for k, n := range predSeen {
+		if predCount[k] != n {
+			return fail("pred list of %s disagrees with successors of %s", k[1].Name, k[0].Name)
 		}
 	}
 	// per-value checks
@@ -150,6 +150,9 @@ func (f *Func) VerifyIn(m *Module) error {
 				return fail("phi in %s has %d args for %d preds", b.Name, len(v.Args), len(b.Preds))
 			}
 			for i, a := range v.Args {
+				if a != nil && a.Op == OpAlloca {
+					return fail("alloca %%%d used as a phi operand in %s", a.ID, b.Name)
+				}
 				// a phi argument is "used" at the end of the corresponding predecessor
 				if err := checkUse(v, b.Preds[i], 1<<30, a); err != nil {
 					return err
@@ -190,6 +193,9 @@ func (f *Func) VerifyIn(m *Module) error {
 			}
 		}
 		if b.Ctrl != nil {
+			if b.Ctrl.Op == OpAlloca {
+				return fail("alloca used as a terminator operand in %s", b.Name)
+			}
 			if err := checkUse(nil, b, 1<<30, b.Ctrl); err != nil {
 				return err
 			}

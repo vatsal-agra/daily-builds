@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"dominion/backend"
 	"dominion/front"
 	"dominion/ir"
 	"dominion/opt"
@@ -48,8 +49,19 @@ func TestExamplesAllLevels(t *testing.T) {
 			if !got.Same(want) {
 				t.Errorf("%s -O%d: got %v want %v", name, lvl, got, want)
 			}
-			if got.Steps >= want.Steps {
-				t.Errorf("%s -O%d: no speedup (%d vs %d steps)", name, lvl, got.Steps, want.Steps)
+			// the IR step count is not a cost model (strength reduction adds instructions that are
+			// cheaper); compare VM cycles instead
+			cyc := func(m *ir.Module) int64 {
+				o, err := backend.Compile(m, backend.Config{NumRegs: 12})
+				if err != nil {
+					t.Fatalf("%s: %v", name, err)
+				}
+				_, st := o.Prog.Run(fuel)
+				return st.Cycles
+			}
+			base2, _ := front.Compile(src)
+			if c0, c1 := cyc(base2), cyc(m); c1 >= c0 {
+				t.Errorf("%s -O%d: no speedup (%d vs %d cycles)", name, lvl, c1, c0)
 			}
 		}
 	}
@@ -98,5 +110,50 @@ func TestMem2RegRemovesAllScalarAllocas(t *testing.T) {
 	}
 	if !strings.Contains(m.String(), "phi") {
 		t.Fatalf("expected phis:\n%s", m)
+	}
+}
+
+// Division / remainder by powers of two are strength-reduced to shifts and masks; the signed
+// rounding rules for negative operands are the classic place to go wrong.
+func TestStrengthReducedDivision(t *testing.T) {
+	src := `
+fn probe(x) {
+    print(x / 2); print(x / 4); print(x / 8); print(x / 1024);
+    print(x % 2); print(x % 4); print(x % 16);
+    print((x % 2) == 0); print((x % 8) != 0);
+    print(x * 8 + x * 3 - x * 1);
+    return 0;
+}
+fn main() {
+    var vals[12];
+    vals[0] = 0; vals[1] = 1; vals[2] = -1; vals[3] = 7; vals[4] = -7; vals[5] = 8;
+    vals[6] = -8; vals[7] = 1023; vals[8] = -1025; vals[9] = 9223372036854775807;
+    vals[10] = -9223372036854775807 - 1; vals[11] = -3;
+    for var i = 0; i < 12; i += 1 { probe(vals[i]); }
+    return 0;
+}`
+	base, _ := front.Compile(src)
+	want := base.Run(fuel)
+	if want.Trap != "" {
+		t.Fatal(want)
+	}
+	for lvl := 1; lvl <= 3; lvl++ {
+		m, _ := front.Compile(src)
+		if _, err := opt.Optimize(m, lvl, true); err != nil {
+			t.Fatal(err)
+		}
+		if got := m.Run(fuel); !got.Same(want) {
+			t.Fatalf("-O%d: strength reduction changed results\n got %q\nwant %q", lvl, got.Out, want.Out)
+		}
+		o, err := backend.Compile(m, backend.Config{NumRegs: 8})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := o.Prog.Run(fuel); !got.Same(want) {
+			t.Fatalf("-O%d vm mismatch", lvl)
+		}
+		if lvl >= 2 && strings.Contains(m.String(), "div") {
+			t.Errorf("-O%d: division by constant power of two was not strength-reduced:\n%s", lvl, m)
+		}
 	}
 }

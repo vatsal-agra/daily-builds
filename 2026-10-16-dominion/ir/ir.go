@@ -440,3 +440,52 @@ func (m *Module) SortedFuncNames() []string {
 	sort.Strings(n)
 	return n
 }
+
+// Replacer batches "replace all uses of old with new" requests so that a pass can rewrite the whole
+// function in one linear sweep (Apply) instead of one sweep per replacement.
+type Replacer struct{ m map[*Value]*Value }
+
+func NewReplacer() *Replacer { return &Replacer{m: map[*Value]*Value{}} }
+
+// Add records old -> nw (nw may itself be replaced later; Resolve follows chains).
+func (r *Replacer) Add(old, nw *Value) { r.m[old] = nw }
+
+// Len is the number of recorded replacements.
+func (r *Replacer) Len() int { return len(r.m) }
+
+// Resolve follows replacement chains.
+func (r *Replacer) Resolve(v *Value) *Value {
+	for {
+		n, ok := r.m[v]
+		if !ok {
+			return v
+		}
+		v = n
+	}
+}
+
+// ResolveArgs rewrites the operands of v in place.
+func (r *Replacer) ResolveArgs(v *Value) {
+	for i, a := range v.Args {
+		v.Args[i] = r.Resolve(a)
+	}
+}
+
+// Apply rewrites every operand and terminator control value in f, then clears the batch.
+func (f *Func) Apply(r *Replacer) {
+	if len(r.m) == 0 {
+		return
+	}
+	for _, b := range f.Blocks {
+		for _, v := range b.Phis {
+			r.ResolveArgs(v)
+		}
+		for _, v := range b.Instrs {
+			r.ResolveArgs(v)
+		}
+		if b.Ctrl != nil {
+			b.Ctrl = r.Resolve(b.Ctrl)
+		}
+	}
+	r.m = map[*Value]*Value{}
+}

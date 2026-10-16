@@ -35,8 +35,8 @@ func GVN(f *ir.Func) int {
 	f.RemoveUnreachable()
 	dom := ir.ComputeDom(f)
 	n := 0
-	type scope struct{ added []string }
 	table := map[string]*ir.Value{}
+	repl := ir.NewReplacer()
 	var walk func(b *ir.Block)
 	walk = func(b *ir.Block) {
 		var added []string
@@ -46,10 +46,10 @@ func GVN(f *ir.Func) int {
 			ph := b.Phis[i]
 			k := ""
 			for _, a := range ph.Args {
-				k += fmt.Sprintf("%p,", a)
+				k += fmt.Sprintf("%p,", repl.Resolve(a))
 			}
 			if prev, ok := seenPhi[k]; ok {
-				f.ReplaceAllUses(ph, prev)
+				repl.Add(ph, prev)
 				b.Phis = append(b.Phis[:i], b.Phis[i+1:]...)
 				i--
 				n++
@@ -59,12 +59,13 @@ func GVN(f *ir.Func) int {
 		}
 		for i := 0; i < len(b.Instrs); i++ {
 			v := b.Instrs[i]
+			repl.ResolveArgs(v)
 			if !v.IsPure() {
 				continue
 			}
 			k := exprKey(v)
 			if prev, ok := table[k]; ok {
-				f.ReplaceAllUses(v, prev)
+				repl.Add(v, prev)
 				b.Instrs = append(b.Instrs[:i], b.Instrs[i+1:]...)
 				i--
 				n++
@@ -81,6 +82,7 @@ func GVN(f *ir.Func) int {
 		}
 	}
 	walk(f.Entry())
+	f.Apply(repl)
 	return n
 }
 
@@ -94,6 +96,7 @@ func MemOpt(f *ir.Func) int {
 		idx  *ir.Value
 	}
 	exit := map[*ir.Block]map[key]*ir.Value{}
+	repl := ir.NewReplacer()
 	for _, b := range ir.ReversePostorder(f) {
 		known := map[key]*ir.Value{}
 		if len(b.Preds) == 1 {
@@ -117,11 +120,12 @@ func MemOpt(f *ir.Func) int {
 		}
 		for i := 0; i < len(b.Instrs); i++ {
 			v := b.Instrs[i]
+			repl.ResolveArgs(v)
 			switch v.Op {
 			case ir.OpLoad:
 				k := key{v.Args[0], v.Args[1]}
 				if val, ok := known[k]; ok {
-					f.ReplaceAllUses(v, val)
+					repl.Add(v, val)
 					b.Instrs = append(b.Instrs[:i], b.Instrs[i+1:]...)
 					i--
 					n++
@@ -162,5 +166,6 @@ func MemOpt(f *ir.Func) int {
 		}
 		exit[b] = known
 	}
+	f.Apply(repl)
 	return n
 }

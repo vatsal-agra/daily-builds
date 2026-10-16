@@ -1,0 +1,274 @@
+;; Each case: "=== name | expected output (\n-separated) | expected ret" followed by IR text.
+=== swap_cycle | 5\n3\n | 8
+func @main() {
+entry:
+  br loop
+loop:
+  %i = phi [0, entry], [%i2, body]
+  %a = phi [3, entry], [%b, body]
+  %b = phi [5, entry], [%a, body]
+  %c = lt %i, 3
+  condbr %c, body, done
+body:
+  %i2 = add %i, 1
+  br loop
+done:
+  print %a
+  print %b
+  %s = add %a, %b
+  ret %s
+}
+=== lost_copy | 3\n | 3
+func @main() {
+entry:
+  br loop
+loop:
+  %x = phi [0, entry], [%y, loop]
+  %y = add %x, 1
+  %c = lt %y, 4
+  condbr %c, loop, exit
+exit:
+  print %x
+  ret %x
+}
+=== select_chain | 7\n-1\n | 7
+func @main() {
+entry:
+  %c1 = lt 3, 5
+  %a = select %c1, 7, 9
+  %c2 = gt %a, 100
+  %b = select %c2, 0, -1
+  print %a
+  print %b
+  ret %a
+}
+=== multi_entry_loop | 26\n | 26
+func @main() {
+entry:
+  %c = lt 1, 2
+  condbr %c, left, right
+left:
+  br head
+right:
+  br head
+head:
+  %i = phi [0, left], [100, right], [%i2, body]
+  %acc = phi [10, left], [20, right], [%acc2, body]
+  %k = mul 2, 3
+  %cmp = lt %i, 2
+  condbr %cmp, body, out
+body:
+  %i2 = add %i, 1
+  %acc2 = add %acc, %k
+  br head
+out:
+  %r = sub %acc, -4
+  print %r
+  ret %r
+}
+=== irreducible | 10\n | 10
+func @main() {
+entry:
+  %c = lt 0, 1
+  condbr %c, a, b
+a:
+  %x = phi [1, entry], [%x2, b]
+  %x1 = add %x, 1
+  %d = lt %x1, 10
+  condbr %d, b, exit
+b:
+  %xb = phi [5, entry], [%x1, a]
+  %x2 = add %xb, 1
+  %e = lt %x2, 10
+  condbr %e, a, exit2
+exit:
+  print %x1
+  ret %x1
+exit2:
+  print %x2
+  ret %x2
+}
+=== inline_alloca_zero | 0\n0\n | 5
+func @peek() {
+entry:
+  %m = alloca 1
+  %old = load %m, 0
+  store %m, 0, 5
+  ret %old
+}
+func @main() {
+entry:
+  %a = call @peek()
+  %b = call @peek()
+  print %a
+  print %b
+  %s = add %a, 5
+  ret %s
+}
+=== many_params | 55\n | 55
+func @sum10(%a, %b, %c, %d, %e, %f, %g, %h, %i, %j) {
+entry:
+  %s1 = add %a, %b
+  %s2 = add %s1, %c
+  %s3 = add %s2, %d
+  %s4 = add %s3, %e
+  %s5 = add %s4, %f
+  %s6 = add %s5, %g
+  %s7 = add %s6, %h
+  %s8 = add %s7, %i
+  %s9 = add %s8, %j
+  ret %s9
+}
+func @main() {
+entry:
+  %r = call @sum10(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+  print %r
+  ret %r
+}
+=== live_across_calls | 1\n3\n7\n11\n14\n | 14
+func @id(%x) {
+entry:
+  ret %x
+}
+func @main() {
+entry:
+  %a = call @id(1)
+  %b = add %a, 2
+  %c = call @id(%b)
+  %d = add %c, %a
+  %e = add %d, %b
+  %f = call @id(%e)
+  %g = add %f, %a
+  print %a
+  print %b
+  print %f
+  %h = add %g, %c
+  print %h
+  %i = add %h, %b
+  print %i
+  ret %i
+}
+=== trap_order | 1\n | 
+func @main() {
+entry:
+  print 1
+  %z = sub 3, 3
+  %q = div 10, %z
+  print %q
+  ret 0
+}
+=== wrap_and_shift | -9223372036854775808\n-9223372036854775808\n0\n8\n1\n | 1
+func @main() {
+entry:
+  %m = shl 1, 63
+  %n = div %m, -1
+  %r = rem %m, -1
+  print %m
+  print %n
+  print %r
+  %s = shl 1, 67
+  print %s
+  %t = shr -8, 70
+  %u = shr %t, 63
+  %v = sub 0, %u
+  print %v
+  ret %v
+}
+=== unreachable_phi_loop | 4\n | 4
+func @main() {
+entry:
+  br out
+dead1:
+  %p = phi [1, dead2], [%p, dead1]
+  condbr %p, dead1, dead2
+dead2:
+  %q = phi [%p, dead1]
+  br dead1
+out:
+  print 4
+  ret 4
+}
+=== self_phi_const_fold | 3\n | 3
+func @main() {
+entry:
+  br loop
+loop:
+  %x = phi [3, entry], [%x, loop]
+  %c = eq %x, 3
+  condbr %c, exit, loop
+exit:
+  print %x
+  ret %x
+}
+=== array_dynamic | 6\n15\n | 15
+func @main() {
+entry:
+  %a = alloca 4
+  br loop
+loop:
+  %i = phi [0, entry], [%i2, loop]
+  %v = mul %i, 2
+  store %a, %i, %v
+  %i2 = add %i, 1
+  %c = lt %i2, 4
+  condbr %c, loop, done
+done:
+  %x = load %a, 3
+  %y = load %a, 2
+  %z = add %x, %y
+  %w = add %z, 5
+  print %x
+  print %w
+  ret %w
+}
+=== nested_licm | 120\n | 120
+func @main() {
+entry:
+  %arr = alloca 2
+  store %arr, 0, 5
+  br outer
+outer:
+  %i = phi [0, entry], [%i2, outer.latch]
+  %s = phi [0, entry], [%s2, outer.latch]
+  %c = lt %i, 4
+  condbr %c, inner, done
+inner:
+  %j = phi [0, outer], [%j2, inner]
+  %t = phi [%s, outer], [%t2, inner]
+  %base = load %arr, 0
+  %k = mul %base, 3
+  %t2 = add %t, %k
+  %j2 = add %j, 1
+  %d = lt %j2, 2
+  condbr %d, inner, outer.latch
+outer.latch:
+  %s2 = add %t2, 0
+  %i2 = add %i, 1
+  br outer
+done:
+  print %s
+  ret %s
+}
+=== inline_alloca_in_loop | 0\n0\n0\n | 0
+func @peek() {
+entry:
+  %m = alloca 1
+  %old = load %m, 0
+  store %m, 0, 5
+  ret %old
+}
+func @main() {
+entry:
+  br loop
+loop:
+  %i = phi [0, entry], [%i2, loop]
+  %acc = phi [0, entry], [%acc2, loop]
+  %r = call @peek()
+  print %r
+  %acc2 = add %acc, %r
+  %i2 = add %i, 1
+  %c = lt %i2, 3
+  condbr %c, loop, done
+done:
+  ret %acc2
+}

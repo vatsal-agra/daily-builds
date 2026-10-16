@@ -6,11 +6,12 @@ import "dominion/ir"
 // replaceTrivialPhis removes phis whose operands (ignoring self references) are all the same value.
 func replaceTrivialPhis(f *ir.Func) int {
 	n := 0
-	for changed := true; changed; {
-		changed = false
+	for {
+		r := ir.NewReplacer()
+		dead := map[*ir.Value]bool{}
 		for _, b := range f.Blocks {
-			for i := 0; i < len(b.Phis); i++ {
-				ph := b.Phis[i]
+			for _, ph := range b.Phis {
+				r.ResolveArgs(ph)
 				var same *ir.Value
 				trivial := true
 				for _, a := range ph.Args {
@@ -30,15 +31,25 @@ func replaceTrivialPhis(f *ir.Func) int {
 					// phi of only itself: unreachable/undefined loop value; the interpreter default is 0
 					same = f.Const(0)
 				}
-				f.ReplaceAllUses(ph, same)
-				b.Phis = append(b.Phis[:i], b.Phis[i+1:]...)
-				i--
-				n++
-				changed = true
+				r.Add(ph, same)
+				dead[ph] = true
 			}
 		}
+		if len(dead) == 0 {
+			return n
+		}
+		f.Apply(r)
+		for _, b := range f.Blocks {
+			kept := b.Phis[:0]
+			for _, ph := range b.Phis {
+				if !dead[ph] {
+					kept = append(kept, ph)
+				}
+			}
+			b.Phis = kept
+		}
+		n += len(dead)
 	}
-	return n
 }
 
 // SimplifyCFG folds constant branches, removes unreachable blocks, forwards empty blocks and merges chains.
@@ -84,6 +95,7 @@ func SimplifyCFG(f *ir.Func) int {
 			n++
 		}
 		// merge b -> s when s has a unique predecessor
+		mergeRepl := ir.NewReplacer()
 		for i := 0; i < len(f.Blocks); i++ {
 			b := f.Blocks[i]
 			if b.Term != ir.TermBr {
@@ -94,7 +106,7 @@ func SimplifyCFG(f *ir.Func) int {
 				continue
 			}
 			for _, ph := range s.Phis {
-				f.ReplaceAllUses(ph, ph.Args[0])
+				mergeRepl.Add(ph, mergeRepl.Resolve(ph.Args[0]))
 			}
 			for _, v := range s.Instrs {
 				v.Block = b
@@ -118,6 +130,7 @@ func SimplifyCFG(f *ir.Func) int {
 			i--
 			n++
 		}
+		f.Apply(mergeRepl)
 		total += n
 		if n == 0 {
 			return total

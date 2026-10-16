@@ -45,7 +45,7 @@ func isBool(v *ir.Value) bool {
 
 // simplify returns an existing value equal to v, or nil. It may rewrite v in place
 // (canonicalisation, strength reduction) and reports that through changed.
-func simplify(f *ir.Func, b *ir.Block, idx int, v *ir.Value, changed *bool) *ir.Value {
+func simplify(f *ir.Func, v *ir.Value, changed *bool, emit func(op ir.Op, args ...*ir.Value) *ir.Value) *ir.Value {
 	c := f.Const
 	switch {
 	case v.Op.IsBinary():
@@ -113,9 +113,20 @@ func simplify(f *ir.Func, b *ir.Block, idx int, v *ir.Value, changed *bool) *ir.
 			if yc && y.Const == 1 {
 				return x
 			}
+			if yc && y.Const > 1 && isPow2(y.Const) { // signed x / 2^k: round toward zero via a bias
+				k := int64(bits.TrailingZeros64(uint64(y.Const)))
+				neg := emit(ir.OpShr, x, c(63))
+				bias := emit(ir.OpAnd, neg, c(y.Const-1))
+				return emit(ir.OpShr, emit(ir.OpAdd, x, bias), c(k))
+			}
 		case ir.OpRem:
 			if yc && (y.Const == 1 || y.Const == -1) {
 				return c(0)
+			}
+			if yc && y.Const > 1 && isPow2(y.Const) { // x % 2^k == x - ((x + bias) & -2^k)
+				neg := emit(ir.OpShr, x, c(63))
+				bias := emit(ir.OpAnd, neg, c(y.Const-1))
+				return emit(ir.OpSub, x, emit(ir.OpAnd, emit(ir.OpAdd, x, bias), c(-y.Const)))
 			}
 		case ir.OpAnd:
 			if same {
@@ -152,6 +163,11 @@ func simplify(f *ir.Func, b *ir.Block, idx int, v *ir.Value, changed *bool) *ir.
 			if same {
 				return c(1)
 			}
+			if yc && y.Const == 0 && x.Op == ir.OpRem && x.Args[1].IsConst() && x.Args[1].Const > 1 && isPow2(x.Args[1].Const) {
+				v.Args[0] = emit(ir.OpAnd, x.Args[0], c(x.Args[1].Const-1))
+				*changed = true
+				break
+			}
 			if yc && y.Const == 0 && x.Op.IsCompare() { // !(cmp)
 				v.Op, v.Args = invertCmp(x.Op), []*ir.Value{x.Args[0], x.Args[1]}
 				*changed = true
@@ -161,6 +177,11 @@ func simplify(f *ir.Func, b *ir.Block, idx int, v *ir.Value, changed *bool) *ir.
 		case ir.OpNe:
 			if same {
 				return c(0)
+			}
+			if yc && y.Const == 0 && x.Op == ir.OpRem && x.Args[1].IsConst() && x.Args[1].Const > 1 && isPow2(x.Args[1].Const) {
+				v.Args[0] = emit(ir.OpAnd, x.Args[0], c(x.Args[1].Const-1))
+				*changed = true
+				break
 			}
 			if yc && y.Const == 0 && isBool(x) {
 				return x
@@ -227,20 +248,31 @@ func InstCombine(f *ir.Func) int {
 	total := 0
 	for round := 0; round < 8; round++ {
 		n := 0
+		repl := ir.NewReplacer()
 		for _, b := range f.Blocks {
+			kept := make([]*ir.Value, 0, len(b.Instrs)+4) // not aliased: emit() may add instructions
 			for i := 0; i < len(b.Instrs); i++ {
 				v := b.Instrs[i]
+				repl.ResolveArgs(v)
 				ch := false
-				if r := simplify(f, b, i, v, &ch); r != nil && r != v {
-					f.ReplaceAllUses(v, r)
-					b.Instrs = append(b.Instrs[:i], b.Instrs[i+1:]...)
-					i--
+				emit := func(op ir.Op, args ...*ir.Value) *ir.Value {
+					nv := f.NewValue(op, args...)
+					nv.Block = b
+					kept = append(kept, nv)
+					return nv
+				}
+				if r := simplify(f, v, &ch, emit); r != nil && r != v {
+					repl.Add(v, r)
 					n++
+					continue
 				} else if ch {
 					n++
 				}
+				kept = append(kept, v)
 			}
+			b.Instrs = kept
 		}
+		f.Apply(repl)
 		n += replaceTrivialPhis(f)
 		total += n
 		if n == 0 {

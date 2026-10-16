@@ -12,7 +12,7 @@ type ParseError struct {
 	Msg  string
 }
 
-func (e *ParseError) Error() string { return fmt.Sprintf("ir:%d: %s", e.Line, e.Msg) }
+func (e *ParseError) Error() string { return fmt.Sprintf("line %d: %s", e.Line, e.Msg) }
 
 type parser struct {
 	f      *Func

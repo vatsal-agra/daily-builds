@@ -55,7 +55,13 @@ func (l *lowerer) errAt(p pos, f string, a ...any) error {
 	return &Error{p.line, p.col, fmt.Sprintf(f, a...)}
 }
 
+// MaxParams is the largest parameter count the VM calling convention supports.
+const MaxParams = 32
+
 func (l *lowerer) lowerFn(d *fnDecl) (*ir.Func, error) {
+	if len(d.params) > MaxParams {
+		return nil, l.errAt(d.pos, "function %q has %d parameters (limit is %d)", d.name, len(d.params), MaxParams)
+	}
 	l.f = ir.NewFunc(d.name, len(d.params))
 	l.entry = l.f.NewBlock("entry")
 	l.scopes = []map[string]*sym{{}}
