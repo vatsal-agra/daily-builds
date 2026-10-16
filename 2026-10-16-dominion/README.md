@@ -1,5 +1,7 @@
 # Dominion
 
+*Daily build 2026-10-16 · status: shipped (all 6 phases, 4/4 required + 4/4 stretch features).*
+
 **An optimizing compiler middle- and back-end, written from scratch in Go (standard library only).**
 A small C-like language is lowered to a textual **SSA IR**, pushed through a real pass pipeline —
 dominators → `mem2reg` → sparse conditional constant propagation → GVN → LICM → inlining → if-conversion →
