@@ -33,12 +33,27 @@ func MutateIR(text string, r *rand.Rand) string {
 	for _, m := range nameRe.FindAllString(text, -1) {
 		names = append(names, m)
 	}
-	for k := 1 + r.Intn(3); k > 0; k-- {
+	want := 1 + r.Intn(3)
+	for attempts := 0; want > 0 && attempts < 60; attempts++ {
+		before := strings.Join(lines, "\n")
+		mutateOnce(&lines, blocks, names, r)
+		if strings.Join(lines, "\n") != before {
+			want--
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// mutateOnce applies one random edit (which may turn out to be a no-op).
+func mutateOnce(lp *[]string, blocks, names []string, r *rand.Rand) {
+	lines := *lp
+	defer func() { *lp = lines }()
+	{
 		i := r.Intn(len(lines))
 		l := lines[i]
 		t := strings.TrimSpace(l)
 		if t == "" || strings.HasPrefix(t, "func") || t == "}" || strings.HasSuffix(t, ":") {
-			continue
+			return
 		}
 		switch r.Intn(7) {
 		case 0: // swap two operands of a binary op
@@ -88,7 +103,6 @@ func MutateIR(text string, r *rand.Rand) string {
 			}
 		}
 	}
-	return strings.Join(lines, "\n")
 }
 
 // CheckIRText differentially tests an arbitrary (verified) IR module: interpreter vs every

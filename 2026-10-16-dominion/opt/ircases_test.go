@@ -76,6 +76,9 @@ func TestHandWrittenIR(t *testing.T) {
 		}
 		configs = append(configs,
 			[]string{"inline"},
+			[]string{"memopt"},
+			[]string{"gvn", "memopt", "dce"},
+			[]string{"simplifycfg", "mem2reg", "memopt", "dce"},
 			[]string{"inline", "simplifycfg", "mem2reg", "sccp", "dce"},
 			[]string{"inline", "gvn", "memopt", "licm", "dce"},
 			[]string{"mem2reg", "inline", "mem2reg", "gvn", "dce"},

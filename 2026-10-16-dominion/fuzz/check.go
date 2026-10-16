@@ -168,11 +168,16 @@ func CheckSource(seed int64, src string, cfg Config) Outcome {
 
 // Reduce shrinks a failing program by deleting lines and balanced blocks while the failure persists.
 func Reduce(f *Failure, cfg Config) string {
-	failsLike := func(src string) bool {
+	return ReduceWith(f.Src, func(src string) bool {
 		o := CheckSource(f.Seed, src, cfg)
 		return o.Fail != nil && o.Fail.Stage != "frontend" && stageKind(o.Fail.Stage) == stageKind(f.Stage)
-	}
-	lines := strings.Split(strings.TrimRight(f.Src, "\n"), "\n")
+	})
+}
+
+// ReduceWith shrinks src (deleting balanced blocks, then single lines, to a fixed point) while
+// failsLike keeps returning true.
+func ReduceWith(src string, failsLike func(src string) bool) string {
+	lines := strings.Split(strings.TrimRight(src, "\n"), "\n")
 	try := func(cand []string) bool { return failsLike(strings.Join(cand, "\n") + "\n") }
 	for changed := true; changed; {
 		changed = false

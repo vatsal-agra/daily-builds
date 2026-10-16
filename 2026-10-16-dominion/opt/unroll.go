@@ -144,7 +144,7 @@ func unrollLoop(f *ir.Func, l *Loop) bool {
 			outsidePred = p
 		}
 	}
-	if latch == nil || latch == h || outsidePred == nil || outsidePred.Term != ir.TermBr {
+	if latch == nil || latch == h || outsidePred == nil {
 		return false
 	}
 	size := 0
@@ -166,6 +166,9 @@ func unrollLoop(f *ir.Func, l *Loop) bool {
 		return false
 	}
 	pre := outsidePred
+	if pre.Term != ir.TermBr { // entry edge is a conditional branch: give the loop a dedicated preheader
+		pre = ensurePreheader(f, l)
+	}
 	pi, li := h.PredIndex(pre), h.PredIndex(latch)
 
 	// blocks in a stable order
@@ -299,12 +302,8 @@ func unrollLoop(f *ir.Func, l *Loop) bool {
 	// exit: the predecessor h is replaced by the final header copy
 	xi := exit.PredIndex(h)
 	exit.Preds[xi] = fb
-	for _, ph := range exit.Phis {
-		if m, ok := fin.vmap[ph.Args[xi]]; ok {
-			ph.Args[xi] = m
-		}
-	}
-	// uses of header-defined values outside the loop now refer to the final iteration's copies
+	// uses of header-defined values outside the loop (including the exit block's phi operands) now
+	// refer to the final iteration's copies
 	var cloned []*ir.Block
 	for _, ci := range copies {
 		for _, b := range order {

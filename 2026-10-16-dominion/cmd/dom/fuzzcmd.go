@@ -64,7 +64,7 @@ func cmdFuzz(args []string) {
 			break
 		}
 	}
-	fmt.Printf("fuzz: %d programs from seed %d in %v: %d agreed everywhere (%d of them trap identically), %d skipped (fuel), %d FAILED\n",
+	fmt.Printf("fuzz: %d programs from seed %d in %v: %d agreed everywhere (%d of them trap identically), %d skipped (invalid, UB or non-terminating), %d FAILED\n",
 		ok+skipped+failed, *seed, time.Since(start).Round(time.Millisecond), ok, trapped, skipped, failed)
 	if failed > 0 {
 		os.Exit(1)

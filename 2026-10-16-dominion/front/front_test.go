@@ -1,6 +1,7 @@
 package front
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -115,5 +116,50 @@ func TestOutputLimit(t *testing.T) {
 	m, _ := Compile(`fn main(){ while 1 { print(123456789); } return 0; }`)
 	if r := m.Run(1 << 40); r.Trap != ir.TrapOutput {
 		t.Fatalf("want output limit trap, got %v", r.Trap)
+	}
+}
+
+// && and || must short-circuit AND produce 0/1, in value position and in branch position.
+func TestLogicalOperatorsTruthTable(t *testing.T) {
+	b2i := func(b bool) int {
+		if b {
+			return 1
+		}
+		return 0
+	}
+	for _, a := range []int{0, 1, 2, -3} {
+		for _, b := range []int{0, 1, 5} {
+			src := fmt.Sprintf(`fn t(x){ print(x); return x; }
+fn main(){
+  var and = t(%[1]d) && t(%[2]d);
+  var or = t(%[1]d) || t(%[2]d);
+  print(and); print(or);
+  var c1 = 0; if %[1]d && %[2]d { c1 = 1; }
+  var c2 = 0; if %[1]d || %[2]d { c2 = 1; }
+  var c3 = 0; if !(%[1]d && %[2]d) { c3 = 1; }
+  var c4 = 0; var k = 0; while k < 3 && %[2]d != 0 { c4 += 1; k += 1; }
+  return and * 1000 + or * 100 + c1 * 10 + c2 + c3 * 10000 + c4 * 100000;
+}`, a, b)
+			var out string
+			and, or := b2i(a != 0 && b != 0), b2i(a != 0 || b != 0)
+			out += fmt.Sprintf("%d\n", a)
+			if a != 0 {
+				out += fmt.Sprintf("%d\n", b)
+			}
+			out += fmt.Sprintf("%d\n", a)
+			if a == 0 {
+				out += fmt.Sprintf("%d\n", b)
+			}
+			out += fmt.Sprintf("%d\n%d\n", and, or)
+			c4 := 0
+			if b != 0 {
+				c4 = 3
+			}
+			want := int64(and*1000 + or*100 + and*10 + or + (1-and)*10000 + c4*100000)
+			r := run(t, src)
+			if r.Out != out || r.Ret != want {
+				t.Errorf("a=%d b=%d: got out=%q ret=%d want out=%q ret=%d", a, b, r.Out, r.Ret, out, want)
+			}
+		}
 	}
 }

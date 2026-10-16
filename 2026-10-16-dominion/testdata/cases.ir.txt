@@ -272,3 +272,65 @@ loop:
 done:
   ret %acc2
 }
+=== alias_store_then_load | 2\n | 2
+func @f(%x, %y) {
+entry:
+  %a = alloca 4
+  store %a, %x, 1
+  store %a, %y, 2
+  %v = load %a, %x
+  print %v
+  ret %v
+}
+func @main() {
+entry:
+  %r = call @f(1, 1)
+  ret %r
+}
+=== alias_pending_store | 1\n2\n | 2
+func @f(%x, %y) {
+entry:
+  %a = alloca 4
+  store %a, %x, 1
+  %v = load %a, %y
+  store %a, %x, 2
+  %w = load %a, %x
+  print %v
+  print %w
+  ret %w
+}
+func @main() {
+entry:
+  %r = call @f(3, 3)
+  ret %r
+}
+=== unused_trapping_div | 1\n |
+func @main() {
+entry:
+  print 1
+  %z = sub 5, 5
+  %q = div 1, %z
+  ret 0
+}
+=== invariant_div_not_hoisted | 9\n | 9
+func @f(%n, %d) {
+entry:
+  br head
+head:
+  %i = phi [0, entry], [%i2, body]
+  %c = lt %i, %n
+  condbr %c, body, done
+body:
+  %q = div 100, %d
+  print %q
+  %i2 = add %i, 1
+  br head
+done:
+  ret 9
+}
+func @main() {
+entry:
+  %r = call @f(0, 0)
+  print %r
+  ret %r
+}

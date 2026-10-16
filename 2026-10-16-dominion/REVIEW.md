@@ -63,3 +63,33 @@ Each mutant is a one-line plausible bug; "killed" means some test or the fuzzer 
 `./scripts/recheck.sh` re-executes the reproduction for R1–R5, R13 and the Go regression tests for R6–R11;
 it prints `none of the REVIEW.md findings reproduce`. In addition 3 000 generated programs, 3 000 mutated-IR
 modules and the full test-suite pass at the time of writing (see Phase 5 for the final numbers).
+
+---
+
+# Phase 5 addendum — what verification found
+
+Phase 5 ran `scripts/mutants.py` (41 mutants, run in parallel on private copies of the tree, a hung test run
+counts as a kill). The first full pass killed 35 of 41; the 6 non-kills were each analysed rather than waved away:
+
+| # | Result | Analysis → action |
+|---|--------|-------------------|
+| V1 | **real compiler gap found by a new test** | The unroller refused any loop whose entry edge is a *conditional* branch (`if c { for … }`), because it demanded a plain-`br` preheader. Fixed by reusing LICM's `ensurePreheader`; test `TestUnrollKeepsValuesFlowingIntoALoopExitJoin`. |
+| V2 | equivalent code | Mutant "unroll: exit-block phi not remapped" survived because the explicit remap was redundant with the later whole-function `Replacer` sweep. The dead code was **deleted** and the mutant replaced by "live-outs not remapped" (killed). |
+| V3 | test gap | "memopt: stores never kill aliasing entries" and "loads keep stores pending" survived: no test had two *different SSA values holding the same runtime index*. Added IR cases `alias_store_then_load`, `alias_pending_store` and pass lists that run `memopt` without prior inlining/constant folding (which had been turning every index into the same constant). Both killed. |
+| V4 | test gap | "trapping div treated as pure" survived: every `div` in the corpus was *used*, so DCE never had a chance to delete a trap. Added `unused_trapping_div` and `invariant_div_not_hoisted` (zero-trip loop with a loop-invariant `100 / 0`). Killed. |
+| V5 | test gap | "`&&` evaluates only its left side" survived (the fuzzer's 60-program `-short` budget didn't hit it). Added an exhaustive `&&`/`||` truth-table test over value, `if`, `!(…)` and `while` contexts including evaluation-order side effects. Killed. |
+| V6 | precision gap | "SCCP ignores executable edges" survived: it changes *precision*, not correctness. Added `TestSCCPUsesOnlyExecutableEdges` (a phi whose other input comes from a provably-dead edge must fold). Killed. |
+
+Two more mutants failed to compile or merely timed out in the first run (harness bugs, not product bugs): the
+harness now reports "does not compile" separately and treats a 300 s test hang as a kill ("simplifycfg: merge
+with 2 preds", "mem2reg: wrong successor value" and "continue skips for-step" all turn into infinite loops).
+
+**Final result: 41 killed, 0 survived, 0 invalid.**
+
+## Final numbers
+
+* `go test -count=1 ./...` → all 8 packages pass (75 test cases; `go vet` clean).
+* `dom fuzz -n 2000 -seed 100000` → 1999 programs agree in every configuration (88 of them trap identically), 1 skipped, **0 failures**.
+* `dom fuzz -ir -n 4000 -seed 100000` → 1562 valid mutated-IR modules agree everywhere (the rest are rejected by the
+  verifier, non-terminating, or hit out-of-bounds UB and are skipped), **0 failures**.
+* `./demo.sh` green; `./scripts/recheck.sh` green; the HTML report renders without page errors in headless Chromium in light and dark.

@@ -46,3 +46,8 @@ Packages: `ir` (data model, printer, parser, verifier, interpreter), `front` (le
 ## Definition of done
 All required features exercised by `go test ./...` and `demo.sh`; fuzzer runs thousands of seeds clean;
 REVIEW.md lists adversarial findings and each one is fixed and regression-tested.
+
+## Outcome
+All 8 features shipped (4 required + 4 stretch: differential/mutated-IR fuzzer with reducer, HTML explorer,
+tail-recursion elimination + full loop unrolling + if-conversion, benchmark table). Two additions beyond the
+plan came out of the review phase: if-conversion (`select` was otherwise dead) and the mutation-analysis harness.
