@@ -1,0 +1,14 @@
+// 64-bit FNV-ish mixing + popcount via bit tricks: wrap-around arithmetic and shifts
+fn popcount(x) {
+    var c = 0;
+    while x != 0 { x = x & (x - 1); c += 1; }
+    return c;
+}
+fn mix(h, v) { h = h ^ v; h = h * 1099511628211; return h ^ (h >> 29); }
+fn main() {
+    var h = 1469598103934665603;
+    for var i = 0; i < 64; i += 1 { h = mix(h, i); }
+    print(h);
+    print(popcount(h & 65535));
+    return popcount(255) + popcount(1023);
+}

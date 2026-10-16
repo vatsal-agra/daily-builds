@@ -1,0 +1,21 @@
+// bubble sort with an LCG-filled array: swaps, dependent loads, early exit via flag
+fn main() {
+    var a[24];
+    var seed = 12345;
+    for var i = 0; i < 24; i += 1 {
+        seed = (seed * 1103515245 + 12345) & 2147483647;
+        a[i] = seed % 1000;
+    }
+    var swapped = 1;
+    while swapped {
+        swapped = 0;
+        for var i = 0; i + 1 < 24; i += 1 {
+            if a[i] > a[i + 1] {
+                var t = a[i]; a[i] = a[i + 1]; a[i + 1] = t;
+                swapped = 1;
+            }
+        }
+    }
+    for var i = 0; i < 24; i += 1 { print(a[i]); }
+    return a[0] * 1000 + a[23];
+}

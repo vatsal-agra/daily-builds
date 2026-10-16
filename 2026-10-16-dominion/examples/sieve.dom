@@ -1,0 +1,13 @@
+// sieve of Eratosthenes: array stores/loads, nested loops, LICM of bounds
+fn main() {
+    var composite[200];
+    var count = 0;
+    for var i = 2; i < 200; i += 1 {
+        if composite[i] == 0 {
+            count += 1;
+            for var j = i * i; j < 200; j += i { composite[j] = 1; }
+        }
+    }
+    print(count);
+    return count;
+}

@@ -1,0 +1,21 @@
+// 6x6 integer matrix product: triple loop, address arithmetic, loop invariants
+fn main() {
+    var a[36]; var b[36]; var c[36];
+    for var i = 0; i < 6; i += 1 {
+        for var j = 0; j < 6; j += 1 {
+            a[i * 6 + j] = i + j;
+            b[i * 6 + j] = i * j + 1;
+        }
+    }
+    for var i = 0; i < 6; i += 1 {
+        for var j = 0; j < 6; j += 1 {
+            var s = 0;
+            for var k = 0; k < 6; k += 1 { s += a[i * 6 + k] * b[k * 6 + j]; }
+            c[i * 6 + j] = s;
+        }
+    }
+    var tr = 0;
+    for var i = 0; i < 6; i += 1 { tr += c[i * 6 + i]; }
+    print(tr);
+    return c[35];
+}

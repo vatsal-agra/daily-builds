@@ -1,0 +1,18 @@
+// trial division with early exits, helper calls (inlined), and a running checksum
+fn is_prime(n) {
+    if n < 2 { return 0; }
+    var d = 2;
+    while d * d <= n {
+        if n % d == 0 { return 0; }
+        d += 1;
+    }
+    return 1;
+}
+fn main() {
+    var c = 0; var sum = 0;
+    for var i = 0; i < 400; i += 1 {
+        if is_prime(i) { c += 1; sum += i; }
+    }
+    print(c); print(sum);
+    return sum;
+}

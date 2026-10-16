@@ -1,0 +1,22 @@
+// fixed-point Mandelbrot ASCII render: short-circuit conditions, nested loops, shifts
+fn iter(cr, ci) {
+    var zr = 0; var zi = 0; var n = 0;
+    while n < 30 && ((zr * zr + zi * zi) >> 12) < 4 * 4096 / 4 * 4 {
+        var t = ((zr * zr - zi * zi) >> 12) + cr;
+        zi = ((2 * zr * zi) >> 12) + ci;
+        zr = t;
+        n += 1;
+    }
+    return n;
+}
+fn main() {
+    var total = 0;
+    for var y = -8; y <= 8; y += 2 {
+        for var x = -20; x <= 8; x += 1 {
+            var n = iter(x * 4096 / 10, y * 4096 / 8);
+            total += n;
+            if n >= 30 { print(1); } else { print(0); }
+        }
+    }
+    return total;
+}

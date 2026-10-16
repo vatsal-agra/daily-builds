@@ -1,0 +1,13 @@
+// gcd via tail recursion (tre at -O3) plus a driver
+fn gcd(a, b) {
+    if b == 0 { return a; }
+    return gcd(b, a % b);
+}
+fn lcm(a, b) { return a / gcd(a, b) * b; }
+fn main() {
+    var acc = 1;
+    for var i = 1; i <= 20; i += 1 { acc = lcm(acc, i); }
+    print(acc);
+    print(gcd(1071, 462));
+    return acc % 1000;
+}
