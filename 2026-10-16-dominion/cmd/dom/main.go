@@ -2,6 +2,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -17,16 +18,16 @@ import (
 const usage = `dom — Dominion SSA optimizing compiler
 
 usage:
-  dom run    [-O n] [-regs n] [-interp] [-stats] file.{dom,ir}   compile and execute @main
+  dom run    [-O n] [-regs n] [-interp] [-stats] [-fuel n] file.{dom,ir}   compile and execute @main
   dom ir     [-O n] [-passes a,b,c] [-trace] [-stats] file       print (optimised) SSA IR
   dom asm    [-O n] [-regs n] [-report] file                     print DVM assembly
   dom check  file                                                parse, verify and interpret
   dom bench  [-regs n] file...                                   cycles/instrs for -O0..-O3
   dom passes                                                     list optimisation passes
-  dom fuzz   [-n N] [-seed S] [-regs list]                       differential fuzzer
+  dom fuzz   [-n N] [-seed S] [-regs list] [-ir] [-show]         differential fuzzer (-ir: mutated IR)
   dom report [-O n] [-o out.html] file                           HTML CFG/dominator/pass report
 
-optimisation levels: -O0 none · -O1 basic · -O2 full (inlining, GVN, LICM) · -O3 adds tail-recursion elimination and unrolling
+optimisation levels: -O0 none · -O1 basic · -O2 full (inlining, GVN, LICM, if-conversion) · -O3 adds tail-recursion elimination and loop unrolling
 `
 
 // fuel is the instruction budget for running programs (settable with -fuel).
@@ -35,6 +36,21 @@ var fuel int64 = 200_000_000
 func die(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, "dom: "+format+"\n", a...)
 	os.Exit(1)
+}
+
+// diagnose prints a source diagnostic with the offending line and a caret.
+func diagnose(path, src string, err error) {
+	var fe *front.Error
+	if errors.As(err, &fe) {
+		fmt.Fprintf(os.Stderr, "%s:%v\n", path, fe)
+		lines := strings.Split(src, "\n")
+		if fe.Line >= 1 && fe.Line <= len(lines) {
+			l := strings.ReplaceAll(lines[fe.Line-1], "\t", " ")
+			fmt.Fprintf(os.Stderr, "  %4d | %s\n       | %s^\n", fe.Line, l, strings.Repeat(" ", max(fe.Col-1, 0)))
+		}
+		os.Exit(1)
+	}
+	die("%s: %v", path, err)
 }
 
 func load(path string) *ir.Module {
@@ -49,7 +65,10 @@ func load(path string) *ir.Module {
 		m, err = front.Compile(string(b))
 	}
 	if err != nil {
-		die("%s:%v", filepath.Base(path), err)
+		diagnose(path, string(b), err)
+	}
+	if len(m.Funcs) == 0 {
+		die("%s: no functions defined", path)
 	}
 	if err := m.Verify(); err != nil {
 		die("%v", err)
@@ -122,6 +141,9 @@ func parseFlags(name string, args []string, setup func(fs *flag.FlagSet)) (*flag
 }
 
 func optimize(m *ir.Module, level int, passes string, trace bool) opt.Stats {
+	if level < 0 || level > 3 {
+		die("optimisation level must be 0-3, got %d", level)
+	}
 	list := opt.Level(level)
 	if passes != "" {
 		list = strings.Split(passes, ",")
@@ -148,6 +170,9 @@ func cmdRun(args []string) {
 		fs.Int64Var(&fuel, "fuel", fuel, "instruction budget before 'fuel exhausted'")
 	})
 	m := load(file)
+	if m.Func("main") == nil {
+		die("%s: no function @main to run", file)
+	}
 	optimize(m, lvl, "", false)
 	var res ir.Result
 	if interp {

@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dominion — %TITLE%</title>
+<style>
+:root{--bg:#f6f5f1;--panel:#ffffff;--ink:#1d2127;--muted:#6b7280;--line:#d9d6cc;--accent:#2f6fed;--accent2:#0f9d7a;
+--hdr:#fff4d6;--hdrline:#e0a800;--add:#dcf5e6;--addink:#0b6b3a;--back:#c2410c;--dom:#7c3aed;--shadow:0 1px 2px rgba(0,0,0,.06),0 6px 18px rgba(0,0,0,.05);
+--op:#2f6fed;--mem:#b45309;--cf:#be185d;--phi:#7c3aed;--call:#0f766e}
+@media (prefers-color-scheme:dark){:root{--bg:#14161a;--panel:#1d2026;--ink:#e7e9ee;--muted:#9aa3b2;--line:#2e333c;--accent:#7aa2ff;--accent2:#34d3a6;
+--hdr:#3a3217;--hdrline:#caa326;--add:#16392a;--addink:#7fe3aa;--back:#fb923c;--dom:#a78bfa;--shadow:0 1px 2px rgba(0,0,0,.4);
+--op:#7aa2ff;--mem:#f5b055;--cf:#f472b6;--phi:#a78bfa;--call:#5eead4}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:22px 28px 10px;display:flex;flex-wrap:wrap;gap:14px 28px;align-items:baseline}
+h1{margin:0;font-size:22px;letter-spacing:-.01em}
+h1 span{color:var(--accent)}
+.sub{color:var(--muted)}
+main{padding:0 28px 40px;display:grid;gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:16px 18px}
+.card h2{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.row{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:center}
+select,button{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 10px}
+button{cursor:pointer}button:hover{border-color:var(--accent)}
+input[type=range]{flex:1;min-width:220px;accent-color:var(--accent)}
+.stage{font-weight:600}.chg{color:var(--accent2);font-variant-numeric:tabular-nums}
+label.t{display:inline-flex;gap:6px;align-items:center;color:var(--muted);cursor:pointer}
+.canvas{overflow:auto;border:1px solid var(--line);border-radius:10px;background:
+radial-gradient(circle at 1px 1px,var(--line) 1px,transparent 0) 0 0/22px 22px;max-height:640px}
+svg text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+.node rect.box{fill:var(--panel);stroke:var(--line);stroke-width:1.2}
+.node.hdr rect.box{fill:var(--hdr);stroke:var(--hdrline)}
+.node .title{font-weight:700;fill:var(--ink)}
+.node .depth{fill:var(--muted)}
+.node .ln.new{fill:var(--addink);font-weight:600}
+.ln.new-bg{fill:var(--add)}
+.edge{fill:none;stroke:var(--muted);stroke-width:1.4}
+.edge.t{stroke:var(--accent2)}.edge.f{stroke:var(--cf)}
+.edge.back{stroke:var(--back);stroke-dasharray:5 3}
+.dom{fill:none;stroke:var(--dom);stroke-width:1.4;stroke-dasharray:2 4}
+.k-op{fill:var(--op)}.k-mem{fill:var(--mem)}.k-cf{fill:var(--cf)}.k-phi{fill:var(--phi)}.k-call{fill:var(--call)}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:right;padding:6px 10px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.bar{display:inline-block;height:8px;border-radius:4px;background:var(--accent);vertical-align:middle;margin-left:8px}
+.bad{color:#dc2626;font-weight:700}
+pre{margin:0;overflow:auto;max-height:420px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre}
+.split{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12px}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:middle;margin-right:6px}
+@media (max-width:640px){header,main{padding-left:16px;padding-right:16px}}
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Dominion</span> report</h1>
+  <div class="sub" id="meta"></div>
+</header>
+<main>
+  <section class="card">
+    <h2>Pass timeline</h2>
+    <div class="row">
+      <label>function <select id="fn"></select></label>
+      <button id="prev" title="previous pass">◀</button>
+      <input type="range" id="slider" min="0" value="0">
+      <button id="next" title="next pass">▶</button>
+      <span><span class="stage" id="stageLabel"></span> <span class="chg" id="stageChg"></span></span>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label class="t"><input type="checkbox" id="optDom"> dominator tree</label>
+      <label class="t"><input type="checkbox" id="optDiff" checked> highlight new instructions</label>
+      <div class="legend">
+        <span><i style="border-color:var(--accent2)"></i>true</span><span><i style="border-color:var(--cf)"></i>false / jump</span>
+        <span><i style="border-color:var(--back);border-top-style:dashed"></i>back edge</span>
+        <span><i style="border-color:var(--dom);border-top-style:dotted"></i>idom</span><span>yellow = loop header</span>
+      </div>
+    </div>
+    <div class="canvas" style="margin-top:12px"><svg id="cfg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  </section>
+  <div class="split">
+    <section class="card"><h2>Cycles by optimisation level (VM cost model)</h2><table id="bench"></table></section>
+    <section class="card"><h2>Source</h2><pre id="src"></pre></section>
+  </div>
+  <section class="card"><h2>Machine code at -O<span id="lvl"></span></h2><pre id="asm"></pre></section>
+</main>
+<script>
+const D = /*DATA*/null;
+const $ = id => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+let stage = 0, fnName = D.stages[0].funcs[0].name;
+
+$("meta").textContent = D.title + " · " + D.stages.length + " snapshots · result " + D.result;
+$("src").textContent = D.source; $("asm").textContent = D.asm; $("lvl").textContent = D.level;
+const fsel = $("fn");
+D.stages[0].funcs.forEach(f => { const o = document.createElement("option"); o.value = o.textContent = f.name; fsel.appendChild(o); });
+const slider = $("slider"); slider.max = D.stages.length - 1;
+
+// benchmark table
+(() => {
+  const t = $("bench"), max = Math.max(...D.bench.map(b => b.cycles));
+  t.innerHTML = "<tr><th>level</th><th>cycles</th><th>instrs</th><th>speed-up</th><th>correct</th></tr>";
+  D.bench.forEach(b => {
+    const r = document.createElement("tr");
+    r.innerHTML = `<td>-O${b.level}</td><td>${b.cycles.toLocaleString()}<span class="bar" style="width:${Math.max(4, 120 * b.cycles / max)}px"></span></td>` +
+      `<td>${b.instrs.toLocaleString()}</td><td>${(D.bench[0].cycles / b.cycles).toFixed(2)}×</td><td class="${b.ok ? "" : "bad"}">${b.ok ? "✓" : "MISMATCH"}</td>`;
+    t.appendChild(r);
+  });
+})();
+
+function kind(l) {
+  const body = l.includes(" = ") ? l.split(" = ")[1] : l;
+  const op = body.split(/[ (]/)[0];
+  if (op === "phi") return "k-phi";
+  if (["load", "store", "alloca"].includes(op)) return "k-mem";
+  if (["br", "condbr", "ret"].includes(op)) return "k-cf";
+  if (op === "call" || op === "print") return "k-call";
+  return "k-op";
+}
+function el(name, attrs, text) {
+  const e = document.createElementNS(NS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function findFn(st, name) { return st.funcs.find(f => f.name === name); }
+
+function render() {
+  const st = D.stages[stage], f = findFn(st, fnName);
+  $("stageLabel").textContent = `${stage}/${D.stages.length - 1}  ${st.label}`;
+  $("stageChg").textContent = st.changes ? `(${st.changes} change${st.changes > 1 ? "s" : ""})` : "";
+  slider.value = stage;
+  const svg = $("cfg"); svg.innerHTML = "";
+  if (!f) { svg.setAttribute("width", 200); svg.setAttribute("height", 40); svg.appendChild(el("text", {x: 10, y: 24}, "function no longer exists (inlined away)")); return; }
+  svg.setAttribute("width", f.width); svg.setAttribute("height", f.height);
+  svg.setAttribute("viewBox", `0 0 ${f.width} ${f.height}`);
+  const prevF = stage > 0 ? findFn(D.stages[stage - 1], fnName) : null;
+  const prevLines = new Set();
+  if (prevF && $("optDiff").checked) prevF.nodes.forEach(n => n.lines.forEach(l => prevLines.add(l)));
+  const byName = {}; f.nodes.forEach(n => byName[n.name] = n);
+  svg.appendChild(el("defs", {})).innerHTML =
+    `<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker>`;
+  // edges
+  const outCount = {}, inCount = {};
+  f.edges.forEach(e => { outCount[e.from] = (outCount[e.from] || 0) + 1; });
+  const outSeen = {}, inSeen = {};
+  f.edges.forEach(e => { inCount[e.to] = (inCount[e.to] || 0) + 1; });
+  f.edges.forEach(e => {
+    const a = byName[e.from], b = byName[e.to]; if (!a || !b) return;
+    const oi = outSeen[e.from] = (outSeen[e.from] || 0) + 1, ii = inSeen[e.to] = (inSeen[e.to] || 0) + 1;
+    const x1 = a.x + a.w * oi / (outCount[e.from] + 1), y1 = a.y + a.h;
+    const x2 = b.x + b.w * ii / (inCount[e.to] + 1), y2 = b.y;
+    let d;
+    if (e.back || y2 <= y1) {
+      const off = 22 + 6 * ii, lx = Math.min(a.x, b.x) - off;
+      const sx = a.x + a.w, tx = b.x + b.w;
+      const rx = Math.max(sx, tx) + off;
+      d = `M${sx} ${a.y + a.h / 2} C${rx} ${a.y + a.h / 2} ${rx} ${b.y + b.h / 2} ${tx} ${b.y + b.h / 2}`;
+    } else {
+      const m = (y1 + y2) / 2;
+      d = `M${x1} ${y1} C${x1} ${m} ${x2} ${m} ${x2} ${y2 - 2}`;
+    }
+    svg.appendChild(el("path", {d, class: "edge " + (e.back ? "back " : "") + e.kind, "marker-end": "url(#ah)"}));
+  });
+  if ($("optDom").checked) f.nodes.forEach(n => {
+    const p = byName[n.idom]; if (!p) return;
+    svg.appendChild(el("path", {class: "dom", d: `M${p.x + p.w / 2} ${p.y + p.h} L${n.x + n.w / 2} ${n.y}`, "marker-end": "url(#ah)"}));
+  });
+  // nodes
+  f.nodes.forEach(n => {
+    const g = el("g", {class: "node" + (n.header ? " hdr" : ""), transform: `translate(${n.x},${n.y})`});
+    g.appendChild(el("rect", {class: "box", width: n.w, height: n.h, rx: 8}));
+    g.appendChild(el("text", {x: 12, y: 16, class: "title"}, n.name));
+    if (n.depth) g.appendChild(el("text", {x: n.w - 12, y: 16, "text-anchor": "end", class: "depth"}, "L" + n.depth));
+    n.lines.forEach((l, i) => {
+      const isNew = prevF && $("optDiff").checked && !prevLines.has(l);
+      if (isNew) g.appendChild(el("rect", {class: "ln new-bg", x: 6, y: 26 + i * 15, width: n.w - 12, height: 15, rx: 3}));
+      g.appendChild(el("text", {x: 12, y: 38 + i * 15, class: (isNew ? "ln new " : "ln ") + kind(l)}, l));
+    });
+    svg.appendChild(g);
+  });
+}
+fsel.onchange = () => { fnName = fsel.value; render(); };
+slider.oninput = () => { stage = +slider.value; render(); };
+$("prev").onclick = () => { if (stage > 0) { stage--; render(); } };
+$("next").onclick = () => { if (stage < D.stages.length - 1) { stage++; render(); } };
+$("optDom").onchange = $("optDiff").onchange = render;
+document.addEventListener("keydown", e => { if (e.key === "ArrowLeft") $("prev").click(); if (e.key === "ArrowRight") $("next").click(); });
+render();
+</script>
+</body>
+</html>

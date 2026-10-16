@@ -40,6 +40,7 @@ var registry = map[string]passFn{
 	"ifconv":      {fn: IfConvert},
 	"dce":         {fn: DCE},
 	"tre":         {fn: TailRecursionElim},
+	"unroll":      {fn: Unroll},
 	"inline":      {module: func(m *ir.Module) int { return Inline(m, DefaultInline) }},
 }
 
@@ -67,7 +68,7 @@ func Level(o int) []string {
 	default:
 		return strings.Fields("simplifycfg mem2reg instcombine sccp simplifycfg dce " +
 			"inline tre simplifycfg mem2reg instcombine sccp gvn memopt licm instcombine dce simplifycfg " +
-			"simplifycfg instcombine sccp gvn memopt licm dce simplifycfg " +
+			"unroll simplifycfg instcombine sccp gvn memopt licm dce simplifycfg " +
 			"ifconv simplifycfg gvn instcombine sccp dce simplifycfg")
 	}
 }
