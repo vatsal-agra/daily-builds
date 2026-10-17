@@ -46,6 +46,7 @@ internal/heat/       per-byte cost report (HTML) from the CM model
 | 5 | rANS entropy codec (order-0 and order-1, static model) as a fifth method | stretch |
 | 6 | `heat` — HTML report colouring every byte of a file by the bits the CM model spent on it | stretch |
 | 7 | Compression levels (1–9) for DEFLATE with tunable chain depth / lazy | stretch |
+| 8 | BWT multi-table Huffman (≤6 tables, 50-symbol groups, iterative refinement) — added after review finding R11 | stretch |
 
 ## Done means
 Round-trip fuzzing for every method, interop against `compress/flate` and system `gzip`, corruption

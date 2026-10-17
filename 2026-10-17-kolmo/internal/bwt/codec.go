@@ -96,21 +96,148 @@ func Encode(src []byte) []byte {
 	return out
 }
 
+// groupSize is the number of symbols coded with one Huffman table before the encoder may switch.
+const groupSize = 50
+
+func tableCount(nsyms int) int {
+	switch {
+	case nsyms < 200:
+		return 1
+	case nsyms < 600:
+		return 2
+	case nsyms < 1200:
+		return 3
+	case nsyms < 2400:
+		return 4
+	case nsyms < 6000:
+		return 5
+	}
+	return 6
+}
+
+// chooseTables clusters symbol groups onto T Huffman tables by iterative refinement
+// (assign each group to its cheapest table, rebuild tables from their groups, repeat).
+// It returns the final per-group selector and exact code lengths for each table.
+func chooseTables(syms []uint16, T int) ([]uint8, [][]uint8) {
+	ng := (len(syms) + groupSize - 1) / groupSize
+	sel := make([]uint8, ng)
+	lens := make([][]uint8, T)
+	if T == 1 {
+		freq := make([]int, alphabet)
+		for _, s := range syms {
+			freq[s]++
+		}
+		return sel, [][]uint8{huff.Lengths(freq, maxLen)}
+	}
+	// initial tables: split the alphabet into T ranges of equal total frequency; in-range symbols are cheap
+	total := make([]int, alphabet)
+	sum := 0
+	for _, s := range syms {
+		total[s]++
+		sum++
+	}
+	lo, acc := 0, 0
+	for t := 0; t < T; t++ {
+		target := sum * (t + 1) / T
+		hi := lo
+		for hi < alphabet && (acc < target || t == T-1) {
+			acc += total[hi]
+			hi++
+		}
+		lens[t] = make([]uint8, alphabet)
+		for v := range lens[t] {
+			if v >= lo && v < hi {
+				lens[t][v] = 2
+			} else {
+				lens[t][v] = 15
+			}
+		}
+		lo = hi
+	}
+	freqs := make([][]int, T)
+	for iter := 0; iter < 5; iter++ {
+		for t := range freqs {
+			freqs[t] = make([]int, alphabet)
+		}
+		for g := 0; g < ng; g++ {
+			end := min((g+1)*groupSize, len(syms))
+			best, bestCost := 0, int(^uint(0)>>1)
+			for t := 0; t < T; t++ {
+				c := 0
+				for _, s := range syms[g*groupSize : end] {
+					c += int(lens[t][s])
+				}
+				if c < bestCost {
+					best, bestCost = t, c
+				}
+			}
+			sel[g] = uint8(best)
+			for _, s := range syms[g*groupSize : end] {
+				freqs[best][s]++
+			}
+		}
+		last := iter == 4
+		for t := 0; t < T; t++ {
+			f := freqs[t]
+			if !last { // smooth so every symbol stays reachable while clustering
+				f = append([]int(nil), f...)
+				for v := range f {
+					f[v]++
+				}
+			}
+			lens[t] = huff.Lengths(f, maxLen)
+		}
+	}
+	return sel, lens
+}
+
 func appendBlock(out []byte, blk []byte) []byte {
 	last, primary := Transform(blk)
 	syms := rle0Encode(mtfEncode(last))
-	freq := make([]int, alphabet)
-	for _, s := range syms {
-		freq[s]++
+	T := tableCount(len(syms))
+	sel, lens := chooseTables(syms, T)
+	// A table no group chose has no symbols; drop it by remapping selectors densely.
+	used := make([]int, T)
+	for i := range used {
+		used[i] = -1
 	}
-	lens := huff.Lengths(freq, maxLen)
-	codes := huff.Codes(lens)
+	var keep [][]uint8
+	for _, t := range sel {
+		if used[t] < 0 {
+			used[t] = len(keep)
+			keep = append(keep, lens[t])
+		}
+	}
+	for g, t := range sel {
+		sel[g] = uint8(used[t])
+	}
+	T = len(keep)
+
 	w := &bitio.Writer{}
-	for _, l := range lens {
+	w.WriteBits(uint32(T), 4)
+	w.WriteBits(uint32(len(sel)), 32)
+	selFreq := make([]int, T)
+	for _, t := range sel {
+		selFreq[t]++
+	}
+	selLens := huff.Lengths(selFreq, maxLen)
+	selCodes := huff.Codes(selLens)
+	for _, l := range selLens {
 		w.WriteBits(uint32(l), 4)
 	}
-	for _, s := range syms {
-		w.WriteBitsRev(codes[s], uint(lens[s]))
+	for _, t := range sel {
+		w.WriteBitsRev(selCodes[t], uint(selLens[t]))
+	}
+	codes := make([][]uint32, T)
+	for t, l := range keep {
+		for _, v := range l {
+			w.WriteBits(uint32(v), 4)
+		}
+		codes[t] = huff.Codes(l)
+	}
+	for i, s := range syms {
+		t := sel[i/groupSize]
+		w.WriteBitsRev(codes[t][s], uint(keep[t][s]))
 	}
 	payload := w.Bytes()
 	out = binary.LittleEndian.AppendUint32(out, uint32(len(blk)))
@@ -146,9 +273,8 @@ func Decode(data []byte, total int) ([]byte, error) {
 	return out, nil
 }
 
-func decodeBlock(payload []byte, n, primary int) ([]byte, error) {
-	r := bitio.NewReader(payload)
-	lens := make([]uint8, alphabet)
+func readLens(r *bitio.Reader, n int) ([]uint8, error) {
+	lens := make([]uint8, n)
 	for i := range lens {
 		v, err := r.ReadBits(4)
 		if err != nil {
@@ -156,9 +282,45 @@ func decodeBlock(payload []byte, n, primary int) ([]byte, error) {
 		}
 		lens[i] = uint8(v)
 	}
-	dec, err := huff.NewDecoder(lens)
+	return lens, nil
+}
+
+func decodeBlock(payload []byte, n, primary int) ([]byte, error) {
+	r := bitio.NewReader(payload)
+	hdr, err := r.ReadBits(4)
+	if err != nil || hdr < 1 || hdr > 6 {
+		return nil, fmt.Errorf("%w: bad table count", ErrCorrupt)
+	}
+	T := int(hdr)
+	nsel, err := r.ReadBits(32)
+	if err != nil || nsel == 0 || int(nsel) > n/1+2 {
+		return nil, fmt.Errorf("%w: bad selector count", ErrCorrupt)
+	}
+	selLens, err := readLens(r, T)
+	if err != nil {
+		return nil, err
+	}
+	selDec, err := huff.NewDecoder(selLens)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrCorrupt, err)
+	}
+	sel := make([]uint8, nsel)
+	for i := range sel {
+		t, err := selDec.Decode(r)
+		if err != nil {
+			return nil, fmt.Errorf("%w: bad selector", ErrCorrupt)
+		}
+		sel[i] = uint8(t)
+	}
+	decs := make([]*huff.Decoder, T)
+	for t := range decs {
+		lens, err := readLens(r, alphabet)
+		if err != nil {
+			return nil, err
+		}
+		if decs[t], err = huff.NewDecoder(lens); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrCorrupt, err)
+		}
 	}
 	mtf := make([]byte, 0, n)
 	run, weight := 0, 1
@@ -170,8 +332,11 @@ func decodeBlock(payload []byte, n, primary int) ([]byte, error) {
 		run, weight = 0, 1
 		return nil
 	}
-	for {
-		s, err := dec.Decode(r)
+	for count := 0; ; count++ {
+		if count/groupSize >= len(sel) {
+			return nil, fmt.Errorf("%w: ran out of selectors", ErrCorrupt)
+		}
+		s, err := decs[sel[count/groupSize]].Decode(r)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrCorrupt, err)
 		}

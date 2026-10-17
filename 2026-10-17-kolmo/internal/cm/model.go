@@ -152,7 +152,7 @@ func NewModel(n int) *Model {
 		}
 		m.limits[i] = 255
 	}
-	m.limits[3], m.limits[4], m.limits[5] = 127, 60, 60
+	m.limits[3], m.limits[4], m.limits[5] = 30, 16, 16
 	m.limits[6], m.limits[7] = 127, 127
 	for i := range m.mcnt {
 		m.mcnt[i] = 1 << 31
@@ -299,9 +299,9 @@ func (m *Model) Update(y int) {
 	if m.mIdx >= 0 {
 		counterUpdate(&m.mcnt[m.mIdx], y, 255)
 	}
-	m.mixers[0].update(m.in[:], y, 5)
-	m.mixers[1].update(m.in[:], y, 5)
-	m.mixers[2].update(m.in[:], y, 5)
+	m.mixers[0].update(m.in[:], y, 4)
+	m.mixers[1].update(m.in[:], y, 4)
+	m.mixers[2].update(m.in[:], y, 4)
 	m.apm1.update(y, 6)
 	m.apm2.update(y, 6)
 
