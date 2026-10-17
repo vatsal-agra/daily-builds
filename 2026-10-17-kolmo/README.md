@@ -1,7 +1,7 @@
 # Kolmo
 Lossless compression lab in Go (stdlib only): DEFLATE/gzip, BWT block-sorting, context mixing, rANS.
 
-**Status: Phase 2 (core build) complete.** See [PLAN.md](PLAN.md).
+**Status: Phase 3 (adversarial review) complete — see [REVIEW.md](REVIEW.md): 11 findings, all fixed or scheduled.** See [PLAN.md](PLAN.md).
 
 Built so far (all round-trip verified):
 - `deflate` — LZ77 hash chains + lazy matching, stored/fixed/dynamic blocks, own inflate, gzip wrapper (interoperates with `gzip(1)` and `compress/flate`)

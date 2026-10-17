@@ -322,14 +322,11 @@ func writeBlock(w *bitio.Writer, toks []tok, raw []byte, final bool) {
 	fixL, fixD := fixedLitLens(), fixedDistLens()
 	dynBits += bodyBits(litFreq, distFreq, litLens, distLens)
 	fixBits := 3 + bodyBits(litFreq, distFreq, fixL, fixD)
-	storedBits := 0
-	if len(raw) <= 65535 || true {
-		blocks := (len(raw) + 65534) / 65535
-		if blocks == 0 {
-			blocks = 1
-		}
-		storedBits = len(raw)*8 + blocks*(3+7+32) // generous: alignment pad averages < 8 bits
+	blocks := (len(raw) + 65534) / 65535
+	if blocks == 0 {
+		blocks = 1
 	}
+	storedBits := len(raw)*8 + blocks*(3+7+32) // header + worst-case alignment pad per block
 	switch {
 	case storedBits < dynBits && storedBits < fixBits:
 		writeStoredBlocks(w, raw, final)

@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -111,7 +112,14 @@ func parse(fs *flag.FlagSet, args []string, min, max int) ([]string, error) {
 		return nil, err
 	}
 	if fs.NArg() < min || (max >= 0 && fs.NArg() > max) {
-		return nil, fmt.Errorf("%s: expected %d..%d file arguments, got %d", fs.Name(), min, max, fs.NArg())
+		want := fmt.Sprintf("exactly %d file argument(s)", min)
+		switch {
+		case max < 0:
+			want = fmt.Sprintf("at least %d file argument(s)", min)
+		case max != min:
+			want = fmt.Sprintf("%d to %d file arguments", min, max)
+		}
+		return nil, fmt.Errorf("%s: expected %s, got %d (see 'kolmo help')", fs.Name(), want, fs.NArg())
 	}
 	return fs.Args(), nil
 }
@@ -167,9 +175,15 @@ func cmdCompress(args []string) error {
 	var enc []byte
 	t0 := time.Now()
 	if m == nil {
-		enc, m = container.Auto(src, *level)
+		var skipped bool
+		if enc, m, skipped, err = container.Auto(src, *level); err == nil && skipped {
+			fmt.Fprintf(os.Stderr, "note: input over %d MiB, skipped the slow cm model (force it with -m cm)\n", container.SlowLimit>>20)
+		}
 	} else {
-		enc = m.Encode(src, *level)
+		enc, err = m.Encode(src, *level)
+	}
+	if err != nil {
+		return err
 	}
 	dst := *out
 	if dst == "" && pos[0] != "-" {
@@ -256,8 +270,12 @@ func cmdBench(args []string) error {
 		fmt.Fprintln(tw, "method\tbytes\tratio\tbits/B\tenc\tdec\tverified\t")
 		for _, m := range container.Methods() {
 			t0 := time.Now()
-			enc := m.Encode(src, *level)
+			enc, eerr := m.Encode(src, *level)
 			te := time.Since(t0)
+			if eerr != nil {
+				fmt.Fprintf(tw, "%s\t-\t-\t-\t-\t-\tn/a (%v)\t\n", m.Name, errors.Unwrap(eerr))
+				continue
+			}
 			t0 = time.Now()
 			dec, _, derr := container.Decode(enc)
 			td := time.Since(t0)

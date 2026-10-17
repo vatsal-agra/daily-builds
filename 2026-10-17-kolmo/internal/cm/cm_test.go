@@ -60,3 +60,14 @@ func TestDecodeGarbageTerminates(t *testing.T) {
 		Decode(junk, 5000)
 	}
 }
+
+func TestTrailingGarbageAndTruncationRejected(t *testing.T) {
+	src := bytes.Repeat([]byte("strict decoding "), 200)
+	enc := Encode(src)
+	if _, err := Decode(append(append([]byte(nil), enc...), 1, 2, 3), len(src)); err == nil {
+		t.Fatal("trailing bytes accepted")
+	}
+	if _, err := Decode(enc[:len(enc)-1], len(src)); err == nil {
+		t.Fatal("truncated payload accepted")
+	}
+}

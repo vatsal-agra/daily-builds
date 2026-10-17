@@ -27,22 +27,23 @@ const MaxOriginal = 1 << 30
 
 // Method identifies a codec in the container.
 type Method struct {
-	ID     byte
-	Name   string
-	Desc   string
-	encode func(src []byte, level int) []byte
-	decode func(payload []byte, n int) ([]byte, error)
+	ID       byte
+	Name     string
+	Desc     string
+	maxRatio int // hard bound on original/payload; guards decoders against size bombs
+	encode   func(src []byte, level int) []byte
+	decode   func(payload []byte, n int) ([]byte, error)
 }
 
 var methods = []*Method{
-	{0, "store", "no compression", func(s []byte, _ int) []byte { return s },
+	{0, "store", "no compression", 1, func(s []byte, _ int) []byte { return s },
 		func(p []byte, n int) ([]byte, error) {
 			if len(p) != n {
 				return nil, errors.New("stored payload has wrong length")
 			}
 			return p, nil
 		}},
-	{1, "deflate", "LZ77 + Huffman (RFC 1951)",
+	{1, "deflate", "LZ77 + Huffman (RFC 1951)", 1100,
 		func(s []byte, lv int) []byte { return deflate.Compress(s, lv) },
 		func(p []byte, n int) ([]byte, error) {
 			out, used, err := deflate.Inflate(p, n)
@@ -51,16 +52,16 @@ var methods = []*Method{
 			}
 			return out, err
 		}},
-	{2, "bwt", "Burrows-Wheeler + MTF + RLE + Huffman",
+	{2, "bwt", "Burrows-Wheeler + MTF + RLE + Huffman", 8192,
 		func(s []byte, _ int) []byte { return bwt.Encode(s) },
 		func(p []byte, n int) ([]byte, error) { return bwt.Decode(p, n) }},
-	{3, "cm", "context mixing + arithmetic coding",
+	{3, "cm", "context mixing + arithmetic coding", 2048,
 		func(s []byte, _ int) []byte { return cm.Encode(s) },
 		func(p []byte, n int) ([]byte, error) { return cm.Decode(p, n) }},
-	{4, "rans0", "order-0 static rANS",
+	{4, "rans0", "order-0 static rANS", 16384,
 		func(s []byte, _ int) []byte { return rans.Encode(s, 0) },
 		func(p []byte, n int) ([]byte, error) { return rans.Decode(p, n, 0) }},
-	{5, "rans1", "order-1 static rANS",
+	{5, "rans1", "order-1 static rANS", 16384,
 		func(s []byte, _ int) []byte { return rans.Encode(s, 1) },
 		func(p []byte, n int) ([]byte, error) { return rans.Decode(p, n, 1) }},
 }
@@ -87,13 +88,32 @@ func byID(id byte) *Method {
 	return nil
 }
 
+// slackBytes is the constant allowance in the decode-side size sanity bound.
+const slackBytes = 64
+
+func plausible(m *Method, original, payload int) bool {
+	return original <= (payload+slackBytes)*m.maxRatio
+}
+
+// ErrTooRepetitive means the method's output would exceed the expansion bound the decoder enforces.
+var ErrTooRepetitive = errors.New("input is too repetitive for this method's expansion bound (try another method)")
+
+// ErrTooLarge means the input exceeds MaxOriginal.
+var ErrTooLarge = fmt.Errorf("input larger than %d bytes is not supported", MaxOriginal)
+
 // Encode packs src using m. level only matters to deflate (1-9).
-func (m *Method) Encode(src []byte, level int) []byte {
+func (m *Method) Encode(src []byte, level int) ([]byte, error) {
+	if len(src) > MaxOriginal {
+		return nil, ErrTooLarge
+	}
 	payload := m.encode(src, level)
+	if !plausible(m, len(src), len(payload)) {
+		return nil, fmt.Errorf("%s: %w", m.Name, ErrTooRepetitive)
+	}
 	out := append([]byte(Magic), m.ID)
 	out = binary.AppendUvarint(out, uint64(len(src)))
 	out = binary.LittleEndian.AppendUint32(out, crc.Sum(src))
-	return append(out, payload...)
+	return append(out, payload...), nil
 }
 
 // Result is one candidate produced by a method.
@@ -117,7 +137,10 @@ func Try(src []byte, level int, skip map[string]bool) []Result {
 		go func(m *Method) {
 			defer wg.Done()
 			t0 := time.Now()
-			data := m.Encode(src, level)
+			data, err := m.Encode(src, level)
+			if err != nil {
+				return // this method cannot represent the input; others still compete
+			}
 			mu.Lock()
 			res = append(res, Result{m, data, time.Since(t0)})
 			mu.Unlock()
@@ -133,11 +156,21 @@ func Try(src []byte, level int, skip map[string]bool) []Result {
 	return res
 }
 
-// Auto picks the smallest encoding. Inputs larger than slowLimit skip the slow cm model
-// unless force is set.
-func Auto(src []byte, level int) ([]byte, *Method) {
-	res := Try(src, level, nil)
-	return res[0].Data, res[0].Method
+// SlowLimit is the input size above which Auto skips the (slow) cm model.
+const SlowLimit = 32 << 20
+
+// Auto picks the smallest encoding among all methods, skipping cm for inputs over SlowLimit.
+// It reports whether cm was skipped.
+func Auto(src []byte, level int) (data []byte, m *Method, skippedCM bool, err error) {
+	if len(src) > MaxOriginal {
+		return nil, nil, false, ErrTooLarge
+	}
+	var skip map[string]bool
+	if len(src) > SlowLimit {
+		skip, skippedCM = map[string]bool{"cm": true}, true
+	}
+	res := Try(src, level, skip)
+	return res[0].Data, res[0].Method, skippedCM, nil // "store" always qualifies
 }
 
 // Info describes a parsed container header.
@@ -149,7 +182,7 @@ type Info struct {
 }
 
 // ErrFormat reports a malformed or unsupported container.
-var ErrFormat = errors.New("kolmo: not a valid KOL1 file")
+var ErrFormat = errors.New("not a valid KOL1 file")
 
 // Inspect parses the header only.
 func Inspect(data []byte) (*Info, []byte, error) {
@@ -173,7 +206,7 @@ func Inspect(data []byte) (*Info, []byte, error) {
 }
 
 // ErrChecksum is returned when decoded bytes do not match the stored CRC-32.
-var ErrChecksum = errors.New("kolmo: CRC-32 mismatch — data is corrupt")
+var ErrChecksum = errors.New("CRC-32 mismatch — data is corrupt")
 
 // Decode unpacks a KOL1 container, verifying the checksum. Plain gzip input is also accepted.
 func Decode(data []byte) ([]byte, *Info, error) {
@@ -185,9 +218,12 @@ func Decode(data []byte) ([]byte, *Info, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if !plausible(info.Method, info.Original, len(payload)) {
+		return nil, info, fmt.Errorf("%w: declared size %d is impossible for a %d-byte %s payload", ErrFormat, info.Original, len(payload), info.Method.Name)
+	}
 	out, err := info.Method.decode(payload, info.Original)
 	if err != nil {
-		return nil, info, fmt.Errorf("kolmo: %s payload: %w", info.Method.Name, err)
+		return nil, info, fmt.Errorf("%s payload: %w", info.Method.Name, err)
 	}
 	if len(out) != info.Original || crc.Sum(out) != info.CRC {
 		return nil, info, ErrChecksum

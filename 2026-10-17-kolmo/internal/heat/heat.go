@@ -99,28 +99,27 @@ func Render(name string, data []byte, maxBytes int) string {
 		sb.WriteString(`</ol></section>`)
 	}
 	sb.WriteString(`<section><h2>Annotated file</h2><div class="legend"><span>0 bits</span><i></i><span>8+ bits</span></div><pre class="map">`)
+	// The file text and one cost character per byte are embedded once; a small script merges
+	// runs of equal shading into spans in the browser, keeping the report ~2x the input size.
+	var text, enc strings.Builder
 	for i, b := range data {
-		c := float64(costs[i])
-		a := c / 8
-		if a > 1 {
-			a = 1
-		}
-		ch := string(rune(b))
 		switch {
-		case b == '\n':
-			ch = "\n"
-		case b == '\t':
-			ch = "\t"
+		case b == '\n' || b == '\t':
+			text.WriteByte(b)
 		case b < 32 || b >= 127:
-			ch = "·"
+			text.WriteString("·")
+		default:
+			text.WriteByte(b)
 		}
-		if ch == "\n" {
-			sb.WriteString("\n")
-			continue
+		q := int(costs[i]*4 + 0.5) // quarter-bit resolution, clipped to 90
+		if q > 90 {
+			q = 90
 		}
-		fmt.Fprintf(&sb, `<span style="--a:%.2f" title="%q · %.2f bits">%s</span>`, a, b, c, html.EscapeString(ch))
+		enc.WriteByte(byte(35 + q))
 	}
-	sb.WriteString(`</pre></section></main></body></html>`)
+	fmt.Fprintf(&sb, `<pre class="map" id="map" data-costs="%s">%s</pre>`, html.EscapeString(enc.String()), html.EscapeString(text.String()))
+	sb.WriteString(script)
+	sb.WriteString(`</section></main></body></html>`)
 	return sb.String()
 }
 
@@ -139,6 +138,18 @@ func printable(s string) string {
 		return r
 	}, s)
 }
+
+const script = `<script>
+(function(){var pre=document.getElementById("map"),c=pre.dataset.costs,t=Array.from(pre.textContent);
+if(t.length!==c.length){return}
+var f=document.createDocumentFragment(),i=0,n=t.length;
+function lvl(k){return Math.min(15,Math.floor((c.charCodeAt(k)-35)/4/8*15))}
+while(i<n){var L=lvl(i),j=i,sum=0;
+ while(j<n&&(lvl(j)===L||t[j]==="\n")){sum+=(c.charCodeAt(j)-35)/4;j++}
+ var s=document.createElement("span");s.className="h"+L;s.textContent=t.slice(i,j).join("");
+ s.title=j-i===1?sum.toFixed(2)+" bits":(j-i)+" bytes, avg "+(sum/(j-i)).toFixed(2)+" bits";f.appendChild(s);i=j}
+pre.textContent="";pre.appendChild(f)})();
+</script>`
 
 const css = `<style>
 :root{--bg:#fbfaf7;--fg:#1d1b17;--mut:#6f6a60;--card:#fff;--line:#e6e2d8;--hot:225,70,40;--acc:#c2410c}
@@ -160,5 +171,6 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--mut)
 .top code{font:13px ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.top em{color:var(--mut);font-size:12px;white-space:nowrap;font-style:normal}
 .legend{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--mut);margin-bottom:10px}.legend i{flex:0 0 160px;height:10px;border-radius:5px;background:linear-gradient(90deg,rgba(var(--hot),.02),rgba(var(--hot),.85))}
 .map{margin:0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;overflow:auto;font:13px/1.6 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
-.map span{background:rgba(var(--hot),calc(var(--a)*.85));border-radius:2px}
+.map span{border-radius:2px}
+.h0{background:rgba(var(--hot),0.00)}.h1{background:rgba(var(--hot),0.06)}.h2{background:rgba(var(--hot),0.11)}.h3{background:rgba(var(--hot),0.17)}.h4{background:rgba(var(--hot),0.23)}.h5{background:rgba(var(--hot),0.28)}.h6{background:rgba(var(--hot),0.34)}.h7{background:rgba(var(--hot),0.40)}.h8{background:rgba(var(--hot),0.45)}.h9{background:rgba(var(--hot),0.51)}.h10{background:rgba(var(--hot),0.57)}.h11{background:rgba(var(--hot),0.62)}.h12{background:rgba(var(--hot),0.68)}.h13{background:rgba(var(--hot),0.74)}.h14{background:rgba(var(--hot),0.79)}.h15{background:rgba(var(--hot),0.85)}
 </style>`

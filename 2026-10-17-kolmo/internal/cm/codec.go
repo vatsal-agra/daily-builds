@@ -39,6 +39,9 @@ func Decode(data []byte, n int) ([]byte, error) {
 			return nil, ErrCorrupt
 		}
 	}
+	if d.pos != len(data) {
+		return nil, ErrCorrupt // the coder reads exactly as many bytes as the encoder wrote
+	}
 	return out, nil
 }
 
