@@ -1,0 +1,29 @@
+# A real C project: header deps come from gcc -MMD depfiles, the version
+# header is generated, and `make test`-style phony targets run the binary.
+CC     = gcc
+CFLAGS = -O1 -Wall -Wextra -Iinclude -Ibuild/gen
+SRCS   = $(glob src/*.c)
+OBJS   = $(patsubst src/%.c,build/%.o,$(SRCS))
+
+default build/app
+
+build/app: $(OBJS)
+    @desc LINK $@
+    $(CC) -o $@ $^
+
+build/%.o: src/%.c
+    @desc CC   $<
+    @depfile build/$*.d
+    $(CC) $(CFLAGS) -MMD -MP -MF build/$*.d -c $< -o $@
+
+# Extra dependency on top of the pattern rule (merged like Make does).
+build/main.o: build/gen/version.h
+
+build/gen/version.h: tools/genver.sh VERSION
+    @desc GEN  $@
+    mkdir -p build/gen
+    sh tools/genver.sh VERSION > $@
+
+phony run
+run: build/app
+    ./build/app
