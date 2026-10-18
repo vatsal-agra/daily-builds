@@ -27,7 +27,7 @@ mortise: 2 ran, 3 up to date [early cutoff: 2 identical rebuilds, 1 downstream s
 go build -o mortise ./cmd/mortise          # Go 1.24+, no dependencies
 cd examples/cproj && ../../mortise          # builds a real C project with gcc
 ../../mortise why                           # nothing to do -> "up to date"
-./../../demo.sh                             # 46 end-to-end checks (also runs go test -race)
+../../demo.sh                               # 46 end-to-end checks (also runs go test -race)
 ```
 `./demo.sh` needs `gcc` and `python3`; set `SKIP_TESTS=1` to skip the unit tests.
 
@@ -85,7 +85,7 @@ Exit codes: `0` ok · `1` build failed · `2` usage/parse/graph error · `130` i
 ## Features (all shipped)
 
 **Required**
-1. **Mortisefile language** — variables, 18 functions, `%` pattern rules (with preference for the rule whose inputs exist), merged dependency-only rules, grouped outputs, automatic variables, phony targets, includes, positioned errors.
+1. **Mortisefile language** — variables, 17 functions, `%` pattern rules (with preference for the rule whose inputs exist), merged dependency-only rules, grouped outputs, automatic variables, phony targets, includes, positioned errors.
 2. **Parallel scheduler** — one goroutine per task, `-j` slots held only while commands run, fail-fast cancellation that kills whole process groups, `-k`, static cycle detection with the full path (`a -> b -> c -> a`) *plus* run-time wait-for-graph detection for cycles through discovered deps; failed targets lose their partial outputs and leave no trusted record.
 3. **Content-hash incremental builds with early cutoff** — SHA-256 of every input and output, not mtimes: `touch` rebuilds nothing, a restored old file rebuilds correctly; recipe changes, added/removed deps, deleted or externally modified outputs are all detected; a rebuilt-but-identical output stops the ripple. Crash-safe atomic database (`.mortise/db.json`) that recovers from corruption.
 4. **Dynamic dependencies** — `@depfile` is parsed (`gcc -MMD -MP` syntax: continuations, escaped spaces, `$$`, phony `-MP` rules), the discovered inputs are hashed and stored, and later builds verify them (building any that are themselves generated, first). Headers you never declared still trigger exactly the right rebuilds.
