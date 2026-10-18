@@ -190,3 +190,15 @@ func TestInclude(t *testing.T) {
 		t.Fatal("missing include must error")
 	}
 }
+
+// R6 (REVIEW.md): trailing comments leaked into variable values and deps.
+func TestTrailingComments(t *testing.T) {
+	f := parse(t, "X = a b   # tail comment\nY = has\\#hash\nZ = $(subst a,#,a)  # c\nt: d  # why\n    echo hi # kept for the shell\n")
+	if f.Vars["X"] != "a b" || f.Vars["Y"] != "has#hash" || f.Vars["Z"] != "#" {
+		t.Fatalf("%q %q %q", f.Vars["X"], f.Vars["Y"], f.Vars["Z"])
+	}
+	r := f.Rules[0]
+	if len(r.Deps) != 1 || r.Deps[0] != "d" || r.Cmds[0].Text != "echo hi # kept for the shell" {
+		t.Fatalf("%+v", r)
+	}
+}

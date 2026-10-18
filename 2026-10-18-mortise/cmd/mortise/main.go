@@ -53,9 +53,6 @@ func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
 func run(args []string, stdout, stderr io.Writer) int {
 	cmd := "build"
-	if len(args) > 0 && commands[args[0]] {
-		cmd, args = args[0], args[1:]
-	}
 	var c config
 	fs := flag.NewFlagSet("mortise", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -83,6 +80,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		pos = append(pos, fs.Arg(0))
 		args = fs.Args()[1:]
+	}
+
+	// The first positional word may name a command ("mortise -j4 why app");
+	// to build a target that shares a command's name, say "mortise build list".
+	if len(pos) > 0 && commands[pos[0]] {
+		cmd, pos = pos[0], pos[1:]
 	}
 
 	root, err := filepath.Abs(c.dir)
@@ -191,6 +194,10 @@ func cmdBuild(opts build.Options, targets []string, c *config, stdout, stderr io
 	}
 	sum, err := e.Build(targets)
 	closeErr := e.Close()
+	if opts.Ctx.Err() != nil {
+		fmt.Fprintln(stderr, "mortise: interrupted")
+		return 130
+	}
 	code := 0
 	if err != nil {
 		code = report(err, e, stderr)
@@ -239,7 +246,7 @@ func report(err error, e *build.Engine, stderr io.Writer) int {
 	case errors.As(err, &nr), errors.As(err, &cy), errors.As(err, &pe):
 		fmt.Fprintln(stderr, "mortise:", err)
 		if errors.As(err, &nr) {
-			if s := e.Suggest(nr.Target); s != "" {
+			if s := e.Suggest(nr.Target); s != "" && !nr.IsDir {
 				fmt.Fprintf(stderr, "        did you mean %q?\n", s)
 			}
 		}

@@ -88,6 +88,12 @@ func Parse(name, src, root string) (*File, error) {
 		if strings.HasPrefix(trim, "#") {
 			continue
 		}
+		if !indented { // recipe lines go to the shell verbatim, '#' included
+			trim = stripComment(trim)
+			if trim == "" {
+				continue
+			}
+		}
 		if indented {
 			if cur == nil {
 				return nil, fail(ln.n, "recipe line outside of a rule: %q", trim)
@@ -417,4 +423,35 @@ func join(a, b string) string {
 		return b
 	}
 	return a + "/" + b
+}
+
+// stripComment removes a trailing " # comment" (a '#' at the start of the line
+// or after whitespace, outside $( ) / ${ }). "\#" yields a literal '#'.
+func stripComment(s string) string {
+	if !strings.Contains(s, "#") {
+		return s
+	}
+	var b strings.Builder
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\\' && i+1 < len(s) && s[i+1] == '#':
+			b.WriteByte('#')
+			i++
+			continue
+		case c == '$' && i+1 < len(s) && (s[i+1] == '(' || s[i+1] == '{'):
+			depth++
+			b.WriteByte(c)
+			b.WriteByte(s[i+1])
+			i++
+			continue
+		case (c == ')' || c == '}') && depth > 0:
+			depth--
+		case c == '#' && depth == 0 && (i == 0 || s[i-1] == ' ' || s[i-1] == '\t'):
+			return strings.TrimRight(b.String(), " \t")
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }
