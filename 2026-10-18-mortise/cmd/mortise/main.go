@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"mortise/internal/build"
 	"mortise/internal/mf"
@@ -45,6 +46,7 @@ type config struct {
 	quiet     bool
 	trace     string
 	all       bool
+	report    string
 }
 
 var commands = map[string]bool{"build": true, "why": true, "graph": true, "list": true, "stats": true, "clean": true, "watch": true}
@@ -52,7 +54,14 @@ var commands = map[string]bool{"build": true, "why": true, "graph": true, "list"
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return runCtx(ctx, args, stdout, stderr)
+}
+
+func runCtx(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	cmd := "build"
+	args = splitJobsFlag(args)
 	var c config
 	fs := flag.NewFlagSet("mortise", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -65,6 +74,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&c.verbose, "v", false, "print commands and up-to-date targets")
 	fs.BoolVar(&c.quiet, "q", false, "only print errors")
 	fs.StringVar(&c.trace, "trace", "", "write a Chrome trace of the build to `file`")
+	fs.StringVar(&c.report, "report", "", "write a self-contained HTML build report to `file`")
 	fs.BoolVar(&c.all, "all", false, "clean: also delete .mortise (database and cache)")
 	fs.Usage = func() { fmt.Fprint(stderr, usage); fs.PrintDefaults() }
 	var pos []string
@@ -126,18 +136,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 		defer unlock()
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	opts := build.Options{Root: root, File: f, Jobs: c.jobs, KeepGoing: c.keepGoing,
 		DryRun: c.dryRun || cmd == "why", NoCache: c.noCache, Verbose: c.verbose,
 		Stdout: stdout, Stderr: stderr, Ctx: ctx}
 	if c.quiet {
 		opts.Stdout = io.Discard
 	}
-	targets := pos
-	if len(targets) == 0 && cmd != "why" && cmd != "list" {
-		targets = f.Default
-	}
+	targets := targetsOrDefault(pos, f)
 
 	switch cmd {
 	case "build":
@@ -146,9 +151,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdList(opts, stdout, stderr)
 	case "clean":
 		return cmdClean(opts, stdout, stderr)
+	case "why":
+		return cmdWhy(opts, targetsOrDefault(pos, f), stdout, stderr)
+	case "graph":
+		return cmdGraph(opts, targets, stdout, stderr)
+	case "stats":
+		return cmdStats(opts, stdout, stderr)
+	case "watch":
+		return cmdWatch(ctx, opts, &c, targets, file, root, stdout, stderr)
 	}
 	fmt.Fprintf(stderr, "mortise: command %q is not implemented\n", cmd)
 	return 2
+}
+
+func targetsOrDefault(pos []string, f *mf.File) []string {
+	if len(pos) > 0 {
+		return pos
+	}
+	return f.Default
 }
 
 func relErr(err error, root string) string {
@@ -192,6 +212,10 @@ func cmdBuild(opts build.Options, targets []string, c *config, stdout, stderr io
 		fmt.Fprintln(stderr, "mortise:", err)
 		return 2
 	}
+	return cmdBuildWith(e, opts, targets, c, stdout, stderr)
+}
+
+func cmdBuildWith(e *build.Engine, opts build.Options, targets []string, c *config, stdout, stderr io.Writer) int {
 	sum, err := e.Build(targets)
 	closeErr := e.Close()
 	if opts.Ctx.Err() != nil {
@@ -221,6 +245,13 @@ func cmdBuild(opts build.Options, targets []string, c *config, stdout, stderr io
 			}
 		}
 	}
+	if c.report != "" && !opts.DryRun {
+		if err := os.WriteFile(c.report, e.Report(strings.Join(targets, " ")), 0o644); err != nil {
+			fmt.Fprintln(stderr, "mortise: report:", err)
+		} else {
+			fmt.Fprintln(stdout, "mortise: report written to", c.report)
+		}
+	}
 	if c.trace != "" {
 		if err := os.WriteFile(c.trace, e.Trace(), 0o644); err != nil {
 			fmt.Fprintln(stderr, "mortise: trace:", err)
@@ -234,7 +265,7 @@ func report(err error, e *build.Engine, stderr io.Writer) int {
 	if errors.Is(err, build.ErrBuildFailed) {
 		for _, r := range e.Results() {
 			if r.Status == build.Failed {
-				fmt.Fprintf(stderr, "FAILED: %s: %v\n", r.Task.ID, r.Err)
+				fmt.Fprintf(stderr, "%s %s: %v\n", paint(stderr, "31;1", "FAILED:"), r.Task.ID, r.Err)
 			}
 		}
 		return 1
@@ -254,6 +285,18 @@ func report(err error, e *build.Engine, stderr io.Writer) int {
 	}
 	fmt.Fprintln(stderr, "mortise:", err)
 	return 1
+}
+
+// paint wraps text in an ANSI colour when w is a terminal and NO_COLOR is unset.
+func paint(w io.Writer, code, text string) string {
+	f, ok := w.(*os.File)
+	if !ok || os.Getenv("NO_COLOR") != "" {
+		return text
+	}
+	if st, err := f.Stat(); err != nil || st.Mode()&os.ModeCharDevice == 0 {
+		return text
+	}
+	return "\x1b[" + code + "m" + text + "\x1b[0m"
 }
 
 func printSummary(w io.Writer, s *build.Summary, dry bool) {
@@ -276,7 +319,13 @@ func printSummary(w io.Writer, s *build.Summary, dry bool) {
 	if s.Cutoffs+s.SavedByCutoff > 0 {
 		extra = fmt.Sprintf(" [early cutoff: %d identical rebuilds, %d downstream skips]", s.Cutoffs, s.SavedByCutoff)
 	}
-	fmt.Fprintf(w, "mortise: %s%s in %.2fs\n", strings.Join(parts, ", "), extra, s.Wall.Seconds())
+	line := fmt.Sprintf("%s%s in %.2fs", strings.Join(parts, ", "), extra, s.Wall.Seconds())
+	if s.Failed > 0 {
+		line = paint(w, "31;1", line)
+	} else if s.Ran+s.Cached > 0 {
+		line = paint(w, "32", line)
+	}
+	fmt.Fprintf(w, "mortise: %s\n", line)
 }
 
 func cmdList(opts build.Options, stdout, stderr io.Writer) int {
@@ -323,4 +372,94 @@ func cleanAll(root string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintln(stdout, "mortise: removed .mortise")
 	return 0
+}
+
+func cmdWhy(opts build.Options, targets []string, stdout, stderr io.Writer) int {
+	if len(targets) == 0 {
+		fmt.Fprintln(stderr, "mortise: why: name a target (or add a `default` line)")
+		return 2
+	}
+	opts.DryRun = true
+	e, err := newEngine(opts, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, "mortise:", err)
+		return 2
+	}
+	if _, err := e.Build(targets); err != nil {
+		return report(err, e, stderr)
+	}
+	e.Explain(stdout, targets)
+	return 0
+}
+
+func cmdGraph(opts build.Options, targets []string, stdout, stderr io.Writer) int {
+	opts.DryRun = true
+	e, err := newEngine(opts, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, "mortise:", err)
+		return 2
+	}
+	if len(targets) == 0 {
+		fmt.Fprintln(stderr, "mortise: graph: name a target (or add a `default` line)")
+		return 2
+	}
+	if _, err := e.Build(targets); err != nil {
+		return report(err, e, stderr)
+	}
+	e.Graph(stdout)
+	return 0
+}
+
+func cmdStats(opts build.Options, stdout, stderr io.Writer) int {
+	e, err := newEngine(opts, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, "mortise:", err)
+		return 2
+	}
+	e.WriteStats(stdout)
+	return 0
+}
+
+func cmdWatch(ctx context.Context, opts build.Options, c *config, targets []string, file, root string, stdout, stderr io.Writer) int {
+	if len(targets) == 0 {
+		fmt.Fprintln(stderr, "mortise: watch: name a target (or add a `default` line)")
+		return 2
+	}
+	once := func() []string {
+		inputs := []string{filepath.Base(file)}
+		f, err := mf.ParseFile(file, root) // re-read every round: the Mortisefile itself is an input
+		if err != nil {
+			fmt.Fprintln(stderr, "mortise:", relErr(err, root))
+			return inputs
+		}
+		f.Name = filepath.Base(file)
+		o := opts
+		o.File = f
+		e, err := newEngine(o, stderr)
+		if err != nil {
+			fmt.Fprintln(stderr, "mortise:", err)
+			return inputs
+		}
+		tg := targets
+		if len(tg) == 0 {
+			tg = f.Default
+		}
+		cmdBuildWith(e, o, tg, c, stdout, stderr)
+		return append(inputs, e.Inputs()...)
+	}
+	watchLoop(ctx, root, 150*time.Millisecond, stdout, once)
+	return 0
+}
+
+// splitJobsFlag rewrites Make-style "-j4" into "-j 4" for the flag package.
+func splitJobsFlag(args []string) []string {
+	var out []string
+	for _, a := range args {
+		if len(a) > 2 && strings.HasPrefix(a, "-j") && strings.Trim(a[2:], "0123456789") == "" {
+			out = append(out, "-j", a[2:])
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }

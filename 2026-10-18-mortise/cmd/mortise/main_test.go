@@ -131,3 +131,65 @@ func TestCLILockPreventsConcurrentRuns(t *testing.T) {
 		t.Fatal("lock must be released")
 	}
 }
+
+func TestCLIWhyGraphStatsReport(t *testing.T) {
+	dir := project(t, simple, map[string]string{"in": "abc\n"})
+	code, so, _ := mortise(t, dir, "why")
+	if code != 0 || !strings.Contains(so, "out: would rebuild") || !strings.Contains(so, "never built") {
+		t.Fatalf("%d %q", code, so)
+	}
+	rep := filepath.Join(dir, "r.html")
+	tr := filepath.Join(dir, "t.json")
+	if code, _, se := mortise(t, dir, "-report", rep, "-trace", tr); code != 0 {
+		t.Fatalf("%d %s", code, se)
+	}
+	for _, f := range []string{rep, tr} {
+		if b, err := os.ReadFile(f); err != nil || len(b) < 50 {
+			t.Fatalf("%s: %v", f, err)
+		}
+	}
+	os.WriteFile(filepath.Join(dir, "in"), []byte("xyz\n"), 0o644)
+	code, so, _ = mortise(t, dir, "why", "out")
+	if code != 0 || !strings.Contains(so, "dependency in changed") {
+		t.Fatalf("%d %q", code, so)
+	}
+	mortise(t, dir)
+	code, so, _ = mortise(t, dir, "why", "out")
+	if !strings.Contains(so, "out: up to date") {
+		t.Fatalf("%q", so)
+	}
+	code, so, _ = mortise(t, dir, "graph")
+	if code != 0 || !strings.Contains(so, `"in" -> "out";`) {
+		t.Fatalf("%d %q", code, so)
+	}
+	code, so, _ = mortise(t, dir, "stats")
+	if code != 0 || !strings.Contains(so, "database : 1 recorded") || !strings.Contains(so, "critical path") {
+		t.Fatalf("%d %q", code, so)
+	}
+	code, so, _ = mortise(t, dir, "list")
+	if code != 0 || !strings.Contains(so, "out: in") {
+		t.Fatalf("%d %q", code, so)
+	}
+}
+
+func TestSplitJobsFlagAndEmptyInputs(t *testing.T) {
+	got := splitJobsFlag([]string{"-j4", "-k", "-jx", "-j", "2", "all"})
+	want := []string{"-j", "4", "-k", "-jx", "-j", "2", "all"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("%v", got)
+	}
+	dir := project(t, "", nil) // empty Mortisefile
+	if code, _, se := mortise(t, dir); code != 2 || !strings.Contains(se, "no targets") {
+		t.Fatalf("%d %q", code, se)
+	}
+	if code, so, _ := mortise(t, dir, "list"); code != 0 || so != "" {
+		t.Fatalf("%d %q", code, so)
+	}
+	dir = project(t, "default x\nx: y\n    cp y x\n", map[string]string{"y": ""}) // empty source file
+	if code, _, se := mortise(t, dir, "-j4"); code != 0 {
+		t.Fatalf("%d %q", code, se)
+	}
+	if code, so, _ := mortise(t, dir, "-j4", "-q"); code != 0 || so != "" {
+		t.Fatalf("-q must be silent on success: %q", so)
+	}
+}
