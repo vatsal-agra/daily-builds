@@ -207,6 +207,8 @@ fn esc_html(t: &str, out: &mut String) {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
+            // not representable in XML 1.0 (SVG): show the replacement character instead
+            '\u{FFFE}' | '\u{FFFF}' => out.push('\u{FFFD}'),
             c => out.push(c),
         }
     }
@@ -399,7 +401,7 @@ a{{color:inherit;text-decoration:underline dotted}}a:hover{{text-decoration:unde
 }
 
 pub fn to_html(s: &Screen, opts: &RenderOpts) -> String {
-    let body = html_rows(s, opts).join("\n");
+    let body = html_rows(s, opts).join("");
     let title = opts.title.clone().unwrap_or_else(|| if s.title.is_empty() { "terminal".to_string() } else { s.title.clone() });
     let mut t = String::new();
     esc_html(&title, &mut t);

@@ -2,7 +2,9 @@
 A from-scratch terminal emulator core in Rust (zero dependencies): DEC escape-sequence parser,
 screen model, real PTY host, and text / ANSI / HTML / SVG / JSON renderers.
 
-**Status: Phase 2 (core build) done.** Required features working end-to-end and covered by 93 tests:
+**Status: Phase 3 (adversarial review) done — 12 findings in `REVIEW.md`, all fixed with regression tests (incl. a PTY paste deadlock and double-spaced HTML).**
+
+Phase 2 (core build): Required features working end-to-end and covered by 130 tests:
 
 | # | Feature | Where | Proof |
 |---|---------|-------|-------|

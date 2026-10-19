@@ -26,6 +26,7 @@ COMMON OPTIONS
   -o, --output FILE       write the result to FILE instead of stdout
 
 RUN OPTIONS
+  --keys-file FILE        read (more) input script text from a file
   --keys SCRIPT           input script, e.g. 'ihello<Esc>:q!<CR>'. Specials: <Esc> <CR> <Tab> <BS> <Del>
                           <Up> <Down> <Left> <Right> <Home> <End> <PageUp> <PageDown> <F1>..<F12>
                           <C-x> <M-x> <S-Tab> <C-S-Up> <lt> <wait 300> <until \"text\"> <resize 100x30>
@@ -56,7 +57,7 @@ struct Args {
 }
 
 const VALUE_FLAGS: &[&str] = &[
-    "--cols", "--rows", "--format", "--theme", "-o", "--output", "--keys", "--settle", "--timeout", "--until-timeout", "--record", "--env", "--cwd", "--at",
+    "--cols", "--rows", "--format", "--theme", "-o", "--output", "--keys", "--keys-file", "--settle", "--timeout", "--until-timeout", "--record", "--env", "--cwd", "--at",
     "--idle-limit", "--player", "--max-frames", "--speed", "--title",
 ];
 
@@ -188,10 +189,12 @@ fn cmd_run(a: &Args) -> Result<ExitCode, String> {
     let settle: u64 = a.num("--settle", 250)?;
     let timeout: u64 = a.num("--timeout", 15000)?;
     let until_timeout: u64 = a.num("--until-timeout", 5000)?;
-    let items: Vec<Item> = match a.val("--keys") {
-        Some(k) => parse_script(k)?,
-        None => vec![],
-    };
+    let mut script = a.val("--keys").unwrap_or("").to_string();
+    if let Some(p) = a.val("--keys-file") {
+        let f = std::fs::read_to_string(p).map_err(|e| format!("cannot read {}: {}", p, e))?;
+        script.push_str(f.strip_suffix('\n').unwrap_or(&f));
+    }
+    let items: Vec<Item> = parse_script(&script)?;
     let mut sess = Session::spawn(&a.rest, &opts, a.val("--record").is_some()).map_err(|e| format!("cannot start {:?}: {}", a.rest[0], e))?;
     sess.record_input = a.has("--record-input");
     sess.pump_until_idle(settle, timeout.min(5000)).map_err(|e| e.to_string())?;

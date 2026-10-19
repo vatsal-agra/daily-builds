@@ -149,6 +149,19 @@ pub fn parse_script(src: &str) -> Result<Vec<Item>, String> {
                 text.push('<');
                 continue;
             }
+            // `a <b> c` in typed text is not a key spec: only things that look like one are parsed
+            // (and a typo like <Escc> is then an error rather than silently typed).
+            let looks_like_spec = {
+                let l = inner.to_ascii_lowercase();
+                l.starts_with("wait ") || l.starts_with("until ") || l.starts_with("resize ") || {
+                    let core = inner.rsplit('-').next().unwrap_or(inner);
+                    inner.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') && (core.chars().count() > 1 || inner.contains('-'))
+                }
+            };
+            if !looks_like_spec {
+                text.push('<');
+                continue;
+            }
             let item = parse_angle(inner)?;
             if !text.is_empty() {
                 items.push(Item::Text(std::mem::take(&mut text)));

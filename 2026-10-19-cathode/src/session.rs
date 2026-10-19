@@ -18,6 +18,8 @@ pub struct Session {
     start: Instant,
     pub exit: Option<ExitStatus>,
     eof: bool,
+    /// Replies from the terminal not yet accepted by the child's input queue.
+    reply_q: Vec<u8>,
     /// Total bytes the child has written.
     pub bytes_read: u64,
 }
@@ -34,7 +36,7 @@ impl Session {
         } else {
             None
         };
-        Ok(Session { term, pty, cast, record_input: false, chunker: Utf8Chunker::default(), start: Instant::now(), exit: None, eof: false, bytes_read: 0 })
+        Ok(Session { term, pty, cast, record_input: false, chunker: Utf8Chunker::default(), start: Instant::now(), exit: None, eof: false, reply_q: Vec::new(), bytes_read: 0 })
     }
 
     fn now(&self) -> f64 {
@@ -76,11 +78,24 @@ impl Session {
                 let text = self.chunker.push(&buf[..n]);
                 self.record('o', text);
                 let reply = self.term.take_output();
-                if !reply.is_empty() {
-                    // the child may already be gone; a failed reply write is not an error
-                    let _ = self.pty.write_all(&reply);
+                self.reply_q.extend_from_slice(&reply);
+                if self.reply_q.len() > 1 << 20 {
+                    self.reply_q.clear(); // a child that never reads its input must not grow us without bound
                 }
+                self.flush_replies();
                 Ok(true)
+            }
+        }
+    }
+
+    /// Push queued terminal replies into the PTY; keep what does not fit for the next call.
+    fn flush_replies(&mut self) {
+        while !self.reply_q.is_empty() {
+            match self.pty.try_write(&self.reply_q) {
+                Ok(0) | Err(_) => break, // full, or the child is gone: not an error for the host
+                Ok(n) => {
+                    self.reply_q.drain(..n);
+                }
             }
         }
     }
@@ -137,7 +152,26 @@ impl Session {
             let s = String::from_utf8_lossy(bytes).into_owned();
             self.record('i', s);
         }
-        self.pty.write_all(bytes)
+        // Never block in write(2): while the child's input queue is full it may itself be blocked
+        // writing output we have not read yet (a classic paste-into-`cat` deadlock). Keep draining.
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let mut off = 0;
+        while off < bytes.len() {
+            self.flush_replies();
+            match self.pty.try_write(&bytes[off..])? {
+                0 => {
+                    if self.eof {
+                        return Err(io::Error::new(io::ErrorKind::BrokenPipe, "child closed the terminal"));
+                    }
+                    if Instant::now() > deadline {
+                        return Err(io::Error::new(io::ErrorKind::TimedOut, "child is not reading its input"));
+                    }
+                    self.pump(5)?;
+                }
+                n => off += n,
+            }
+        }
+        Ok(())
     }
 
     pub fn resize(&mut self, cols: usize, rows: usize) -> io::Result<()> {

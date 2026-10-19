@@ -150,3 +150,21 @@ fn nano_application_cursor_keys_and_status_bar() {
     assert!(s.wait_for_text("Save modified buffer", 3000).unwrap(), "{}", s.term.screen.text());
     s.finish(100);
 }
+
+#[test]
+fn large_paste_into_echoing_child_does_not_deadlock() {
+    // cat echoes every byte back; with blocking writes both sides fill their pty buffers and stall.
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut s = spawn(&["sh", "-c", "stty raw -echo; cat"], 80, 24);
+        s.pump_until_idle(200, 2000).unwrap();
+        let payload: Vec<u8> = std::iter::repeat(b"0123456789abcdef ".iter().copied()).take(20000).flatten().collect();
+        let r = s.send(&payload);
+        tx.send(r.is_ok()).ok();
+        s.finish(100);
+    });
+    match rx.recv_timeout(std::time::Duration::from_secs(20)) {
+        Ok(ok) => assert!(ok),
+        Err(_) => panic!("send() deadlocked on a large paste"),
+    }
+}

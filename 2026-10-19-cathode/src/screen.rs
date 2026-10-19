@@ -3,7 +3,7 @@
 
 use crate::cell::*;
 use crate::width::char_width;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Line {
@@ -141,6 +141,7 @@ pub struct Screen {
     pub gl: usize,
     saved: [Option<Saved>; 2],
     pub links: Vec<Link>,
+    link_index: HashMap<(String, String), u32>,
     pub title: String,
     pub bell_count: u64,
     pub last_char: Option<char>,
@@ -150,6 +151,9 @@ pub struct Screen {
     pub default_fg: (u8, u8, u8),
     pub default_bg: (u8, u8, u8),
 }
+
+pub const MAX_LINKS: usize = 65_536;
+pub const MAX_LINK_LEN: usize = 4096;
 
 fn default_tabs(cols: usize) -> Vec<bool> {
     (0..cols).map(|i| i % 8 == 0 && i != 0).collect()
@@ -183,6 +187,7 @@ impl Screen {
             gl: 0,
             saved: [None, None],
             links: vec![Link { id: String::new(), uri: String::new() }],
+            link_index: HashMap::new(),
             title: String::new(),
             bell_count: 0,
             last_char: None,
@@ -285,6 +290,10 @@ impl Screen {
     }
 
     pub fn print(&mut self, c: char) {
+        // C1 controls (U+0080..U+009F) arriving as UTF-8 are not printable; terminals ignore them.
+        if ('\u{80}'..='\u{9f}').contains(&c) {
+            return;
+        }
         let c = self.map_charset(c);
         let w = char_width(c);
         if w == 0 {
@@ -716,15 +725,21 @@ impl Screen {
     // ---- hyperlinks -----------------------------------------------------------------------
 
     pub fn set_link(&mut self, id: &str, uri: &str) {
-        if uri.is_empty() {
+        if uri.is_empty() || uri.len() > MAX_LINK_LEN || id.len() > MAX_LINK_LEN {
             self.pen.link = 0;
             return;
         }
-        if let Some(i) = self.links.iter().position(|l| l.uri == uri && l.id == id) {
-            self.pen.link = i as u32;
+        let key = (id.to_string(), uri.to_string());
+        if let Some(&i) = self.link_index.get(&key) {
+            self.pen.link = i;
+        } else if self.links.len() >= MAX_LINKS {
+            // A hostile stream must not grow the table without bound; further links are dropped.
+            self.pen.link = 0;
         } else {
-            self.links.push(Link { id: id.to_string(), uri: uri.to_string() });
-            self.pen.link = (self.links.len() - 1) as u32;
+            self.links.push(Link { id: key.0.clone(), uri: key.1.clone() });
+            let i = (self.links.len() - 1) as u32;
+            self.link_index.insert(key, i);
+            self.pen.link = i;
         }
     }
 
@@ -778,6 +793,9 @@ impl Screen {
                     } else {
                         let top = main.lines.remove(0);
                         main.scrollback.push_back(top);
+                        if main.scrollback.len() > self.scrollback_limit {
+                            main.scrollback.pop_front();
+                        }
                         cy = cy.saturating_sub(1);
                     }
                 }

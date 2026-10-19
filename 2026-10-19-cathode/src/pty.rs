@@ -18,6 +18,7 @@ unsafe extern "C" {
     fn setsid() -> c_int;
     fn poll(fds: *mut PollFd, n: c_ulong, timeout: c_int) -> c_int;
     fn kill(pid: c_int, sig: c_int) -> c_int;
+    fn fcntl(fd: c_int, cmd: c_int, ...) -> c_int;
 }
 
 const O_RDWR: c_int = 2;
@@ -26,6 +27,9 @@ const TIOCGWINSZ: c_ulong = 0x5413;
 const TIOCSWINSZ: c_ulong = 0x5414;
 const TIOCSCTTY: c_ulong = 0x540E;
 const POLLIN: i16 = 1;
+const F_GETFL: c_int = 3;
+const F_SETFL: c_int = 4;
+const O_NONBLOCK: c_int = 0o4000;
 
 #[repr(C)]
 struct PollFd {
@@ -117,6 +121,12 @@ impl Pty {
         }
         let child = cmd.spawn()?;
         drop(cmd); // closes the parent's copies of the slave
+        // Non-blocking master: a stalled child must never wedge the host (see `try_write`).
+        // SAFETY: plain fcntl on our own descriptor.
+        unsafe {
+            let fl = check(fcntl(master.as_raw_fd(), F_GETFL))?;
+            check(fcntl(master.as_raw_fd(), F_SETFL, fl | O_NONBLOCK))?;
+        }
         Ok(Pty { master, child, eof: false })
     }
 
@@ -153,12 +163,21 @@ impl Pty {
                 self.eof = true;
                 Ok(Some(0))
             }
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => Ok(None),
             Err(e) => Err(e),
         }
     }
 
-    pub fn write_all(&mut self, data: &[u8]) -> io::Result<()> {
-        self.master.write_all(data)
+    /// Write as much of `data` as the PTY accepts right now. `Ok(0)` means the input queue is full.
+    pub fn try_write(&mut self, data: &[u8]) -> io::Result<usize> {
+        loop {
+            match self.master.write(data) {
+                Ok(n) => return Ok(n),
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(0),
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(e),
+            }
+        }
     }
 
     pub fn resize(&mut self, cols: usize, rows: usize) -> io::Result<()> {

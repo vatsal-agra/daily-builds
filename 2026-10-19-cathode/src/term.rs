@@ -5,6 +5,8 @@ use crate::cell::*;
 use crate::parser::{Params, Parser, Perform};
 use crate::screen::*;
 
+pub const MAX_PENDING_REPLY: usize = 64 * 1024;
+pub const MAX_TITLE: usize = 1024;
 pub const VERSION: &str = "0.1.0";
 
 pub struct Term {
@@ -230,7 +232,10 @@ pub fn sgr_string(pen: &Pen) -> String {
 
 impl<'a> Handler<'a> {
     fn reply(&mut self, s: &str) {
-        self.out.extend_from_slice(s.as_bytes());
+        // Bounded: a hostile stream full of queries must not grow memory if nobody drains `out`.
+        if self.out.len() + s.len() <= MAX_PENDING_REPLY {
+            self.out.extend_from_slice(s.as_bytes());
+        }
     }
 
     fn set_mode(&mut self, private: bool, n: u16, on: bool) {
@@ -557,7 +562,7 @@ impl<'a> Perform for Handler<'a> {
             Err(_) => return,
         };
         match code {
-            0 | 2 => self.screen.title = rest,
+            0 | 2 => self.screen.title = rest.chars().take(MAX_TITLE).collect(),
             1 => {}
             4 => {
                 let parts: Vec<&str> = rest.split(';').collect();

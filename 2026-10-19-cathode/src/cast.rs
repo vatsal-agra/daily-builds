@@ -5,6 +5,9 @@ use crate::json::{self, Value};
 use crate::render::{html_css, html_rows, RenderOpts, Theme};
 use crate::term::Term;
 
+/// Largest width/height a cast may declare (a hostile header must not allocate gigabytes).
+pub const MAX_DIM: usize = 1000;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
     pub t: f64,
@@ -69,7 +72,7 @@ impl Cast {
         }
         let dim = |k: &str| -> Result<usize, String> {
             match h.get(k).and_then(|v| v.as_f64()) {
-                Some(n) if n >= 1.0 && n <= 10_000.0 => Ok(n as usize),
+                Some(n) if (1.0..=MAX_DIM as f64).contains(&n) => Ok(n as usize),
                 _ => Err(format!("header field {:?} missing or out of range", k)),
             }
         };
@@ -119,7 +122,7 @@ impl Cast {
             'r' => {
                 if let Some((c, r)) = e.data.split_once('x') {
                     if let (Ok(c), Ok(r)) = (c.parse::<usize>(), r.parse::<usize>()) {
-                        if (1..=10_000).contains(&c) && (1..=10_000).contains(&r) {
+                        if (1..=MAX_DIM).contains(&c) && (1..=MAX_DIM).contains(&r) {
                             term.resize(c, r);
                         }
                     }
@@ -276,7 +279,7 @@ const scr=document.getElementById('scr'),seek=document.getElementById('seek'),tm
 document.getElementById('sz').textContent=SIZE.cols+'×'+SIZE.rows;
 let cur=-1,playing=false,speed=1,tStart=0,tBase=0,raf=0;
 seek.max=FRAMES.length-1;
-function show(i){{if(i===cur)return;cur=i;scr.innerHTML=FRAMES[i][1].map(n=>ROWS[n]).join('\n');seek.value=i;tm.textContent=FRAMES[i][0].toFixed(1)+' / '+DUR.toFixed(1)+'s';}}
+function show(i){{if(i===cur)return;cur=i;scr.innerHTML=FRAMES[i][1].map(n=>ROWS[n]).join('');seek.value=i;tm.textContent=FRAMES[i][0].toFixed(1)+' / '+DUR.toFixed(1)+'s';}}
 function at(t){{let lo=0,hi=FRAMES.length-1;while(lo<hi){{const m=(lo+hi+1)>>1;if(FRAMES[m][0]<=t)lo=m;else hi=m-1;}}return lo;}}
 function tick(now){{if(!playing)return;const t=tBase+(now-tStart)/1000*speed;if(t>=DUR){{show(FRAMES.length-1);stop();return;}}show(at(t));raf=requestAnimationFrame(tick);}}
 function play(){{if(cur>=FRAMES.length-1)show(0);playing=true;pp.textContent='❚❚ Pause';tBase=FRAMES[cur][0];tStart=performance.now();raf=requestAnimationFrame(tick);}}
