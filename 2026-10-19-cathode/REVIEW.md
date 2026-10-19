@@ -39,3 +39,27 @@ save/restore, resize to 1×1 and back. Every query reply format was compared wit
 
 Fresh run-through after the fixes: `cargo test` (all suites) green; the 12 scenarios above re-run with no
 remaining hit.
+
+---
+
+# Phase 4 addendum — findings from the tmux differential oracle
+
+Building the oracle (stretch feature) was itself a second, much stronger review: ~1,400 generated
+streams plus real vim/less/nano/top/ls output were fed to both Cathode and a real tmux 3.4 pane and
+compared cell by cell. A delta-debugging minimiser (`tmuxdiff::minimize`, `cathode tmux-diff --minimize`)
+shrank every disagreement to a few bytes. Outcomes:
+
+| ID | Verdict | What the oracle showed | Resolution |
+|----|---------|------------------------|------------|
+| R-13 | **Cathode bug (real-world visible)** | In the deferred-wrap ("last column") state, `ESC[K`/`J`/`X`/`P`/`@` ended the wrap *and* erased the last cell. ncurses `top` draws a full-width reverse-video header and then emits `ESC[m ESC[K`, so Cathode punched a one-cell notch out of the bar's right edge while tmux did not. | The cursor is now logically *past* the last column while a wrap is pending (`Screen::eff_x`): erase-to-end/ICH/DCH/ECH do nothing, erase-to-start covers the row, none of them end the wrap. Tests: `pending_wrap.rs` (7), oracle `top` program test. |
+| R-14 | **Cathode bug** | `DECRC` restored the saved deferred-wrap flag, so a save/restore pair at the right edge changed where the next character landed (xterm and tmux both end the wrap on restore). | Restore ends the wrap; flag is no longer saved. |
+| R-15 | **Cathode bug** | `HT` at the right margin cleared the deferred wrap (a tab cannot move the cursor there, so it must not). | Tab no longer touches the flag. |
+| R-16 | tmux quirk (documented) | `ICH` is a no-op in tmux whenever the shifted text would reach the end of the used part of the line. | Cathode follows xterm; fixed ICH cases are in `tmux_oracle.rs`, random ICH excluded from the generator. |
+| R-17 | tmux quirk (documented) | `IL`/`DL` with the cursor *outside* the scroll region operate on the whole screen in tmux; xterm ignores them. | Cathode ignores them (xterm). Generator keeps the cursor inside the region. |
+| R-18 | tmux quirk (documented) | No background-colour-erase for wrap fillers, whole-line clears or scroll-created lines. | Cathode applies BCE (xterm, VTE, kitty). Generated streams only use backgrounds on text spans; BCE for EL/ECH is compared and agrees; whole-line BCE is unit-tested in `screen.rs`. |
+| R-19 | tmux quirk (documented) | Overwriting/inserting/deleting half of a double-width character leaves an inconsistent grid in tmux; xterm blanks both halves. A wide char that does not fit at the margin leaves stale text in the skipped cell. | Cathode blanks both halves (fuzz invariant: no orphan halves, ever). Wide streams avoid splitting operations. |
+| R-20 | tmux difference (documented) | `BS`, `VPA`, `IND/NEL/RI`, autowrap-off + wide char, `IL/DL` cursor column: tmux keeps its internal "x == width" state where xterm ends the wrap / uses `cols-1`. | Cathode follows xterm; generator brackets these with `CHA`. |
+| R-21 | Cathode bug (stretch fallout) | While adding reflow: a cursor above remaining content underflowed the window computation (`attempt to subtract with overflow`, caught by the resize fuzzer in a debug build). | Window now always includes the cursor row; regression covered by `fuzz_with_resizes_keeps_invariants`. |
+
+Also found while testing the player (stretch 6): the cast player's JS repeated R-02's double-spacing bug
+(`join('\n')` between row divs) — same fix.

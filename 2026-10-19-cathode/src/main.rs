@@ -14,6 +14,8 @@ USAGE
   cathode run [OPTIONS] -- CMD [ARGS...]   run a program on a PTY, then print the final screen
   cathode feed [OPTIONS] [FILE|-]          feed raw bytes (an escape-sequence stream) to a terminal
   cathode replay FILE.cast [OPTIONS]       replay an asciicast v2 recording
+  cathode tmux-diff [OPTIONS] FILE|-       compare a byte stream's screen with real tmux
+                                           (--minimize shrinks a failure; --ignore-blank-bg skips BCE differences)
   cathode keys SCRIPT                      show the bytes a key script would send
   cathode help | version
 
@@ -30,6 +32,8 @@ RUN OPTIONS
   --keys SCRIPT           input script, e.g. 'ihello<Esc>:q!<CR>'. Specials: <Esc> <CR> <Tab> <BS> <Del>
                           <Up> <Down> <Left> <Right> <Home> <End> <PageUp> <PageDown> <F1>..<F12>
                           <C-x> <M-x> <S-Tab> <C-S-Up> <lt> <wait 300> <until \"text\"> <resize 100x30>
+                          <mouse press left 10,5> <mouse release left 10,5> <mouse drag left 12,5>
+                          <mouse move 3,4> <mouse wheel up 3,4> <paste \"text\"> <focus in> <focus out>
   --settle MS             quiet period that counts as 'idle' (default 250)
   --timeout MS            overall limit for the session (default 15000)
   --until-timeout MS      limit for each <until \"..\"> (default 5000)
@@ -38,7 +42,7 @@ RUN OPTIONS
   --env K=V               extra environment variable (repeatable)
   --cwd DIR               working directory for the child
   --exit-code             exit with the child's exit status
-  --show-replies          print the terminal's query replies seen by the child to stderr (debug)
+  --show-replies          report how many bytes the child wrote and how many reply bytes it was sent
 
 FEED OPTIONS
   --show-replies          print the replies the terminal generated (escaped) to stderr
@@ -84,7 +88,7 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
                     }
                 };
                 a.flags.push((name, Some(v)));
-            } else if ["--scrollback", "--no-cursor", "--record-input", "--exit-code", "--show-replies", "--tty"].contains(&name.as_str()) {
+            } else if ["--scrollback", "--no-cursor", "--record-input", "--exit-code", "--show-replies", "--tty", "--minimize", "--ignore-blank-bg"].contains(&name.as_str()) {
                 a.flags.push((name, None));
             } else {
                 return Err(format!("unknown option {}", name));
@@ -206,7 +210,7 @@ fn cmd_run(a: &Args) -> Result<ExitCode, String> {
         return Ok(ExitCode::from(3));
     }
     if a.has("--show-replies") {
-        eprintln!("cathode: {} bytes read from child", sess.bytes_read);
+        eprintln!("cathode: child wrote {} bytes; terminal answered with {} bytes of replies", sess.bytes_read, sess.reply_bytes);
     }
     let out = render(a, &sess.term)?;
     emit(a, &out)?;
@@ -286,6 +290,37 @@ fn cmd_replay(a: &Args) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
+fn cmd_tmux_diff(a: &Args) -> Result<ExitCode, String> {
+    use cathode::tmuxdiff::{compare_with, minimize, tmux_available, Opts};
+    if !tmux_available() {
+        return Err("tmux is not installed".into());
+    }
+    let (cols, rows) = a.size()?;
+    let mut data = Vec::new();
+    match a.pos.first().map(String::as_str) {
+        None | Some("-") => {
+            std::io::stdin().read_to_end(&mut data).map_err(|e| e.to_string())?;
+        }
+        Some(p) => data = std::fs::read(p).map_err(|e| format!("cannot read {}: {}", p, e))?,
+    }
+    let opts = Opts { cursor: true, blank_bg: !a.has("--ignore-blank-bg") };
+    let rep = compare_with(&data, cols, rows, opts)?;
+    if rep.ok() {
+        println!("identical: {} cells compared, cursor agrees", rep.cells_compared);
+        return Ok(ExitCode::SUCCESS);
+    }
+    let mut shown = data.clone();
+    if a.has("--minimize") {
+        shown = minimize(&data, |c| compare_with(c, cols, rows, opts).map(|r| !r.ok()).unwrap_or(false));
+        println!("minimal failing stream ({} bytes): {:?}", shown.len(), String::from_utf8_lossy(&shown));
+    }
+    let rep = compare_with(&shown, cols, rows, opts)?;
+    for m in &rep.mismatches {
+        println!("{}", m);
+    }
+    Ok(ExitCode::from(1))
+}
+
 fn cmd_keys(a: &Args) -> Result<ExitCode, String> {
     let script = a.pos.first().ok_or("keys needs a script")?;
     let items = parse_script(script)?;
@@ -315,10 +350,11 @@ fn main() -> ExitCode {
             println!("cathode {}", cathode::term::VERSION);
             return ExitCode::SUCCESS;
         }
-        "run" | "feed" | "replay" | "keys" => parse_args(&argv[1..]).and_then(|a| match cmd.as_str() {
+        "run" | "feed" | "replay" | "keys" | "tmux-diff" => parse_args(&argv[1..]).and_then(|a| match cmd.as_str() {
             "run" => cmd_run(&a),
             "feed" => cmd_feed(&a),
             "replay" => cmd_replay(&a),
+            "tmux-diff" => cmd_tmux_diff(&a),
             _ => cmd_keys(&a),
         }),
         other => Err(format!("unknown command {:?} (try `cathode help`)", other)),

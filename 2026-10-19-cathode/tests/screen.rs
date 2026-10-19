@@ -308,13 +308,15 @@ fn resize_shrink_pushes_top_lines_to_scrollback_and_grow_restores() {
 }
 
 #[test]
-fn resize_narrower_truncates_and_clamps_cursor() {
+fn resize_narrower_rewraps_and_keeps_cursor_on_its_character() {
     let mut t1 = t(10, 2, "abcdefghij");
     t1.resize(4, 2);
-    assert_eq!(rows(&t1), ["abcd", ""]);
-    assert_eq!(cur(&t1), (3, 0));
+    assert_eq!(rows(&t1), ["efgh", "ij"]);
+    assert_eq!(t1.screen.scrollback_len(), 1);
+    assert_eq!(t1.screen.buf().scrollback[0].text(), "abcd");
+    assert_eq!(cur(&t1), (2, 1), "the cursor stays just after 'j'");
     t1.feed(b"Z");
-    assert_eq!(t1.screen.cx, 3);
+    assert_eq!(t1.screen.row_text(1), "ijZ");
 }
 
 #[test]

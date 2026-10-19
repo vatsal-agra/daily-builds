@@ -255,7 +255,7 @@ pub fn player_html(cast: &Cast, theme: Theme, max_frames: usize) -> String {
         js_frames.push_str(&format!("[{:.3},[{}]]", t, ids.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",")));
     }
     js_frames.push(']');
-    let title = cast.title.clone().unwrap_or_else(|| "cast".into());
+    let title = cast.title.clone().or_else(|| cast.command.clone()).unwrap_or_else(|| "cast".into());
     let title_html = title.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
     let css = html_css(theme);
     let duration = cast.duration();

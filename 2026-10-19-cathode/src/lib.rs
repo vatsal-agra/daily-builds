@@ -9,5 +9,6 @@ pub mod render;
 pub mod screen;
 pub mod session;
 pub mod term;
+pub mod tmuxdiff;
 pub mod width;
 mod width_table;

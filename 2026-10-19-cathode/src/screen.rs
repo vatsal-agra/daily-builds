@@ -103,7 +103,6 @@ struct Saved {
     cx: usize,
     cy: usize,
     pen: Pen,
-    pending_wrap: bool,
     origin: bool,
     charsets: [Charset; 4],
     gl: usize,
@@ -513,7 +512,7 @@ impl Screen {
             }
             self.cx = x.min(self.cols - 1);
         }
-        self.pending_wrap = false;
+        // HT never ends a deferred wrap: from the last column it does not move at all.
     }
     pub fn tab_back(&mut self, n: usize) {
         for _ in 0..n {
@@ -558,22 +557,30 @@ impl Screen {
         }
         Self::fix_wide(line, bg);
     }
-    pub fn erase_line(&mut self, mode: u16) {
-        let (cx, cy, cols) = (self.cx, self.cy, self.cols);
-        match mode {
-            0 => self.erase_cells(cy, cx, cols),
-            1 => self.erase_cells(cy, 0, cx + 1),
-            _ => {
-                self.erase_cells(cy, 0, cols);
-            }
+    /// Column the cursor is logically at for erase/insert/delete purposes: in the deferred-wrap
+    /// state it is *past* the last column, so "erase to end of line" has nothing left to erase and
+    /// ICH/DCH/ECH do nothing. This is what keeps a full-width reverse-video bar (ncurses `top`)
+    /// intact when a trailing `ESC [ K` follows it. None of these operations end the deferred wrap.
+    fn eff_x(&self) -> usize {
+        if self.pending_wrap {
+            self.cols
+        } else {
+            self.cx
         }
-        self.pending_wrap = false;
+    }
+    pub fn erase_line(&mut self, mode: u16) {
+        let (x, cy, cols) = (self.eff_x(), self.cy, self.cols);
+        match mode {
+            0 => self.erase_cells(cy, x, cols),
+            1 => self.erase_cells(cy, 0, (x + 1).min(cols)),
+            _ => self.erase_cells(cy, 0, cols),
+        }
     }
     pub fn erase_display(&mut self, mode: u16) {
-        let (cx, cy, cols, rows) = (self.cx, self.cy, self.cols, self.rows);
+        let (x, cy, cols, rows) = (self.eff_x(), self.cy, self.cols, self.rows);
         match mode {
             0 => {
-                self.erase_cells(cy, cx, cols);
+                self.erase_cells(cy, x, cols);
                 for y in cy + 1..rows {
                     self.erase_cells(y, 0, cols);
                 }
@@ -582,7 +589,7 @@ impl Screen {
                 for y in 0..cy {
                     self.erase_cells(y, 0, cols);
                 }
-                self.erase_cells(cy, 0, cx + 1);
+                self.erase_cells(cy, 0, (x + 1).min(cols));
             }
             2 => {
                 for y in 0..rows {
@@ -592,32 +599,34 @@ impl Screen {
             3 => self.buf_mut().scrollback.clear(),
             _ => {}
         }
-        self.pending_wrap = false;
     }
     pub fn erase_chars(&mut self, n: usize) {
-        let (cx, cy) = (self.cx, self.cy);
-        self.erase_cells(cy, cx, cx.saturating_add(n));
-        self.pending_wrap = false;
+        let (x, cy) = (self.eff_x(), self.cy);
+        self.erase_cells(cy, x, x.saturating_add(n));
     }
     pub fn insert_chars(&mut self, n: usize) {
-        let (cx, cy, bg, cols) = (self.cx, self.cy, self.pen.bg, self.cols);
-        let n = n.min(cols - cx);
+        let (x, cy, bg, cols) = (self.eff_x(), self.cy, self.pen.bg, self.cols);
+        if x >= cols {
+            return;
+        }
+        let n = n.min(cols - x);
         let line = self.line_mut(cy);
         for _ in 0..n {
             line.cells.pop();
-            line.cells.insert(cx, Cell::blank(bg));
+            line.cells.insert(x, Cell::blank(bg));
         }
         Self::fix_wide(line, bg);
-        self.pending_wrap = false;
     }
     pub fn delete_chars(&mut self, n: usize) {
-        let (cx, cy, bg, cols) = (self.cx, self.cy, self.pen.bg, self.cols);
-        let n = n.min(cols - cx);
+        let (x, cy, bg, cols) = (self.eff_x(), self.cy, self.pen.bg, self.cols);
+        if x >= cols {
+            return;
+        }
+        let n = n.min(cols - x);
         let line = self.line_mut(cy);
-        line.cells.drain(cx..cx + n);
+        line.cells.drain(x..x + n);
         line.cells.extend((0..n).map(|_| Cell::blank(bg)));
         Self::fix_wide(line, bg);
-        self.pending_wrap = false;
     }
     pub fn insert_lines(&mut self, n: usize) {
         if self.cy < self.top || self.cy > self.bottom {
@@ -659,7 +668,6 @@ impl Screen {
             cx: self.cx,
             cy: self.cy,
             pen: self.pen,
-            pending_wrap: self.pending_wrap,
             origin: self.modes.origin,
             charsets: self.charsets,
             gl: self.gl,
@@ -672,7 +680,8 @@ impl Screen {
                 self.cx = s.cx.min(self.cols - 1);
                 self.cy = s.cy.min(self.rows - 1);
                 self.pen = s.pen;
-                self.pending_wrap = s.pending_wrap;
+                // Restoring is a cursor positioning: it ends any deferred wrap (as xterm and tmux do).
+                self.pending_wrap = false;
                 self.modes.origin = s.origin;
                 self.charsets = s.charsets;
                 self.gl = s.gl;
@@ -766,6 +775,107 @@ impl Screen {
 
     // ---- resize -----------------------------------------------------------------------------
 
+    /// Re-wrap one buffer (scrollback + visible rows) to `new_cols`, keeping soft-wrapped lines
+    /// joined as one logical line, and return the cursor's new (x, y) if one was given.
+    /// Rows beyond the last content/cursor row are blank padding and are not carried over.
+    fn reflow_buffer(buf: &mut Buf, old_cols: usize, new_cols: usize, new_rows: usize, cursor: Option<(usize, usize)>, limit: usize) -> Option<(usize, usize)> {
+        let sb_len = buf.scrollback.len();
+        let all: Vec<Line> = buf.scrollback.drain(..).chain(buf.lines.drain(..)).collect();
+        let cursor_abs = cursor.map(|(_, y)| sb_len + y);
+
+        // 1. join soft-wrapped rows into logical lines
+        struct Logical {
+            cells: Vec<Cell>,
+            cursor_off: Option<usize>,
+        }
+        let mut logicals: Vec<Logical> = Vec::new();
+        let mut cur: Option<Logical> = None;
+        for (i, row) in all.iter().enumerate() {
+            let l = cur.get_or_insert(Logical { cells: Vec::new(), cursor_off: None });
+            if Some(i) == cursor_abs {
+                l.cursor_off = Some(l.cells.len() + cursor.unwrap().0.min(old_cols));
+            }
+            let mut cells = row.cells.clone();
+            if row.wrapped {
+                // drop the blank a wide character left behind when it did not fit at the row end
+                if let (Some(last), Some(next)) = (cells.last(), all.get(i + 1)) {
+                    if last.ch == ' ' && last.comb.is_none() && next.cells.first().map(|c| c.width == 2).unwrap_or(false) {
+                        cells.pop();
+                    }
+                }
+            }
+            l.cells.extend(cells);
+            if !row.wrapped {
+                logicals.push(cur.take().unwrap());
+            }
+        }
+        if let Some(l) = cur.take() {
+            logicals.push(l);
+        }
+
+        // 2. split each logical line at the new width
+        let mut out: Vec<Line> = Vec::new();
+        let mut new_cursor_abs: Option<(usize, usize)> = None;
+        for mut l in logicals {
+            let mut len = l.cells.len();
+            while len > 0 && l.cells[len - 1].is_plain_blank() {
+                len -= 1;
+            }
+            if let Some(off) = l.cursor_off {
+                len = len.max(off + 1);
+            }
+            l.cells.resize(len, Cell::blank(Color::Default));
+            if len == 0 {
+                out.push(Line::blank(new_cols, Color::Default));
+                continue;
+            }
+            let mut i = 0;
+            while i < len {
+                let mut take = new_cols.min(len - i);
+                if i + take < len && take > 1 && l.cells[i + take - 1].width == 2 {
+                    take -= 1;
+                }
+                let mut cells: Vec<Cell> = l.cells[i..i + take].to_vec();
+                cells.resize(new_cols, Cell::blank(Color::Default));
+                let mut line = Line { cells, wrapped: i + take < len };
+                Self::fix_wide(&mut line, Color::Default);
+                if let Some(off) = l.cursor_off {
+                    if off >= i && (off < i + take || i + take >= len) {
+                        new_cursor_abs = Some((out.len(), (off - i).min(new_cols - 1)));
+                    }
+                }
+                out.push(line);
+                i += take;
+            }
+        }
+
+        // 3. choose the visible window: it ends at the last content row or the cursor row
+        let last_content = out.iter().rposition(|l| l.used_len() > 0);
+        let mut end = last_content.unwrap_or(0);
+        if let Some((r, _)) = new_cursor_abs {
+            end = end.max(r);
+        }
+        if out.is_empty() {
+            out.push(Line::blank(new_cols, Color::Default));
+        }
+        let mut start = (end + 1).saturating_sub(new_rows);
+        if let Some((r, _)) = new_cursor_abs {
+            // the cursor must stay on screen even when content continues below it
+            start = start.min(r);
+        }
+        let mut visible: Vec<Line> = out.drain(start..).take(new_rows).collect();
+        let mut history: VecDeque<Line> = out.into_iter().take(start).collect();
+        while visible.len() < new_rows {
+            visible.push(Line::blank(new_cols, Color::Default));
+        }
+        while history.len() > limit {
+            history.pop_front();
+        }
+        buf.scrollback = history;
+        buf.lines = visible;
+        new_cursor_abs.map(|(r, c)| (c, r - start))
+    }
+
     pub fn resize(&mut self, cols: usize, rows: usize) {
         let cols = cols.max(1);
         let rows = rows.max(1);
@@ -773,18 +883,32 @@ impl Screen {
             return;
         }
         let bg = Color::Default;
-        // columns: truncate / pad
-        for buf in [&mut self.main, &mut self.alt] {
-            for l in buf.lines.iter_mut().chain(buf.scrollback.iter_mut()) {
+        if cols != self.cols {
+            // Width changed: the main buffer is re-wrapped (soft-wrapped lines are rejoined).
+            // a deferred wrap means the cursor is logically just past the last column
+            let cursor = if self.alt_active { None } else { Some((self.cx + self.pending_wrap as usize, self.cy)) };
+            let (old_cols, limit) = (self.cols, self.scrollback_limit);
+            if let Some((x, y)) = Self::reflow_buffer(&mut self.main, old_cols, cols, rows, cursor, limit) {
+                self.cx = x;
+                self.cy = y;
+            }
+            // The alternate screen has no history: plain truncate / pad.
+            for l in self.alt.lines.iter_mut() {
                 l.cells.resize(cols, Cell::blank(bg));
                 Self::fix_wide(l, bg);
             }
-        }
-        // rows
-        {
-            let (old_rows, cy) = (self.rows, self.cy);
-            let mut cy = cy;
+            self.alt.lines.truncate(rows);
+            while self.alt.lines.len() < rows {
+                self.alt.lines.push(Line::blank(cols, bg));
+            }
+            if self.alt_active {
+                self.cy = self.cy.min(rows - 1);
+            }
+        } else {
+            // Height only: pull history back in when growing, push top rows into it when shrinking.
+            let mut cy = self.cy;
             if !self.alt_active {
+                let limit = self.scrollback_limit;
                 let main = &mut self.main;
                 while main.lines.len() > rows {
                     let last_blank = main.lines.last().map(|l| l.used_len() == 0).unwrap_or(false);
@@ -793,7 +917,7 @@ impl Screen {
                     } else {
                         let top = main.lines.remove(0);
                         main.scrollback.push_back(top);
-                        if main.scrollback.len() > self.scrollback_limit {
+                        if main.scrollback.len() > limit {
                             main.scrollback.pop_front();
                         }
                         cy = cy.saturating_sub(1);
@@ -807,22 +931,16 @@ impl Screen {
                         main.lines.push(Line::blank(cols, bg));
                     }
                 }
-                self.alt.lines.truncate(rows);
-                while self.alt.lines.len() < rows {
-                    self.alt.lines.push(Line::blank(cols, bg));
-                }
             } else {
-                let alt = &mut self.alt;
-                alt.lines.truncate(rows);
-                while alt.lines.len() < rows {
-                    alt.lines.push(Line::blank(cols, bg));
-                }
                 self.main.lines.truncate(rows);
                 while self.main.lines.len() < rows {
                     self.main.lines.push(Line::blank(cols, bg));
                 }
             }
-            let _ = old_rows;
+            self.alt.lines.truncate(rows);
+            while self.alt.lines.len() < rows {
+                self.alt.lines.push(Line::blank(cols, bg));
+            }
             self.cy = cy;
         }
         let old_cols = self.cols;

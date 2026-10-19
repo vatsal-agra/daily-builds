@@ -1,7 +1,7 @@
 //! Keyboard input: a tiny script language (`ihello<Esc>:wq<CR>`) and key → byte encoding that
 //! depends on the terminal's current modes (application cursor keys, ...).
 
-use crate::screen::Modes;
+use crate::screen::{Modes, MouseEnc, MouseMode};
 
 pub const SHIFT: u8 = 1;
 pub const ALT: u8 = 2;
@@ -37,6 +37,37 @@ pub enum Item {
     /// Block until the screen contains the text (or the step's timeout expires).
     Until(String),
     Resize(usize, usize),
+    Mouse(MouseEvent),
+    /// Pasted text (bracketed when the application enabled DECSET 2004).
+    Paste(String),
+    Focus(bool),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MouseButton {
+    Left,
+    Middle,
+    Right,
+    WheelUp,
+    WheelDown,
+    None,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MouseKind {
+    Press,
+    Release,
+    Move,
+}
+
+/// A mouse event at 0-based cell coordinates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MouseEvent {
+    pub kind: MouseKind,
+    pub button: MouseButton,
+    pub x: usize,
+    pub y: usize,
+    pub mods: u8,
 }
 
 fn key_by_name(name: &str) -> Option<Key> {
@@ -91,6 +122,21 @@ fn parse_angle(inner: &str) -> Result<Item, String> {
         }
         return Err(format!("<until> needs a quoted string: {:?}", inner));
     }
+    if let Some(rest) = lower.strip_prefix("mouse ") {
+        return parse_mouse(rest).ok_or_else(|| format!("bad <mouse ...>: {:?} (e.g. <mouse press left 10,5>, <mouse move 3,4>, <mouse wheel up 3,4>)", inner));
+    }
+    if inner.len() >= 6 && inner[..6].eq_ignore_ascii_case("paste ") {
+        let q = inner[6..].trim();
+        if q.len() >= 2 && q.starts_with('"') && q.ends_with('"') {
+            return Ok(Item::Paste(q[1..q.len() - 1].replace("\\\"", "\"").replace("\\n", "\n")));
+        }
+        return Err(format!("<paste> needs a quoted string: {:?}", inner));
+    }
+    match lower.as_str() {
+        "focus in" | "focus-in" => return Ok(Item::Focus(true)),
+        "focus out" | "focus-out" => return Ok(Item::Focus(false)),
+        _ => {}
+    }
     // modifiers: C-, S-, M-/A- prefixes
     let mut mods = 0u8;
     let mut rest = inner;
@@ -116,6 +162,39 @@ fn parse_angle(inner: &str) -> Result<Item, String> {
         return Ok(Item::Key(Key::Char(c), mods));
     }
     Err(format!("unknown key <{}>", inner))
+}
+
+fn parse_mouse(rest: &str) -> Option<Item> {
+    let w: Vec<&str> = rest.split_whitespace().collect();
+    let pos = |s: &str| -> Option<(usize, usize)> {
+        let (x, y) = s.split_once(',')?;
+        Some((x.parse().ok()?, y.parse().ok()?))
+    };
+    let btn = |s: &str| match s {
+        "left" => Some(MouseButton::Left),
+        "middle" => Some(MouseButton::Middle),
+        "right" => Some(MouseButton::Right),
+        _ => None,
+    };
+    let ev = match w.as_slice() {
+        ["press", b, p] => MouseEvent { kind: MouseKind::Press, button: btn(b)?, x: pos(p)?.0, y: pos(p)?.1, mods: 0 },
+        ["release", b, p] => MouseEvent { kind: MouseKind::Release, button: btn(b)?, x: pos(p)?.0, y: pos(p)?.1, mods: 0 },
+        ["drag", b, p] => MouseEvent { kind: MouseKind::Move, button: btn(b)?, x: pos(p)?.0, y: pos(p)?.1, mods: 0 },
+        ["move", p] => MouseEvent { kind: MouseKind::Move, button: MouseButton::None, x: pos(p)?.0, y: pos(p)?.1, mods: 0 },
+        ["wheel", d, p] => MouseEvent {
+            kind: MouseKind::Press,
+            button: match *d {
+                "up" => MouseButton::WheelUp,
+                "down" => MouseButton::WheelDown,
+                _ => return None,
+            },
+            x: pos(p)?.0,
+            y: pos(p)?.1,
+            mods: 0,
+        },
+        _ => return None,
+    };
+    Some(Item::Mouse(ev))
 }
 
 /// Parse an input script. Anything outside `<...>` is literal text; `<lt>` produces a literal `<`.
@@ -153,7 +232,7 @@ pub fn parse_script(src: &str) -> Result<Vec<Item>, String> {
             // (and a typo like <Escc> is then an error rather than silently typed).
             let looks_like_spec = {
                 let l = inner.to_ascii_lowercase();
-                l.starts_with("wait ") || l.starts_with("until ") || l.starts_with("resize ") || {
+                l.starts_with("wait ") || l.starts_with("until ") || l.starts_with("resize ") || l.starts_with("mouse ") || l.starts_with("paste ") || l == "focus in" || l == "focus out" || {
                     let core = inner.rsplit('-').next().unwrap_or(inner);
                     inner.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') && (core.chars().count() > 1 || inner.contains('-'))
                 }
@@ -301,4 +380,108 @@ pub fn encode_key(modes: &Modes, key: &Key, mods: u8) -> Vec<u8> {
         }
     }
     out
+}
+
+/// Encode a mouse event for the application, or `None` if the current mouse mode does not report it
+/// (or the coordinates cannot be represented in the active encoding).
+pub fn encode_mouse(modes: &Modes, ev: &MouseEvent) -> Option<Vec<u8>> {
+    let wheel = matches!(ev.button, MouseButton::WheelUp | MouseButton::WheelDown);
+    match modes.mouse {
+        MouseMode::None => return None,
+        MouseMode::X10 => {
+            if ev.kind != MouseKind::Press || wheel || ev.button == MouseButton::None {
+                return None;
+            }
+        }
+        MouseMode::Normal => {
+            if ev.kind == MouseKind::Move {
+                return None;
+            }
+        }
+        MouseMode::Button => {
+            if ev.kind == MouseKind::Move && ev.button == MouseButton::None {
+                return None;
+            }
+        }
+        MouseMode::Any => {}
+    }
+    let base = match ev.button {
+        MouseButton::Left => 0,
+        MouseButton::Middle => 1,
+        MouseButton::Right => 2,
+        MouseButton::WheelUp => 64,
+        MouseButton::WheelDown => 65,
+        MouseButton::None => 3,
+    };
+    let sgr = modes.mouse_enc == MouseEnc::Sgr;
+    // legacy encodings cannot say which button was released
+    let mut cb = if ev.kind == MouseKind::Release && !sgr { 3 } else { base };
+    if modes.mouse != MouseMode::X10 {
+        if ev.mods & SHIFT != 0 {
+            cb += 4;
+        }
+        if ev.mods & ALT != 0 {
+            cb += 8;
+        }
+        if ev.mods & CTRL != 0 {
+            cb += 16;
+        }
+    }
+    if ev.kind == MouseKind::Move {
+        cb += 32;
+    }
+    let (cx, cy) = (ev.x + 1, ev.y + 1);
+    let mut out: Vec<u8> = Vec::new();
+    match modes.mouse_enc {
+        MouseEnc::Sgr => {
+            let fin = if ev.kind == MouseKind::Release { 'm' } else { 'M' };
+            out.extend_from_slice(format!("\x1b[<{};{};{}{}", cb, cx, cy, fin).as_bytes());
+        }
+        MouseEnc::Urxvt => out.extend_from_slice(format!("\x1b[{};{};{}M", cb + 32, cx, cy).as_bytes()),
+        MouseEnc::Utf8 => {
+            if cx + 32 > 2047 || cy + 32 > 2047 {
+                return None;
+            }
+            out.extend_from_slice(b"\x1b[M");
+            out.push((cb + 32) as u8);
+            for v in [cx + 32, cy + 32] {
+                let mut buf = [0u8; 4];
+                out.extend_from_slice(char::from_u32(v as u32)?.encode_utf8(&mut buf).as_bytes());
+            }
+        }
+        MouseEnc::Default => {
+            if cx + 32 > 255 || cy + 32 > 255 {
+                return None;
+            }
+            out.extend_from_slice(b"\x1b[M");
+            out.extend_from_slice(&[(cb + 32) as u8, (cx + 32) as u8, (cy + 32) as u8]);
+        }
+    }
+    Some(out)
+}
+
+/// Bytes for pasting `text`. With bracketed paste on, the text is wrapped in `ESC[200~ … ESC[201~`
+/// and any embedded end-marker is removed (so pasted text cannot break out of the bracket);
+/// otherwise line breaks become CR as xterm does.
+pub fn encode_paste(modes: &Modes, text: &str) -> Vec<u8> {
+    if modes.bracketed_paste {
+        let mut clean = text.to_string();
+        while clean.contains("\x1b[201~") {
+            clean = clean.replace("\x1b[201~", "");
+        }
+        let mut out = b"\x1b[200~".to_vec();
+        out.extend_from_slice(clean.as_bytes());
+        out.extend_from_slice(b"\x1b[201~");
+        out
+    } else {
+        text.replace("\r\n", "\r").replace('\n', "\r").into_bytes()
+    }
+}
+
+/// Focus in/out report (DECSET 1004).
+pub fn encode_focus(modes: &Modes, focused: bool) -> Option<Vec<u8>> {
+    if !modes.focus_events {
+        return None;
+    }
+    Some(if focused { b"\x1b[I".to_vec() } else { b"\x1b[O".to_vec() })
 }

@@ -2,7 +2,7 @@
 //! back to the child, optional asciicast recording, and a scripted-input runner.
 
 use crate::cast::{Cast, Event, Utf8Chunker};
-use crate::input::{encode_key, Item};
+use crate::input::{encode_focus, encode_key, encode_mouse, encode_paste, Item};
 use crate::pty::{Pty, SpawnOpts};
 use crate::term::Term;
 use std::io;
@@ -22,6 +22,8 @@ pub struct Session {
     reply_q: Vec<u8>,
     /// Total bytes the child has written.
     pub bytes_read: u64,
+    /// Total bytes of terminal replies (cursor reports, attributes, ...) delivered to the child.
+    pub reply_bytes: u64,
 }
 
 impl Session {
@@ -36,7 +38,7 @@ impl Session {
         } else {
             None
         };
-        Ok(Session { term, pty, cast, record_input: false, chunker: Utf8Chunker::default(), start: Instant::now(), exit: None, eof: false, reply_q: Vec::new(), bytes_read: 0 })
+        Ok(Session { term, pty, cast, record_input: false, chunker: Utf8Chunker::default(), start: Instant::now(), exit: None, eof: false, reply_q: Vec::new(), bytes_read: 0, reply_bytes: 0 })
     }
 
     fn now(&self) -> f64 {
@@ -95,6 +97,7 @@ impl Session {
                 Ok(0) | Err(_) => break, // full, or the child is gone: not an error for the host
                 Ok(n) => {
                     self.reply_q.drain(..n);
+                    self.reply_bytes += n as u64;
                 }
             }
         }
@@ -209,6 +212,23 @@ impl Session {
                     if !self.wait_for_text(text, until_timeout_ms).map_err(|e| e.to_string())? {
                         return Err(format!("timed out after {} ms waiting for {:?}\n--- screen ---\n{}", until_timeout_ms, text, self.term.screen.text()));
                     }
+                }
+                Item::Mouse(ev) => {
+                    if let Some(b) = encode_mouse(&self.term.screen.modes, ev) {
+                        self.send(&b).map_err(|e| e.to_string())?;
+                    }
+                    self.pump_until_idle(key_delay_ms.max(1), 2000).map_err(|e| e.to_string())?;
+                }
+                Item::Paste(text) => {
+                    let b = encode_paste(&self.term.screen.modes, text);
+                    self.send(&b).map_err(|e| e.to_string())?;
+                    self.pump_until_idle(key_delay_ms.max(1), 2000).map_err(|e| e.to_string())?;
+                }
+                Item::Focus(f) => {
+                    if let Some(b) = encode_focus(&self.term.screen.modes, *f) {
+                        self.send(&b).map_err(|e| e.to_string())?;
+                    }
+                    self.pump_until_idle(key_delay_ms.max(1), 2000).map_err(|e| e.to_string())?;
                 }
                 Item::Resize(c, r) => {
                     self.resize(*c, *r).map_err(|e| e.to_string())?;
