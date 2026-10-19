@@ -48,3 +48,6 @@ demo.sh        end-to-end demo
 | 9 | **Input encoder**: key names → bytes (app cursor mode, modifiers), SGR mouse, bracketed paste, focus events | stretch |
 
 Required: 1, 2, 3, 4. Stretch: 6, 7, 8, 9 (5 is the shared output layer).
+
+**Outcome (Phase 6):** all four required features and all four stretch features shipped; see README.md for the
+final feature list and REVIEW.md for the two adversarial passes.

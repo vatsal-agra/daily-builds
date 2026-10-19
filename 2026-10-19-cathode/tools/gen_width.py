@@ -3,7 +3,8 @@
 
 ZERO: general category Mn/Me/Cf (minus U+00AD soft hyphen, which terminals draw),
       plus Hangul Jamo medial vowels / final consonants (U+1160..U+11FF) like wcwidth(3).
-WIDE: East Asian Width W or F (this already covers Emoji_Presentation).
+WIDE: East Asian Width W or F (this already covers Emoji_Presentation); unassigned code points
+      only count in the blocks the UCD reserves for CJK.
 """
 import sys, unicodedata
 
@@ -27,8 +28,18 @@ def zero(cp):
         return True
     return unicodedata.category(chr(cp)) in ("Mn", "Me", "Cf")
 
+# UCD EastAsianWidth.txt: unassigned code points in these blocks default to Wide.
+RESERVED_WIDE = [(0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xF900, 0xFAFF), (0x20000, 0x2FFFD), (0x30000, 0x3FFFD),
+                 # emoji blocks: Unicode keeps adding Emoji_Presentation characters here, newer than this Python's UCD
+                 (0x1F300, 0x1F64F), (0x1F680, 0x1F6FF), (0x1F900, 0x1F9FF), (0x1FA70, 0x1FAFF)]
+
 def wide(cp):
-    return unicodedata.east_asian_width(chr(cp)) in ("W", "F")
+    if unicodedata.east_asian_width(chr(cp)) not in ("W", "F"):
+        return False
+    # Python reports 'F' for every unassigned code point; only the reserved CJK blocks are really wide.
+    if unicodedata.category(chr(cp)) == "Cn":
+        return any(lo <= cp <= hi for lo, hi in RESERVED_WIDE)
+    return True
 
 def emit(name, rs):
     s = f"pub static {name}: [(u32, u32); {len(rs)}] = [\n"

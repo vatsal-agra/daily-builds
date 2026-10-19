@@ -63,3 +63,5 @@ shrank every disagreement to a few bytes. Outcomes:
 
 Also found while testing the player (stretch 6): the cast player's JS repeated R-02's double-spacing bug
 (`join('\n')` between row divs) — same fix.
+
+| R-22 | **Cathode bug (found by the Phase 5 width test)** | `tools/gen_width.py` built the double-width table from Python's `east_asian_width`, which reports `F` for *every unassigned code point* — so ~690 000 unassigned characters (e.g. U+0378, U+1F1AE, plane 4–13) were treated as 2 cells wide. | Unassigned code points count as wide only inside the blocks the UCD reserves for CJK, plus the emoji blocks (where new Emoji_Presentation characters keep landing, e.g. U+1FAE8). Test: `tests/width.rs`. |

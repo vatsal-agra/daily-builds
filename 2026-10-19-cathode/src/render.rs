@@ -390,8 +390,8 @@ pub fn html_css(theme: Theme) -> String {
 .bar{{display:flex;align-items:center;gap:8px;padding:9px 14px;font:12px/1 system-ui,sans-serif;color:var(--fg);background:color-mix(in srgb,var(--fg) 7%,var(--bg));border-bottom:1px solid rgba(128,128,128,.25)}}\n\
 .dots i{{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;background:var(--c1)}}.dots i:nth-child(2){{background:var(--c3)}}.dots i:nth-child(3){{background:var(--c2)}}\n\
 .ttl{{flex:1;text-align:center;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}.sz{{opacity:.5;font-variant-numeric:tabular-nums}}\n\
-.screen{{margin:0;padding:12px 14px;overflow:auto;color:var(--fg);font-size:14px;line-height:1.25;font-variant-ligatures:none}}\n\
-.r{{white-space:pre;min-height:1.25em}}.w{{display:inline-block;width:2ch;overflow:visible}}\n\
+.screen{{margin:0;padding:12px 14px;overflow:auto;color:var(--fg);font-size:14px;line-height:1.2;font-variant-ligatures:none}}\n\
+.r{{white-space:pre;min-height:1.2em}}.w{{display:inline-block;width:2ch;overflow:visible}}\n\
 a{{color:inherit;text-decoration:underline dotted}}a:hover{{text-decoration:underline solid}}\n\
 {ansi_css}.bo{{font-weight:700}}.di{{opacity:.6}}.it{{font-style:italic}}.ul{{text-decoration:underline}}.u2{{text-decoration:underline double}}.uc{{text-decoration:underline wavy}}.ud{{text-decoration:underline dotted}}.ud2{{text-decoration:underline dashed}}.st{{text-decoration:line-through}}.ol{{text-decoration:overline}}\n\
 .ul.st{{text-decoration:underline line-through}}\n\
