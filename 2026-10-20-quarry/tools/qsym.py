@@ -78,13 +78,17 @@ def main():
     table = {}
     for mod, offs in wanted.items():
         table[mod] = resolve(find_module(mod, args.exe), sorted(offs))
-    for ln in lines:
-        m = FRAME.match(ln)
-        if m:
-            hit = table.get(m.group(2), {}).get(int(m.group(3), 16))
-            if hit:
-                ln = "%s%s  [%s+0x%s]" % (m.group(1), hit, os.path.basename(m.group(2)), m.group(3))
-        print(ln)
+    try:
+        for ln in lines:
+            m = FRAME.match(ln)
+            if m:
+                hit = table.get(m.group(2), {}).get(int(m.group(3), 16))
+                if hit:
+                    ln = "%s%s  [%s+0x%s]" % (m.group(1), hit, os.path.basename(m.group(2)), m.group(3))
+            print(ln)
+        sys.stdout.flush()
+    except BrokenPipeError:            # `| head` closed the pipe: not an error
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
 
 
 if __name__ == "__main__":

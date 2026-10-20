@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quarry replay report</title>
+<style>
+:root{
+  --bg:#f6f5f2; --panel:#ffffff; --ink:#1c1b19; --muted:#6b675f; --line:#e4e1da; --accent:#0f766e;
+  --c-quarry:#0f766e; --c-glibc:#4f46e5; --c-firstfit:#c2410c; --c-buddy:#be185d; --c-bump:#64748b; --c-live:#1c1b19;
+  --m-free:#f0c36a; --m-released:#d9d6cf; --m-large:#3b82f6; --m-empty:#efede8;
+  --ok:#15803d; --bad:#b91c1c; --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141412; --panel:#1d1c19; --ink:#ecebe6; --muted:#9a968c; --line:#2c2a26; --accent:#2dd4bf;
+  --c-quarry:#2dd4bf; --c-glibc:#a5b4fc; --c-firstfit:#fb923c; --c-buddy:#f472b6; --c-bump:#94a3b8; --c-live:#ecebe6;
+  --m-free:#c99a3b; --m-released:#3a3833; --m-large:#60a5fa; --m-empty:#232220;
+  --ok:#4ade80; --bad:#f87171; --shadow:none;}}
+:root[data-theme="dark"]{
+  --bg:#141412; --panel:#1d1c19; --ink:#ecebe6; --muted:#9a968c; --line:#2c2a26; --accent:#2dd4bf;
+  --c-quarry:#2dd4bf; --c-glibc:#a5b4fc; --c-firstfit:#fb923c; --c-buddy:#f472b6; --c-bump:#94a3b8; --c-live:#ecebe6;
+  --m-free:#c99a3b; --m-released:#3a3833; --m-large:#60a5fa; --m-empty:#232220;
+  --ok:#4ade80; --bad:#f87171; --shadow:none;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:32px 16px 64px}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;margin-bottom:24px}
+h1{font-size:28px;line-height:1.15;margin:0;letter-spacing:-.02em}
+h1 span{color:var(--accent)}
+.sub{color:var(--muted);font-size:14px;margin-top:4px;font-variant-numeric:tabular-nums}
+.theme{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px 20px 16px;margin-bottom:20px}
+h2{font-size:16px;margin:0 0 4px;letter-spacing:-.01em}
+.lede{color:var(--muted);font-size:13.5px;margin:0 0 14px;max-width:80ch}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:20px}
+.fact{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.fact b{display:block;font-size:20px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.fact span{color:var(--muted);font-size:12.5px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:14px}
+th{font-weight:600;font-size:12px;color:var(--muted);text-align:right;padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+.tbl{overflow-x:auto}
+.name{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.best{font-weight:700}
+.bar{display:inline-block;height:8px;border-radius:4px;vertical-align:middle;margin-left:8px;opacity:.85}
+.ok{color:var(--ok)} .badc{color:var(--bad);font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:6px 0 10px}
+.legend button{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:7px;font-size:13px;padding:2px 4px;border-radius:6px}
+.legend button:focus-visible{outline:2px solid var(--accent)}
+.legend button.off{opacity:.4;text-decoration:line-through}
+.chartbox{position:relative}
+#chart{max-width:100%;height:auto}
+svg text{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12.5px;box-shadow:0 6px 24px rgba(0,0,0,.15);display:none;min-width:150px;z-index:3}
+.tip div{display:flex;justify-content:space-between;gap:14px}
+.tip i{font-style:normal;color:var(--muted)}
+.mapctl{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin:6px 0 12px}
+.mapctl button{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:8px;padding:5px 14px;font:inherit;font-size:13px;cursor:pointer;min-width:74px}
+.mapctl input[type=range]{flex:1 1 220px;accent-color:var(--accent)}
+.mapstat{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+canvas{display:block;border-radius:8px;background:var(--m-empty);cursor:crosshair}
+.swatches{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:12.5px;color:var(--muted)}
+.sw{display:inline-flex;align-items:center;gap:6px}.sw i{width:14px;height:14px;border-radius:3px;display:inline-block;border:1px solid var(--line)}
+.grad{width:90px;height:12px;border-radius:3px;background:linear-gradient(90deg,hsl(150 45% 85%),hsl(158 70% 30%))}
+.hist{display:grid;grid-template-columns:90px 1fr 70px;gap:4px 10px;align-items:center;font-size:12.5px;font-variant-numeric:tabular-nums}
+.hist .b{height:12px;border-radius:3px;background:var(--accent);opacity:.8}
+.hist .l{color:var(--muted);text-align:right}
+.hist .n{color:var(--muted)}
+.two>div{min-width:0}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:820px){.two{grid-template-columns:1fr}}
+.note{color:var(--muted);font-size:12.5px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div><h1><span>Quarry</span> replay report</h1><div class="sub" id="sub"></div></div>
+  <button class="theme" id="theme" type="button">Toggle theme</button>
+</header>
+<div class="facts" id="facts"></div>
+
+<section>
+  <h2>Scorecard</h2>
+  <p class="lede">The same recorded allocation stream, replayed in a fresh process against each allocator. <b>Overhead</b> is the memory the allocator held from the OS at its peak divided by the peak number of bytes the program actually asked for; 1.00× would be perfect. Speed comes from an unverified run, latency percentiles from a run that times each call.</p>
+  <div class="tbl"><table id="score"></table></div>
+</section>
+
+<section>
+  <h2>Memory over time</h2>
+  <p class="lede">Dashed line: bytes the program has live. Solid lines: what each allocator holds from the OS. The gap between them is fragmentation, metadata and caching; allocators that give memory back drop toward the dashed line when the program frees.</p>
+  <div class="legend" id="legend"></div>
+  <div class="chartbox" id="chartbox"><svg id="chart" role="img" aria-label="Memory held by each allocator over the course of the trace"></svg><div class="tip" id="tip"></div></div>
+</section>
+
+<section id="mapsec">
+  <h2>Quarry heap map</h2>
+  <p class="lede">Each square is a run of pages in quarry's page heap, sampled through the replay. Green = slab pages (darker is fuller), blue = large allocations, amber = free pages still resident, grey = free pages handed back to the OS (or never touched). Scrub or press play to watch the heap fill, fragment and drain.</p>
+  <div class="mapctl"><button id="play" type="button">Play</button><input id="slider" type="range" min="0" value="0" aria-label="Replay position"><span class="mapstat" id="mapstat"></span></div>
+  <canvas id="map" aria-label="Heap occupancy map"></canvas>
+  <div class="swatches">
+    <span class="sw"><i style="background:var(--m-empty)"></i>never mapped</span>
+    <span class="sw"><i style="background:var(--m-released)"></i>free, not resident</span>
+    <span class="sw"><i style="background:var(--m-free)"></i>free, resident</span>
+    <span class="sw"><i style="background:var(--m-large)"></i>large block</span>
+    <span class="sw"><span class="grad"></span>slab: empty → full</span>
+  </div>
+  <div class="note" id="maptip">Hover a square for details.</div>
+</section>
+
+<section class="two">
+  <div><h2>Request sizes</h2><p class="lede">Number of allocations by power-of-two size.</p><div class="hist" id="hist"></div></div>
+  <div><h2>The trace</h2><p class="lede">What the program did.</p><div class="tbl"><table id="tracetbl"></table></div></div>
+</section>
+</div>
+
+<script type="application/json" id="data">__QUARRY_DATA__</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const $ = id => document.getElementById(id);
+const COLORS = {quarry:"--c-quarry", glibc:"--c-glibc", firstfit:"--c-firstfit", buddy:"--c-buddy", bump:"--c-bump"};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const colorOf = a => css(COLORS[a.name] || "--c-bump");
+
+function fmtBytes(b){
+  const u=["B","KiB","MiB","GiB","TiB"]; let i=0; b=+b;
+  while(b>=1024&&i<4){b/=1024;i++}
+  return (i===0?b.toFixed(0):b>=100?b.toFixed(0):b.toFixed(1))+" "+u[i];
+}
+const fmtN = n => Number(n).toLocaleString("en-US");
+const fmtNs = n => n>=1e6?(n/1e6).toFixed(1)+" ms":n>=1e3?(n/1e3).toFixed(1)+" µs":n+" ns";
+
+/* ---- header + facts ------------------------------------------------------------------ */
+$("sub").textContent = D.trace.path + " · " + fmtN(D.trace.events) + " events";
+const facts = [
+  [fmtBytes(D.trace.peak_live), "peak live bytes"],
+  [fmtN(D.trace.allocs), "allocations"],
+  [fmtN(D.trace.reallocs), "reallocs"],
+  [fmtBytes(D.trace.max_size), "largest request"],
+  ["≈ " + fmtN(D.trace.life[0]) + " events", "median block lifetime"],
+  [fmtN(D.trace.threads), D.trace.threads===1?"thread recorded":"threads recorded"],
+];
+$("facts").innerHTML = facts.map(f=>`<div class="fact"><b>${f[0]}</b><span>${f[1]}</span></div>`).join("");
+
+/* ---- scorecard ----------------------------------------------------------------------- */
+function renderScore(){
+  const A = D.allocs.slice();
+  const okA = A.filter(a=>a.ok);
+  const best = (k, lower=true) => okA.length? okA.reduce((m,a)=> (lower? a[k]<m[k] : a[k]>m[k]) ? a : m).name : null;
+  const bPeak = best("peak"), bAfter = best("after"), bNs = best("ns_event"), bP99 = best("alloc_p99");
+  const maxOv = Math.max(...okA.map(a=>a.overhead), 1);
+  let h = "<tr><th>allocator</th><th>peak memory</th><th>overhead</th><th>end of run</th><th>after freeing all</th><th>ns / event</th><th>alloc p50</th><th>alloc p99</th><th>free p99</th><th>integrity</th></tr>";
+  for (const a of A) {
+    if (!a.ok) { h += `<tr><td><span class="name"><span class="dot" style="background:${colorOf(a)}"></span>${a.name}</span></td><td colspan="9" class="badc" style="text-align:left">${a.error}</td></tr>`; continue; }
+    const cls = (n,k)=> n===a.name?' class="best"':"";
+    h += `<tr><td><span class="name" title="${a.desc}"><span class="dot" style="background:${colorOf(a)}"></span>${a.name}</span></td>`
+      + `<td${cls(bPeak)}>${fmtBytes(a.peak)}</td>`
+      + `<td>${a.overhead.toFixed(2)}×<span class="bar" style="width:${Math.max(4,60*a.overhead/maxOv)}px;background:${colorOf(a)}"></span></td>`
+      + `<td>${fmtBytes(a.end)}</td><td${cls(bAfter)}>${fmtBytes(a.after)}</td>`
+      + `<td${cls(bNs)}>${a.ns_event.toFixed(1)}</td><td>${fmtNs(a.alloc_p50)}</td><td${cls(bP99)}>${fmtNs(a.alloc_p99)}</td><td>${fmtNs(a.free_p99)}</td>`
+      + `<td class="${a.bad?"badc":"ok"}">${a.bad?("BROKEN ("+a.bad+")"):"verified ✓"}</td></tr>`;
+  }
+  $("score").innerHTML = h;
+}
+
+/* ---- memory-over-time chart ---------------------------------------------------------- */
+const hidden = new Set();
+function legend(){
+  const lg=$("legend"); lg.innerHTML="";
+  const items = D.allocs.filter(a=>a.ok).map(a=>({name:a.name,color:colorOf(a)})).concat([{name:"live",color:css("--c-live"),dashed:true}]);
+  for(const it of items){
+    const b=document.createElement("button"); b.type="button"; if(hidden.has(it.name)) b.className="off";
+    b.innerHTML=`<span class="dot" style="background:${it.dashed?"transparent":it.color};${it.dashed?"border:2px dashed "+it.color:""}"></span>${it.name==="live"?"live bytes (requested)":it.name}`;
+    b.onclick=()=>{ hidden.has(it.name)?hidden.delete(it.name):hidden.add(it.name); legend(); drawChart(); };
+    lg.appendChild(b);
+  }
+}
+let chartGeom=null;
+function drawChart(){
+  const svg=$("chart"), box=$("chartbox"); const W=Math.max(240,box.clientWidth), H=Math.min(380,Math.max(240,W*.36));
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`); svg.setAttribute("width",W); svg.setAttribute("height",H);
+  const m={l:62,r:14,t:10,b:28}, iw=W-m.l-m.r, ih=H-m.t-m.b;
+  const S=D.allocs.filter(a=>a.ok&&!hidden.has(a.name));
+  const live=D.allocs.find(a=>a.ok);
+  let xmax=D.trace.events, ymax=1;
+  for(const a of D.allocs) if(a.ok) for(const p of a.series){ if(!hidden.has(a.name)) ymax=Math.max(ymax,p[2]); if(!hidden.has("live")) ymax=Math.max(ymax,p[1]); }
+  const step = (()=>{ const raw=ymax/4, p=Math.pow(2,Math.floor(Math.log2(raw))); for(const k of [1,1.5,2,3,4]) if(p*k>=raw) return p*k; return p*4; })();
+  ymax=Math.ceil(ymax/step)*step;
+  const X=v=>m.l+iw*v/xmax, Y=v=>m.t+ih*(1-v/ymax);
+  let g="";
+  for(let v=0;v<=ymax+1;v+=step){ g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--line")}"/><text x="${m.l-8}" y="${Y(v)+4}" text-anchor="end">${fmtBytes(v)}</text>`; }
+  for(let i=0;i<=4;i++){ const v=xmax*i/4; g+=`<text x="${X(v)}" y="${H-8}" text-anchor="${i===0?"start":i===4?"end":"middle"}">${i===0?"0":fmtN(Math.round(v/1000))+"k"}</text>`; }
+  const path=(pts,idx)=> pts.map((p,i)=>(i?"L":"M")+X(p[0]).toFixed(1)+" "+Y(p[idx]).toFixed(1)).join("");
+  for(const a of S) g+=`<path d="${path(a.series,2)}" fill="none" stroke="${colorOf(a)}" stroke-width="2" stroke-linejoin="round"/>`;
+  if(!hidden.has("live") && live) g+=`<path d="${path(live.series,1)}" fill="none" stroke="${css("--c-live")}" stroke-width="1.6" stroke-dasharray="5 4"/>`;
+  g+=`<line id="cross" x1="0" x2="0" y1="${m.t}" y2="${m.t+ih}" stroke="${css("--muted")}" stroke-width="1" style="display:none"/>`;
+  g+=`<line id="mapmark" x1="0" x2="0" y1="${m.t}" y2="${m.t+ih}" stroke="${css("--accent")}" stroke-width="2" opacity=".7" style="display:none"/>`;
+  svg.innerHTML=g; chartGeom={m,iw,ih,W,H,xmax,X,Y};
+  moveMapMark();
+}
+$("chart").addEventListener("pointermove",e=>{
+  if(!chartGeom) return; const r=$("chart").getBoundingClientRect(); const x=e.clientX-r.left;
+  const {m,iw,xmax}=chartGeom; const ev=Math.max(0,Math.min(xmax,(x-m.l)/iw*xmax));
+  const tip=$("tip"), cross=$("cross"); if(x<m.l||x>m.l+iw){ tip.style.display="none"; cross.style.display="none"; return; }
+  let rows=`<div><i>event</i><b>${fmtN(Math.round(ev))}</b></div>`; const ref=D.allocs.find(a=>a.ok);
+  const idx=ref.series.reduce((bi,p,i)=>Math.abs(p[0]-ev)<Math.abs(ref.series[bi][0]-ev)?i:bi,0);
+  if(!hidden.has("live")) rows+=`<div><i>live</i><b>${fmtBytes(ref.series[idx][1])}</b></div>`;
+  for(const a of D.allocs) if(a.ok&&!hidden.has(a.name)&&a.series[idx]) rows+=`<div><span><span class="dot" style="background:${colorOf(a)}"></span> ${a.name}</span><b>${fmtBytes(a.series[idx][2])}</b></div>`;
+  tip.innerHTML=rows; tip.style.display="block";
+  const bx=$("chartbox").getBoundingClientRect(); let left=e.clientX-bx.left+14; if(left>bx.width-170) left=e.clientX-bx.left-170;
+  tip.style.left=left+"px"; tip.style.top="10px";
+  cross.setAttribute("x1",x); cross.setAttribute("x2",x); cross.style.display="";
+});
+$("chart").addEventListener("pointerleave",()=>{ $("tip").style.display="none"; const c=$("cross"); if(c) c.style.display="none"; });
+
+/* ---- heap map ------------------------------------------------------------------------- */
+let frames=null, cur=0, playing=false, timer=null, geo=null;
+function initMap(){
+  if(!D.map || !D.map.frames.length){ $("mapsec").style.display="none"; return; }
+  const bin=atob(D.map.data); frames=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) frames[i]=bin.charCodeAt(i);
+  const sl=$("slider"); sl.max=D.map.frames.length-1; sl.value=0;
+  sl.oninput=()=>{ cur=+sl.value; drawMap(); };
+  $("play").onclick=()=>{ playing=!playing; $("play").textContent=playing?"Pause":"Play"; if(playing){ if(cur>=D.map.frames.length-1) cur=0; tick(); } else clearTimeout(timer); };
+  const cv=$("map");
+  cv.addEventListener("pointermove",e=>{
+    if(!geo) return; const r=cv.getBoundingClientRect(); const cx=Math.floor((e.clientX-r.left)/geo.cell), cy=Math.floor((e.clientY-r.top)/geo.cell);
+    const i=cy*geo.cols+cx; if(cx<0||cx>=geo.cols||i<0||i>=D.map.cells){ $("maptip").textContent="Hover a square for details."; return; }
+    const v=frames[cur*D.map.cells+i], pg0=i*D.map.group, kb=D.map.group*4;
+    $("maptip").textContent=`pages ${fmtN(pg0)}–${fmtN(pg0+D.map.group-1)} (${fmtBytes(pg0*4096)} into the heap, ${fmtBytes(kb*1024)} per square): `+describe(v);
+  });
+}
+function describe(v){
+  if(v===0) return "never mapped"; if(v===1) return "free pages, still resident"; if(v===2) return "free pages, returned to the OS (or never touched)";
+  if(v===3) return "large allocation"; if(v>=10) return "slab pages, "+((v-10)*10)+"% of the objects in use"; return "?";
+}
+function cellColor(v){
+  if(v===0) return css("--m-empty"); if(v===1) return css("--m-free"); if(v===2) return css("--m-released"); if(v===3) return css("--m-large");
+  const t=(v-10)/10; return `hsl(${150+8*t} ${45+25*t}% ${85-55*t}%)`;
+}
+function drawMap(){
+  if(!frames) return; const cv=$("map"), n=D.map.cells;
+  const cols = n<=64?n : n<=256?32 : n<=1024?64 : 128;
+  const rows=Math.ceil(n/cols), w=cv.parentElement.clientWidth-40, cell=Math.max(3,Math.floor(w/cols));
+  const dpr=window.devicePixelRatio||1; cv.width=cols*cell*dpr; cv.height=rows*cell*dpr; cv.style.width=(cols*cell)+"px"; cv.style.height="auto"; cv.style.maxWidth="100%";
+  const c=cv.getContext("2d"); c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,cols*cell,rows*cell);
+  const base=cur*n; const gap=cell>=6?1:0;
+  for(let i=0;i<n;i++){ const v=frames[base+i]; if(v===0) continue; c.fillStyle=cellColor(v); c.fillRect((i%cols)*cell,Math.floor(i/cols)*cell,cell-gap,cell-gap); }
+  geo={cols,cell};
+  const f=D.map.frames[cur];
+  $("mapstat").textContent=`event ${fmtN(f.ev)} · live ${fmtBytes(f.live)} · quarry holds ${fmtBytes(f.fp)}`;
+  $("slider").value=cur; moveMapMark();
+}
+function moveMapMark(){
+  const mk=$("mapmark"); if(!mk||!chartGeom||!frames) return; const f=D.map.frames[cur]; const x=chartGeom.X(f.ev);
+  mk.setAttribute("x1",x); mk.setAttribute("x2",x); mk.style.display="";
+}
+function tick(){ if(!playing) return; if(cur<D.map.frames.length-1){ cur++; drawMap(); timer=setTimeout(tick,110); } else { playing=false; $("play").textContent="Play"; } }
+
+/* ---- size histogram + trace table ------------------------------------------------------ */
+(function(){
+  const H=D.trace.size_hist, mx=Math.max(...H.map(h=>h[1]),1);
+  $("hist").innerHTML=H.map(h=>`<span class="l">${h[0]===0?"0–1 B":"≤ "+fmtBytes(h[0]*2-1)}</span><span><div class="b" style="width:${Math.max(2,100*h[1]/mx)}%"></div></span><span class="n">${fmtN(h[1])}</span>`).join("");
+  const T=D.trace, rows=[["total requested",fmtBytes(T.total_bytes)],["allocs / frees",fmtN(T.allocs)+" / "+fmtN(T.frees)],["callocs / aligned",fmtN(T.callocs)+" / "+fmtN(T.aligned)],
+    ["reallocs",fmtN(T.reallocs)],["lifetime p50 / p90 / p99",fmtN(T.life[0])+" / "+fmtN(T.life[1])+" / "+fmtN(T.life[2])+" events"],["still live at the end",fmtBytes(T.live_end)]];
+  $("tracetbl").innerHTML=rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("");
+})();
+
+$("theme").onclick=()=>{ const r=document.documentElement; const dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme:dark)").matches; r.dataset.theme=dark?"light":"dark"; redraw(); };
+function redraw(){ legend(); drawChart(); drawMap(); renderScore(); }
+renderScore(); legend(); drawChart(); initMap(); drawMap();
+addEventListener("resize",()=>{ drawChart(); drawMap(); });
+</script>
+</body>
+</html>

@@ -120,6 +120,21 @@ for w in web tree queue frag vector mixed; do
   [ $rc -eq 0 ] && ok "qgen $w -> replay verifies on every allocator" || bad "workload $w" "$out" 14
 done
 
+section "5. stretch features: report, wrapper, symbolizer"
+out=$("$B/qsim" compare "$TMP/mixed.qtr" --reps 1 --html "$TMP/rep.html" 2>&1); rc=$?
+[ $rc -eq 0 ] && [ -s "$TMP/rep.html" ] && grep -q '"frames":\[' "$TMP/rep.html" && ok "qsim --html writes a self-contained report with heap-map frames" || bad "html report" "$out"
+if [ -x /opt/pw-browsers/chromium-1194/chrome-linux/chrome ] && [ -d /opt/node22/lib/node_modules/playwright ]; then
+  out=$(PLAYWRIGHT_MODULE=/opt/node22/lib/node_modules/playwright node tests/check_report.js "$TMP/rep.html" 2>&1 | grep -v agent-proxy); rc=$?
+  echo "$out" | grep -q "report renders" && ok "report renders in headless Chromium (light+dark, no errors, no overflow at 390px)" || bad "report in browser" "$out"
+fi
+out=$(tools/quarry --stats -- ls / 2>&1 >/dev/null); echo "$out" | grep -q STATISTICS && ok "tools/quarry --stats wrapper" || bad "wrapper --stats" "$out"
+out=$(tools/quarry --debug -- build/t_bugs doublefree 2>&1); echo "$out" | grep -q "double free" && ok "tools/quarry --debug wrapper" || bad "wrapper --debug" "$out"
+out=$(tools/quarry 2>&1); [ $? -eq 2 ] && ok "wrapper prints usage and exits 2 without a command" || bad "wrapper usage"
+out=$(QUARRY_DEBUG=1 LD_PRELOAD=$LIB build/t_bugs leak 2>&1 | python3 tools/qsym.py --exe build/t_bugs)
+echo "$out" | grep -q "leaker at .*t_bugs.c:" && ok "qsym.py resolves leak stacks to function and file:line" || bad "qsym" "$out"
+out=$(build/qgen web -n 50 -o /dev/null 2>&1); [ $? -ne 0 ] || bad "qgen accepted a tiny -n"
+build/qgen nosuch -o "$TMP/x" 2>/dev/null; [ $? -eq 2 ] && ok "qgen rejects an unknown workload" || bad "qgen unknown workload"
+
 echo
 printf '%d passed, %d failed\n' $pass $fail
 [ $fail -eq 0 ]

@@ -15,8 +15,11 @@ build:
 build/libquarry.so: $(CORE) src/quarry_preload.c $(HDRS) | build
 	$(CC) $(CFLAGS) $(LIBFLAGS) -shared -o $@ $(CORE) src/quarry_preload.c -pthread -ldl
 
-build/qsim: src/qsim.c src/report.c src/models.c $(CORE) $(HDRS) | build
-	$(CC) $(CFLAGS) -o $@ src/qsim.c src/report.c src/models.c $(CORE) -pthread -lm
+build/report_tpl.o: src/report_tpl.html | build
+	cd src && ld -r -b binary -o ../build/report_tpl.o report_tpl.html
+
+build/qsim: src/qsim.c src/report.c src/models.c $(CORE) $(HDRS) build/report_tpl.o | build
+	$(CC) $(CFLAGS) -o $@ src/qsim.c src/report.c src/models.c $(CORE) build/report_tpl.o -pthread -lm -Wl,-z,noexecstack
 
 build/qgen: src/qgen.c src/trace.h | build
 	$(CC) $(CFLAGS) -o $@ src/qgen.c -lm
