@@ -11,7 +11,7 @@ typedef struct { uint8_t op; uint32_t id; uint64_t size, align; } Ev;
 typedef struct {
     Ev *ev; size_t n;
     uint32_t ids;
-    size_t records, threads, truncated_bytes, unknown_frees, failed_allocs, implicit_frees, bad_records, live_at_end;
+    size_t records, threads, truncated_bytes, unknown_frees, failed_allocs, implicit_frees, bad_records, live_at_end, oversized;
 } Trace;
 
 typedef struct {
@@ -57,7 +57,9 @@ typedef struct FrameSink {
 
 typedef struct { const Model *m; RunResult time, meas; int crashed; } Row;
 
+extern uint64_t g_max_size, g_max_live;   /* safety rails against hostile or corrupt traces */
 Trace *trace_load(const char *path);
+void trace_free(Trace *t);
 TraceProfile trace_profile(const Trace *t);
 
 void map_sink_init(FrameSink *fs, MapData *md, size_t nevents);

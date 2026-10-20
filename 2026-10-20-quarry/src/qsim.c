@@ -94,6 +94,46 @@ static void pm_del(PMap *m, uint64_t k) {          /* linear probing with backwa
 
 /* --------------------------------------------------------------- trace loading */
 
+uint64_t g_max_size = 256ULL << 20, g_max_live = 8ULL << 30;
+
+/* Turns raw records into events with dense block ids.  Anything that cannot be replayed faithfully
+ * (frees of unknown pointers, failed allocations, absurd sizes) is counted, not guessed at. */
+typedef struct {
+    Trace *t;
+    PMap pm;
+    uint64_t *idsize, cur_live;
+    uint32_t cap_ids;
+} Loader;
+
+static void ld_emit(Loader *l, int op, uint32_t id, uint64_t size, uint64_t align) {
+    Ev e; memset(&e, 0, sizeof e);
+    e.op = (uint8_t)op; e.id = id; e.size = size; e.align = align;
+    l->t->ev[l->t->n++] = e;
+}
+
+static uint32_t ld_newid(Loader *l, uint64_t size) {
+    Trace *t = l->t;
+    if (t->ids + 2 >= l->cap_ids) { l->cap_ids *= 2; l->idsize = realloc(l->idsize, l->cap_ids * 8); if (!l->idsize) die("out of memory"); }
+    uint32_t id = ++t->ids;
+    l->idsize[id] = size; l->cur_live += size;
+    return id;
+}
+
+/* A pointer that is still mapped when a new block claims its address was freed without a record. */
+static void ld_reclaim(Loader *l, uint64_t ptr) {
+    uint32_t v = pm_get(&l->pm, ptr);
+    if (!v) return;
+    uint32_t id = v - 1;
+    ld_emit(l, EV_FREE, id, 0, 0);
+    l->cur_live -= l->idsize[id];
+    pm_del(&l->pm, ptr);
+    l->t->implicit_frees++;
+}
+
+static int ld_too_big(Loader *l, uint64_t size, uint64_t freed) {
+    return size > g_max_size || l->cur_live - freed + size > g_max_live;
+}
+
 Trace *trace_load(const char *path) {
     int fd = open(path, O_RDONLY);
     if (fd < 0) die("cannot open %s: %s", path, strerror(errno));
@@ -112,68 +152,74 @@ Trace *trace_load(const char *path) {
 
     Trace *t = xcalloc(1, sizeof *t);
     t->truncated_bytes = body % sizeof(qtr_rec);
-    t->ev = xmalloc((nrec + 1) * sizeof(Ev));
-    t->ids = 0;
-    uint32_t *tids = xcalloc(1, 4); size_t ntid = 0, captid = 1;
-    PMap pm; pm_init(&pm, nrec < 1000000 ? nrec : 1000000);
-    uint32_t cap_ids = 1024;
-    uint64_t *idptr = xmalloc(cap_ids * 8);
+    t->ev = xmalloc((nrec * 2 + 1) * sizeof(Ev));     /* an event per record, plus implicit frees */
+    Loader l; memset(&l, 0, sizeof l);
+    l.t = t; l.cap_ids = 1024; l.idsize = xmalloc(l.cap_ids * 8);
+    pm_init(&l.pm, nrec < 1000000 ? nrec : 1000000);
+    uint32_t *tids = xmalloc(4); size_t ntid = 0, captid = 1;
+
     for (size_t i = 0; i < nrec; i++) {
         const qtr_rec *r = &rec[i];
         int seen = 0;
         for (size_t k = 0; k < ntid; k++) if (tids[k] == r->tid) { seen = 1; break; }
-        if (!seen) { if (ntid == captid) { captid *= 2; tids = realloc(tids, captid * 4); } tids[ntid++] = r->tid; }
-        Ev e; memset(&e, 0, sizeof e);
-        #define NEWID(ptrv) ({ if (t->ids + 1 >= cap_ids) { cap_ids *= 2; idptr = realloc(idptr, cap_ids * 8); } \
-                               uint32_t _id = ++t->ids; idptr[_id] = (ptrv); _id; })
+        if (!seen) {
+            if (ntid == captid) { captid *= 2; tids = realloc(tids, captid * 4); if (!tids) die("out of memory"); }
+            tids[ntid++] = r->tid;
+        }
         switch (r->op) {
-        case QTR_MALLOC: case QTR_CALLOC: case QTR_MEMALIGN:
-            if (!r->ptr) { t->failed_allocs++; continue; }
-            if (pm_get(&pm, r->ptr)) {                          /* address reuse without a free record */
-                uint32_t old = pm_get(&pm, r->ptr);
-                e.op = EV_FREE; e.id = old - 1; t->ev[t->n++] = e; pm_del(&pm, r->ptr); t->implicit_frees++;
-            }
-            e.op = r->op == QTR_CALLOC ? EV_ZALLOC : r->op == QTR_MEMALIGN ? EV_ALIGNED : EV_ALLOC;
-            e.id = NEWID(r->ptr); e.size = r->size; e.align = r->op == QTR_MEMALIGN ? r->aux : 0;
-            pm_put(&pm, r->ptr, e.id + 1);
-            t->ev[t->n++] = e;
+        case QTR_MALLOC: case QTR_CALLOC: case QTR_MEMALIGN: {
+            if (!r->ptr) { t->failed_allocs++; break; }
+            int bad_align = r->op == QTR_MEMALIGN && (r->aux == 0 || (r->aux & (r->aux - 1)) || r->aux > (1UL << 30));
+            if (bad_align || ld_too_big(&l, r->size, 0)) { t->oversized++; break; }
+            ld_reclaim(&l, r->ptr);
+            uint32_t id = ld_newid(&l, r->size);
+            ld_emit(&l, r->op == QTR_CALLOC ? EV_ZALLOC : r->op == QTR_MEMALIGN ? EV_ALIGNED : EV_ALLOC,
+                    id, r->size, r->op == QTR_MEMALIGN ? r->aux : 0);
+            pm_put(&l.pm, r->ptr, id + 1);
             break;
+        }
         case QTR_FREE: {
-            uint32_t v = pm_get(&pm, r->ptr);
-            if (!v) { t->unknown_frees++; continue; }
-            e.op = EV_FREE; e.id = v - 1;
-            pm_del(&pm, r->ptr);
-            t->ev[t->n++] = e;
+            uint32_t v = pm_get(&l.pm, r->ptr);
+            if (!v) { t->unknown_frees++; break; }
+            ld_emit(&l, EV_FREE, v - 1, 0, 0);
+            l.cur_live -= l.idsize[v - 1];
+            pm_del(&l.pm, r->ptr);
             break;
         }
         case QTR_REALLOC: {
-            uint32_t v = r->aux ? pm_get(&pm, r->aux) : 0;
-            if (!r->ptr) { t->failed_allocs++; continue; }       /* failed realloc leaves the block alone */
-            if (!v) {                                            /* realloc(NULL, n) or an unknown block */
-                if (r->aux) t->unknown_frees++;
-                if (pm_get(&pm, r->ptr)) { uint32_t old = pm_get(&pm, r->ptr); e.op = EV_FREE; e.id = old - 1; t->ev[t->n++] = e; pm_del(&pm, r->ptr); t->implicit_frees++; }
-                e.op = EV_ALLOC; e.id = NEWID(r->ptr); e.size = r->size;
-                pm_put(&pm, r->ptr, e.id + 1);
+            if (!r->ptr) { t->failed_allocs++; break; }      /* a failed realloc leaves the block alone */
+            uint32_t v = r->aux ? pm_get(&l.pm, r->aux) : 0;
+            if (r->aux && !v) t->unknown_frees++;
+            uint64_t old_size = v ? l.idsize[v - 1] : 0;
+            if (ld_too_big(&l, r->size, old_size)) { t->oversized++; break; }
+            if (!v) {                                         /* realloc(NULL, n), or a block we never saw */
+                ld_reclaim(&l, r->ptr);
+                uint32_t id = ld_newid(&l, r->size);
+                ld_emit(&l, EV_ALLOC, id, r->size, 0);
+                pm_put(&l.pm, r->ptr, id + 1);
             } else {
-                e.op = EV_REALLOC; e.id = v - 1; e.size = r->size;
-                pm_del(&pm, r->aux);
-                if (r->ptr != r->aux && pm_get(&pm, r->ptr)) { uint32_t old = pm_get(&pm, r->ptr); Ev f; memset(&f, 0, sizeof f); f.op = EV_FREE; f.id = old - 1; t->ev[t->n++] = f; pm_del(&pm, r->ptr); t->implicit_frees++; }
-                pm_put(&pm, r->ptr, e.id + 1);
+                uint32_t id = v - 1;
+                pm_del(&l.pm, r->aux);
+                if (r->ptr != r->aux) ld_reclaim(&l, r->ptr);
+                l.cur_live = l.cur_live - old_size + r->size;
+                l.idsize[id] = r->size;
+                ld_emit(&l, EV_REALLOC, id, r->size, 0);
+                pm_put(&l.pm, r->ptr, id + 1);
             }
-            t->ev[t->n++] = e;
             break;
         }
-        default: t->bad_records++; continue;
+        default: t->bad_records++; break;
         }
-        #undef NEWID
     }
     t->records = nrec;
     t->threads = ntid;
-    t->live_at_end = pm.n;
-    free(idptr); free(tids); free(pm.key); free(pm.val);
+    t->live_at_end = l.pm.n;
+    free(l.idsize); free(tids); free(l.pm.key); free(l.pm.val);
     munmap(map, (size_t)st.st_size);
     return t;
 }
+
+void trace_free(Trace *t) { if (t) { free(t->ev); free(t); } }
 
 /* ------------------------------------------------------------------- stats */
 
@@ -226,9 +272,10 @@ static int cmd_info(const char *path) {
     printf("  events         %zu: %llu allocs (%llu calloc, %llu aligned), %llu reallocs, %llu frees\n",
            t->n, (unsigned long long)p.allocs, (unsigned long long)p.callocs, (unsigned long long)p.aligned,
            (unsigned long long)p.reallocs, (unsigned long long)p.frees);
-    if (t->unknown_frees || t->failed_allocs || t->implicit_frees || t->bad_records)
-        printf("  anomalies      %zu frees of unknown pointers skipped, %zu failed allocations skipped, %zu address reuses, %zu unknown opcodes\n",
-               t->unknown_frees, t->failed_allocs, t->implicit_frees, t->bad_records);
+    if (t->unknown_frees || t->failed_allocs || t->implicit_frees || t->bad_records || t->oversized)
+        printf("  anomalies      %zu frees of unknown pointers skipped, %zu failed allocations skipped, %zu address reuses,\n"
+               "                 %zu unknown opcodes, %zu requests over the safety limits skipped (--max-size/--max-live)\n",
+               t->unknown_frees, t->failed_allocs, t->implicit_frees, t->bad_records, t->oversized);
     printf("  requested      %s total, largest %s\n", human((double)p.total_bytes, b1), human((double)p.max_size, b2));
     printf("  peak live      %s (at event %zu), %s still live at the end (%zu blocks)\n",
            human((double)p.peak_live, b1), p.peak_at, human((double)p.live_end, b2), t->live_at_end);
@@ -243,6 +290,7 @@ static int cmd_info(const char *path) {
         printf("    %8s %-8s %9llu %.*s\n", human((double)(1ULL << i), b1), i ? "" : "(0-1)", (unsigned long long)p.size_hist[i], bar, "########################################");
     }
     (void)b3;
+    trace_free(t);
     return 0;
 }
 
@@ -267,7 +315,13 @@ static inline int check_prefix(const uint8_t *p, size_t n, uint32_t id) {
     for (size_t i = 0, k = head_len(n); i < k; i++) if (p[i] != pat_head(id, i)) return 0;
     return 1;
 }
-static int all_zero(const uint8_t *p, size_t n) {
+static int all_zero_run(const uint8_t *p, size_t n);
+static int all_zero(const uint8_t *p, size_t n) {          /* huge blocks: first and last 4 MiB only */
+    const size_t edge = 4UL << 20;
+    if (n <= 2 * edge) return all_zero_run(p, n);
+    return all_zero_run(p, edge) && all_zero_run(p + n - edge, edge);
+}
+static int all_zero_run(const uint8_t *p, size_t n) {
     size_t i = 0;
     for (; i + 8 <= n; i += 8) if (*(const uint64_t *)(p + i)) return 0;
     for (; i < n; i++) if (p[i]) return 0;
@@ -493,8 +547,10 @@ static int cmd_compare(const char *path, const char *which, const char *html, in
     for (int i = 0; i < ns; i++) {
         Row *r = &rows[i];
         if (r->crashed) {
-            printf("%-9s FAILED (%s%s)\n", r->m->name, r->time.status == RUN_INIT_FAILED ? "init failed" : r->meas.status == RUN_CRASHED || r->time.status == RUN_CRASHED ? "crashed, signal " : "error",
-                   (r->time.signal || r->meas.signal) ? (snprintf(b2, sizeof b2, "%d", r->time.signal ? r->time.signal : r->meas.signal), b2) : "");
+            const RunResult *bad = r->time.status != RUN_OK ? &r->time : &r->meas;
+            if (bad->status == RUN_INIT_FAILED) printf("%-9s FAILED: could not initialise\n", r->m->name);
+            else if (bad->signal) printf("%-9s FAILED: crashed with signal %d (%s)\n", r->m->name, bad->signal, strsignal(bad->signal));
+            else printf("%-9s FAILED: the replay process died\n", r->m->name);
             continue;
         }
         const RunResult *m = &r->meas;
@@ -527,6 +583,7 @@ static int cmd_compare(const char *path, const char *which, const char *html, in
         if (report_write(html, path, t, &prof, rows, ns, &md) < 0) die("cannot write %s: %s", html, strerror(errno));
         printf("\nreport written to %s\n", html);
     }
+    free(rows); free(md.frames); trace_free(t);
     return rc;
 }
 
@@ -538,6 +595,7 @@ static int cmd_list(void) {
 static void usage(void) {
     fprintf(stderr, "usage: qsim info <trace>\n"
                     "       qsim compare <trace> [-a name,name,...] [--html report.html] [--no-verify] [--reps N]\n"
+                    "                            [--max-size MiB] [--max-live MiB]   (skip absurd requests; default 256 / 8192)\n"
                     "       qsim list\n");
     exit(2);
 }
@@ -552,6 +610,8 @@ int main(int argc, char **argv) {
             if (!strcmp(argv[i], "-a") && i + 1 < argc) which = argv[++i];
             else if (!strcmp(argv[i], "--html") && i + 1 < argc) html = argv[++i];
             else if (!strcmp(argv[i], "--no-verify")) verify = 0;
+            else if (!strcmp(argv[i], "--max-size") && i + 1 < argc) g_max_size = strtoull(argv[++i], NULL, 10) << 20;
+            else if (!strcmp(argv[i], "--max-live") && i + 1 < argc) g_max_live = strtoull(argv[++i], NULL, 10) << 20;
             else if (!strcmp(argv[i], "--reps") && i + 1 < argc) { reps = atoi(argv[++i]); if (reps < 1) reps = 1; if (reps > 20) reps = 20; }
             else usage();
         }

@@ -2,7 +2,7 @@
 A from-scratch memory allocator (`malloc`) in C with an `LD_PRELOAD` drop-in, a heap-debug mode, and an
 allocation trace recorder / replay simulator that compares allocator designs.
 
-**Status: phase 2 of 6 — the four required features are built and passing** (`make test`).
+**Status: phase 3 of 6 — built, attacked, fixed** (`make test`).
 Full documentation arrives with the ship phase; [PLAN.md](PLAN.md) has the design.
 
 ```
@@ -20,7 +20,7 @@ build/qgen mixed -n 300000 -o w.qtr    # or generate a synthetic workload
 |---|---|
 | 1 Plan | done |
 | 2 Core build (required 1-4: allocator core, LD_PRELOAD drop-in, debug mode, trace + replay simulator) | done |
-| 3 Adversarial review | pending |
+| 3 Adversarial review (REVIEW.md: 15 findings, all fixed with regression guards) | done |
 | 4 Stretch + polish | pending |
 | 5 Verification | pending |
 | 6 Ship | pending |

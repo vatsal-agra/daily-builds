@@ -160,15 +160,16 @@ static int capture(void **out, int max) {
     return k;
 }
 
+/* Lock-free on purpose: it can be reached while dbg_lock is held (dladdr, backtrace). */
 static void note_raw(void *p) {
-    pthread_mutex_lock(&dbg_lock);
-    if (raw_n < RAW_MAX) raw_blocks[raw_n++] = p; else raw_overflow = 1;
-    pthread_mutex_unlock(&dbg_lock);
+    int i = __atomic_fetch_add(&raw_n, 1, __ATOMIC_RELAXED);
+    if (i < RAW_MAX) __atomic_store_n(&raw_blocks[i], p, __ATOMIC_RELEASE); else raw_overflow = 1;
 }
 
 /* Only consulted when a block has no valid header, so the linear scan stays off the hot path. */
 static int is_raw(void *p) {
-    for (int i = 0; i < raw_n; i++) if (raw_blocks[i] == p) return 1;
+    int n = __atomic_load_n(&raw_n, __ATOMIC_RELAXED);
+    for (int i = 0; i < n && i < RAW_MAX; i++) if (__atomic_load_n(&raw_blocks[i], __ATOMIC_ACQUIRE) == p) return 1;
     return 0;
 }
 
@@ -209,16 +210,34 @@ static void *dbg_alloc(size_t n, size_t align, int zero) {
     return user;
 }
 
+/* A header is trustworthy only if it still describes a region inside the block the core gave us;
+ * otherwise tail_of() would point anywhere. */
+static int header_sane(Hdr *h) {
+    char *user = (char *)(h + 1);
+    if (!q_owns(h->base) || (char *)h->base > (char *)h) return 0;
+    size_t usable = q_usable_size(h->base), before = (size_t)(user - (char *)h->base);
+    return before <= usable && h->size <= usable - before && usable - before - h->size >= TAIL;
+}
+
 /* Verify the redzones of a live block; returns 0 and reports on corruption. */
 static int check_block(Hdr *h, void *user, const char *when) {
     char msg[160];
-    for (int i = 7; i >= 0; i--)
-        if (h->guard[i] != GUARD_BYTE) {
-            snprintf(msg, sizeof msg, "heap buffer underflow: %d byte%s before the block were overwritten (%s)",
-                     8 - i, i == 7 ? "" : "s", when);
-            heap_error(msg, user, h);
-            return 0;
-        }
+    if (!header_sane(h)) {
+        snprintf(msg, sizeof msg, "heap corruption: the block header was overwritten (%s)", when);
+        heap_error(msg, user, NULL);
+        return 0;
+    }
+    int bad_guard = 0;
+    for (int i = 0; i < 8; i++) bad_guard += h->guard[i] != GUARD_BYTE;
+    if (bad_guard) {
+        if (bad_guard == 8)
+            snprintf(msg, sizeof msg, "heap buffer underflow: at least 8 bytes before the block were overwritten (%s)", when);
+        else
+            snprintf(msg, sizeof msg, "heap buffer underflow: %d byte%s before the block %s overwritten (%s)",
+                     bad_guard, bad_guard == 1 ? "" : "s", bad_guard == 1 ? "was" : "were", when);
+        heap_error(msg, user, h);
+        return 0;
+    }
     uint8_t *t = tail_of(h);
     for (int i = 0; i < TAIL; i++)
         if (t[i] != TAIL_BYTE) {
@@ -234,6 +253,7 @@ static int check_block(Hdr *h, void *user, const char *when) {
 
 static void quarantine_check(Hdr *h) {       /* poison must be intact when a block leaves quarantine */
     uint8_t *user = (uint8_t *)(h + 1);
+    if (!header_sane(h)) { heap_error("use after free: the header of a freed block was overwritten", user, NULL); return; }
     for (size_t i = 0; i < h->size; i++)
         if (user[i] != FILL_FREED) {
             char msg[160];
@@ -397,11 +417,14 @@ static void tr_emit_locked(int op, void *ptr, size_t size, uint64_t aux) {
     if (tr_n == sizeof tr_buf / sizeof tr_buf[0]) tr_flush_locked();
 }
 
+/* The first process that sees QUARRY_TRACE owns the path; every descendant (shell pipelines, make,
+ * compilers...) inherits QUARRY_TRACE_OWNER and writes "<path>.<pid>" instead of truncating it. */
 static void tr_open(const char *path) {
     char name[512];
     const char *pp = strstr(path, "%p");
     if (pp) snprintf(name, sizeof name, "%.*s%d%s", (int)(pp - path), path, (int)getpid(), pp + 2);
-    else snprintf(name, sizeof name, "%s", path);
+    else if (getenv("QUARRY_TRACE_OWNER")) snprintf(name, sizeof name, "%s.%d", path, (int)getpid());
+    else { snprintf(name, sizeof name, "%s", path); char own[24]; snprintf(own, sizeof own, "%d", (int)getpid()); setenv("QUARRY_TRACE_OWNER", own, 1); }
     tr_fd = open(name, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
     if (tr_fd < 0) { say("quarry: cannot open trace file %s: %s\n", name, strerror(errno)); return; }
     qtr_header hd; memset(&hd, 0, sizeof hd);

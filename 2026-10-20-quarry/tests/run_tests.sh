@@ -62,10 +62,13 @@ out=$(D clean 2>&1); [ $? -eq 0 ] && echo "$out" | grep -q "no leaks" && ok "cle
 expect_error overflow   "heap buffer overflow: 1 byte written past the end"
 expect_error overflow8  "heap buffer overflow: 8 bytes written past the end"
 expect_error underflow  "heap buffer underflow: 1 byte before"
-expect_error underflow3 "heap buffer underflow: 3 bytes before"
+expect_error underflow3 "heap buffer underflow: 1 byte before the block was overwritten"
 expect_error doublefree "double free"
 expect_error invalidfree "invalid free()"
 expect_error stackfree  "not returned by malloc"
+expect_error deepunder  "at least 8 bytes before the block"
+expect_error smash_size "header was overwritten"
+expect_error smash_magic "invalid free()"
 expect_error uaf        "use after free: byte 10"
 expect_error reallocoverflow "heap buffer overflow"
 expect_error align      "heap buffer overflow"
@@ -95,6 +98,22 @@ QUARRY_TRACE=$TMP/mt.%p.qtr LD_PRELOAD=$LIB "$B/t_threads_pre" >/dev/null 2>&1
 mt=$(ls "$TMP"/mt.*.qtr 2>/dev/null | head -1)
 out=$("$B/qsim" info "$mt" 2>&1); echo "$out" | grep -qE "[2-9] threads|[1-9][0-9] threads" && ok "multi-threaded trace records every thread, in one total order" || bad "mt trace" "$out"
 out=$("$B/qsim" compare "$mt" -a quarry,glibc --reps 1 2>&1); [ $? -eq 0 ] && ok "replaying the multi-threaded trace verifies" || bad "mt replay" "$out"
+# a shell script spawns many processes; each must write its own file instead of truncating the owner's
+rm -f "$TMP"/sh.qtr*
+QUARRY_TRACE=$TMP/sh.qtr LD_PRELOAD=$LIB bash -c 'ls / >/dev/null; ls /usr >/dev/null; echo hi >/dev/null'
+nf=$(ls "$TMP"/sh.qtr* | wc -l); bad_ops=0
+for f in "$TMP"/sh.qtr*; do "$B/qsim" info "$f" | grep -qE "[1-9][0-9]* unknown opcodes" && bad_ops=1; done
+[ $nf -ge 3 ] && [ $bad_ops -eq 0 ] && ok "child processes write <trace>.<pid>, nothing is clobbered ($nf files)" || bad "trace files clobbered by children ($nf files)"
+python3 - "$TMP" <<'PY'
+import struct, sys
+hd = b'QTRACE\x01\x00' + struct.pack('<II', 1, 40) + b'\0' * 48
+open(sys.argv[1] + '/reuse.qtr', 'wb').write(hd + b''.join(struct.pack('<BxxxIQQQQ', 1, 1, i, 0x5000, 64, 0) for i in range(2000)))
+PY
+out=$("$B/qsim" compare "$TMP/reuse.qtr" --reps 1 2>&1); [ $? -eq 0 ] && ok "2000 mallocs of one address (two events per record) replay cleanly" || bad "address reuse trace" "$out"
+if gcc -fsanitize=address -O1 -g -o "$TMP/qsim_asan" src/qsim.c src/report.c src/models.c src/quarry_core.c -pthread -lm 2>/dev/null; then
+  out=$("$TMP/qsim_asan" info "$TMP/reuse.qtr" 2>&1); [ $? -eq 0 ] && ok "trace loader is clean under AddressSanitizer" || bad "loader under ASan" "$out"
+fi
+out=$(python3 tests/fuzz_traces.py "$B" 40 2>&1); [ $? -eq 0 ] && ok "$out" || bad "corrupt-trace fuzzing" "$out"
 for w in web tree queue frag vector mixed; do
   "$B/qgen" $w -n 60000 -s 3 -o "$TMP/$w.qtr" 2>/dev/null
   out=$("$B/qsim" compare "$TMP/$w.qtr" --reps 1 2>&1); rc=$?

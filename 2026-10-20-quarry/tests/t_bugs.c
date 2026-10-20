@@ -35,6 +35,9 @@ int main(int argc, char **argv) {
     } else if (!strcmp(c, "reallocoverflow")) { p = malloc(10); p = realloc((void *)p, 20); p[20] = 1; free((void *)p);
     } else if (!strcmp(c, "checkheap")) { p = malloc(30); p[30] = 1; int bad = quarry_check_heap ? quarry_check_heap() : -1; printf("bad=%d\n", bad);
     } else if (!strcmp(c, "align")) { p = memalign(4096, 10); p[10] = 1; free((void *)p);
+    } else if (!strcmp(c, "deepunder")) { p = malloc(100); for (int i = 1; i <= 60; i++) p[-i] = 0x41; free((void *)p);
+    } else if (!strcmp(c, "smash_size")) { p = malloc(100); *(volatile uint64_t *)(p - 192 + 8) = (uint64_t)1 << 50; free((void *)p);
+    } else if (!strcmp(c, "smash_magic")) { p = malloc(100); *(volatile uint64_t *)(p - 192) = 0; free((void *)p);
     } else if (!strcmp(c, "usable")) { p = malloc(33); printf("usable=%zu\n", malloc_usable_size((void *)p)); free((void *)p);
     } else { fprintf(stderr, "unknown case\n"); return 2; }
     return 0;

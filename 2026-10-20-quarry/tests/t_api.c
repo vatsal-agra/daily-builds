@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 static uint64_t rng = 88172645463325252ULL;
@@ -245,6 +246,40 @@ static void test_release(void) {
     q_free(z);
 }
 
+static double now_s(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + (double)t.tv_nsec * 1e-9; }
+
+/* Regression: the best-fit search over large free spans used to be a linear walk of one list. */
+static void test_large_scan(void) {
+    enum { N = 20000 };
+    static void *big[N], *guard[N];
+    for (int i = 0; i < N; i++) { big[i] = q_malloc((1 << 20) + (i % 64) * 4096); guard[i] = q_malloc(70000); }
+    for (int i = 0; i < N; i++) q_free(big[i]);       /* 20000 free holes of 256..319 pages */
+    double t0 = now_s();
+    for (int i = 0; i < N; i++) { big[i] = q_malloc((1 << 20) + 65 * 4096); CHECK(big[i] != NULL); }  /* none fits */
+    CHECK(now_s() - t0 < 1.0);
+    /* ... but a hole-sized request is satisfied from the right sub-bucket, not from a bigger span */
+    for (int i = 0; i < N; i++) q_free(big[i]);
+    for (int i = 0; i < N; i++) q_free(guard[i]);
+}
+
+/* calloc on fresh or released pages must not touch them (that is the point of tracking zero spans). */
+static void test_calloc_untouched(void) {
+    q_trim();
+    size_t before = rss_bytes();
+    uint8_t *p = q_calloc(1, 256 << 20);
+    CHECK(p != NULL);
+    size_t after = rss_bytes();
+    CHECK(after < before + (32 << 20));
+    CHECK(p[0] == 0 && p[(256 << 20) - 1] == 0 && p[100 << 20] == 0);
+    memset(p, 1, 64 << 20);                         /* dirty part of it, free, and ask again */
+    q_free(p);
+    q_trim();
+    uint8_t *z = q_calloc(1, 256 << 20);
+    CHECK(z[0] == 0 && z[(64 << 20) - 1] == 0);
+    CHECK(rss_bytes() < before + (64 << 20));
+    q_free(z);
+}
+
 static void test_stats_snapshot(void) {
     q_trim();
     void *keep[300];
@@ -283,6 +318,8 @@ int main(void) {
     test_checked_free();
     test_stress();
     test_release();
+    test_large_scan();
+    test_calloc_untouched();
     test_stats_snapshot();
     TEST_DONE("t_api");
 }

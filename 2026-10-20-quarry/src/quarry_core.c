@@ -21,7 +21,8 @@
 #define PSHIFT    12
 #define MAX_SMALL Q_MAX_SMALL
 #define NCLS      Q_NCLASS
-#define NLISTS    256            /* exact-size free lists for 1..255 pages; >= 256 on one list */
+#define NLISTS    256            /* exact-size free lists for 1..255 pages */
+#define NLARGE    512            /* 32 octaves (256 pages .. 2^40) x 16 sub-buckets */
 #define GROW_PAGES 256           /* the page heap grows in 1 MiB steps */
 #define MIN_RELEASE_PAGES 16     /* never madvise runs shorter than 64 KiB */
 #define SCAV_SLACK (2UL << 20)   /* always allow 2 MiB of resident free memory ... */
@@ -53,7 +54,8 @@ static struct {
     size_t  cap_pages, top_pages;
     Span  **map;
     Span   *lists[NLISTS];              /* index n: free spans of exactly n pages; [0] unused */
-    Span   *large_free;                 /* free spans of >= NLISTS pages */
+    Span   *large_free[NLARGE];         /* free spans of >= NLISTS pages, TLSF-style (log2, 16 sub-buckets) */
+    uint64_t large_bits[NLARGE / 64];
     uint64_t bitmap[NLISTS / 64];
     size_t  free_pages, released_pages, small_pages, large_pages;
     size_t  peak_fp, scav_floor, reserved;
@@ -126,24 +128,51 @@ static inline void map_clear_all(Span *s) { for (size_t i = 0; i < s->npages; i+
 
 /* ----------------------------------------------------------- free-list upkeep */
 
+static inline int lbucket(size_t npages) { return 63 - __builtin_clzll((unsigned long long)npages); }
+
+/* Index of the large list holding spans of n pages: octave, then 16 equal steps inside it. */
+static inline int large_idx(size_t n) {
+    int fl = lbucket(n);
+    if (fl > 39) return NLARGE - 1;
+    return (fl - 8) * 16 + (int)((n >> (fl - 4)) & 15);
+}
+
+static inline Span **list_head(Span *s) {
+    return s->npages < NLISTS ? &G.lists[s->npages] : &G.large_free[large_idx(s->npages)];
+}
+
 static void fl_insert(Span *s) {
-    Span **head = s->npages < NLISTS ? &G.lists[s->npages] : &G.large_free;
+    Span **head = list_head(s);
     s->prev = NULL; s->next = *head;
     if (*head) (*head)->prev = s;
     *head = s;
     if (s->npages < NLISTS) G.bitmap[s->npages >> 6] |= 1ULL << (s->npages & 63);
+    else { int i = large_idx(s->npages); G.large_bits[i >> 6] |= 1ULL << (i & 63); }
     G.free_pages += s->npages;
     if (s->released) G.released_pages += s->npages;
 }
 
 static void fl_remove(Span *s) {
-    Span **head = s->npages < NLISTS ? &G.lists[s->npages] : &G.large_free;
+    Span **head = list_head(s);
     if (s->prev) s->prev->next = s->next; else *head = s->next;
     if (s->next) s->next->prev = s->prev;
-    if (s->npages < NLISTS && !*head) G.bitmap[s->npages >> 6] &= ~(1ULL << (s->npages & 63));
+    if (!*head) {
+        if (s->npages < NLISTS) G.bitmap[s->npages >> 6] &= ~(1ULL << (s->npages & 63));
+        else { int i = large_idx(s->npages); G.large_bits[i >> 6] &= ~(1ULL << (i & 63)); }
+    }
     G.free_pages -= s->npages;
     if (s->released) G.released_pages -= s->npages;
     s->prev = s->next = NULL;
+}
+
+/* First non-empty large list with index >= i, or -1. */
+static int find_large(int i) {
+    for (int w = i >> 6; w < NLARGE / 64; w++) {
+        uint64_t bits = G.large_bits[w];
+        if (w == (i >> 6)) bits &= ~0ULL << (i & 63);
+        if (bits) return (w << 6) + __builtin_ctzll(bits);
+    }
+    return -1;
 }
 
 /* First non-empty exact-size list with index >= n (n < NLISTS), or 0. */
@@ -224,12 +253,18 @@ static Span *ph_alloc(size_t n) {
             if (i) s = G.lists[i];
         }
         if (!s) {
-            for (Span *c = G.large_free; c; c = c->next)
-                if (c->npages >= n && (!s || c->npages < s->npages ||
-                                       (c->npages == s->npages && c->page < s->page))) {
-                    s = c;
+            /* Lists above n's own sub-bucket only hold bigger spans; inside it, take the best fit. */
+            int i = n < NLISTS ? 0 : large_idx(n);
+            if (n >= NLISTS)
+                for (Span *c = G.large_free[i]; c; c = c->next) {
+                    if (c->npages < n) continue;
+                    if (!s || c->npages < s->npages || (c->npages == s->npages && c->page < s->page)) s = c;
                     if (c->npages == n) break;
                 }
+            if (!s) {
+                int j = find_large(n < NLISTS ? 0 : i + 1);
+                if (j >= 0) s = G.large_free[j];
+            }
         }
         if (s) {
             fl_remove(s); map_clear_ends(s);
@@ -262,7 +297,8 @@ static void do_release(Span *s) {         /* s is on a free list */
 
 static void scavenge(size_t target_bytes) {
     size_t target = target_bytes >> PSHIFT;
-    for (Span *s = G.large_free; s && G.free_pages - G.released_pages > target; s = s->next) do_release(s);
+    for (int b = NLARGE - 1; b >= 0; b--)
+        for (Span *s = G.large_free[b]; s && G.free_pages - G.released_pages > target; s = s->next) do_release(s);
     for (size_t i = NLISTS - 1; i >= MIN_RELEASE_PAGES && G.free_pages - G.released_pages > target; i--)
         for (Span *s = G.lists[i]; s && G.free_pages - G.released_pages > target; s = s->next) do_release(s);
     G.scav_floor = G.free_pages - G.released_pages;
@@ -713,6 +749,6 @@ void q_trim(void) {
     q_thread_flush();
     lock();
     scavenge(0);
-    for (Span *s = G.large_free; s; s = s->next) do_release(s);
+    for (int b = 0; b < NLARGE; b++) for (Span *s = G.large_free[b]; s; s = s->next) do_release(s);
     unlock();
 }
