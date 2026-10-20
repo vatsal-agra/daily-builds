@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# quarry — run any program with the Quarry allocator.
+#   quarry [--debug] [--trace FILE] [--stats] [--no-abort] [--quarantine N] [--leaks=all] -- cmd args...
+set -u
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+lib="${QUARRY_LIB:-$here/build/libquarry.so}"
+usage() {
+  cat >&2 <<USAGE
+usage: quarry [options] -- command [args...]
+  --debug            heap checking: redzones, double/invalid free, use-after-free, leak report
+  --trace FILE       record every allocation event to FILE (%p expands to the pid)
+  --stats            print allocator statistics at exit
+  --no-abort         report heap errors and keep running (default: abort)
+  --quarantine N     keep the last N freed blocks poisoned (default 1024)
+  --leaks=all        also list libc-internal blocks in the leak report
+USAGE
+  exit 2
+}
+[ $# -eq 0 ] && usage
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --debug) export QUARRY_DEBUG=1 ;;
+    --trace) [ $# -ge 2 ] || usage; export QUARRY_TRACE="$2"; shift ;;
+    --stats) export QUARRY_STATS=1 ;;
+    --no-abort) export QUARRY_ABORT=0 ;;
+    --quarantine) [ $# -ge 2 ] || usage; export QUARRY_QUARANTINE="$2"; shift ;;
+    --leaks=all) export QUARRY_LEAKS=all ;;
+    --help|-h) usage ;;
+    --) shift; break ;;
+    -*) echo "quarry: unknown option $1" >&2; usage ;;
+    *) break ;;
+  esac
+  shift
+done
+[ $# -gt 0 ] || usage
+[ -f "$lib" ] || { echo "quarry: $lib not found - run 'make' first" >&2; exit 1; }
+export LD_PRELOAD="$lib${LD_PRELOAD:+:$LD_PRELOAD}"
+exec "$@"
