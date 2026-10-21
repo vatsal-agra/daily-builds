@@ -160,26 +160,19 @@ type Machine struct {
 	flagVal       map[string]Term
 	out           *bufio.Writer
 	errOut        *bufio.Writer
-	outStk        []*outSink
-	cur           *outSink
 	infer         int64
 	uniq          int64
 	globals       map[string]Term
 	clauseByID    map[int64]*Clause
 	occursCheck   bool
 	tracing       bool
-	depth         int
-	halted        bool
 	loadFile      string
-	loadLine      int
 	inits         []Term
 	streams       map[int64]*Stream
 	nextStream    int64
 	curIn, curOut int64
-	userIn        *Reader
 	loading       bool
 	warnedDiscont map[*Pred]bool
-	opDirectives  bool
 	stopFrame     *Frame
 	definedInFile map[*Pred]bool
 	tbl           *tableState

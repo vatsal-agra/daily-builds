@@ -232,15 +232,35 @@ func (m *Machine) aggregateAll(a []Term) (bool, error) {
 			if pc, ok := r.(*Compound); ok && pc.Fn == atMinus && len(pc.Args) == 2 {
 				_ = pc
 			}
-			v, err := m.eval(r)
-			if err != nil {
-				return false, err
+			var v Term = r
+			if isNumber(r) {
+				// numeric solutions compare by value
+			} else if ev, err := m.eval(r); err == nil && isCallable(r) && !isPairLike(r) {
+				v = ev
 			}
-			if best == nil || (isMax && numCompare(v, best) > 0) || (!isMax && numCompare(v, best) < 0) {
+			cmp := compareValues(v, best)
+			if best == nil || (isMax && cmp > 0) || (!isMax && cmp < 0) {
 				best = v
 			}
 		}
 		return m.unify(a[2], best), nil
 	}
 	return false, domErr("aggregate_spec", spec)
+}
+
+// isPairLike reports Key-Value style terms, which aggregate_all(max(...)) orders by standard order.
+func isPairLike(t Term) bool {
+	c, ok := deref(t).(*Compound)
+	return ok && c.Fn == atMinus && len(c.Args) == 2
+}
+
+// compareValues orders numbers numerically and everything else by standard order of terms.
+func compareValues(a, b Term) int {
+	if b == nil {
+		return 0
+	}
+	if isNumber(a) && isNumber(b) {
+		return numCompare(a, b)
+	}
+	return compareTerms(a, b)
 }

@@ -4,8 +4,10 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 )
 
@@ -50,8 +52,14 @@ func isTTY(f *os.File) bool {
 	return err == nil && st.Mode()&os.ModeCharDevice != 0
 }
 
+var ballast []byte
+
 func main() {
 	debug.SetMaxStack(1 << 32)
+	if mb, err := strconv.Atoi(os.Getenv("HORN_MEM_MB")); err == nil && mb > 0 {
+		memLimit = uint64(mb) << 20
+		memThresh = memLimit
+	}
 	if pf := os.Getenv("HORN_PROF"); pf != "" {
 		f, _ := os.Create(pf)
 		pprof.StartCPUProfile(f)
@@ -60,15 +68,27 @@ func main() {
 		pprof.StopCPUProfile()
 		os.Exit(code)
 	}
-	debug.SetGCPercent(400)
-	debug.SetMemoryLimit(2 << 30)
-	os.Exit(realMain(os.Args[1:]))
+	// A large untouched, pointer-free ballast raises the GC trigger point: short-lived frames and
+	// terms are collected rarely, while programs with big live heaps still get GOGC-proportional cycles.
+	ballast = make([]byte, 192<<20)
+	debug.SetGCPercent(200)
+	debug.SetMemoryLimit(3 << 30)
+	code := realMain(os.Args[1:])
+	runtime.KeepAlive(ballast)
+	os.Exit(code)
 }
 
 func realMain(args []string) (code int) {
 	m := newMachine()
 	m.loadLibrary()
-	defer m.out.Flush()
+	defer func() {
+		m.out.Flush()
+		for _, s := range m.streams {
+			if s.w != nil {
+				s.w.Flush()
+			}
+		}
+	}()
 	var files []string
 	var goals []string
 	topGoal := ""

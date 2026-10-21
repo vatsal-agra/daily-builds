@@ -11,8 +11,6 @@ import (
 	"unicode/utf8"
 )
 
-type outSink struct{}
-
 type Stream struct {
 	id    int64
 	alias string
@@ -625,6 +623,57 @@ func (m *Machine) installIOBuiltins() {
 			return false, existErr("file", a[0])
 		}
 		return true, nil
+	})
+	readLine := func(m *Machine, st Term, asString bool) (Term, error) {
+		s, err := m.inStream(st)
+		if err != nil {
+			return nil, err
+		}
+		src := s.rd.src
+		if src.peek() == -1 {
+			if asString {
+				return atEOF, nil
+			}
+			return Int(-1), nil
+		}
+		var sb strings.Builder
+		for {
+			c := src.next()
+			if c == -1 || c == '\n' {
+				break
+			}
+			sb.WriteRune(c)
+		}
+		line := strings.TrimSuffix(sb.String(), "\r")
+		if asString {
+			return Str(line), nil
+		}
+		return codesOf(line), nil
+	}
+	m.det("read_line_to_string", 2, func(m *Machine, a []Term) (bool, error) {
+		t, err := readLine(m, a[0], true)
+		if err != nil {
+			return false, err
+		}
+		return m.unify(a[1], t), nil
+	})
+	m.det("read_line_to_codes", 2, func(m *Machine, a []Term) (bool, error) {
+		t, err := readLine(m, a[0], false)
+		if err != nil {
+			return false, err
+		}
+		return m.unify(a[1], t), nil
+	})
+	m.det("read_file_to_string", 3, func(m *Machine, a []Term) (bool, error) {
+		fn, err := textOf(a[0])
+		if err != nil {
+			return false, err
+		}
+		data, rerr := os.ReadFile(fn)
+		if rerr != nil {
+			return false, existErr("source_sink", a[0])
+		}
+		return m.unify(a[1], Str(string(data))), nil
 	})
 	m.det("read_term_from_atom", 3, func(m *Machine, a []Term) (bool, error) {
 		s, err := textOf(a[0])

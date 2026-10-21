@@ -163,6 +163,14 @@ func (m *Machine) installSystemBuiltins() {
 		m.globals[k] = m.copyTerm(a[1], map[*Var]Term{})
 		return true, nil
 	})
+	m.det("nb_current", 2, func(m *Machine, a []Term) (bool, error) {
+		k, err := textOf(a[0])
+		if err != nil {
+			return false, err
+		}
+		v, ok := m.globals[k]
+		return ok && m.unify(a[1], v), nil
+	})
 	m.det("b_setval", 2, func(m *Machine, a []Term) (bool, error) {
 		k, err := textOf(a[0])
 		if err != nil {
@@ -322,22 +330,10 @@ func (m *Machine) installSystemBuiltins() {
 		}
 		return true, nil
 	})
-	m.det("print_message_lines", 3, func(m *Machine, a []Term) (bool, error) { return true, nil })
-	m.det("message_to_codes", 3, func(m *Machine, a []Term) (bool, error) { return true, nil })
 	m.det("$cp_count", 1, func(m *Machine, a []Term) (bool, error) { return m.unify(a[0], Int(len(m.cps))), nil })
 	m.det("$trail_size", 1, func(m *Machine, a []Term) (bool, error) { return m.unify(a[0], Int(len(m.trail))), nil })
 	m.det("$inferences", 1, func(m *Machine, a []Term) (bool, error) { return m.unify(a[0], Int(m.infer)), nil })
-	m.det("tabling_noop", 0, func(m *Machine, a []Term) (bool, error) { return true, nil })
-	m.det("$bench_gc", 0, func(m *Machine, a []Term) (bool, error) { runtime.GC(); return true, nil })
 	m.det("shell", 1, func(m *Machine, a []Term) (bool, error) { return false, permErr("execute", "shell", a[0]) })
-	m.det("$write_err", 1, func(m *Machine, a []Term) (bool, error) {
-		s, err := textOf(a[0])
-		if err != nil {
-			return false, err
-		}
-		m.streamWrite(m.streams[2], s)
-		return true, nil
-	})
 	m.det("prolog_load_context", 2, func(m *Machine, a []Term) (bool, error) {
 		if k, ok := deref(a[0]).(*Atom); ok && k.Name == "source" && m.loadFile != "" {
 			return m.unify(a[1], mkAtom(m.loadFile)), nil

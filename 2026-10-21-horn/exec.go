@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"runtime"
 )
 
@@ -45,14 +46,21 @@ func (m *Machine) newQuery(goal Term) *Query {
 	return &Query{m: m, base: len(m.cps), goal: wrapVarGoals(goal)}
 }
 
-func (q *Query) next() (bool, error) {
+func (q *Query) next() (ok bool, err error) {
 	m := q.m
 	if q.done {
 		return false, nil
 	}
+	defer func() {
+		// an internal fault must not take the whole session down: report it as a Prolog error
+		if r := recover(); r != nil {
+			q.done = true
+			m.setCPs(q.base)
+			ok, err = false, throwTerm(mk("system_error", mkAtom(fmt.Sprint(r))), nil)
+		}
+	}()
 	saved := m.cont
-	savedDepth := m.depth
-	defer func() { m.cont = saved; m.depth = savedDepth }()
+	defer func() { m.cont = saved }()
 	if !q.started {
 		q.started = true
 		m.pushCP(ChoicePoint{kind: cpBarrier})
@@ -63,7 +71,7 @@ func (q *Query) next() (bool, error) {
 			return false, nil
 		}
 	}
-	ok, err := m.run(q.base)
+	ok, err = m.run(q.base)
 	if !ok || err != nil {
 		q.done = true
 	}
@@ -223,8 +231,13 @@ func (m *Machine) tryClause(c *Clause, args []Term, next *Frame, cutB int, dep i
 		}
 	}
 	cont := next
-	for i := len(c.body) - 1; i >= 0; i-- {
-		cont = &Frame{goal: m.rename(c.body[i], vars), cutB: cutB, next: cont, dep: dep}
+	if n := len(c.body); n > 0 {
+		frames := make([]Frame, n) // one allocation for the whole body
+		for i := n - 1; i >= 0; i-- {
+			f := &frames[i]
+			f.goal, f.cutB, f.next, f.dep = m.rename(c.body[i], vars), cutB, cont, dep
+			cont = f
+		}
 	}
 	m.cont = cont
 	return true
@@ -237,14 +250,15 @@ var memThresh = memLimit
 func (m *Machine) checkMemory() error {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
-	if ms.HeapAlloc > memThresh {
+	used := func() uint64 { return ms.HeapAlloc - min(ms.HeapAlloc, uint64(len(ballast))) }
+	if used() > memThresh {
 		runtime.GC()
 		runtime.ReadMemStats(&ms)
-		if ms.HeapAlloc > memLimit {
+		if used() > memLimit {
 			memThresh = memLimit
 			return throwTerm(mk("resource_error", mkAtom("stack")), nil)
 		}
-		memThresh = max(memLimit, ms.HeapAlloc*2)
+		memThresh = max(memLimit, used()*2)
 	}
 	return nil
 }

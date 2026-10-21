@@ -2,7 +2,7 @@
 
 Horn is a complete, ISO-flavoured **Prolog**: reader with user-definable operators, a
 backtracking engine with real cut semantics and exceptions, arbitrary-precision arithmetic,
-~230 builtins, a bundled standard library written in Prolog itself, **DCG translation**,
+~280 builtin and library predicates, a bundled standard library written in Prolog itself, **DCG translation**,
 **tabling** (left recursion terminates; mode-directed `min/max` for shortest paths), a
 **four-port tracer**, SWI-style **strings**, an interactive toplevel and a file loader.
 Go standard library only — no dependencies, one static binary.
@@ -36,7 +36,7 @@ Set `HORN_PROF=cpu.prof` to write a CPU profile.
 
 **Reader** — full operator-precedence parser: prefix/infix/postfix operators, `op/3`, `{}`/lists,
 quoted atoms with every escape (`\n \x41\ \101\ é`), `0'c`, `0x 0o 0b`, `16'FF`, digit groups
-(`1 000 000` → `1_000_000`), big integers, floats (`1.5e10`, `1.0Inf`), block/line comments,
+(`1_000_000`), big integers, floats (`1.5e10`, `1.0Inf`), block/line comments,
 `"strings"`/`` `codes` ``, syntax errors reported with line numbers, singleton and
 discontiguous-clause warnings.
 
@@ -51,7 +51,7 @@ constructs are interpreted in the main loop: `, ; -> *-> \+ call/1..8 catch/3 fi
 * logical update view for `assert/retract`, lazy clause enumeration (`retract(queue(X))` is O(1)),
 * resource guard: runaway recursion raises a catchable `resource_error(stack)`.
 
-**Builtins** (~230) — arithmetic with unbounded integers (`X is 2**200`, `100!` via `foldl`), all ISO
+**Builtins** (~220 native, ~70 in Prolog) — arithmetic with unbounded integers (`X is 2**200`, exact `30!`), all ISO
 type checks, `functor/arg/=../copy_term/setarg`, atoms & text (`atom_codes sub_atom atomic_list_concat
 split_string format/2,3` with column stops `~t~20|`), standard order (`sort/4 msort predsort keysort`),
 `findall/bagof/setof` with `^`, `aggregate_all`, assoc (AVL), global variables, streams (`open/close/
@@ -81,20 +81,28 @@ errors in the SWI wording including *"However, there are definitions for: append
 | `builtins_*.go` `dcg.go` `tabling.go` | builtin predicates, DCG translation, tabling |
 | `load.go` `main.go` | consult, directives, toplevel, CLI |
 | `lib.pl` | the standard library in Prolog (lists, apply, assoc, aggregate, yall lambdas, …) |
-| `tests/` `examples/` `horn_test.go` | ~600 Prolog assertions, REPL transcripts, fuzz/property tests, 6 programs with expected output |
+| `tests/` `examples/` `horn_test.go` `verify.sh` | ~590 Prolog assertions, differential tests, REPL/trace transcripts, fuzz/property tests, 6 example programs with recorded output |
 
 ## Verification
 
-`./verify.sh` runs: `go vet`, `gofmt`, Go property tests (600k random terms must survive
-`writeq` → read; arithmetic vs `math/big`; total standard order; unification), six Prolog suites
-(core 256, adversarial/ISO 167, tabling 22, strings 50, engine 49, io 36 assertions), six example
-programs diffed against recorded output, two REPL transcripts, and CLI exit-code checks.
-See [REVIEW.md](REVIEW.md) for the adversarial review (18 bugs found and fixed) and
-[PLAN.md](PLAN.md) for the design.
+`./verify.sh` (≈ 45 s) runs, and must be entirely green:
 
-Speed (this sandbox, one core): naive reverse ≈ 4 M LIPS, `tak(18,12,6)` 0.05 s, `fib(24)` 0.2 s —
-roughly 5–8× slower than SWI-Prolog's WAM; plenty for the classic programs (zebra, 8-queens,
-meta-interpreters) which run in milliseconds.
+| layer | what it checks |
+|-------|----------------|
+| static | `go build`, `go vet`, `gofmt` |
+| Go property tests | 20 000 random terms must survive `writeq` → read (600k in the review pass); arithmetic vs `math/big` on 5 000 random expressions; the standard order is total; unification makes terms identical; **every native builtin survives 250 random argument tuples without a panic** |
+| Prolog suites | `core` 256, `adversarial` (ISO cut/exception/database corner cases) 167, `tabling` 22, `strings` 50, `engine` (determinism, resources, 200k-fact tables) 55, `io` (files, streams, consult, ops, format columns) 36 assertions |
+| differential | 150 random programs vs an independent Python SLD interpreter (cut, `->`, `\+`, `call/1`, `catch`, `findall`); 30 random graphs of tabled reachability / min-mode shortest path vs closure & Floyd–Warshall |
+| transcripts | 6 example programs, a tracer run and 2 REPL sessions diffed against recorded output |
+| CLI | `-g`/`-t`, exit codes 0/1/2/3, `read/1` from a pipe, runaway recursion → catchable `resource_error` |
+
+See [REVIEW.md](REVIEW.md) for the two adversarial passes (30 findings, all fixed) and
+[PLAN.md](PLAN.md) for the design. Longer runs: `python3 tests/difftest.py 1000 <seed>`,
+`HORN_FUZZ_N=200000 HORN_SEED=3 go test -run RoundTrip`, `HORN_PANIC_N=8000 go test -run NeverPanic`.
+
+Speed (this sandbox, one run): naive reverse ≈ 3.5 M LIPS, `tak(18,12,6)` 0.04 s, `fib(24)` 0.13 s —
+roughly 5–8× slower than SWI-Prolog's WAM, plenty for the classic programs (zebra, 8-queens,
+meta-interpreters), which run in milliseconds.
 
 ## Why I chose it today
 

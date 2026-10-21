@@ -78,4 +78,12 @@ thrower(N) :- N1 is N - 1, thrower(N1), true.
 :- t(luv_retract_while_iterating, (retractall(lv(_)), forall(between(1, 20, I), assertz(lv(I))), findall(X, (lv(X), retract(lv(20))), L), L == [1])).
 
 % Memory guard: runaway recursion raises a catchable resource error instead of exhausting the machine
+:- t(occurs_default_allows_cycle, (X = f(X), X = f(Y), Y == X)).
+:- t(occurs_flag, (set_prolog_flag(occurs_check, true), \+ X = f(X), \+ f(X, X) = f(Y, g(Y)), set_prolog_flag(occurs_check, false), X = f(X))).
+:- t(occurs_builtin, (\+ unify_with_occurs_check(X, f(X)), unify_with_occurs_check(X, f(Y)))).
+:- t(globals_backtrack, (b_setval(v, 1), (b_setval(v, 2), fail ; true), b_getval(v, 1))).
+:- t(globals_nb, (nb_setval(w, 1), (nb_setval(w, 2), fail ; true), nb_getval(w, 2))).
+:- t(setarg_backtrack, (T = f(0), (setarg(1, T, 1), fail ; true), T = f(0))).
+
+
 :- summary.

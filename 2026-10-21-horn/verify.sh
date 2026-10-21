@@ -14,6 +14,12 @@ go vet ./... && ok "go vet" || bad "go vet"
 echo "== go tests (round-trip fuzz, arithmetic vs math/big, standard order, unify)"
 go test ./... >/tmp/horn_gotest.log 2>&1 && ok "go test" || { bad "go test"; tail -20 /tmp/horn_gotest.log; }
 
+echo "== differential tests against independent Python reference implementations"
+if command -v python3 >/dev/null; then
+  python3 tests/difftest.py 150 1 | tail -1 | grep -q " 0 mismatches" && ok "difftest: 150 random programs (cut, ->, \\+, call, catch, findall) agree with reference SLD interpreter" || bad "difftest (run: python3 tests/difftest.py 150 1)"
+  python3 tests/tablediff.py 30 1 | tail -1 | grep -q " 0 mismatches" && ok "tablediff: 30 random graphs, tabled reachability/shortest paths agree with closure/Floyd-Warshall" || bad "tablediff"
+else echo "  (python3 not found: skipped)"; fi
+
 echo "== prolog suites"
 for f in tests/core.pl tests/adversarial.pl tests/tabling.pl tests/strings.pl tests/engine.pl tests/io.pl; do
   [ -f "$f" ] || continue
@@ -31,6 +37,10 @@ for f in examples/*.pl; do
   if timeout 120 ./horn "$f" -g halt 2>&1 | diff -q - "$b.expected" >/dev/null; then ok "$f"; else bad "$f differs from $b.expected"; fi
 done
 
+echo "== tracer transcript (variable numbers normalised)"
+norm() { sed -E 's/_[0-9]+/_N/g'; }
+if ./horn tests/trace/trace.pl -g halt 2>&1 | norm | diff -q - <(norm < tests/trace/trace.expected) >/dev/null; then ok "tests/trace/trace.pl"; else bad "trace transcript differs"; fi
+
 echo "== REPL transcripts"
 for f in tests/repl/*.in; do
   b=${f%.in}
@@ -46,6 +56,13 @@ echo "== CLI behaviour"
 echo 'halt.' | ./horn -q; [ $? -eq 0 ] && ok "halt. at toplevel" || bad "halt. at toplevel"
 out=$(printf 'main :- read(X), Y is X * 2, write(Y), nl.\n' > /tmp/horn_read.pl; echo '21.' | ./horn /tmp/horn_read.pl -g main -t halt)
 [ "$out" = "42" ] && ok "read/1 from stdin" || bad "read/1 from stdin ($out)"
+
+cat > /tmp/horn_runaway.pl <<'PL'
+runaway(N) :- N1 is N + 1, runaway(N1), foo.
+t :- catch(runaway(0), error(resource_error(R), _), (write(caught(R)), nl)).
+PL
+out=$(HORN_MEM_MB=200 timeout 60 ./horn /tmp/horn_runaway.pl -g t -t halt 2>&1)
+[ "$out" = "caught(stack)" ] && ok "runaway recursion -> catchable resource_error" || bad "runaway recursion ($out)"
 
 echo "== benchmark smoke (informational)"
 timeout 120 ./horn examples/bench.pl -g main -t halt 2>&1 | sed 's/^/  /'

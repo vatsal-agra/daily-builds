@@ -203,14 +203,6 @@ func (m *Machine) addAnswer(ts *tableState, ti *tabledInfo, tb *table, ans Term)
 	return true
 }
 
-func (m *Machine) snapshot(tb *table) []Term {
-	out := make([]Term, len(tb.answers))
-	for i, a := range tb.answers {
-		out[i] = m.copyTerm(a, map[*Var]Term{})
-	}
-	return out
-}
-
 // tabledCall returns the pattern/solutions pair for a call to a tabled predicate.
 func (m *Machine) tabledCall(p *Pred, goal Term) (*table, error) {
 	ts := m.tstate()

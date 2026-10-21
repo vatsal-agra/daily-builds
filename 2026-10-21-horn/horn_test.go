@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"io"
 	"math/big"
 	"math/rand"
 	"os"
@@ -219,4 +221,88 @@ func roundTripN() int {
 		return v
 	}
 	return 20000
+}
+
+// TestBuiltinsNeverPanic throws weird argument combinations at every native builtin; they must
+// either succeed, fail or raise a Prolog error — never panic the Go runtime.
+func TestBuiltinsNeverPanic(t *testing.T) {
+	deny := map[string]bool{
+		"halt": true, "sleep": true, "shell": true, "consult": true, "ensure_loaded": true, "see": true, "tell": true,
+		"told": true, "seen": true, "open": true, "delete_file": true, "op": true, "set_prolog_flag": true, "abolish": true,
+		"retractall": true, "assert": true, "asserta": true, "assertz": true, "dynamic": true, "discontiguous": true,
+		"table": true, "initialization": true, "trace": true, "set_input": true, "set_output": true, "close": true,
+		"read": true, "read_term": true, "get_char": true, "peek_char": true, "get_code": true, "peek_code": true,
+		"at_end_of_stream": true, "$write_err": true, "print_message": true, "abolish_all_tables": true, "set_random": true,
+		"multifile": true, "public": true, "module_transparent": true, "thread_local": true, "$erase": true,
+	}
+	r := rand.New(rand.NewSource(99))
+	sink := bufio.NewWriter(io.Discard)
+	oldOut, oldStd := tm.out, tm.streams[1].w
+	tm.out, tm.streams[1].w = sink, sink
+	defer func() { tm.out, tm.streams[1].w = oldOut, oldStd }()
+	v := func() Term { return tm.newVar() }
+	pool := []func() Term{
+		func() Term { return v() }, func() Term { return v() },
+		func() Term { return mkAtom("a") }, func() Term { return mkAtom("hello world") }, func() Term { return mkAtom("[]") },
+		func() Term { return Int(1) }, func() Term { return Int(-1) }, func() Term { return Int(0) }, func() Term { return Int(3) },
+		func() Term { b, _ := new(big.Int).SetString("99999999999999999999", 10); return b },
+		func() Term { return Float(1.5) }, func() Term { return Float(-0.0) },
+		func() Term { return atNil }, func() Term { return mkList([]Term{mkAtom("a")}, atNil) },
+		func() Term { return mkList([]Term{mkAtom("a"), Int(2)}, v()) },
+		func() Term { return mkList([]Term{Int(1), Int(2), Int(3)}, atNil) },
+		func() Term { return mkList([]Term{Int(97), Int(98)}, atNil) },
+		func() Term { return mkList([]Term{mkAtom("a"), mkAtom("b")}, atNil) },
+		func() Term { return mk("f", mkAtom("x")) }, func() Term { return mk("f", v(), v()) },
+		func() Term { return mk("-", mkAtom("k"), Int(1)) }, func() Term { return mk("+", Int(1), Int(2)) },
+		func() Term { return Str("str") }, func() Term { return Str("") },
+		func() Term { return mkList([]Term{mk("-", Int(2), mkAtom("b")), mk("-", Int(1), mkAtom("a"))}, atNil) },
+		func() Term { return mkAtom("f(") }, func() Term { return mk("/", mkAtom("foo"), Int(2)) },
+	}
+	var preds []*Pred
+	for _, at := range atomTable {
+		for _, p := range at.preds {
+			if p != nil && (p.det != nil || p.nondet != nil || p.gen != nil) && !deny[p.name.Name] && !strings.HasSuffix(p.name.Name, "tabled") {
+				preds = append(preds, p)
+			}
+		}
+	}
+	if len(preds) < 150 {
+		t.Fatalf("expected many builtins, found %d", len(preds))
+	}
+	panics := 0
+	for _, p := range preds {
+		for k := 0; k < panicIters(); k++ {
+			args := make([]Term, p.arity)
+			for i := range args {
+				args[i] = pool[r.Intn(len(pool))]()
+			}
+			var goal Term = p.name
+			if p.arity > 0 {
+				goal = &Compound{Fn: p.name, Args: args}
+			}
+			func() {
+				defer func() {
+					if rec := recover(); rec != nil {
+						panics++
+						if panics <= 10 {
+							t.Errorf("PANIC in %s/%d with %s: %v", p.name.Name, p.arity, formatTermOpts(goal, writeOpts{quoted: true}), rec)
+						}
+					}
+				}()
+				q := tm.newQuery(goal)
+				q.next()
+				q.close()
+			}()
+		}
+	}
+	if panics > 0 {
+		t.Fatalf("%d panics", panics)
+	}
+}
+
+func panicIters() int {
+	if v, err := strconv.Atoi(os.Getenv("HORN_PANIC_N")); err == nil {
+		return v
+	}
+	return 250
 }

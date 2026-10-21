@@ -51,3 +51,37 @@ Several failures during the pass were *my tests* being wrong, and are recorded s
 "fixed" the wrong way later: shared variables between conjoined `t/2` calls (harness now copies the
 goal), `(a:-b)` as an unparenthesised argument (a genuine syntax error in ISO), `f(/*)` (a comment
 start), `2**3**4` (`**` is `xfx`), a wrong hand-computed 36-digit product.
+
+---
+
+# Second adversarial pass (after the stretch features, phases 4–5)
+
+New attack surface (tabling, strings, hash index, lazy enumeration, tracer) got its own hostile
+treatment, plus three *independent oracles* so that the engine is no longer only checked against
+my own expectations:
+
+* `tests/difftest.py` — random programs (facts, rules, `!`, `->`, `*->`-free `;`, `\+`, `call/1`,
+  `catch/throw`, `findall`, arithmetic guards) solved by Horn **and** by a reference SLD interpreter
+  written separately in Python; ordered answer lists must be identical. ~6 000 programs over 15 seeds.
+  It found **0 engine bugs** — and several bugs in the reference itself (cut not propagating to the
+  callee's remaining clauses, instantiation errors not catchable, `[X]` not evaluable, …), which is
+  the expected failure mode of a differential test between two careful implementations.
+* `tests/tablediff.py` — random graphs: tabled left-/right-/double-/mutually-recursive reachability and
+  `min`-mode shortest paths against a transitive closure and Floyd–Warshall.
+* `TestBuiltinsNeverPanic` — every native builtin gets 5 000 random argument tuples (unbound, bigints,
+  partial lists, strings, cyclic-looking shapes). Found a real crash on the first run.
+
+| # | Finding | Fix / regression |
+|---|---------|------------------|
+| 19 | `sort(-1, @<, L, S)` indexed `args[-2]` → Go panic. | domain_error; `TestBuiltinsNeverPanic`. Also: any internal fault inside a query is now converted to `system_error(Msg)` instead of killing the session. |
+| 20 | `retract/1` and `clause/2` built *every* matching clause up front; a FIFO queue drained with `retract(queue(X))` was O(n²). | Lazy generator choicepoint (`cpGen`) with one-solution lookahead (so the last clause is deterministic). `queue_fifo` (50 000 items). |
+| 21 | `eraseClause` copied the whole clause slice on every retract (O(n²) for bulk deletes). | Mark erased + lazy compaction when more than half are dead; snapshots keep logical-update-view semantics. |
+| 22 | Calling `fact(150000, X)` scanned 200 000 clauses linearly. | Per-predicate first-argument hash index, built on demand, maintained on `assertz`, dropped on `asserta`/variable-first clauses. `lookup_200k`, `lookup_det`. |
+| 23 | `maplist/include/exclude/partition` left a choicepoint per element (list was not the first argument), so a 1M-element `maplist` kept 1M choicepoints alive. | List-first helper predicates; `det_lambda`, `det_*` tests via the new `'$cp_count'/1`. |
+| 24 | Tabling re-evaluated every pass from scratch: all-pairs reachability on a 300-node cycle took 21 s; and a tabled predicate with a side effect ran it twice. | Consumers are *cursors* over the live answer table (see answers appended while they run), and a pass is only repeated if some table actually consumed an incomplete table → 0.29 s; `memo1`. |
+| 25 | `term_string/2` had its arguments in the wrong order (SWI is `term_string(?String, ?Term)`). | Fixed; `s_term_string`. |
+| 26 | Builtins that only pretended to work (`print_message_lines/3`, `message_to_codes/3`, a debug `tabling_noop`) returned `true` without doing anything. | Removed — an unknown procedure is more honest than a lie. Remaining deliberate no-ops (`style_check/1`, `prompt/2`, `set_stream/2`, `license/1`, `garbage_collect/0`, `use_module/1,2`, `module/2`, `meta_predicate/1`, `multifile/1`, …) are declarations that SWI programs contain and Horn does not need. |
+| 27 | `halt` with an open file stream lost its buffered data. | All streams are flushed on every exit path. |
+| 28 | `aggregate_all(max(X-Y), …)` raised a type error (always evaluated the term as arithmetic). | Numbers compare numerically, anything else by standard order, as SWI does. |
+| 29 | A 20 s hang on runaway recursion (see #13) was still too slow to put in a test. | `HORN_MEM_MB` env var lowers the guard; `verify.sh` asserts a catchable `resource_error(stack)` in 3 s. |
+| 30 | Missing "read a line" API made stdin-driven scripts impossible. | `read_line_to_string/2`, `read_line_to_codes/2`, `read_file_to_string/3`, `nb_current/2`, `library(option)`. |

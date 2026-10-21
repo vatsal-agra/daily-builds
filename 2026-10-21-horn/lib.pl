@@ -144,7 +144,6 @@ list_to_set(L, S) :- '$lts'(L, [], S).
 '$lts'([H|T], Seen, R) :- ( '$memberchk_eq'(H, Seen) -> R = R1 ; R = [H|R1] ), '$lts'(T, [H|Seen], R1).
 '$memberchk_eq'(X, [Y|T]) :- ( X == Y -> true ; '$memberchk_eq'(X, T) ).
 is_set(L) :- is_list(L), sort(L, S), length(L, N), length(S, N).
-sumlist(L, A, S) :- foldl([X,Y,Z]>>(Z is X+Y), L, A, S).
 nextto(X, Y, [X,Y|_]).
 nextto(X, Y, [_|T]) :- nextto(X, Y, T).
 permutation(Xs, Ys) :-
@@ -312,3 +311,11 @@ assoc_to_values(A, Vs) :- assoc_to_list(A, L), pairs_values(L, Vs).
 max_assoc(A, K, V) :- assoc_to_list(A, L), last(L, K-V).
 min_assoc(A, K, V) :- assoc_to_list(A, [K-V|_]).
 del_assoc(K, A0, V, A) :- assoc_to_list(A0, L0), select(K0-V, L0, L), K0 == K, !, list_to_assoc(L, A).
+
+% ---- library(option) ----
+option(Opt, Options) :- '$option'(Opt, Options), !.
+option(Opt, Options, Default) :- ( '$option'(Opt, Options) -> true ; arg(1, Opt, Default) ).
+'$option'(Opt, Options) :- functor(Opt, N, 1), functor(Gen, N, 1), ( memberchk(Gen, Options) -> Opt = Gen ; memberchk(N=V, Options), arg(1, Opt, V) ).
+select_option(Opt, Options, Rest) :- functor(Opt, N, 1), functor(Gen, N, 1), select(Gen, Options, Rest), !, Opt = Gen.
+select_option(Opt, Options, Rest, Default) :- ( select_option(Opt, Options, Rest) -> true ; arg(1, Opt, Default), Rest = Options ).
+proper_length(L, N) :- is_list(L), length(L, N).

@@ -559,6 +559,9 @@ func (m *Machine) installTermBuiltins() {
 		if err != nil {
 			return false, err
 		}
+		if key < 0 {
+			return false, domErr("not_less_than_zero", a[0])
+		}
 		ord, err := getAtom(a[1])
 		if err != nil {
 			return false, err
