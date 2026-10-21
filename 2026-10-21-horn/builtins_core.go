@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode"
 	"time"
+	"unicode"
 )
 
 func itoa(i int) string { return strconv.Itoa(i) }
@@ -179,7 +179,7 @@ func (m *Machine) parseNumber(s string) (Term, bool) {
 }
 
 func (m *Machine) parseTermFromText(s string) (Term, *Reader, error) {
-	rd := newReader(m, strings.NewReader(s+" ."))
+	rd := newReader(m, strings.NewReader(s+"\n ."))
 	t, err := rd.ReadTerm()
 	if err != nil {
 		if se, ok := err.(*SyntaxError); ok {
@@ -283,6 +283,8 @@ func (m *Machine) installTypeChecks() {
 		m.occursCheck = old
 		return ok, nil
 	})
+	m.det("=@=", 2, func(m *Machine, a []Term) (bool, error) { return variant(a[0], a[1]), nil })
+	m.det("\\=@=", 2, func(m *Machine, a []Term) (bool, error) { return !variant(a[0], a[1]), nil })
 	m.det("?=", 2, func(m *Machine, a []Term) (bool, error) {
 		return compareTerms(a[0], a[1]) == 0 || !m.tryUnify(a[0], a[1]), nil
 	})

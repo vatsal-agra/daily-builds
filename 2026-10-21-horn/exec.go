@@ -43,7 +43,7 @@ type Query struct {
 }
 
 func (m *Machine) newQuery(goal Term) *Query {
-	return &Query{m: m, base: len(m.cps), goal: goal}
+	return &Query{m: m, base: len(m.cps), goal: wrapVarGoals(goal)}
 }
 
 func (q *Query) next() (bool, error) {
@@ -345,6 +345,7 @@ func addArgs(goal Term, extra []Term) (Term, error) {
 }
 
 func (m *Machine) ite(cond, then, els Term, fr *Frame, soft bool) {
+	cond = wrapVarGoals(cond)
 	b := len(m.cps)
 	m.pushCP(ChoicePoint{kind: cpGoal, alt: &Frame{goal: els, cutB: fr.cutB, next: m.cont, dep: fr.dep}})
 	op := uint8(opCutTo)
@@ -411,6 +412,10 @@ func (m *Machine) control(id int, args []Term, fr *Frame) (bool, error) {
 		if err := checkBody(goal); err != nil {
 			return false, err
 		}
+		if _, isVar := goal.(*Var); isVar {
+			return false, instErr()
+		}
+		goal = wrapVarGoals(goal)
 		m.cont = &Frame{goal: goal, cutB: len(m.cps), next: m.cont, dep: fr.dep}
 		return true, nil
 	case ctlColon:
@@ -420,7 +425,7 @@ func (m *Machine) control(id int, args []Term, fr *Frame) (bool, error) {
 		b := len(m.cps)
 		m.uniq++
 		m.pushCP(ChoicePoint{kind: cpCatch, cont: m.cont, catcher: args[1], recovery: args[2], cutB: fr.cutB, active: true, id: m.uniq})
-		m.cont = &Frame{goal: args[0], cutB: b + 1, dep: fr.dep, next: &Frame{op: opCatchExit, n: b, next: m.cont}}
+		m.cont = &Frame{goal: wrapVarGoals(args[0]), cutB: b + 1, dep: fr.dep, next: &Frame{op: opCatchExit, n: b, next: m.cont}}
 		return true, nil
 	}
 	return false, nil

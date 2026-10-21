@@ -12,13 +12,18 @@ type writeOpts struct {
 	quoted     bool
 	ignoreOps  bool
 	numberVars bool
+	spacing    bool             // toplevel style: space after argument commas
+	varNames   map[*Var]string // names to print for unbound variables
 }
 
+const maxWriteDepth = 20000
+
 type writer struct {
-	sb   strings.Builder
-	last rune
-	o    writeOpts
-	ops  OpTable
+	depth int
+	sb    strings.Builder
+	last  rune
+	o     writeOpts
+	ops   OpTable
 }
 
 func formatTerm(t Term, quoted bool) string {
@@ -59,9 +64,9 @@ func formatFloat(f float64) string {
 		if d[0] == '-' {
 			sign = "-"
 		}
-		d = strings.TrimLeft(d, "+-")
-		if len(d) < 2 {
-			d = "0" + d
+		d = strings.TrimLeft(strings.TrimLeft(d, "+-"), "0")
+		if d == "" {
+			d = "0"
 		}
 		exp = "e" + sign + d
 	}
@@ -75,6 +80,9 @@ func atomNeedsQuote(s string) bool {
 	switch s {
 	case "[]", "!", ";", "{}", ",", "|":
 		return s == "," || s == "|"
+	}
+	if s == "." || strings.HasPrefix(s, "/*") {
+		return true
 	}
 	rs := []rune(s)
 	if unicode.IsLower(rs[0]) {
@@ -108,8 +116,24 @@ func quoteAtom(s string) string {
 			sb.WriteString("\\t")
 		case 0:
 			sb.WriteString("\\0\\")
+		case 7:
+			sb.WriteString("\\a")
+		case 8:
+			sb.WriteString("\\b")
+		case 11:
+			sb.WriteString("\\v")
+		case 12:
+			sb.WriteString("\\f")
+		case 13:
+			sb.WriteString("\\r")
+		case 27:
+			sb.WriteString("\\e")
 		default:
-			sb.WriteRune(r)
+			if r < 32 || r == 127 {
+				sb.WriteString("\\x" + strconv.FormatInt(int64(r), 16) + "\\")
+			} else {
+				sb.WriteRune(r)
+			}
 		}
 	}
 	sb.WriteByte('\'')
@@ -157,9 +181,19 @@ func varName(i int64) string {
 
 func (w *writer) write(t Term, max int) {
 	t = deref(t)
+	w.depth++
+	defer func() { w.depth-- }()
+	if w.depth > maxWriteDepth {
+		w.emit("...")
+		return
+	}
 	switch x := t.(type) {
 	case *Var:
-		w.emit("_" + strconv.FormatInt(x.id, 10))
+		if n, ok := w.o.varNames[x]; ok {
+			w.emit(n)
+		} else {
+			w.emit("_" + strconv.FormatInt(x.id, 10))
+		}
 	case Int:
 		w.emit(strconv.FormatInt(int64(x), 10))
 	case *big.Int:
@@ -209,7 +243,7 @@ func (w *writer) writeCompound(c *Compound, max int) {
 		w.raw("}")
 		return
 	}
-	if !w.o.ignoreOps {
+	if !w.o.ignoreOps && name != "|" {
 		if e := w.ops[name]; e != nil {
 			if n == 2 && e.infix != nil {
 				d := e.infix
@@ -217,13 +251,13 @@ func (w *writer) writeCompound(c *Compound, max int) {
 				if open {
 					w.emit("(")
 				}
-				w.write(c.Args[0], d.leftMax())
+				w.writeOperand(c.Args[0], d.leftMax())
 				switch {
 				case name == ",":
-					w.raw(",")
+					w.raw(w.comma())
 				case isAlnumAtom(name) || name == "->" || name == ":-" || name == "-->" || name == "*->":
 					if name == "->" || name == "*->" || name == ":-" || name == "-->" {
-						w.raw(name)
+						w.emit(name)
 					} else {
 						w.raw(" ")
 						w.raw(w.atomText(c.Fn))
@@ -232,7 +266,7 @@ func (w *writer) writeCompound(c *Compound, max int) {
 				default:
 					w.emit(w.atomText(c.Fn))
 				}
-				w.write(c.Args[1], d.rightMax())
+				w.writeOperand(c.Args[1], d.rightMax())
 				if open {
 					w.raw(")")
 				}
@@ -246,14 +280,28 @@ func (w *writer) writeCompound(c *Compound, max int) {
 				}
 				w.emit(w.atomText(c.Fn))
 				arg := deref(c.Args[0])
+				if (name == "-" || name == "+") && !isNumber(arg) && w.leftNum(arg) {
+					// -(2^2) must not be written as -2^2, which reads back as (-2)^2
+					w.raw("(")
+					w.write(arg, 999)
+					w.raw(")")
+					if open {
+						w.raw(")")
+					}
+					return
+				}
 				if isNumber(arg) && (name == "-" || name == "+") {
 					w.raw(" ")
 				} else if isAlnumAtom(name) {
 					w.raw(" ")
-				} else if a, ok := arg.(*Atom); ok && w.ops[a.Name] != nil {
+				}
+				sub := &writer{o: w.o, ops: w.ops}
+				sub.writeOperand(arg, d.rightMax())
+				txt := sub.sb.String()
+				if strings.HasPrefix(txt, "(") && !strings.HasSuffix(w.sb.String(), " ") {
 					w.raw(" ")
 				}
-				w.write(arg, d.rightMax())
+				w.emit(txt)
 				if open {
 					w.raw(")")
 				}
@@ -265,7 +313,7 @@ func (w *writer) writeCompound(c *Compound, max int) {
 				if open {
 					w.emit("(")
 				}
-				w.write(c.Args[0], d.leftMax())
+				w.writeOperand(c.Args[0], d.leftMax())
 				w.emit(w.atomText(c.Fn))
 				if open {
 					w.raw(")")
@@ -278,11 +326,22 @@ func (w *writer) writeCompound(c *Compound, max int) {
 	w.raw("(")
 	for i, a := range c.Args {
 		if i > 0 {
-			w.raw(",")
+			w.raw(w.comma())
 		}
 		w.writeArg(a)
 	}
 	w.raw(")")
+}
+
+// writeOperand writes an operand of an operator; atoms that are themselves operators are bracketed.
+func (w *writer) writeOperand(t Term, max int) {
+	if at, ok := deref(t).(*Atom); ok && w.ops[at.Name] != nil && !w.o.ignoreOps {
+		w.emit("(")
+		w.raw(w.atomText(at))
+		w.raw(")")
+		return
+	}
+	w.write(t, max)
 }
 
 func (w *writer) writeArg(a Term) {
@@ -313,7 +372,7 @@ func (w *writer) writeList(c *Compound) {
 		t = deref(t)
 		if cc, ok := isCons(t); ok {
 			if !first {
-				w.raw(",")
+				w.raw(w.comma())
 			}
 			first = false
 			w.writeArg(cc.Args[0])
@@ -402,4 +461,73 @@ func (m *Machine) portrayInner(t Term, depth int, pc func(Term, int) string) str
 		}
 	}
 	return pc(t, 999)
+}
+
+// leftNum reports whether the leftmost token of t's operator form is a non-negative number.
+func (w *writer) leftNum(t Term) bool {
+	for {
+		t = deref(t)
+		switch x := t.(type) {
+		case Int:
+			return x >= 0
+		case Float:
+			return x >= 0
+		case *big.Int:
+			return x.Sign() >= 0
+		case *Compound:
+			if w.o.ignoreOps || len(x.Args) != 2 || x.Fn == atDot {
+				return false
+			}
+			if e := w.ops[x.Fn.Name]; e != nil && e.infix != nil {
+				t = x.Args[0]
+				continue
+			}
+			return false
+		}
+		return false
+	}
+}
+
+// termPri returns the operator priority of a term when written with operators.
+func (w *writer) termPri(t Term) int {
+	t = deref(t)
+	switch x := t.(type) {
+	case *Compound:
+		if w.o.ignoreOps || (x.Fn == atDot && len(x.Args) == 2) || (x.Fn == atCurly && len(x.Args) == 1) {
+			return 0
+		}
+		if e := w.ops[x.Fn.Name]; e != nil {
+			switch len(x.Args) {
+			case 2:
+				if e.infix != nil {
+					return e.infix.pri
+				}
+			case 1:
+				if e.prefix != nil {
+					return e.prefix.pri
+				}
+				if e.postfix != nil {
+					return e.postfix.pri
+				}
+			}
+		}
+	case *Atom:
+		if e := w.ops[x.Name]; e != nil {
+			p := 0
+			for _, d := range []*opDef{e.prefix, e.infix, e.postfix} {
+				if d != nil && d.pri > p {
+					p = d.pri
+				}
+			}
+			return p
+		}
+	}
+	return 0
+}
+
+func (w *writer) comma() string {
+	if w.o.spacing {
+		return ", "
+	}
+	return ","
 }

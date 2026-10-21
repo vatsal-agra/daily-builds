@@ -174,7 +174,12 @@ func (m *Machine) openCPs(base int) bool {
 	return false
 }
 
-func (m *Machine) formatBindings(rd *Reader) string {
+type queryVars struct {
+	Names []string
+	Vars  []*Var
+}
+
+func (m *Machine) formatBindings(rd *queryVars) string {
 	type grp struct {
 		names []string
 		val   Term
@@ -198,6 +203,59 @@ func (m *Machine) formatBindings(rd *Reader) string {
 		}
 		groups = append(groups, &grp{names: []string{n}, val: v})
 	}
+	// name the remaining unbound variables: singletons print as _, shared ones as _A, _B, ...
+	counts := map[*Var]int{}
+	var count func(t Term)
+	count = func(t Term) {
+		t = deref(t)
+		switch x := t.(type) {
+		case *Var:
+			counts[x]++
+		case *Compound:
+			for _, a := range x.Args {
+				count(a)
+			}
+		}
+	}
+	for _, g := range groups {
+		if g.val != nil {
+			count(g.val)
+		}
+	}
+	names := map[*Var]string{}
+	for uv, g := range byVar {
+		names[uv] = g.names[0]
+	}
+	next := 0
+	var order []*Var
+	var collect func(t Term)
+	collect = func(t Term) {
+		t = deref(t)
+		switch x := t.(type) {
+		case *Var:
+			if _, ok := names[x]; !ok {
+				names[x] = ""
+				order = append(order, x)
+			}
+		case *Compound:
+			for _, a := range x.Args {
+				collect(a)
+			}
+		}
+	}
+	for _, g := range groups {
+		if g.val != nil {
+			collect(g.val)
+		}
+	}
+	for _, v := range order {
+		if counts[v] <= 1 {
+			names[v] = "_"
+		} else {
+			names[v] = "_" + varName(int64(next))
+			next++
+		}
+	}
 	var lines []string
 	for _, g := range groups {
 		if g.val == nil {
@@ -206,7 +264,7 @@ func (m *Machine) formatBindings(rd *Reader) string {
 			}
 			continue
 		}
-		o := writeOpts{quoted: true, numberVars: true}
+		o := writeOpts{quoted: true, numberVars: true, spacing: true, varNames: names}
 		w := &writer{o: o, ops: m.ops}
 		w.write(g.val, 699)
 		lines = append(lines, strings.Join(g.names, " = ")+" = "+w.sb.String())
@@ -238,13 +296,14 @@ func (m *Machine) toplevel(interactive, all bool) error {
 			}
 			return err
 		}
-		if err := m.runQuery(t, rd, interactive, all); err != nil {
+		qv := &queryVars{Names: append([]string(nil), rd.Names...), Vars: append([]*Var(nil), rd.Vars...)}
+		if err := m.runQuery(t, qv, interactive, all); err != nil {
 			return err
 		}
 	}
 }
 
-func (m *Machine) runQuery(goal Term, rd *Reader, interactive, all bool) error {
+func (m *Machine) runQuery(goal Term, rd *queryVars, interactive, all bool) error {
 	q := m.newQuery(goal)
 	defer q.close()
 	first := true

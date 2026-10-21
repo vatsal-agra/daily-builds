@@ -109,37 +109,37 @@ type ChoicePoint struct {
 }
 
 type Machine struct {
-	cps     []ChoicePoint
-	trail   []*Var
-	cont    *Frame
-	varCnt  int64
-	hb      int64
-	ops     OpTable
-	flags   map[string]string
-	flagVal map[string]Term
-	out     *bufio.Writer
-	errOut  *bufio.Writer
-	outStk  []*outSink
-	cur     *outSink
-	infer   int64
-	uniq    int64
-	globals map[string]Term
-	clauseByID map[int64]*Clause
-	occursCheck bool
-	tracing  bool
-	depth    int
-	halted   bool
-	loadFile string
-	loadLine int
-	inits    []Term
-	streams  map[int64]*Stream
-	nextStream int64
+	cps           []ChoicePoint
+	trail         []*Var
+	cont          *Frame
+	varCnt        int64
+	hb            int64
+	ops           OpTable
+	flags         map[string]string
+	flagVal       map[string]Term
+	out           *bufio.Writer
+	errOut        *bufio.Writer
+	outStk        []*outSink
+	cur           *outSink
+	infer         int64
+	uniq          int64
+	globals       map[string]Term
+	clauseByID    map[int64]*Clause
+	occursCheck   bool
+	tracing       bool
+	depth         int
+	halted        bool
+	loadFile      string
+	loadLine      int
+	inits         []Term
+	streams       map[int64]*Stream
+	nextStream    int64
 	curIn, curOut int64
-	userIn   *Reader
-	loading  bool
+	userIn        *Reader
+	loading       bool
 	warnedDiscont map[*Pred]bool
-	opDirectives bool
-	stopFrame *Frame
+	opDirectives  bool
+	stopFrame     *Frame
 	definedInFile map[*Pred]bool
 }
 
@@ -147,11 +147,11 @@ var gm *Machine
 
 func newMachine() *Machine {
 	m := &Machine{
-		ops:        newOpTable(),
-		flags:      map[string]string{"double_quotes": "codes", "unknown": "error", "occurs_check": "false"},
-		globals:    map[string]Term{},
-		clauseByID: map[int64]*Clause{},
-		streams:    map[int64]*Stream{},
+		ops:           newOpTable(),
+		flags:         map[string]string{"double_quotes": "codes", "unknown": "error", "occurs_check": "false"},
+		globals:       map[string]Term{},
+		clauseByID:    map[int64]*Clause{},
+		streams:       map[int64]*Stream{},
 		warnedDiscont: map[*Pred]bool{},
 		definedInFile: map[*Pred]bool{},
 	}
@@ -341,6 +341,7 @@ func (m *Machine) compileClause(head, body Term) (*Clause, error) {
 	if err := checkBody(body); err != nil {
 		return nil, err
 	}
+	body = wrapVarGoalsIn(body, false)
 	c := &compiler{vars: map[*Var]int{}}
 	ch := c.conv(head)
 	var goals []Term
@@ -561,4 +562,31 @@ func (m *Machine) eraseClause(cl *Clause) {
 	}
 	p.clauses = nc
 	delete(m.clauseByID, cl.id)
+}
+
+// wrapVarGoals turns variable goals in control positions into call(Var), so that a cut
+// inside a goal bound at run time stays local to it (ISO 7.6.2).
+func wrapVarGoals(t Term) Term {
+	t = deref(t)
+	return wrapVarGoalsIn(t, true)
+}
+
+func wrapVarGoalsIn(t Term, top bool) Term {
+	t = deref(t)
+	switch x := t.(type) {
+	case *Var:
+		if top {
+			return x
+		}
+		return &Compound{Fn: atCall, Args: []Term{x}}
+	case *Compound:
+		if len(x.Args) == 2 && (x.Fn == atComma || x.Fn == atSemi || x.Fn == atArrow || x.Fn == atSoft) {
+			l, r := wrapVarGoalsIn(x.Args[0], false), wrapVarGoalsIn(x.Args[1], false)
+			return &Compound{Fn: x.Fn, Args: []Term{l, r}}
+		}
+		if len(x.Args) == 1 && x.Fn == atNot {
+			return &Compound{Fn: x.Fn, Args: []Term{wrapVarGoalsIn(x.Args[0], false)}}
+		}
+	}
+	return t
 }

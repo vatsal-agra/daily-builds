@@ -438,6 +438,9 @@ func (m *Machine) eval2(x *Compound, a, b Term) (Term, error) {
 		return b, nil
 	case "**":
 		if bothInt {
+			if toBig(b).Sign() < 0 {
+				return checkFloat(math.Pow(toFloat(a), toFloat(b)))
+			}
 			return intPow(a, b)
 		}
 		return checkFloat(math.Pow(toFloat(a), toFloat(b)))

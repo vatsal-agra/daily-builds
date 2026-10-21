@@ -415,6 +415,9 @@ func messageText(ball Term) string {
 				if k == "procedure" {
 					return ctx + "Unknown procedure: " + q(f.Args[1])
 				}
+				if k == "source_sink" || k == "file" {
+					return ctx + k + " `" + formatTerm(f.Args[1], false) + "' does not exist"
+				}
 				return ctx + "Unknown " + k + ": " + q(f.Args[1])
 			}
 		case "type_error":

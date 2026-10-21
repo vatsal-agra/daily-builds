@@ -545,6 +545,9 @@ func (p *parser) infixOp(t token) *opDef {
 		}
 	case tQAtom:
 		name = t.text
+		if name == "|" {
+			return nil
+		}
 	default:
 		return nil
 	}

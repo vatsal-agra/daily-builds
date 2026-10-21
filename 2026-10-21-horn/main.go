@@ -42,7 +42,8 @@ func main() {
 		pprof.StopCPUProfile()
 		os.Exit(code)
 	}
-	debug.SetGCPercent(800)
+	debug.SetGCPercent(400)
+	debug.SetMemoryLimit(2 << 30)
 	os.Exit(realMain(os.Args[1:]))
 }
 
