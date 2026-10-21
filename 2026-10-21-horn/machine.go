@@ -17,6 +17,7 @@ type Clause struct {
 	body   []Term // flattened top-level conjunction
 	nvars  int
 	key    argKey
+	keys   callKeys // keys of the first maxIdxArgs head arguments, for clause pre-selection
 	erased bool
 	pred   *Pred
 	id     int64
@@ -65,6 +66,10 @@ func (p *Pred) candidates(key argKey) []*Clause {
 func (p *Pred) resetClauses() {
 	p.clauses, p.nErased, p.nVarFirst, p.idx = nil, 0, 0, nil
 }
+
+const maxIdxArgs = 4
+
+type callKeys [maxIdxArgs]argKey
 
 type argKey struct {
 	k uint8 // 0 any, 1 atom, 2 int, 3 compound
@@ -129,7 +134,7 @@ type ChoicePoint struct {
 	args    []Term
 	clauses []*Clause
 	idx     int
-	key     argKey
+	keys    *callKeys
 	pred    *Pred
 	dep     int
 	// alts
@@ -394,8 +399,8 @@ func (m *Machine) compileClause(head, body Term) (*Clause, error) {
 	cl := &Clause{head: ch, body: goals, nvars: len(c.vars)}
 	if hc, ok := ch.(*Compound); ok {
 		cl.key = keyOf(hc.Args[0])
-		if _, isL := hc.Args[0].(LVar); isL {
-			cl.key = argKey{}
+		for i := 0; i < len(hc.Args) && i < maxIdxArgs; i++ {
+			cl.keys[i] = keyOf(hc.Args[i])
 		}
 	}
 	m.uniq++

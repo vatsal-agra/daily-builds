@@ -24,12 +24,19 @@ const (
 	ctlColon
 )
 
-func nextMatch(cl []*Clause, from int, key argKey) int {
+func nextMatch(cl []*Clause, from int, keys *callKeys) int {
+outer:
 	for i := from; i < len(cl); i++ {
 		c := cl[i]
-		if !c.erased && key.matches(c.key) {
-			return i
+		if c.erased {
+			continue
 		}
+		for k := range keys {
+			if !keys[k].matches(c.keys[k]) {
+				continue outer
+			}
+		}
+		return i
 	}
 	return -1
 }
@@ -205,7 +212,7 @@ func (m *Machine) backtrack(base int) bool {
 		case cpClauses:
 			c := cp.clauses[cp.idx]
 			args, cont, dep, p := cp.args, cp.cont, cp.dep, cp.pred
-			j := nextMatch(cp.clauses, cp.idx+1, cp.key)
+			j := nextMatch(cp.clauses, cp.idx+1, cp.keys)
 			if j < 0 {
 				m.setCPs(n - 1)
 			} else {
@@ -374,19 +381,20 @@ func (m *Machine) exec(fr *Frame) (bool, error) {
 }
 
 func (m *Machine) callPred(p *Pred, args []Term, fr *Frame) (bool, error) {
-	var key argKey
-	if len(args) > 0 {
-		key = keyOf(deref(args[0]))
+	var keys callKeys
+	for i := 0; i < len(args) && i < maxIdxArgs; i++ {
+		keys[i] = keyOf(deref(args[i]))
 	}
-	clauses := p.candidates(key)
-	i := nextMatch(clauses, 0, key)
+	clauses := p.candidates(keys[0])
+	i := nextMatch(clauses, 0, &keys)
 	if i < 0 {
 		return false, nil
 	}
-	j := nextMatch(clauses, i+1, key)
+	j := nextMatch(clauses, i+1, &keys)
 	b := len(m.cps)
 	if j >= 0 {
-		m.pushCP(ChoicePoint{kind: cpClauses, cont: m.cont, args: args, clauses: clauses, idx: j, key: key, pred: p, dep: fr.dep + 1})
+		kk := keys
+		m.pushCP(ChoicePoint{kind: cpClauses, cont: m.cont, args: args, clauses: clauses, idx: j, keys: &kk, pred: p, dep: fr.dep + 1})
 	}
 	return m.tryClause(clauses[i], args, m.cont, b, fr.dep+1), nil
 }

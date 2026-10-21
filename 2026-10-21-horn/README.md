@@ -91,7 +91,7 @@ errors in the SWI wording including *"However, there are definitions for: append
 |-------|----------------|
 | static | `go build`, `go vet`, `gofmt` |
 | Go property tests | 20 000 random terms must survive `writeq` → read (600k in the review pass); arithmetic vs `math/big` on 5 000 random expressions; the standard order is total; unification makes terms identical; **every native builtin survives 250 random argument tuples without a panic** |
-| Prolog suites | `core` 256, `adversarial` (ISO cut/exception/database corner cases) 167, `tabling` 22, `strings` 50, `engine` (determinism, resources, 200k-fact tables) 55, `io` (files, streams, consult, ops, format columns) 36 assertions |
+| Prolog suites | `core` 256, `adversarial` (ISO cut/exception/database corner cases) 167, `tabling` 22, `strings` 50, `engine` (determinism, resources, 200k-fact tables) 57, `io` (files, streams, consult, ops, format columns) 36 assertions |
 | differential | 150 random programs vs an independent Python SLD interpreter (cut, `->`, `\+`, `call/1`, `catch`, `findall`); 30 random graphs of tabled reachability / min-mode shortest path vs closure & Floyd–Warshall |
 | transcripts | 6 example programs, a tracer run and 2 REPL sessions diffed against recorded output |
 | CLI | `-g`/`-t`, exit codes 0/1/2/3, `read/1` from a pipe, runaway recursion → catchable `resource_error` |
@@ -115,9 +115,10 @@ Prolog programs serve as an oracle, and the writer/reader pair can be fuzzed aga
 
 ## Limitations
 
-* No module system (`M:G` just calls `G`), no attributed variables / CLP(FD), no `assoc`-style
-  global GC of atoms, no cyclic-term support (writing one is cut off with `...`).
-* Indexing is first-argument only; no JIT multi-argument indexing.
+* No module system (`M:G` just calls `G`), no attributed variables / CLP(FD), no atom
+  garbage collection, no cyclic-term support (writing one is cut off with `...`).
+* Hash indexing is on the first argument only; the first four arguments are used to pre-select clauses
+  (so `append(X, Y, [1,2])` is deterministic on its last solution) but there is no multi-argument hashing.
 * The tracer prints ports but is not interactive (no `creep/skip/leap` prompt).
 * `"text"` is an immutable string object (like SWI-7); `set_prolog_flag(double_quotes, codes)` gives
   ISO code lists.

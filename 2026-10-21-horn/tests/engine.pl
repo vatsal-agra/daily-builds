@@ -41,6 +41,8 @@ cutdet2(_).
 :- t(det_append3, det(append([a], [b], _))).
 :- t(det_last, det(last([a,b,c], _))).
 :- t(det_sum, det(sum_list([1,2,3], _))).
+:- t(det_append_last_solution, det((append(X, _, [1,2]), X == [1,2]))).
+:- t(det_third_arg_index, det(app(_, _, []))).
 :- t(det_dcg, det(phrase(("ab", "c"), `abc`))).
 
 % Resource behaviour
