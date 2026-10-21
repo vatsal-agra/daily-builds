@@ -14,6 +14,9 @@ type Atom struct {
 	preds []*Pred // indexed by arity
 }
 
+// Str is an immutable string object (SWI-Prolog style "text" when double_quotes=string).
+type Str string
+
 type Int int64
 type Float float64
 type LVar int
@@ -137,7 +140,7 @@ func isCallable(t Term) bool {
 
 func isAtomic(t Term) bool {
 	switch t.(type) {
-	case *Atom, Int, *big.Int, Float:
+	case *Atom, Int, *big.Int, Float, Str:
 		return true
 	}
 	return false
@@ -161,8 +164,10 @@ func typeRank(t Term) int {
 		return 1
 	case *Atom:
 		return 3
+	case Str:
+		return 4
 	}
-	return 4
+	return 5
 }
 
 func cmpNum(a, b Term) int {
@@ -238,6 +243,8 @@ func compareTerms(a, b Term) int {
 			return 0
 		case *Atom:
 			return strings.Compare(x.Name, b.(*Atom).Name)
+		case Str:
+			return strings.Compare(string(x), string(b.(Str)))
 		case *Compound:
 			y := b.(*Compound)
 			if len(x.Args) != len(y.Args) {

@@ -58,6 +58,11 @@ func (m *Machine) eval(t Term) (Term, error) {
 		return t, nil
 	case *Var:
 		return nil, instErr()
+	case Str:
+		if rs := []rune(string(x)); len(rs) == 1 {
+			return Int(rs[0]), nil
+		}
+		return nil, typeErr("character", x)
 	case *Atom:
 		switch x.Name {
 		case "pi":

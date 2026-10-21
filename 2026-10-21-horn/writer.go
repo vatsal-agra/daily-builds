@@ -12,7 +12,7 @@ type writeOpts struct {
 	quoted     bool
 	ignoreOps  bool
 	numberVars bool
-	spacing    bool             // toplevel style: space after argument commas
+	spacing    bool            // toplevel style: space after argument commas
 	varNames   map[*Var]string // names to print for unbound variables
 }
 
@@ -200,6 +200,12 @@ func (w *writer) write(t Term, max int) {
 		w.emit(x.String())
 	case Float:
 		w.emit(formatFloat(float64(x)))
+	case Str:
+		if w.o.quoted {
+			w.emit(quoteString(string(x)))
+		} else if string(x) != "" {
+			w.emit(string(x))
+		}
 	case *Atom:
 		s := w.atomText(x)
 		if e := w.ops[x.Name]; e != nil && max < 1200 && (e.prefix != nil || e.infix != nil) {
@@ -234,6 +240,10 @@ func (w *writer) writeCompound(c *Compound, max int) {
 	if w.o.numberVars && c.Fn == atVarFn && n == 1 {
 		if i, ok := deref(c.Args[0]).(Int); ok && i >= 0 {
 			w.emit(varName(int64(i)))
+			return
+		}
+		if a, ok := deref(c.Args[0]).(*Atom); ok && a.Name == "_" {
+			w.emit("_")
 			return
 		}
 	}
@@ -394,10 +404,18 @@ func (m *Machine) portrayClause(t Term) string {
 	t = m.copyTerm(t, map[*Var]Term{})
 	var vs []*Var
 	termVars(t, map[*Var]bool{}, &vs)
-	for i, v := range vs {
-		v.ref = &Compound{Fn: atVarFn, Args: []Term{Int(i)}}
+	occ := map[*Var]int{}
+	countVarOcc(t, occ)
+	n := 0
+	for _, v := range vs {
+		if occ[v] == 1 {
+			v.ref = &Compound{Fn: atVarFn, Args: []Term{atUnderscore}}
+		} else {
+			v.ref = &Compound{Fn: atVarFn, Args: []Term{Int(n)}}
+			n++
+		}
 	}
-	o := writeOpts{quoted: true, numberVars: true}
+	o := writeOpts{quoted: true, numberVars: true, spacing: true}
 	pc := func(t Term, max int) string {
 		w := &writer{o: o, ops: m.ops}
 		w.write(t, max)
@@ -530,4 +548,49 @@ func (w *writer) comma() string {
 		return ", "
 	}
 	return ","
+}
+
+func quoteString(s string) string {
+	var sb strings.Builder
+	sb.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			sb.WriteString("\\\"")
+		case '\\':
+			sb.WriteString("\\\\")
+		case '\n':
+			sb.WriteString("\\n")
+		case '\t':
+			sb.WriteString("\\t")
+		default:
+			if r < 32 || r == 127 {
+				sb.WriteString("\\x" + strconv.FormatInt(int64(r), 16) + "\\")
+			} else {
+				sb.WriteRune(r)
+			}
+		}
+	}
+	sb.WriteByte('"')
+	return sb.String()
+}
+
+var atUnderscore = mkAtom("_")
+
+func countVarOcc(t Term, occ map[*Var]int) {
+	for {
+		t = deref(t)
+		switch x := t.(type) {
+		case *Var:
+			occ[x]++
+			return
+		case *Compound:
+			for _, a := range x.Args[:len(x.Args)-1] {
+				countVarOcc(a, occ)
+			}
+			t = x.Args[len(x.Args)-1]
+			continue
+		}
+		return
+	}
 }

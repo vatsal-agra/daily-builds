@@ -1,0 +1,11 @@
+reachable from a: [a,b,c,d,e]
+e reaches nothing
+16 path facts
+fib(200) = 280571172992510140037611932413038677189525
+100 is even
+shortest a->b = 7
+shortest a->c = 9
+shortest a->d = 20
+shortest a->e = 20
+shortest a->f = 11
+failed

@@ -39,11 +39,14 @@ nondeterminism all have to be exactly right, and thousands of existing Prolog pr
 | 2 | **Engine**: unify, backtracking, cut (incl. in `->`, `\+`, `call/N` opacity), if-then-else, soft-cut, `catch/throw` through nondeterminism, first-arg indexing, LCO, logical update view | **required** |
 | 3 | **Builtins**: bigint/float arithmetic, type checks, term inspection (`functor/arg/=../copy_term`), atoms & char/code conversion, `sub_atom`, standard order & sorting, `assert/retract`, `findall/bagof/setof` with `^`, `format/2,3`, `read_term`, streams | **required** |
 | 4 | **Consult + toplevel**: load files, directives, `initialization`, CLI (`-g`, `-t`), interactive REPL printing bindings & alternatives, SWI-style warnings/errors | **required** |
-| 5 | **DCG translation** (`-->`, pushback, `call//N`, `phrase/2,3`) | stretch |
-| 6 | **Library written in Prolog**: lists, apply, pairs, AVL `assoc`, `aggregate_all`, string/atom helpers | stretch |
-| 7 | **Four-port tracer** (`trace/0`, `notrace/0`, Call/Exit/Redo/Fail with depth) | stretch |
-| 8 | **Benchmarks** (nrev LIPS, queens, tak, zebra) | stretch |
-| 9 | `occurs_check` flag, global variables, `succ_or`-style misc | stretch |
+| 5 | **DCG translation** (`-->`, pushback, `call//N`, `phrase/2,3`) | stretch — shipped |
+| 6 | **Library written in Prolog**: lists, apply, pairs, AVL `assoc`, `aggregate_all`, string/atom helpers | stretch — shipped |
+| 7 | **Four-port tracer** (`trace/0`, `notrace/0`, Call/Exit/Redo/Fail with depth) | stretch — shipped |
+| 8 | **Benchmarks** (nrev LIPS, queens, tak, zebra) | stretch — shipped (`examples/bench.pl`) |
+| 9 | `occurs_check` flag, global variables, `succ_or`-style misc | stretch — shipped |
+| 10 | **Tabling** with fixpoint evaluation and answer-subsumption modes (added in phase 4) | stretch — shipped |
+| 11 | **SWI-style strings** (`string_concat`, `sub_string`, `split_string`…, `"text"` objects) (added in phase 4) | stretch — shipped |
+| 12 | **First-argument hash index + lazy clause enumeration** for large fact tables (added in phase 4) | stretch — shipped |
 
 ## Verification strategy
 Go unit tests for reader/writer/arith; a Prolog conformance suite (`tests/*.pl`, hundreds of

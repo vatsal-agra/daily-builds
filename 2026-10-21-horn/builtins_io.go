@@ -173,6 +173,8 @@ func sinkValue(kind, text string) Term {
 		return codesOf(text)
 	case "chars":
 		return charsOf(text)
+	case "string":
+		return Str(text)
 	}
 	return mkAtom(text)
 }

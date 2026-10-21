@@ -112,14 +112,17 @@ selectchk(X, L, R) :- select(X, L, R), !.
 select(X, Xs, Y, Ys) :- '$select4'(Xs, X, Y, Ys).
 '$select4'([X|T], X, Y, [Y|T]).
 '$select4'([H|T], X, Y, [H|T2]) :- '$select4'(T, X, Y, T2).
-exclude(_, [], []).
-exclude(P, [H|T], R) :- ( call(P, H) -> R = R1 ; R = [H|R1] ), exclude(P, T, R1).
-include(_, [], []).
-include(P, [H|T], R) :- ( call(P, H) -> R = [H|R1] ; R = R1 ), include(P, T, R1).
-partition(_, [], [], []).
-partition(P, [H|T], I, E) :-
+exclude(P, L, R) :- '$exclude'(L, P, R).
+'$exclude'([], _, []).
+'$exclude'([H|T], P, R) :- ( call(P, H) -> R = R1 ; R = [H|R1] ), '$exclude'(T, P, R1).
+include(P, L, R) :- '$include'(L, P, R).
+'$include'([], _, []).
+'$include'([H|T], P, R) :- ( call(P, H) -> R = [H|R1] ; R = R1 ), '$include'(T, P, R1).
+partition(P, L, I, E) :- '$partition'(L, P, I, E).
+'$partition'([], _, [], []).
+'$partition'([H|T], P, I, E) :-
     (   call(P, H) -> I = [H|I1], E = E1 ; I = I1, E = [H|E1] ),
-    partition(P, T, I1, E1).
+    '$partition'(T, P, I1, E1).
 partition(_, [], [], [], []).
 partition(P, [H|T], L, E, G) :-
     call(P, O, H),
@@ -187,16 +190,21 @@ concat_atom(L, S, R) :- atomic_list_concat(L, S, R).
 string_code(I, S, C) :- atom_codes(S, Cs), nth1(I, Cs, C).
 
 % ---- apply ----
-maplist(_, []).
-maplist(G, [A|As]) :- call(G, A), maplist(G, As).
-maplist(_, [], []).
-maplist(G, [A|As], [B|Bs]) :- call(G, A, B), maplist(G, As, Bs).
-maplist(_, [], [], []).
-maplist(G, [A|As], [B|Bs], [C|Cs]) :- call(G, A, B, C), maplist(G, As, Bs, Cs).
-maplist(_, [], [], [], []).
-maplist(G, [A|As], [B|Bs], [C|Cs], [D|Ds]) :- call(G, A, B, C, D), maplist(G, As, Bs, Cs, Ds).
-maplist(_, [], [], [], [], []).
-maplist(G, [A|As], [B|Bs], [C|Cs], [D|Ds], [E|Es]) :- call(G, A, B, C, D, E), maplist(G, As, Bs, Cs, Ds, Es).
+maplist(G, L) :- '$ml1'(L, G).
+'$ml1'([], _).
+'$ml1'([A|As], G) :- call(G, A), '$ml1'(As, G).
+maplist(G, L1, L2) :- '$ml2'(L1, L2, G).
+'$ml2'([], [], _).
+'$ml2'([A|As], [B|Bs], G) :- call(G, A, B), '$ml2'(As, Bs, G).
+maplist(G, L1, L2, L3) :- '$ml3'(L1, L2, L3, G).
+'$ml3'([], [], [], _).
+'$ml3'([A|As], [B|Bs], [C|Cs], G) :- call(G, A, B, C), '$ml3'(As, Bs, Cs, G).
+maplist(G, L1, L2, L3, L4) :- '$ml4'(L1, L2, L3, L4, G).
+'$ml4'([], [], [], [], _).
+'$ml4'([A|As], [B|Bs], [C|Cs], [D|Ds], G) :- call(G, A, B, C, D), '$ml4'(As, Bs, Cs, Ds, G).
+maplist(G, L1, L2, L3, L4, L5) :- '$ml5'(L1, L2, L3, L4, L5, G).
+'$ml5'([], [], [], [], [], _).
+'$ml5'([A|As], [B|Bs], [C|Cs], [D|Ds], [E|Es], G) :- call(G, A, B, C, D, E), '$ml5'(As, Bs, Cs, Ds, Es, G).
 foldl(G, L, A0, A) :- '$foldl1'(L, G, A0, A).
 '$foldl1'([], _, A, A).
 '$foldl1'([X|Xs], G, A0, A) :- call(G, X, A0, A1), '$foldl1'(Xs, G, A1, A).

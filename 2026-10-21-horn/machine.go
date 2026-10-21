@@ -9,6 +9,9 @@ import (
 type DetFn func(m *Machine, a []Term) (bool, error)
 type NondetFn func(m *Machine, a []Term) (pattern Term, sols []Term, err error)
 
+// GenFn is a lazy nondeterministic builtin: next yields successive solution terms to unify with pattern.
+type GenFn func(m *Machine, a []Term) (pattern Term, next func() (Term, bool), err error)
+
 type Clause struct {
 	head   Term
 	body   []Term // flattened top-level conjunction
@@ -31,6 +34,36 @@ type Pred struct {
 	ctl     int
 	library bool // defined by the bundled library
 	discont bool
+	tabled  *tabledInfo
+	gen     GenFn
+
+	nErased   int                  // erased clauses still present in clauses (compacted lazily)
+	nVarFirst int                  // clauses whose first argument is a variable
+	idx       map[argKey][]*Clause // first-argument hash index, built on demand
+}
+
+func (p *Pred) isBuiltin() bool { return p.det != nil || p.nondet != nil || p.gen != nil || p.ctl != 0 }
+
+func (p *Pred) liveCount() int { return len(p.clauses) - p.nErased }
+
+// candidates returns the clauses that can match a call whose first argument has the given key.
+func (p *Pred) candidates(key argKey) []*Clause {
+	if key.k == 0 || p.nVarFirst > 0 || len(p.clauses) < 8 {
+		return p.clauses
+	}
+	if p.idx == nil {
+		p.idx = make(map[argKey][]*Clause)
+		for _, c := range p.clauses {
+			if !c.erased {
+				p.idx[c.key] = append(p.idx[c.key], c)
+			}
+		}
+	}
+	return p.idx[key]
+}
+
+func (p *Pred) resetClauses() {
+	p.clauses, p.nErased, p.nVarFirst, p.idx = nil, 0, 0, nil
 }
 
 type argKey struct {
@@ -82,6 +115,9 @@ const (
 	cpCatch
 	cpBarrier
 	cpDead
+	cpTable
+	cpTraceFail
+	cpGen
 )
 
 type ChoicePoint struct {
@@ -99,6 +135,11 @@ type ChoicePoint struct {
 	// alts
 	pat  Term
 	sols []Term
+	// lazy generator
+	next    func() (Term, bool)
+	pending Term
+	// tabled consumer
+	tb *table
 	// goal alt
 	alt *Frame
 	// catch
@@ -141,6 +182,8 @@ type Machine struct {
 	opDirectives  bool
 	stopFrame     *Frame
 	definedInFile map[*Pred]bool
+	tbl           *tableState
+	lastPred      *Pred
 }
 
 var gm *Machine
@@ -148,7 +191,7 @@ var gm *Machine
 func newMachine() *Machine {
 	m := &Machine{
 		ops:           newOpTable(),
-		flags:         map[string]string{"double_quotes": "codes", "unknown": "error", "occurs_check": "false"},
+		flags:         map[string]string{"double_quotes": "string", "unknown": "error", "occurs_check": "false"},
 		globals:       map[string]Term{},
 		clauseByID:    map[int64]*Clause{},
 		streams:       map[int64]*Stream{},
@@ -252,6 +295,9 @@ func (m *Machine) unify(a, b Term) bool {
 			continue
 		case Int:
 			y, ok := b.(Int)
+			return ok && x == y
+		case Str:
+			y, ok := b.(Str)
 			return ok && x == y
 		case Float:
 			y, ok := b.(Float)
@@ -524,12 +570,15 @@ func (m *Machine) addClause(t Term, atEnd bool, fromLib bool) error {
 		name, arity = h.Fn, len(h.Args)
 	}
 	p := m.lookupPred(name, arity, true)
-	if p.det != nil || p.nondet != nil || p.ctl != 0 {
+	if p.tabled != nil {
+		p = p.tabled.impl
+	}
+	if p.isBuiltin() {
 		return permErr("modify", "static_procedure", pi(name, arity))
 	}
 	if p.library && !fromLib && !p.dynamic && m.loading {
 		// user redefines a library predicate: wipe the library definition
-		p.clauses = nil
+		p.resetClauses()
 		p.library = false
 	}
 	if fromLib {
@@ -538,12 +587,20 @@ func (m *Machine) addClause(t Term, atEnd bool, fromLib bool) error {
 	cl.pred = p
 	p.defined = true
 	m.clauseByID[cl.id] = cl
+	if cl.key.k == 0 {
+		p.nVarFirst++
+		p.idx = nil
+	}
 	if atEnd {
 		p.clauses = append(p.clauses, cl)
+		if p.idx != nil {
+			p.idx[cl.key] = append(p.idx[cl.key], cl)
+		}
 	} else {
 		nc := make([]*Clause, 0, len(p.clauses)+1)
 		nc = append(nc, cl)
 		p.clauses = append(nc, p.clauses...)
+		p.idx = nil
 	}
 	return nil
 }
@@ -554,21 +611,27 @@ func (m *Machine) eraseClause(cl *Clause) {
 	}
 	cl.erased = true
 	p := cl.pred
-	nc := make([]*Clause, 0, len(p.clauses))
-	for _, c := range p.clauses {
-		if c != cl {
-			nc = append(nc, c)
-		}
-	}
-	p.clauses = nc
 	delete(m.clauseByID, cl.id)
+	p.nErased++
+	if cl.key.k == 0 {
+		p.nVarFirst--
+	}
+	// compact lazily; running iterations keep their own snapshot of the old slice
+	if p.nErased > 16 && p.nErased > len(p.clauses)/2 {
+		nc := make([]*Clause, 0, len(p.clauses)-p.nErased)
+		for _, c := range p.clauses {
+			if !c.erased {
+				nc = append(nc, c)
+			}
+		}
+		p.clauses, p.nErased, p.idx = nc, 0, nil
+	}
 }
 
 // wrapVarGoals turns variable goals in control positions into call(Var), so that a cut
 // inside a goal bound at run time stays local to it (ISO 7.6.2).
 func wrapVarGoals(t Term) Term {
-	t = deref(t)
-	return wrapVarGoalsIn(t, true)
+	return wrapVarGoalsIn(deref(t), true)
 }
 
 func wrapVarGoalsIn(t Term, top bool) Term {

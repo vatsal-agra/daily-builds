@@ -36,7 +36,7 @@ func (m *Machine) assertClause(t Term, atEnd bool) error {
 	if err != nil {
 		return err
 	}
-	if p.det != nil || p.nondet != nil || p.ctl != 0 {
+	if p.isBuiltin() {
 		return permErr("modify", "static_procedure", pi(p.name, p.arity))
 	}
 	if !p.defined {
@@ -80,16 +80,18 @@ func (m *Machine) forEachPI(t Term, f func(name *Atom, arity int) error) error {
 	return typeErr("predicate_indicator", t)
 }
 
-func (m *Machine) clauseSolutions(a []Term, withRef bool) (Term, []Term, error) {
+// clauseGen lazily yields renamed (Head, Body[, Ref]) tuples for clause/2 and retract/1.
+func (m *Machine) clauseGen(a []Term, withRef bool) (Term, func() (Term, bool), error) {
 	h := deref(a[0])
 	p, err := m.predOfHead(h, false)
 	if err != nil {
 		return nil, nil, err
 	}
+	none := func() (Term, bool) { return nil, false }
 	if p == nil {
-		return nil, nil, nil
+		return mk("c", h), none, nil
 	}
-	if p.det != nil || p.nondet != nil || p.ctl != 0 {
+	if p.isBuiltin() {
 		return nil, nil, permErr("access", "private_procedure", pi(p.name, p.arity))
 	}
 	for {
@@ -103,32 +105,37 @@ func (m *Machine) clauseSolutions(a []Term, withRef bool) (Term, []Term, error) 
 	if hc, ok := h.(*Compound); ok {
 		key = keyOf(deref(hc.Args[0]))
 	}
-	var sols []Term
-	for _, cl := range p.clauses {
-		if cl.erased || !key.matches(cl.key) {
-			continue
+	clauses := p.candidates(key)
+	i := 0
+	next := func() (Term, bool) {
+		for i < len(clauses) {
+			cl := clauses[i]
+			i++
+			if cl.erased || !key.matches(cl.key) {
+				continue
+			}
+			vars := make([]Term, cl.nvars)
+			src := cl.src.(*Compound)
+			hd := m.rename(src.Args[0], vars)
+			bd := m.rename(src.Args[1], vars)
+			if withRef {
+				return mk("c", hd, bd, Int(cl.id)), true
+			}
+			return mk("c", hd, bd), true
 		}
-		vars := make([]Term, cl.nvars)
-		src := cl.src.(*Compound)
-		hd := m.rename(src.Args[0], vars)
-		bd := m.rename(src.Args[1], vars)
-		if withRef {
-			sols = append(sols, mk("c", hd, bd, Int(cl.id)))
-		} else {
-			sols = append(sols, mk("c", hd, bd))
-		}
+		return nil, false
 	}
 	if withRef {
-		return mk("c", h, a[1], a[2]), sols, nil
+		return mk("c", h, a[1], a[2]), next, nil
 	}
-	return mk("c", h, a[1]), sols, nil
+	return mk("c", h, a[1]), next, nil
 }
 
 func (m *Machine) installDBBuiltins() {
 	m.det("assert", 1, func(m *Machine, a []Term) (bool, error) { return true, m.assertClause(a[0], true) })
 	m.det("assertz", 1, func(m *Machine, a []Term) (bool, error) { return true, m.assertClause(a[0], true) })
 	m.det("asserta", 1, func(m *Machine, a []Term) (bool, error) { return true, m.assertClause(a[0], false) })
-	m.nondet("clause", 2, func(m *Machine, a []Term) (Term, []Term, error) {
+	m.gen("clause", 2, func(m *Machine, a []Term) (Term, func() (Term, bool), error) {
 		if _, isv := deref(a[0]).(*Var); isv {
 			return nil, nil, instErr()
 		}
@@ -136,10 +143,10 @@ func (m *Machine) installDBBuiltins() {
 		if _, isv := b.(*Var); !isv && !isCallable(b) {
 			return nil, nil, typeErr("callable", b)
 		}
-		return m.clauseSolutions(a, false)
+		return m.clauseGen(a, false)
 	})
-	m.nondet("$clause_ref", 3, func(m *Machine, a []Term) (Term, []Term, error) {
-		return m.clauseSolutions(a, true)
+	m.gen("$clause_ref", 3, func(m *Machine, a []Term) (Term, func() (Term, bool), error) {
+		return m.clauseGen(a, true)
 	})
 	m.det("$erase", 1, func(m *Machine, a []Term) (bool, error) {
 		id, _ := deref(a[0]).(Int)
@@ -161,7 +168,7 @@ func (m *Machine) installDBBuiltins() {
 		if err != nil {
 			return false, err
 		}
-		if p.det != nil || p.nondet != nil || p.ctl != 0 {
+		if p.isBuiltin() {
 			return false, permErr("modify", "static_procedure", pi(p.name, p.arity))
 		}
 		if !p.defined {
@@ -176,7 +183,10 @@ func (m *Machine) installDBBuiltins() {
 			}
 			break
 		}
-		for _, cl := range append([]*Clause(nil), p.clauses...) {
+		for _, cl := range append([]*Clause(nil), p.candidates(retractKey(h))...) {
+			if cl.erased {
+				continue
+			}
 			vars := make([]Term, cl.nvars)
 			hd := m.rename(cl.src.(*Compound).Args[0], vars)
 			if m.tryUnify(h, hd) {
@@ -191,14 +201,14 @@ func (m *Machine) installDBBuiltins() {
 			if p == nil {
 				return nil
 			}
-			if p.det != nil || p.nondet != nil || p.ctl != 0 {
+			if p.isBuiltin() {
 				return permErr("modify", "static_procedure", pi(n, ar))
 			}
 			for _, c := range p.clauses {
 				c.erased = true
 				delete(m.clauseByID, c.id)
 			}
-			p.clauses = nil
+			p.resetClauses()
 			return nil
 		})
 	})
@@ -206,7 +216,7 @@ func (m *Machine) installDBBuiltins() {
 		m.det(name, 1, func(m *Machine, a []Term) (bool, error) {
 			return true, m.forEachPI(a[0], func(n *Atom, ar int) error {
 				p := m.lookupPred(n, ar, true)
-				if p.det != nil || p.nondet != nil || p.ctl != 0 {
+				if p.isBuiltin() {
 					return permErr("modify", "static_procedure", pi(n, ar))
 				}
 				f(p)
@@ -216,7 +226,8 @@ func (m *Machine) installDBBuiltins() {
 	}
 	decl("dynamic", func(p *Pred) {
 		if p.library && m.loading {
-			p.clauses, p.library = nil, false
+			p.resetClauses()
+			p.library = false
 		}
 		p.dynamic = true
 		p.defined = true
@@ -225,7 +236,6 @@ func (m *Machine) installDBBuiltins() {
 	decl("multifile", func(p *Pred) {})
 	decl("module_transparent", func(p *Pred) {})
 	decl("public", func(p *Pred) {})
-	decl("table", func(p *Pred) {})
 	decl("thread_local", func(p *Pred) { p.dynamic = true; p.defined = true })
 	m.det("meta_predicate", 1, func(m *Machine, a []Term) (bool, error) { return true, nil })
 	m.det("garbage_collect", 0, func(m *Machine, a []Term) (bool, error) { return true, nil })
@@ -245,7 +255,7 @@ func (m *Machine) installDBBuiltins() {
 		var sols []Term
 		visit := func(at *Atom) {
 			for _, p := range at.preds {
-				if p != nil && p.det == nil && p.nondet == nil && p.ctl == 0 && !p.library && (len(p.clauses) > 0 || p.dynamic) {
+				if p != nil && !p.isBuiltin() && !p.library && (p.liveCount() > 0 || p.dynamic) {
 					sols = append(sols, pi(p.name, p.arity))
 				}
 			}
@@ -273,7 +283,7 @@ func (m *Machine) installDBBuiltins() {
 		}
 		var sols []Term
 		sols = append(sols, mkAtom("defined"), mkAtom("visible"))
-		if p.det != nil || p.nondet != nil || p.ctl != 0 {
+		if p.isBuiltin() {
 			sols = append(sols, mkAtom("built_in"), mkAtom("static"))
 		} else {
 			if p.dynamic {
@@ -333,7 +343,7 @@ func (m *Machine) listing(spec Term) error {
 		return instErr()
 	}
 	for ar, p := range name.preds {
-		if p == nil || (arity >= 0 && ar != arity) || p.det != nil || p.nondet != nil || p.ctl != 0 {
+		if p == nil || (arity >= 0 && ar != arity) || p.isBuiltin() {
 			continue
 		}
 		if !p.defined && !p.dynamic {
@@ -344,6 +354,9 @@ func (m *Machine) listing(spec Term) error {
 			sb.WriteString(":- dynamic " + formatTermOpts(pi(p.name, p.arity), writeOpts{quoted: true}) + ".\n\n")
 		}
 		for _, c := range p.clauses {
+			if c.erased {
+				continue
+			}
 			vars := make([]Term, c.nvars)
 			src := c.src.(*Compound)
 			t := &Compound{Fn: atNeck, Args: []Term{m.rename(src.Args[0], vars), m.rename(src.Args[1], vars)}}
@@ -353,4 +366,11 @@ func (m *Machine) listing(spec Term) error {
 		m.write(sb.String())
 	}
 	return nil
+}
+
+func retractKey(h Term) argKey {
+	if hc, ok := deref(h).(*Compound); ok {
+		return keyOf(deref(hc.Args[0]))
+	}
+	return argKey{}
 }

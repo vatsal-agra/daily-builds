@@ -2,7 +2,6 @@ package main
 
 import (
 	"runtime"
-	"strings"
 )
 
 const (
@@ -150,6 +149,10 @@ func (m *Machine) backtrack(base int) bool {
 			return true
 		case cpCatch, cpDead:
 			m.setCPs(n - 1)
+		case cpTraceFail:
+			p, args, dep := cp.pred, cp.args, cp.dep
+			m.setCPs(n - 1)
+			m.tracePort("Fail", p, args, dep)
 		case cpAlts:
 			pat, sol := cp.pat, cp.sols[cp.idx]
 			cont := cp.cont
@@ -158,6 +161,36 @@ func (m *Machine) backtrack(base int) bool {
 				m.setCPs(n - 1)
 			}
 			if m.unify(pat, sol) {
+				m.cont = cont
+				return true
+			}
+		case cpGen:
+			pat, sol, cont := cp.pat, cp.pending, cp.cont
+			if nxt, ok := cp.next(); ok {
+				cp.pending = nxt
+			} else {
+				m.setCPs(n - 1)
+			}
+			if m.unify(pat, sol) {
+				m.cont = cont
+				return true
+			}
+		case cpTable:
+			tb, pat, cont := cp.tb, cp.pat, cp.cont
+			if cp.idx >= len(tb.answers) {
+				m.setCPs(n - 1)
+				continue
+			}
+			i := cp.idx
+			cp.idx++
+			if tb.complete && cp.idx >= len(tb.answers) {
+				m.setCPs(n - 1)
+			}
+			ans := tb.answers[i]
+			if !tb.ground[i] {
+				ans = m.copyTerm(ans, map[*Var]Term{})
+			}
+			if m.unify(pat, ans) {
 				m.cont = cont
 				return true
 			}
@@ -175,9 +208,6 @@ func (m *Machine) backtrack(base int) bool {
 			}
 			if m.tryClause(c, args, cont, n-1, dep) {
 				return true
-			}
-			if m.tracing && j < 0 {
-				m.tracePort("Fail", p, args, dep)
 			}
 		}
 	}
@@ -246,6 +276,9 @@ func (m *Machine) exec(fr *Frame) (bool, error) {
 		}
 		return true, nil
 	case opTraceExit:
+		if len(m.cps)-1 == fr.n && m.cps[fr.n].kind == cpTraceFail {
+			m.setCPs(fr.n) // deterministic exit: nothing left to redo or fail
+		}
 		m.tracePort("Exit", nil, []Term{fr.goal}, fr.dep)
 		return true, nil
 	}
@@ -272,7 +305,7 @@ func (m *Machine) exec(fr *Frame) (bool, error) {
 	if len(args) < len(name.preds) {
 		p = name.preds[len(args)]
 	}
-	if p == nil || (!p.defined && !p.dynamic && p.det == nil && p.nondet == nil && p.ctl == 0) {
+	if p == nil || (!p.defined && !p.dynamic && p.det == nil && p.nondet == nil && p.gen == nil && p.ctl == 0) {
 		if m.flags["unknown"] == "fail" {
 			return false, nil
 		}
@@ -280,10 +313,36 @@ func (m *Machine) exec(fr *Frame) (bool, error) {
 			mk("existence_error", mkAtom("procedure"), pi(name, len(args))), pi(name, len(args))}}}
 	}
 	switch {
+	case p.tabled != nil:
+		tb, err := m.tabledCall(p, goal)
+		if err != nil {
+			return false, err
+		}
+		if tb.complete && len(tb.answers) == 0 {
+			return false, nil
+		}
+		// the consumer cursor keeps reading answers appended while it is active
+		m.pushCP(ChoicePoint{kind: cpTable, cont: m.cont, pat: goal, tb: tb})
+		return false, nil
 	case p.ctl != 0:
 		return m.control(p.ctl, args, fr)
 	case p.det != nil:
+		if m.tracing {
+			return m.traceBuiltin(p, args, fr.dep+1, func() (bool, error) { return p.det(m, args) })
+		}
 		return p.det(m, args)
+	case p.gen != nil:
+		pat, next, err := p.gen(m, args)
+		if err != nil {
+			return false, err
+		}
+		first, ok := next()
+		if !ok {
+			return false, nil
+		}
+		// the generator cursor lives in a choicepoint; backtracking drives it (one solution lookahead)
+		m.pushCP(ChoicePoint{kind: cpGen, cont: m.cont, pat: pat, next: next, pending: first})
+		return false, nil
 	case p.nondet != nil:
 		pat, sols, err := p.nondet(m, args)
 		if err != nil || len(sols) == 0 {
@@ -301,11 +360,11 @@ func (m *Machine) exec(fr *Frame) (bool, error) {
 }
 
 func (m *Machine) callPred(p *Pred, args []Term, fr *Frame) (bool, error) {
-	clauses := p.clauses
 	var key argKey
 	if len(args) > 0 {
 		key = keyOf(deref(args[0]))
 	}
+	clauses := p.candidates(key)
 	i := nextMatch(clauses, 0, key)
 	if i < 0 {
 		return false, nil
@@ -446,25 +505,35 @@ func (m *Machine) tracePort(port string, p *Pred, args []Term, dep int) {
 	}
 	m.flushOut()
 	s := formatTermOpts(goal, writeOpts{quoted: true, numberVars: true})
-	m.errOut.WriteString("   " + port + ": " + strings.Repeat(" ", min(dep, 20)) + "(" + itoa(dep) + ") " + s + "\n")
+	m.errOut.WriteString("   " + port + ": (" + itoa(dep) + ") " + s + "\n")
 	m.errOut.Flush()
 }
 
+// callTraced runs a user predicate with Call/Exit/Redo/Fail ports. A marker choicepoint below the
+// predicate's own alternatives prints Fail when the predicate is finally exhausted.
 func (m *Machine) callTraced(p *Pred, args []Term, fr *Frame) (bool, error) {
 	var goal Term = p.name
 	if len(args) > 0 {
 		goal = &Compound{Fn: p.name, Args: args}
 	}
-	m.tracePort("Call", p, args, fr.dep+1)
-	before := len(m.cps)
-	_ = before
-	m.cont = &Frame{op: opTraceExit, goal: goal, dep: fr.dep + 1, next: m.cont}
-	ok, err := m.callPred(p, args, fr)
-	if err == nil && !ok {
-		// callPred failed to find a clause; unwind the exit marker
-		m.tracePort("Fail", p, args, fr.dep+1)
-	} else if err == nil && ok {
-		// body frames were pushed in front of the exit marker by tryClause (it used m.cont as next)
+	dep := fr.dep + 1
+	m.tracePort("Call", p, args, dep)
+	marker := len(m.cps)
+	m.pushCP(ChoicePoint{kind: cpTraceFail, pred: p, args: args, dep: dep})
+	m.cont = &Frame{op: opTraceExit, goal: goal, dep: dep, n: marker, next: m.cont}
+	return m.callPred(p, args, fr)
+}
+
+// traceBuiltin wraps a builtin call with Call and Exit/Fail ports.
+func (m *Machine) traceBuiltin(p *Pred, args []Term, dep int, run func() (bool, error)) (bool, error) {
+	m.tracePort("Call", p, args, dep)
+	ok, err := run()
+	if err == nil {
+		if ok {
+			m.tracePort("Exit", p, args, dep)
+		} else {
+			m.tracePort("Fail", p, args, dep)
+		}
 	}
 	return ok, err
 }

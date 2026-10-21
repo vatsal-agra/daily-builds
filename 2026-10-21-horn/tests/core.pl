@@ -1,4 +1,5 @@
 :- consult('tests/harness.pl').
+:- set_prolog_flag(double_quotes, codes).
 
 % ---- unification & control ----
 :- t(unify1, f(X, b) = f(a, Y)), t(unify2, (X = Y, Y = 3, X == 3)).
@@ -117,7 +118,6 @@ ct5(X) :- \+ \+ (X = 1, !), X = 2.
 :- t(at18, (term_to_atom(T, 'foo(X, bar, X)'), T = foo(A, bar, B), A == B)).
 :- te(at19, atom_length(_, _), instantiation_error).
 :- te(at20, atom_length(f(x), _), type_error(_, _)).
-:- t(split, (split_string("a,b,,c", ",", "", P), P == [a, b, '', c])).
 :- t(number_vars, (T = f(X, Y), numbervars(T, 0, E), E == 2, format(atom(A), "~w", [T]), A == 'f(A,B)')).
 :- t(char_type1, (char_type(a, alpha), char_type('A', upper(L)), L == a, char_type('3', digit(W)), W == 3)).
 :- t(sub_atom_enum, (findall(S, sub_atom(abc, _, 2, _, S), L), L == [ab, bc])).

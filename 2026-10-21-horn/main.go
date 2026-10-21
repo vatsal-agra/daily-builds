@@ -18,14 +18,32 @@ func (m *Machine) loadLibrary() {
 		fmt.Fprintln(os.Stderr, "library load error:", err)
 		os.Exit(2)
 	}
+	m.flags["double_quotes"] = "string"
 	for _, at := range atomTable {
 		for _, p := range at.preds {
-			if p != nil && len(p.clauses) > 0 && p.det == nil {
+			if p != nil && len(p.clauses) > 0 && !p.isBuiltin() {
 				p.library = true
 			}
 		}
 	}
 }
+
+const usage = `Horn Prolog 1.0 — a from-scratch Prolog in Go
+
+usage: horn [options] [file.pl ...]
+
+  -g GOAL     run GOAL after loading the files (repeatable); a failing/raising goal exits 1/2
+  -t GOAL     run GOAL instead of entering the interactive toplevel (e.g. -t halt)
+  --all       toplevel: print every solution instead of the first one when stdin is not a tty
+  -q          quiet: no banner
+  --version   print the version
+  -h, --help  this text
+
+With no -t goal Horn reads queries from standard input (prompting with "?- " on a terminal):
+    ?- member(X, [a,b,c]).        % ';' asks for more answers on a terminal
+
+Environment: HORN_PROF=file writes a CPU profile.
+`
 
 func isTTY(f *os.File) bool {
 	st, err := f.Stat()
@@ -72,6 +90,9 @@ func realMain(args []string) (code int) {
 			all = true
 		case "-q", "--quiet":
 			quiet = true
+		case "-h", "--help":
+			fmt.Print(usage)
+			return 0
 		case "--version":
 			fmt.Println("Horn Prolog 1.0")
 			return 0

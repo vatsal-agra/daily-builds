@@ -127,11 +127,7 @@ func (m *Machine) installSystemBuiltins() {
 		case "double_quotes":
 			switch v.Name {
 			case "codes", "chars", "atom", "string":
-				if v.Name == "string" {
-					m.flags[f.Name] = "atom"
-				} else {
-					m.flags[f.Name] = v.Name
-				}
+				m.flags[f.Name] = v.Name
 			default:
 				return false, domErr("flag_value", v)
 			}
@@ -328,6 +324,8 @@ func (m *Machine) installSystemBuiltins() {
 	})
 	m.det("print_message_lines", 3, func(m *Machine, a []Term) (bool, error) { return true, nil })
 	m.det("message_to_codes", 3, func(m *Machine, a []Term) (bool, error) { return true, nil })
+	m.det("$cp_count", 1, func(m *Machine, a []Term) (bool, error) { return m.unify(a[0], Int(len(m.cps))), nil })
+	m.det("$trail_size", 1, func(m *Machine, a []Term) (bool, error) { return m.unify(a[0], Int(len(m.trail))), nil })
 	m.det("$inferences", 1, func(m *Machine, a []Term) (bool, error) { return m.unify(a[0], Int(m.infer)), nil })
 	m.det("tabling_noop", 0, func(m *Machine, a []Term) (bool, error) { return true, nil })
 	m.det("$bench_gc", 0, func(m *Machine, a []Term) (bool, error) { runtime.GC(); return true, nil })
@@ -413,7 +411,7 @@ func messageText(ball Term) string {
 			if len(f.Args) == 2 {
 				k := formatTerm(f.Args[0], false)
 				if k == "procedure" {
-					return ctx + "Unknown procedure: " + q(f.Args[1])
+					return ctx + "Unknown procedure: " + q(f.Args[1]) + otherArities(f.Args[1])
 				}
 				if k == "source_sink" || k == "file" {
 					return ctx + k + " `" + formatTerm(f.Args[1], false) + "' does not exist"
@@ -439,10 +437,36 @@ func messageText(ball Term) string {
 		case "syntax_error":
 			return ctx + "Syntax error: " + formatTerm(f.Args[0], false)
 		case "resource_error":
+			if a, ok := deref(f.Args[0]).(*Atom); ok && a.Name == "stack" {
+				return ctx + "Stack limit (1.0Gb) exceeded"
+			}
 			return ctx + "Not enough resources: " + q(f.Args[0])
 		case "format":
 			return ctx + "Format error: " + formatTerm(f.Args[0], false)
 		}
 	}
 	return ctx + "Unknown error term: " + q(formal)
+}
+
+// otherArities lists other defined arities of the same name, as SWI-Prolog does for unknown procedures.
+func otherArities(piTerm Term) string {
+	c, ok := deref(piTerm).(*Compound)
+	if !ok || c.Fn != atSlash || len(c.Args) != 2 {
+		return ""
+	}
+	name, ok := deref(c.Args[0]).(*Atom)
+	arity, ok2 := deref(c.Args[1]).(Int)
+	if !ok || !ok2 {
+		return ""
+	}
+	var alts []string
+	for ar, p := range name.preds {
+		if p != nil && ar != int(arity) && (p.isBuiltin() || p.liveCount() > 0 || p.dynamic) {
+			alts = append(alts, formatTermOpts(pi(name, ar), writeOpts{quoted: true}))
+		}
+	}
+	if len(alts) == 0 {
+		return ""
+	}
+	return "\nHowever, there are definitions for: " + strings.Join(alts, ", ")
 }

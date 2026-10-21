@@ -1,0 +1,42 @@
+X = 1.
+
+X = a .
+
+false.
+
+X = f(2),
+Y = 2.
+
+A = B.
+
+X = f(A, B, A),
+L = [_, _].
+
+ERROR: Unknown procedure: foo/1
+
+ERROR: Arithmetic: evaluation error: zero_divisor
+
+X = "hi",
+N = 2.
+
+hello
+true.
+
+X = foo(bar).
+
+X = 2 .
+
+X = [1, 2, 3],
+S = 6.
+
+ERROR: Arguments are not sufficiently instantiated
+
+E = existence_error(procedure, undefined_thing/0).
+
+true.
+
+L = [a-2, b-1].
+
+X = 'hello world',
+Y = [a|T].
+

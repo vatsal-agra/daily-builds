@@ -55,12 +55,15 @@ func (m *Machine) consultFile(path string) error {
 func (m *Machine) consultReader(r io.Reader, name string, fromLib bool) error {
 	oldFile, oldLoading, oldInits := m.loadFile, m.loading, m.inits
 	oldDQ := m.flags["double_quotes"]
+	oldDefined, oldLast := m.definedInFile, m.lastPred
+	m.definedInFile, m.lastPred = map[*Pred]bool{}, nil
 	m.loadFile, m.loading, m.inits = name, true, nil
 	if fromLib {
 		m.loadFile = ""
 	}
 	defer func() {
 		m.loadFile, m.loading = oldFile, oldLoading
+		m.definedInFile, m.lastPred = oldDefined, oldLast
 		if fromLib || true {
 			m.flags["double_quotes"] = oldDQ
 		}
@@ -97,7 +100,7 @@ func (m *Machine) consultReader(r io.Reader, name string, fromLib bool) error {
 
 func (m *Machine) handleLoadedTerm(t Term, rd *Reader, fromLib bool) error {
 	loc := m.locString(rd)
-	if p := m.lookupPred(mkAtom("term_expansion"), 2, false); p != nil && len(p.clauses) > 0 && !fromLib {
+	if p := m.lookupPred(mkAtom("term_expansion"), 2, false); p != nil && p.liveCount() > 0 && !fromLib {
 		x := m.newVar()
 		ok, err := m.solveOnce(mk("term_expansion", t, x))
 		if err == nil && ok {
@@ -137,6 +140,19 @@ func (m *Machine) handleOne(t Term, rd *Reader, fromLib bool, loc string, expand
 			m.printMessage("Warning", "Singleton variables: ["+strings.Join(sg, ",")+"]", loc)
 		}
 	}
+	if !fromLib {
+		h, _ := splitClause(t)
+		if p, err := m.predOfHead(h, true); err == nil && p != nil {
+			if m.lastPred != p {
+				if m.definedInFile[p] && !p.discont && !p.dynamic && !m.warnedDiscont[p] {
+					m.warnedDiscont[p] = true
+					m.printMessage("Warning", "Clauses of "+formatTerm(pi(p.name, p.arity), true)+" are not together in the source-file\nUse :- discontiguous "+formatTerm(pi(p.name, p.arity), true)+". to suppress this message", loc)
+				}
+				m.lastPred = p
+			}
+			m.definedInFile[p] = true
+		}
+	}
 	if err := m.addClause(t, true, fromLib); err != nil {
 		if pe, ok := err.(*PrologError); ok {
 			m.printMessage("ERROR", messageText(pe.Ball), loc)
@@ -167,7 +183,7 @@ func (m *Machine) runDirective(goal Term, loc string) error {
 func (m *Machine) openCPs(base int) bool {
 	for i := base + 1; i < len(m.cps); i++ {
 		switch m.cps[i].kind {
-		case cpClauses, cpAlts, cpGoal:
+		case cpClauses, cpAlts, cpGoal, cpTable, cpGen:
 			return true
 		}
 	}

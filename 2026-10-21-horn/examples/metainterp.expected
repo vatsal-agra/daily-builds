@@ -1,0 +1,3 @@
+nrev([1,2,3]) = [3,2,1], proof size 10
+descendants of tom: [bob,ann,joe]
+tom is an ancestor of joe

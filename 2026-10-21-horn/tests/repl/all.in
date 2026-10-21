@@ -1,0 +1,3 @@
+member(X,[a,b,c]).
+fail.
+between(1,3,X).

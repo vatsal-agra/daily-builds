@@ -21,6 +21,11 @@ func (m *Machine) nondet(name string, arity int, f NondetFn) {
 	p.nondet = f
 	p.defined = true
 }
+func (m *Machine) gen(name string, arity int, f GenFn) {
+	p := m.lookupPred(mkAtom(name), arity, true)
+	p.gen = f
+	p.defined = true
+}
 func (m *Machine) ctl(name string, arity int, id int) {
 	p := m.lookupPred(mkAtom(name), arity, true)
 	p.ctl = id
@@ -47,6 +52,8 @@ func textOf(t Term) (string, error) {
 		return "", instErr()
 	case *Atom:
 		return x.Name, nil
+	case Str:
+		return string(x), nil
 	case Int, Float, *big.Int:
 		return formatTerm(x, false), nil
 	case *Compound:
@@ -219,6 +226,7 @@ func (m *Machine) installBuiltins() {
 	m.installSolutionBuiltins()
 	m.installIOBuiltins()
 	m.installSystemBuiltins()
+	m.installTablingBuiltins()
 }
 
 func (m *Machine) installTypeChecks() {
@@ -236,7 +244,7 @@ func (m *Machine) installTypeChecks() {
 	tc("callable", isCallable)
 	tc("is_list", func(t Term) bool { _, tail := listToSlice(t); return tail == Term(atNil) })
 	tc("ground", isGround)
-	tc("string", func(t Term) bool { return false })
+	tc("string", func(t Term) bool { _, ok := t.(Str); return ok })
 	tc("is_dict", func(t Term) bool { return false })
 	tc("is_stream", func(t Term) bool { _, err := gm.getStream(t); return err == nil })
 	tc("is_assoc", func(t Term) bool {
@@ -760,72 +768,74 @@ func (m *Machine) installAtomBuiltins() {
 		}
 		return mk("-", x, y), sols, nil
 	})
-	subAtom := func(m *Machine, a []Term) (Term, []Term, error) {
-		s, err := textOf(a[0])
-		if err != nil {
-			return nil, nil, err
-		}
-		rs := []rune(s)
-		n := len(rs)
-		sub := deref(a[4])
-		pat := mk("s", a[1], a[2], a[3], a[4])
-		mkSol := func(b, l int) Term {
-			return mk("s", Int(b), Int(l), Int(n-b-l), mkAtom(string(rs[b:b+l])))
-		}
-		var sols []Term
-		if _, isv := sub.(*Var); !isv {
-			ss, err := textOf(sub)
+	subAtomG := func(mkText func(string) Term) NondetFn {
+		return func(m *Machine, a []Term) (Term, []Term, error) {
+			s, err := textOf(a[0])
 			if err != nil {
 				return nil, nil, err
 			}
-			sr := []rune(ss)
-			for b := 0; b+len(sr) <= n; b++ {
-				if string(rs[b:b+len(sr)]) == ss {
-					sols = append(sols, mkSol(b, len(sr)))
+			rs := []rune(s)
+			n := len(rs)
+			sub := deref(a[4])
+			pat := mk("s", a[1], a[2], a[3], a[4])
+			mkSol := func(b, l int) Term {
+				return mk("s", Int(b), Int(l), Int(n-b-l), mkText(string(rs[b:b+l])))
+			}
+			var sols []Term
+			if _, isv := sub.(*Var); !isv {
+				ss, err := textOf(sub)
+				if err != nil {
+					return nil, nil, err
+				}
+				sr := []rune(ss)
+				for b := 0; b+len(sr) <= n; b++ {
+					if string(rs[b:b+len(sr)]) == ss {
+						sols = append(sols, mkSol(b, len(sr)))
+					}
+				}
+				return pat, sols, nil
+			}
+			B, L, A := deref(a[1]), deref(a[2]), deref(a[3])
+			bi, bok := B.(Int)
+			li, lok := L.(Int)
+			ai, aok := A.(Int)
+			switch {
+			case bok && lok:
+				if bi >= 0 && li >= 0 && int(bi+li) <= n {
+					sols = append(sols, mkSol(int(bi), int(li)))
+				}
+			case bok && aok:
+				if l := n - int(bi) - int(ai); bi >= 0 && ai >= 0 && l >= 0 {
+					sols = append(sols, mkSol(int(bi), l))
+				}
+			case lok && aok:
+				if b := n - int(li) - int(ai); li >= 0 && ai >= 0 && b >= 0 {
+					sols = append(sols, mkSol(b, int(li)))
+				}
+			case bok:
+				for l := 0; int(bi) >= 0 && int(bi)+l <= n; l++ {
+					sols = append(sols, mkSol(int(bi), l))
+				}
+			case lok:
+				for b := 0; int(li) >= 0 && b+int(li) <= n; b++ {
+					sols = append(sols, mkSol(b, int(li)))
+				}
+			case aok:
+				for b := 0; n-int(ai)-b >= 0 && int(ai) >= 0; b++ {
+					sols = append(sols, mkSol(b, n-int(ai)-b))
+				}
+			default:
+				for b := 0; b <= n; b++ {
+					for l := 0; b+l <= n; l++ {
+						sols = append(sols, mkSol(b, l))
+					}
 				}
 			}
 			return pat, sols, nil
 		}
-		B, L, A := deref(a[1]), deref(a[2]), deref(a[3])
-		bi, bok := B.(Int)
-		li, lok := L.(Int)
-		ai, aok := A.(Int)
-		switch {
-		case bok && lok:
-			if bi >= 0 && li >= 0 && int(bi+li) <= n {
-				sols = append(sols, mkSol(int(bi), int(li)))
-			}
-		case bok && aok:
-			if l := n - int(bi) - int(ai); bi >= 0 && ai >= 0 && l >= 0 {
-				sols = append(sols, mkSol(int(bi), l))
-			}
-		case lok && aok:
-			if b := n - int(li) - int(ai); li >= 0 && ai >= 0 && b >= 0 {
-				sols = append(sols, mkSol(b, int(li)))
-			}
-		case bok:
-			for l := 0; int(bi) >= 0 && int(bi)+l <= n; l++ {
-				sols = append(sols, mkSol(int(bi), l))
-			}
-		case lok:
-			for b := 0; int(li) >= 0 && b+int(li) <= n; b++ {
-				sols = append(sols, mkSol(b, int(li)))
-			}
-		case aok:
-			for b := 0; n-int(ai)-b >= 0 && int(ai) >= 0; b++ {
-				sols = append(sols, mkSol(b, n-int(ai)-b))
-			}
-		default:
-			for b := 0; b <= n; b++ {
-				for l := 0; b+l <= n; l++ {
-					sols = append(sols, mkSol(b, l))
-				}
-			}
-		}
-		return pat, sols, nil
 	}
-	m.nondet("sub_atom", 5, subAtom)
-	m.nondet("sub_string", 5, subAtom)
+	m.nondet("sub_atom", 5, subAtomG(func(s string) Term { return mkAtom(s) }))
+	m.nondet("sub_string", 5, subAtomG(func(s string) Term { return Str(s) }))
 	caseConv := func(name string, f func(string) string) {
 		m.det(name, 2, func(m *Machine, a []Term) (bool, error) {
 			s, err := textOf(a[0])
@@ -837,8 +847,17 @@ func (m *Machine) installAtomBuiltins() {
 	}
 	caseConv("upcase_atom", strings.ToUpper)
 	caseConv("downcase_atom", strings.ToLower)
-	caseConv("string_upper", strings.ToUpper)
-	caseConv("string_lower", strings.ToLower)
+	strConv := func(name string, f func(string) string) {
+		m.det(name, 2, func(m *Machine, a []Term) (bool, error) {
+			s, err := textOf(a[0])
+			if err != nil {
+				return false, err
+			}
+			return m.unify(a[1], Str(f(s))), nil
+		})
+	}
+	strConv("string_upper", strings.ToUpper)
+	strConv("string_lower", strings.ToLower)
 	m.det("term_to_atom", 2, func(m *Machine, a []Term) (bool, error) {
 		t := deref(a[0])
 		if _, isv := t.(*Var); !isv {
@@ -855,19 +874,19 @@ func (m *Machine) installAtomBuiltins() {
 		return m.unify(t, pt), nil
 	})
 	m.det("term_string", 2, func(m *Machine, a []Term) (bool, error) {
-		t := deref(a[0])
-		if _, isv := t.(*Var); !isv {
-			return m.unify(a[1], mkAtom(formatTermOpts(t, writeOpts{quoted: true, numberVars: true}))), nil
+		// term_string(?String, ?Term)
+		if _, isv := deref(a[0]).(*Var); !isv {
+			s, err := textOf(a[0])
+			if err != nil {
+				return false, err
+			}
+			pt, _, err := m.parseTermFromText(s)
+			if err != nil {
+				return false, err
+			}
+			return m.unify(a[1], pt), nil
 		}
-		s, err := textOf(a[1])
-		if err != nil {
-			return false, err
-		}
-		pt, _, err := m.parseTermFromText(s)
-		if err != nil {
-			return false, err
-		}
-		return m.unify(t, pt), nil
+		return m.unify(a[0], Str(formatTermOpts(a[1], writeOpts{quoted: true, numberVars: true}))), nil
 	})
 	m.det("atom_to_term", 3, func(m *Machine, a []Term) (bool, error) {
 		s, err := textOf(a[0])
@@ -884,7 +903,6 @@ func (m *Machine) installAtomBuiltins() {
 		}
 		return m.unify(a[1], pt) && m.unify(a[2], mkList(bs, atNil)), nil
 	})
-	m.det("sformat", 3, func(m *Machine, a []Term) (bool, error) { return false, nil })
 	m.det("atomic_list_concat", 2, func(m *Machine, a []Term) (bool, error) {
 		return m.atomicListConcat(a[0], atEmpty, a[1])
 	})
@@ -921,49 +939,54 @@ func (m *Machine) installAtomBuiltins() {
 		}
 		var items []Term
 		for _, p := range parts {
-			items = append(items, mkAtom(strings.Trim(p, pad)))
+			items = append(items, Str(strings.Trim(p, pad)))
 		}
 		return m.unify(a[3], mkList(items, atNil)), nil
 	})
-	m.det("string_concat", 3, func(m *Machine, a []Term) (bool, error) {
-		s1, err := textOf(a[0])
-		if err != nil {
-			return false, err
+	m.nondet("string_concat", 3, func(m *Machine, a []Term) (Term, []Term, error) {
+		x, y := deref(a[0]), deref(a[1])
+		_, xv := x.(*Var)
+		_, yv := y.(*Var)
+		if !xv && !yv {
+			s1, err := textOf(x)
+			if err != nil {
+				return nil, nil, err
+			}
+			s2, err := textOf(y)
+			if err != nil {
+				return nil, nil, err
+			}
+			return a[2], []Term{Str(s1 + s2)}, nil
 		}
-		s2, err := textOf(a[1])
+		s, err := textOf(a[2])
 		if err != nil {
-			return false, err
+			return nil, nil, err
 		}
-		return m.unify(a[2], mkAtom(s1+s2)), nil
+		rs := []rune(s)
+		var sols []Term
+		for i := 0; i <= len(rs); i++ {
+			sols = append(sols, mk("-", Str(string(rs[:i])), Str(string(rs[i:]))))
+		}
+		return mk("-", x, y), sols, nil
 	})
-	m.det("string_chars", 2, func(m *Machine, a []Term) (bool, error) {
-		if _, isv := deref(a[0]).(*Var); !isv {
-			s, err := textOf(a[0])
+	textConv := func(name string, toList func(string) Term) {
+		m.det(name, 2, func(m *Machine, a []Term) (bool, error) {
+			if _, isv := deref(a[0]).(*Var); !isv {
+				s, err := textOf(a[0])
+				if err != nil {
+					return false, err
+				}
+				return m.unify(a[1], toList(s)), nil
+			}
+			s, err := textOf(a[1])
 			if err != nil {
 				return false, err
 			}
-			return m.unify(a[1], charsOf(s)), nil
-		}
-		s, err := textOf(a[1])
-		if err != nil {
-			return false, err
-		}
-		return m.unify(a[0], mkAtom(s)), nil
-	})
-	m.det("string_codes", 2, func(m *Machine, a []Term) (bool, error) {
-		if _, isv := deref(a[0]).(*Var); !isv {
-			s, err := textOf(a[0])
-			if err != nil {
-				return false, err
-			}
-			return m.unify(a[1], codesOf(s)), nil
-		}
-		s, err := textOf(a[1])
-		if err != nil {
-			return false, err
-		}
-		return m.unify(a[0], mkAtom(s)), nil
-	})
+			return m.unify(a[0], Str(s)), nil
+		})
+	}
+	textConv("string_chars", charsOf)
+	textConv("string_codes", codesOf)
 	m.det("string_to_atom", 2, func(m *Machine, a []Term) (bool, error) {
 		if _, isv := deref(a[0]).(*Var); !isv {
 			s, err := textOf(a[0])
@@ -976,7 +999,28 @@ func (m *Machine) installAtomBuiltins() {
 		if err != nil {
 			return false, err
 		}
+		return m.unify(a[0], Str(s)), nil
+	})
+	m.det("atom_string", 2, func(m *Machine, a []Term) (bool, error) {
+		if _, isv := deref(a[0]).(*Var); !isv {
+			s, err := textOf(a[0])
+			if err != nil {
+				return false, err
+			}
+			return m.unify(a[1], Str(s)), nil
+		}
+		s, err := textOf(a[1])
+		if err != nil {
+			return false, err
+		}
 		return m.unify(a[0], mkAtom(s)), nil
+	})
+	m.det("text_to_string", 2, func(m *Machine, a []Term) (bool, error) {
+		s, err := textOf(a[0])
+		if err != nil {
+			return false, err
+		}
+		return m.unify(a[1], Str(s)), nil
 	})
 	m.det("number_string", 2, func(m *Machine, a []Term) (bool, error) {
 		if _, isv := deref(a[1]).(*Var); !isv {
@@ -991,7 +1035,7 @@ func (m *Machine) installAtomBuiltins() {
 		if !isNumber(n) {
 			return false, instErr()
 		}
-		return m.unify(a[1], mkAtom(formatTerm(n, false))), nil
+		return m.unify(a[1], Str(formatTerm(n, false))), nil
 	})
 	m.det("text_concat", 3, func(m *Machine, a []Term) (bool, error) {
 		s1, err := textOf(a[0])
@@ -1001,6 +1045,11 @@ func (m *Machine) installAtomBuiltins() {
 		s2, err := textOf(a[1])
 		if err != nil {
 			return false, err
+		}
+		_, st1 := deref(a[0]).(Str)
+		_, st2 := deref(a[1]).(Str)
+		if st1 || st2 {
+			return m.unify(a[2], Str(s1+s2)), nil
 		}
 		return m.unify(a[2], mkAtom(s1+s2)), nil
 	})

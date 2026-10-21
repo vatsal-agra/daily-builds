@@ -1,4 +1,5 @@
 :- consult('tests/harness.pl').
+:- set_prolog_flag(double_quotes, codes).
 :- dynamic q/1, r/2, cnt/1, s/1.
 
 % --- cut corner cases (ISO conformity) ---

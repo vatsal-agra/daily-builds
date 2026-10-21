@@ -642,6 +642,8 @@ func (p *parser) parseArgs() ([]Term, error) {
 
 func (p *parser) strTerm(s string, flag string) Term {
 	switch flag {
+	case "string":
+		return Str(s)
 	case "atom":
 		return mkAtom(s)
 	case "chars":

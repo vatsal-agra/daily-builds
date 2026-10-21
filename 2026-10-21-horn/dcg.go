@@ -72,6 +72,8 @@ func (m *Machine) dcgTerminals(list Term, s0, s Term) (Term, error) {
 func (m *Machine) dcgBody(b Term, s0, s Term) (Term, error) {
 	b = deref(b)
 	switch x := b.(type) {
+	case Str:
+		return &Compound{Fn: atEq, Args: []Term{s0, mkList(codeItems(string(x)), s)}}, nil
 	case *Var:
 		return mk("phrase", x, s0, s), nil
 	case *Atom:
@@ -139,4 +141,12 @@ func (m *Machine) dcgBody(b Term, s0, s Term) (Term, error) {
 		return dcgExtend(x, s0, s)
 	}
 	return nil, typeErr("callable", b)
+}
+
+func codeItems(s string) []Term {
+	var items []Term
+	for _, r := range s {
+		items = append(items, Int(r))
+	}
+	return items
 }
