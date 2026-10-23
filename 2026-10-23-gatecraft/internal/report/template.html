@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gatecraft report — {{.Title}}</title>
+<style>
+:root {
+  --bg: #f4f5f8; --card: #ffffff; --ink: #151a23; --muted: #5a6577; --line: #e2e5ec;
+  --accent: #2a55e8; --accent-soft: #e7edff; --good: #167a4f; --good-soft: #e1f4ea;
+  --bad: #c0302f; --bad-soft: #fbe6e5; --warn: #9a6205; --warn-soft: #fbf0d9;
+  --bar: #9db3f5; --bar2: #2a55e8; --wave-bg: #fbfcfe; --grid: #e8ebf2; --shadow: 0 1px 2px rgba(20,30,60,.06), 0 6px 20px rgba(20,30,60,.05);
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c1017; --card: #141a24; --ink: #e8edf5; --muted: #93a0b4; --line: #262f3f;
+    --accent: #7aa2ff; --accent-soft: #1b2744; --good: #4fd08f; --good-soft: #12301f;
+    --bad: #ff7b78; --bad-soft: #3a1a1b; --warn: #f0b24a; --warn-soft: #36290f;
+    --bar: #36508f; --bar2: #7aa2ff; --wave-bg: #10151e; --grid: #1c2432; --shadow: 0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c1017; --card: #141a24; --ink: #e8edf5; --muted: #93a0b4; --line: #262f3f;
+  --accent: #7aa2ff; --accent-soft: #1b2744; --good: #4fd08f; --good-soft: #12301f;
+  --bad: #ff7b78; --bad-soft: #3a1a1b; --warn: #f0b24a; --warn-soft: #36290f;
+  --bar: #36508f; --bar2: #7aa2ff; --wave-bg: #10151e; --grid: #1c2432; --shadow: 0 1px 2px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 64px; }
+header.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+h1 { font-size: 26px; letter-spacing: -.02em; margin: 0; }
+h1 small { display: block; font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 4px; }
+.sub { color: var(--muted); font-family: var(--mono); font-size: 12.5px; }
+h2 { font-size: 15px; margin: 0 0 12px; letter-spacing: .01em; }
+h2 span { color: var(--muted); font-weight: 400; margin-left: 8px; font-size: 13px; }
+section.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: var(--shadow); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); }
+.stat b { display: block; font-size: 24px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat i { font-style: normal; color: var(--muted); font-size: 12px; }
+.stat .delta { font-size: 12px; font-weight: 600; margin-left: 6px; }
+.good { color: var(--good); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); font-weight: 600; }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); font-size: 14px; vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; }
+td.mono, .mono { font-family: var(--mono); font-size: 13px; }
+.pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.pill.good { background: var(--good-soft); } .pill.bad { background: var(--bad-soft); } .pill.warn { background: var(--warn-soft); }
+.bars { position: relative; height: 10px; background: var(--grid); border-radius: 5px; min-width: 120px; }
+.bars > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: var(--bar2); }
+.bars > i.before { background: var(--bar); opacity: .55; }
+.note { color: var(--muted); font-size: 13px; }
+.banner { padding: 10px 14px; border-radius: 10px; margin: 0 0 14px; font-size: 14px; }
+.banner.good { background: var(--good-soft); } .banner.bad { background: var(--bad-soft); } .banner.warn { background: var(--warn-soft); }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-top: 8px; }
+/* waveform */
+.wv-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.wv-tools input[type=search] { flex: 1 1 200px; min-width: 140px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: 13px var(--mono); }
+.btn { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 5px 11px; font: 600 12.5px var(--sans); cursor: pointer; }
+.btn:hover { border-color: var(--accent); } .btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.wv { border: 1px solid var(--line); border-radius: 10px; overflow: auto; max-height: 560px; background: var(--wave-bg); position: relative; }
+.wv-inner { display: grid; grid-template-columns: 250px 1fr; min-width: 640px; }
+.wv-names { position: sticky; left: 0; z-index: 2; background: var(--card); border-right: 1px solid var(--line); }
+.wv-names .hd { height: 30px; border-bottom: 1px solid var(--line); padding: 6px 10px; color: var(--muted); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600; }
+.wv-row { height: 30px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px; border-bottom: 1px solid var(--grid); font: 12.5px var(--mono); white-space: nowrap; }
+.wv-row .nm { overflow: hidden; text-overflow: ellipsis; } .wv-row .nm u { text-decoration: none; color: var(--muted); }
+.wv-row .vl { color: var(--accent); font-weight: 600; }
+canvas#wave { display: block; width: 100%; cursor: crosshair; }
+.hint { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+footer { color: var(--muted); font-size: 12.5px; text-align: center; margin-top: 28px; }
+@media (max-width: 640px) { .wv-inner { grid-template-columns: 170px 1fr; } h1 { font-size: 21px; } }
+</style>
+</head>
+<body>
+<main>
+<header class="top">
+  <h1><small>Gatecraft report</small>{{.Title}}</h1>
+  <div class="sub">{{range $i, $f := .Files}}{{if $i}} · {{end}}{{$f}}{{end}}</div>
+</header>
+
+{{range .Warnings}}<div class="banner warn mono">{{.}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><b>{{.After.InputBits}}</b><i>input bits ({{.After.Inputs}} ports)</i></div>
+  <div class="stat"><b>{{.After.OutputBits}}</b><i>output bits ({{.After.Outputs}} ports)</i></div>
+  <div class="stat"><b>{{.After.Latches}}</b><i>flip-flops{{if ne .Before.Latches .After.Latches}} <span class="delta good">was {{.Before.Latches}}</span>{{end}}</i></div>
+  <div class="stat"><b>{{.After.Ands}}</b><i>AND gates{{if gt .Before.Ands 0}} <span class="delta good">−{{printf "%.0f" .AndSaving}}%</span>{{end}}</i></div>
+  <div class="stat"><b>{{.After.Depth}}</b><i>logic depth{{if ne .Before.Depth .After.Depth}} <span class="delta good">was {{.Before.Depth}}</span>{{end}}</i></div>
+</div>
+
+{{if .Passes2}}
+<section class="card">
+  <h2>Optimisation<span>every pass is SAT-checked against its input</span></h2>
+  {{if .Verified}}<div class="banner {{if .VerifiedOK}}good{{else}}bad{{end}}">End-to-end: optimised netlist ≡ original — <b>{{.VerifiedTx}}</b></div>{{end}}
+  <table>
+    <tr><th>pass</th><th class="num">AND gates</th><th></th><th class="num">flops</th><th class="num">depth</th><th class="num">time</th><th>note</th></tr>
+    {{range .Passes2}}
+    <tr><td class="mono">{{.Name}}</td><td class="num">{{.AndsBefore}} → <b>{{.AndsAfter}}</b></td>
+      <td><div class="bars"><i class="before" style="width:{{printf "%.1f" .BarBefore}}%"></i><i style="width:{{printf "%.1f" .BarAfter}}%"></i></div></td>
+      <td class="num">{{.LatchBefore}} → {{.LatchAfter}}</td><td class="num">{{.DepthBefore}} → {{.DepthAfter}}</td><td class="num note">{{.Time}}</td><td class="note">{{.Note}}</td></tr>
+    {{end}}
+  </table>
+  {{if .Removed2}}<details><summary>{{len .Removed2}} registers removed by sequential cleanup</summary>
+    <table style="margin-top:8px">{{range .Removed2}}<tr><td class="mono">{{.Name}}</td><td>{{.Why}}</td></tr>{{end}}</table></details>{{end}}
+</section>
+{{end}}
+
+{{if .Path2}}
+<section class="card">
+  <h2>Critical path<span>{{.Path.Depth}} gate levels → {{.Path.Endpoint}} (unit delay per AND)</span></h2>
+  <table>{{range .Path2}}<tr><td class="num mono" style="width:56px">{{.Level}}</td><td class="mono">{{if .Gap}}<span class="note">⋯ {{.Label}}</span>{{else}}{{.Label}}{{if .Inv}} <span class="note">(inverted)</span>{{end}}{{end}}</td><td style="width:40%"><div class="bars"><i style="width:{{printf "%.1f" .Bar}}%"></i></div></td></tr>{{end}}</table>
+</section>
+{{end}}
+
+{{if .Maps2}}
+<section class="card">
+  <h2>LUT mapping<span>cut enumeration → depth-optimal cover → area recovery; each result is simulated and SAT-proved equal to the AIG</span></h2>
+  <table>
+    <tr><th>k</th><th class="num">LUTs</th><th></th><th class="num">depth</th><th>fan-in mix</th></tr>
+    {{range .Maps2}}<tr><td class="mono">{{.K}}-LUT</td><td class="num"><b>{{.LUTs}}</b></td><td><div class="bars"><i style="width:{{printf "%.1f" .Bar}}%"></i></div></td><td class="num">{{.Depth}}</td><td class="note mono">{{.Hist}}</td></tr>{{end}}
+  </table>
+</section>
+{{end}}
+
+{{if .Props2}}
+<section class="card">
+  <h2>Properties<span>bounded model checking + k-induction</span></h2>
+  <table>{{range .Props2}}<tr><td class="mono">{{.Name}}</td><td><span class="pill {{.Class}}">{{.Status}}</span></td><td class="note">{{.Detail}}{{if .Trace}}<details><summary>input trace</summary><pre class="mono" style="margin:6px 0 0">{{range .Trace}}{{.}}
+{{end}}</pre></details>{{end}}</td></tr>{{end}}</table>
+</section>
+{{end}}
+
+{{if .HasWave}}
+<section class="card">
+  <h2>Waveforms<span>{{.TBName}}{{if .TBSummary}} · <span class="{{.TBClass}}">{{.TBSummary}}</span>{{end}}</span></h2>
+  <div class="wv-tools">
+    <input type="search" id="flt" placeholder="filter signals (e.g. u_rf, pc, result)" aria-label="Filter signals">
+    <button class="btn" id="zin" title="zoom in (+)">＋</button><button class="btn" id="zout" title="zoom out (−)">−</button><button class="btn" id="fit">Fit</button>
+    <button class="btn on" data-radix="16">hex</button><button class="btn" data-radix="10">dec</button><button class="btn" data-radix="2">bin</button>
+  </div>
+  <div class="wv" id="wv"><div class="wv-inner"><div class="wv-names" id="names"></div><canvas id="wave" aria-label="waveform"></canvas></div></div>
+  <div class="hint">Move the mouse to read values at a time · wheel or ＋/− to zoom · drag to pan · click a name to hide it. Times are in ns (one clock = 10 ns).</div>
+</section>
+{{end}}
+
+<footer>generated by gatecraft — Verilog subset → AIG → optimise → prove → map</footer>
+</main>
+
+{{if .HasWave}}
+<script>
+const WAVE = {{.Wave}};
+(() => {
+  const ROW = 30, AX = 30, LEFT = 0;
+  const cv = document.getElementById('wave'), ctx = cv.getContext('2d');
+  const namesEl = document.getElementById('names'), wv = document.getElementById('wv');
+  let radix = 16, filter = '', hidden = new Set(), cursor = null;
+  let t0 = 0, t1 = WAVE.tmax || 1;
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const sigs = WAVE.sigs;
+  const isClock = s => s.w === 1 && /(^|\.)clk[a-z0-9_]*$/i.test(s.n);
+
+  function valueAt(s, t) {            // last change at or before t
+    let lo = 0, hi = s.c.length - 1, ans = 0;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (s.c[m][0] <= t) { ans = m; lo = m + 1 } else hi = m - 1 }
+    return s.c[ans][1];
+  }
+  function fmt(hex, w) {
+    if (radix === 16) return w === 1 ? hex : hex.toUpperCase();
+    const v = BigInt('0x' + hex);
+    return radix === 10 ? v.toString(10) : v.toString(2).padStart(w, '0');
+  }
+  function visible() {
+    const f = filter.toLowerCase();
+    return sigs.filter(s => !hidden.has(s.n) && (!f || s.n.toLowerCase().includes(f)));
+  }
+  function buildNames() {
+    const vis = visible();
+    namesEl.innerHTML = '<div class="hd">signal<span style="float:right" id="tlabel"></span></div>';
+    vis.forEach(s => {
+      const d = document.createElement('div'); d.className = 'wv-row'; d.dataset.n = s.n; d.title = s.n + (s.w > 1 ? ' [' + (s.w - 1) + ':0]' : '') + ' — click to hide';
+      const i = s.n.lastIndexOf('.');
+      const pre = i >= 0 ? '<u>' + s.n.slice(0, i + 1) + '</u>' : '';
+      d.innerHTML = '<span class="nm">' + pre + s.n.slice(i + 1) + (s.w > 1 ? ' <u>[' + (s.w - 1) + ':0]</u>' : '') + '</span><span class="vl"></span>';
+      d.onclick = () => { hidden.add(s.n); buildNames(); draw(); };
+      namesEl.appendChild(d);
+    });
+    cv.style.height = (AX + vis.length * ROW) + 'px';
+    return vis;
+  }
+  function updateValues() {
+    const t = cursor === null ? t1 : cursor;
+    namesEl.querySelectorAll('.wv-row').forEach(r => {
+      const s = sigs.find(x => x.n === r.dataset.n);
+      r.querySelector('.vl').textContent = fmt(valueAt(s, t), s.w);
+    });
+    const tl = document.getElementById('tlabel'); if (tl) tl.textContent = (cursor === null ? 'end ' : '') + (t) + ' ns';
+  }
+  function draw() {
+    const vis = visible();
+    const dpr = window.devicePixelRatio || 1;
+    const W = cv.clientWidth, H = AX + vis.length * ROW;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const px = t => (t - t0) / (t1 - t0) * W;
+    const grid = css('--grid'), muted = css('--muted'), ink = css('--ink'), accent = css('--accent'), line = css('--line');
+    ctx.font = '11px ui-monospace, Menlo, monospace'; ctx.textBaseline = 'middle';
+    // time axis: choose a tick step that is a multiple of 10 ns with >= 60px spacing
+    const span = t1 - t0;
+    let step = 10; while (step / span * W < 64) step *= (step % 20 === 10 ? 2 : (String(step)[0] === '2' ? 2.5 : 2));
+    step = Math.max(10, Math.round(step / 10) * 10);
+    ctx.fillStyle = muted; ctx.strokeStyle = grid; ctx.lineWidth = 1;
+    for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) {
+      const x = Math.round(px(t)) + .5;
+      ctx.beginPath(); ctx.moveTo(x, AX - 6); ctx.lineTo(x, H); ctx.stroke();
+      ctx.fillText(t + '', x + 3, AX / 2);
+    }
+    ctx.strokeStyle = line; ctx.beginPath(); ctx.moveTo(0, AX - .5); ctx.lineTo(W, AX - .5); ctx.stroke();
+    vis.forEach((s, i) => {
+      const y0 = AX + i * ROW + 5, y1 = AX + (i + 1) * ROW - 6, ym = (y0 + y1) / 2;
+      ctx.strokeStyle = grid; ctx.beginPath(); ctx.moveTo(0, AX + (i + 1) * ROW - .5); ctx.lineTo(W, AX + (i + 1) * ROW - .5); ctx.stroke();
+      const ch = s.c;
+      // first change index at/before t0
+      let k = 0; { let lo = 0, hi = ch.length - 1; while (lo <= hi) { const m = (lo + hi) >> 1; if (ch[m][0] <= t0) { k = m; lo = m + 1 } else hi = m - 1 } }
+      const color = isClock(s) ? muted : accent;
+      if (s.w === 1) {
+        ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.beginPath();
+        let x = 0, lv = ch[k][1] === '0' ? y1 : y0; ctx.moveTo(0, lv);
+        for (let j = k + 1; j < ch.length && ch[j][0] <= t1; j++) {
+          x = px(ch[j][0]); ctx.lineTo(x, lv); lv = ch[j][1] === '0' ? y1 : y0; ctx.lineTo(x, lv);
+        }
+        ctx.lineTo(W, lv); ctx.stroke(); ctx.lineWidth = 1;
+      } else {
+        for (let j = k; j < ch.length && ch[j][0] <= t1; j++) {
+          const xa = Math.max(0, px(ch[j][0])), xb = j + 1 < ch.length ? Math.min(W, px(ch[j + 1][0])) : W;
+          if (xb < 0 || xb - xa < .5) continue;
+          const lead = Math.min(4, (xb - xa) / 3);
+          ctx.beginPath();
+          ctx.moveTo(xa + lead, y0); ctx.lineTo(xb - lead, y0); ctx.lineTo(xb, ym); ctx.lineTo(xb - lead, y1); ctx.lineTo(xa + lead, y1); ctx.lineTo(xa, ym); ctx.closePath();
+          ctx.fillStyle = accent + '22'; ctx.fill(); ctx.strokeStyle = color; ctx.stroke();
+          const txt = fmt(ch[j][1], s.w);
+          if (xb - xa > txt.length * 6.6 + 14) { ctx.fillStyle = ink; ctx.fillText(txt, xa + lead + 5, ym + .5); }
+        }
+      }
+    });
+    if (cursor !== null && cursor >= t0 && cursor <= t1) {
+      const x = Math.round(px(cursor)) + .5;
+      ctx.strokeStyle = accent; ctx.globalAlpha = .7; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    updateValues();
+  }
+  function zoom(f, at) {
+    const c = at === undefined ? (t0 + t1) / 2 : at;
+    let a = c - (c - t0) * f, b = c + (t1 - c) * f;
+    const min = 20; if (b - a < min) { const m = (a + b) / 2; a = m - min / 2; b = m + min / 2; }
+    const max = (WAVE.tmax || 1) * 1.02; if (b - a > max) { a = 0; b = max; }
+    t0 = a; t1 = b; draw();
+  }
+  const timeAt = e => { const r = cv.getBoundingClientRect(); return t0 + (e.clientX - r.left) / r.width * (t1 - t0); };
+  cv.addEventListener('mousemove', e => { cursor = Math.round(timeAt(e)); if (drag) { const dt = (drag.x - e.clientX) / cv.clientWidth * (drag.t1 - drag.t0); t0 = drag.t0 + dt; t1 = drag.t1 + dt; } draw(); });
+  cv.addEventListener('mouseleave', () => { cursor = null; drag = null; draw(); });
+  let drag = null;
+  cv.addEventListener('mousedown', e => { drag = { x: e.clientX, t0, t1 }; });
+  window.addEventListener('mouseup', () => { drag = null; });
+  cv.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY < 0 ? .75 : 1.33, timeAt(e)); }, { passive: false });
+  document.getElementById('zin').onclick = () => zoom(.6);
+  document.getElementById('zout').onclick = () => zoom(1.6);
+  document.getElementById('fit').onclick = () => { t0 = 0; t1 = WAVE.tmax || 1; draw(); };
+  document.getElementById('flt').oninput = e => { filter = e.target.value; buildNames(); draw(); };
+  document.querySelectorAll('[data-radix]').forEach(b => b.onclick = () => {
+    radix = +b.dataset.radix; document.querySelectorAll('[data-radix]').forEach(x => x.classList.toggle('on', x === b)); draw();
+  });
+  window.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; if (e.key === '+' || e.key === '=') zoom(.6); if (e.key === '-') zoom(1.6); });
+  window.addEventListener('resize', draw);
+  window.__wave = { get range() { return [t0, t1]; }, get visibleCount() { return visible().length; } };
+  buildNames(); draw();
+})();
+</script>
+{{end}}
+</body>
+</html>

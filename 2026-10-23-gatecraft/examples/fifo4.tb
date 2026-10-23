@@ -1,0 +1,40 @@
+set rst 1
+tick
+set rst 0
+expect empty 1
+expect count 0
+# push 4 values
+set push 1
+set din 5
+tick
+set din 9
+tick
+set din 12
+tick
+set din 3
+tick
+set push 0
+expect full 1
+expect count 4
+expect dout 5
+# pop in order
+set pop 1
+tick
+expect dout 9
+tick
+expect dout 12
+tick
+expect dout 3
+tick
+set pop 0
+expect empty 1
+# interleaved push/pop keeps the count
+set push 1
+set pop 0
+set din 7
+tick
+set pop 1
+set din 8
+tick
+expect count 1
+expect dout 8

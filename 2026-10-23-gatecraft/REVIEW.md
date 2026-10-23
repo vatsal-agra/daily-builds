@@ -20,6 +20,25 @@ random-netlist fuzzers, mutation tests, and a pile of malformed inputs. Every fi
 | R9 | low | Silent truncation/zero-extension of instance port connections. | review of `installInstance` | non-fatal `warning:` diagnostics (printed by every command) | `TestPortWidthWarnings` |
 | R10 | perf | SAT `value()` did a branch + shift per literal test; propagation is ~75 % of runtime. | pprof of a 9-bit multiplier miter | per-literal value array: 14.6 s → 10.7 s | all SAT tests |
 
+## Round 2 — review of the Phase 4 additions (LUT mapper, report, induction)
+
+| # | Finding | Found by | Fix |
+|---|---------|----------|-----|
+| R11 | LUT mapper was not monotone in `k`: TinyCPU needed *more* 6-LUTs (222) than 5-LUTs (196). The 10 kept cuts per node were all the shallowest, leaving area recovery nothing cheap to pick for nodes with slack. | `gatecraft map -k 3..6` sweep | `selectCuts` keeps the best cuts by depth **and** by area flow; area cost uses the leaf cone's area flow → 390/283/196/**180** LUTs |
+| R12 | The bounded check printed `EQUIVALENT` for "no difference in 24 cycles" — a claim it cannot make. | reading CLI output | label is now `NO DIFFERENCE FOUND` and only the induction engine may say `EQUIVALENT` for different encodings |
+| R13 | Counterexample scripts (`equiv -cex`) only printed outputs; replaying them on the buggy design "passed". | replaying the script | script now ends with `expect <out> <reference value>`, so it fails on the bad design and passes on the reference (tested both ways) |
+| R14 | My own `detect_onehot.v` example was **genuinely not equivalent** to the binary detector from power-up (all flops reset to 0, so the one-hot machine starts in an invalid all-zero state until `rst` is applied). The bounded checker caught it at cycle 3. | `gatecraft equiv` | fixed the example (`reg s0 = 1'b1`); the tool was right, I was wrong |
+| R15 | Plain k-induction cannot prove equal-behaviour machines with different state encodings (unreachable states 10-15 / one-hot garbage states are self-loops). | `mod10_a` vs `mod10_b` | **Houdini-style invariant mining**: candidate constants / 2- / 3-literal register clauses from random simulation, filtered by the reset state, then the largest *inductive* subset by SAT; used as lemmas in k-induction on the product machine |
+| R16 | Report: critical path printed 44 rows of anonymous `nNNN`; clocks cluttered counterexample input traces. | screenshots | runs of anonymous gates collapse to "⋯ N logic gates"; clock inputs are omitted from traces |
+
+Soundness of the new proof engine is tested adversarially rather than assumed:
+`TestMinedInvariantsHoldOnAllReachableStates` enumerates every reachable product state of 300 random
+machines and requires every mined invariant to hold in all of them;
+`TestInductionNeverProvesWrongEquivalences` compares 400 random (equivalent, subtly-wrong, restructured)
+pairs against an explicit-state product search (it must never prove a pair that differs on a reachable state —
+and it proved 205/205 of the truly equivalent ones); `TestInductionDoesNotProveDeepDifferences` pits a
+mod-20 against a mod-21 counter (they first differ at cycle 20, beyond the bound) and requires "not proved".
+
 ## Lazy shortcuts I looked for (and what I did)
 
 * **"Tests that cannot fail".** I mutation-tested the new fuzzers: flipping `LtV`'s polarity, the divider

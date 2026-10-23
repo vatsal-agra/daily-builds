@@ -1,0 +1,14 @@
+set rst 1
+tick
+set rst 0
+expect ns_green 1
+expect ew_red 1
+tick 6
+expect ns_yellow 1
+tick 2
+expect ew_green 1
+expect ns_red 1
+tick 6
+expect ew_yellow 1
+tick 2
+expect ns_green 1

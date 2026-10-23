@@ -260,16 +260,28 @@ func stateValues(a, b *aig.AIG, tie *tie, model map[string]*big.Int) (sa, sb map
 // buildBoundedMiter unrolls both designs from reset into one strashed graph
 // with shared per-cycle inputs; diffs[t] is true iff some output differs at cycle t.
 func buildBoundedMiter(a, b *aig.AIG, depth int) (m *aig.AIG, diffs []aig.Lit) {
+	return buildProductMiter(a, b, depth, false)
+}
+
+// buildProductMiter is buildBoundedMiter with an optional free (arbitrary) initial
+// state, which is what the induction step of a sequential equivalence proof needs.
+func buildProductMiter(a, b *aig.AIG, depth int, freeInit bool) (m *aig.AIG, diffs []aig.Lit) {
 	m = aig.New()
 	stA := make([]aig.Lit, len(a.Latches))
 	stB := make([]aig.Lit, len(b.Latches))
+	liveA, liveB := a.LiveLatches(), b.LiveLatches()
 	for i, l := range a.Latches {
 		stA[i] = aig.False.NotIf(l.Init)
+		if freeInit && liveA[i] {
+			stA[i] = freshInput(m, "$A:"+l.Name)
+		}
 	}
 	for i, l := range b.Latches {
 		stB[i] = aig.False.NotIf(l.Init)
+		if freeInit && liveB[i] {
+			stB[i] = freshInput(m, "$B:"+l.Name)
+		}
 	}
-	liveA, liveB := a.LiveLatches(), b.LiveLatches()
 	for t := 0; t < depth; t++ {
 		xa, xb := newXlate(a, m), newXlate(b, m)
 		for _, p := range a.Inputs {

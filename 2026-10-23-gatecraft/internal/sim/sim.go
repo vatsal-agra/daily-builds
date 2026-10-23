@@ -199,8 +199,42 @@ func (s *Sim) RunTrace(inputs []map[string]*big.Int) error {
 	return nil
 }
 
+// FinalOutputs replays an input trace and returns every output's value in the last cycle
+// (before that cycle's clock edge).
+func FinalOutputs(g *aig.AIG, inputs []map[string]*big.Int) (map[string]*big.Int, error) {
+	s := New(g)
+	for t, in := range inputs {
+		for _, p := range g.Inputs {
+			if v, ok := in[p.Name]; ok && !s.clocks[p.Name] {
+				if err := s.Set(p.Name, v); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if t == len(inputs)-1 {
+			break
+		}
+		if len(g.Clocks()) > 0 {
+			if err := s.Tick("", 1); err != nil {
+				return nil, err
+			}
+		}
+	}
+	out := map[string]*big.Int{}
+	for _, p := range g.Outputs {
+		v, _, err := s.Get(p.Name)
+		if err != nil {
+			return nil, err
+		}
+		out[p.Name] = v
+	}
+	return out, nil
+}
+
 // TraceScript renders a counterexample trace as a testbench script that reproduces it.
-func TraceScript(g *aig.AIG, inputs []map[string]*big.Int, watch []string) string {
+// expect, if non-nil, adds 'expect' lines for the final cycle so that running the script
+// against the other design fails exactly where the two designs diverge.
+func TraceScript(g *aig.AIG, inputs []map[string]*big.Int, expect map[string]*big.Int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# counterexample trace, %d cycles from reset\n", len(inputs))
 	clocks := map[string]bool{}
@@ -214,10 +248,13 @@ func TraceScript(g *aig.AIG, inputs []map[string]*big.Int, watch []string) strin
 				fmt.Fprintf(&b, "set %s %s\n", p.Name, v.String())
 			}
 		}
-		if len(watch) > 0 {
-			fmt.Fprintf(&b, "print %s\n", strings.Join(watch, " "))
-		}
-		if t != len(inputs)-1 && len(g.Clocks()) > 0 {
+		if t == len(inputs)-1 {
+			for _, p := range g.Outputs {
+				if v, ok := expect[p.Name]; ok {
+					fmt.Fprintf(&b, "expect %s %s\n", p.Name, v.String())
+				}
+			}
+		} else if len(g.Clocks()) > 0 {
 			fmt.Fprintf(&b, "tick\n")
 		}
 	}

@@ -3,6 +3,7 @@ package equiv
 import (
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"gatecraft/internal/aig"
@@ -300,7 +301,14 @@ func replayProp(g *aig.AIG, tr *Trace, idx int) bool {
 // FormatInputs renders an input assignment compactly.
 func FormatInputs(g *aig.AIG, m map[string]*big.Int) string {
 	out := ""
+	clocks := map[string]bool{}
+	for _, c := range g.Clocks() {
+		clocks[strings.SplitN(c, "[", 2)[0]] = true
+	}
 	for _, p := range g.Inputs {
+		if clocks[p.Name] {
+			continue // clocks are implicit in cycle-based traces
+		}
 		if v, ok := m[p.Name]; ok {
 			if out != "" {
 				out += " "

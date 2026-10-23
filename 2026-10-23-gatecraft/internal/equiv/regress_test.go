@@ -1,6 +1,7 @@
 package equiv_test
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -99,5 +100,37 @@ func TestCounterexampleNamesSingleBitOutputsPlainly(t *testing.T) {
 	r, err := equiv.CheckComb(a, b)
 	if err != nil || r.Cex == nil || strings.Contains(r.Cex.Obligation, "[0]") {
 		t.Fatalf("%v %+v", err, r)
+	}
+}
+
+const modCounter = `module c(input clk, input rst, output [4:0] q);
+  reg [4:0] %s;
+  always @(posedge clk) if (rst || %s == 5'd%d) %s <= 0; else %s <= %s + 1;
+  assign q = %s;
+endmodule`
+
+func counter(t *testing.T, reg string, wrap int) *aig.AIG {
+	return testutil.Build(t, strings.NewReplacer("%s", reg).Replace(
+		strings.Replace(modCounter, "%d", fmt.Sprint(wrap), 1)), "")
+}
+
+// A divergence deeper than the induction/BMC bound must never be "proved" away.
+func TestInductionDoesNotProveDeepDifferences(t *testing.T) {
+	a, b := counter(t, "cnt", 19), counter(t, "ctr", 20) // wrap after 20 vs 21 states
+	res, err := equiv.CheckInduction(a, b, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Verdict == equiv.Equivalent {
+		t.Fatalf("UNSOUND: mod-20 and mod-21 counters declared equivalent: %+v", res)
+	}
+	br, err := equiv.CheckBounded(a, b, 30)
+	if err != nil || br.Verdict != equiv.Different || br.Trace.Cycle != 20 || !br.Trace.Confirmed {
+		t.Fatalf("bounded check should find the divergence at cycle 20: %v %+v", err, br)
+	}
+	// identical behaviour under different register names is proved for all time
+	same, err := equiv.CheckInduction(counter(t, "cnt", 19), counter(t, "other", 19), 4)
+	if err != nil || same.Verdict != equiv.Equivalent {
+		t.Fatalf("%v %+v", err, same)
 	}
 }
