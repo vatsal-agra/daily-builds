@@ -1,0 +1,27 @@
+# synchronous reset, count up, wrap, load, count down
+set rst 1
+tick
+expect q 0
+set rst 0
+set en 1
+set up 1
+tick 5
+expect q 5
+expect tc 0
+set load 1
+set din 254
+tick
+set load 0
+expect q 254
+tick
+expect q 255
+expect tc 1
+tick
+expect q 0          # wraps
+set up 0
+expect tc 1         # zero counts as terminal when counting down
+tick
+expect q 255
+set en 0
+tick 4
+expect q 255        # holds
