@@ -69,10 +69,11 @@ type watcher struct {
 // Solver holds one incremental SAT instance.
 type Solver struct {
 	ok       bool
+	nvars    int
 	clauses  []*clause
 	learnts  []*clause
 	watches  [][]watcher // indexed by literal: clauses to visit when that literal becomes true
-	assigns  []int8
+	vals     []int8      // value per literal: 1 true, -1 false, 0 undefined
 	level    []int32
 	reason   []*clause
 	trail    []Lit
@@ -103,12 +104,13 @@ func New() *Solver {
 }
 
 // NumVars returns the number of variables created so far.
-func (s *Solver) NumVars() int { return len(s.assigns) }
+func (s *Solver) NumVars() int { return s.nvars }
 
 // NewVar creates a fresh variable and returns its index.
 func (s *Solver) NewVar() int {
-	v := len(s.assigns)
-	s.assigns = append(s.assigns, lUndef)
+	v := s.nvars
+	s.vals = append(s.vals, lUndef, lUndef)
+	s.nvars++
 	s.level = append(s.level, 0)
 	s.reason = append(s.reason, nil)
 	s.activity = append(s.activity, 0)
@@ -123,13 +125,7 @@ func (s *Solver) NewVar() int {
 // SetConflictBudget limits the conflicts of subsequent Solve calls (<0 = unlimited).
 func (s *Solver) SetConflictBudget(n int64) { s.budget = n }
 
-func (s *Solver) value(l Lit) int8 {
-	a := s.assigns[l.Var()]
-	if l.Neg() {
-		return -a
-	}
-	return a
-}
+func (s *Solver) value(l Lit) int8 { return s.vals[l] }
 
 func (s *Solver) decisionLevel() int { return len(s.trailLim) }
 
@@ -178,11 +174,8 @@ func (s *Solver) attach(c *clause) {
 
 func (s *Solver) enqueue(l Lit, from *clause) {
 	v := l.Var()
-	if l.Neg() {
-		s.assigns[v] = lFalse
-	} else {
-		s.assigns[v] = lTrue
-	}
+	s.vals[l] = lTrue
+	s.vals[l^1] = lFalse
 	s.level[v] = int32(s.decisionLevel())
 	s.reason[v] = from
 	s.trail = append(s.trail, l)
@@ -261,7 +254,7 @@ func (s *Solver) cancelUntil(lvl int) {
 	for i := len(s.trail) - 1; i >= s.trailLim[lvl]; i-- {
 		v := s.trail[i].Var()
 		s.polarity[v] = s.trail[i].Neg()
-		s.assigns[v] = lUndef
+		s.vals[2*v], s.vals[2*v+1] = lUndef, lUndef
 		s.reason[v] = nil
 		if s.heapPos[v] < 0 {
 			s.heapInsert(v)
@@ -438,7 +431,7 @@ func (s *Solver) heapPop() int {
 func (s *Solver) pickBranch() Lit {
 	for len(s.heap) > 0 {
 		v := s.heapPop()
-		if s.assigns[v] == lUndef {
+		if s.vals[2*v] == lUndef {
 			return MkLit(v, s.polarity[v])
 		}
 	}
@@ -557,9 +550,9 @@ func (s *Solver) search(nofConflicts int, assumps []Lit) Result {
 			s.Decisions++
 			next = s.pickBranch()
 			if next == undefLit {
-				s.model = make([]bool, len(s.assigns))
-				for v, a := range s.assigns {
-					s.model[v] = a == lTrue
+				s.model = make([]bool, s.nvars)
+				for v := range s.model {
+					s.model[v] = s.vals[2*v] == lTrue
 				}
 				s.cancelUntil(0)
 				return Sat

@@ -1,0 +1,25 @@
+# --- program 0: sum 1..10 -------------------------------------------------
+set prog 0
+set rst 1
+tick 2
+set rst 0
+expect pc 0
+repeat 40
+  tick
+end
+expect halted 1
+expect result 55
+print pc result cycles
+# --- program 1: Fibonacci -------------------------------------------------
+set prog 1
+set rst 1
+tick 2
+set rst 0
+expect pc 0
+repeat 80
+  tick
+end
+expect halted 1
+expect result 55     # F(10)
+expect second 89     # F(11)
+print pc result second cycles

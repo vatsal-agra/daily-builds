@@ -164,7 +164,19 @@ func (c *ctx) installComb(a *hdl.Always) {
 		for _, s := range sigs {
 			st.cur[s] = undefVec(s.width)
 		}
+		d.peek = func(s *signal, bit int) (aig.Lit, bool) {
+			if v, ok := st.cur[s]; ok && v[bit] != aig.Undef {
+				return v[bit], true
+			}
+			return aig.Undef, false
+		}
 		c.exec(st, a.Body)
+		for _, p := range d.peeked {
+			if final := st.cur[p.sig][p.bit]; final != p.lit {
+				c.fail(a.At, "'%s' bit %d is read through other logic while this always block is still computing it, and it is assigned again afterwards; restructure so the value is final before it is used", p.sig.name, p.bit+p.sig.lsb)
+			}
+		}
+		d.peek, d.peeked = nil, nil
 		var out []aig.Lit
 		for _, s := range sigs {
 			for b, l := range st.cur[s] {

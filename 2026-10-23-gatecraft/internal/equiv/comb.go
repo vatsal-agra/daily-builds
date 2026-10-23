@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"gatecraft/internal/aig"
-	"gatecraft/internal/sat"
 )
 
 // Verdict of an equivalence query.
@@ -27,7 +26,8 @@ func (v Verdict) String() string {
 // Obligation is one pair of functions that must agree.
 type Obligation struct {
 	Name string
-	A, B aig.Lit // in the graphs of the first / second design
+	A, B aig.Lit // in the graphs of the first / second design (or both in one graph, see Side)
+	Side int     // 0: A is in the first design, B in the second; 1: both in the first; 2: both in the second
 }
 
 // Cex is a counterexample to a state-matched combinational check.
@@ -95,13 +95,54 @@ func CheckInterfaces(a, b *aig.AIG) error {
 	return portMismatch("output", a.Outputs, b.Outputs)
 }
 
+// binding says what a latch output is tied to: a literal of the first design (inA)
+// or of its own design.
+type binding struct {
+	lit aig.Lit
+	inA bool
+}
+
 type tie struct {
 	obls   []Obligation
-	bindA  map[uint32]aig.Lit // A latch node -> literal in A it is assumed equal to (const or other latch)
-	bindB  map[uint32]aig.Lit // B latch node -> literal in A's graph (A-side lit) it is tied to
-	constA map[uint32]bool
+	bindA  map[uint32]aig.Lit // first-design latch node -> literal in the first design
+	bindB  map[uint32]binding // second-design latch node -> literal
 	notes  []string
 	initOK bool
+}
+
+// relevantState returns, per design, the latches that matter to the comparison: those
+// observable in either design plus everything their next-state functions need,
+// matched by name across the designs (to a fixpoint).
+func relevantState(a, b *aig.AIG) [2][]bool {
+	gs := [2]*aig.AIG{a, b}
+	idx := [2]map[string]int{latchIndex(a), latchIndex(b)}
+	rel := [2][]bool{make([]bool, len(a.Latches)), make([]bool, len(b.Latches))}
+	for k := 0; k < 2; k++ {
+		for i, l := range gs[k].LiveLatches() {
+			rel[k][i] = l
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for k := 0; k < 2; k++ {
+			// a latch relevant on one side is relevant on the other if it exists there
+			for i, l := range gs[k].Latches {
+				if rel[k][i] {
+					if j, ok := idx[1-k][l.Name]; ok && !rel[1-k][j] {
+						rel[1-k][j] = true
+						changed = true
+					}
+				}
+			}
+			for i, l := range gs[k].LatchClosure(rel[k]) {
+				if l && !rel[k][i] {
+					rel[k][i] = true
+					changed = true
+				}
+			}
+		}
+	}
+	return rel
 }
 
 func latchIndex(g *aig.AIG) map[string]int {
@@ -112,95 +153,96 @@ func latchIndex(g *aig.AIG) map[string]int {
 	return m
 }
 
-// matchState pairs registers between two designs by name, resolving the
-// optimiser's Removed records (constant / alias / dead).
+// matchState pairs registers between two designs by name and resolves the
+// optimiser's Removed records (constant / alias / unobservable) into ties that
+// the SAT check assumes and, at the same time, proves inductive.
 func matchState(a, b *aig.AIG) (*tie, error) {
-	t := &tie{bindA: map[uint32]aig.Lit{}, bindB: map[uint32]aig.Lit{}, constA: map[uint32]bool{}, initOK: true}
-	ia, ib := latchIndex(a), latchIndex(b)
-	liveA, liveB := a.LiveLatches(), b.LiveLatches()
-	// pairs by name
+	t := &tie{bindA: map[uint32]aig.Lit{}, bindB: map[uint32]binding{}, initOK: true}
+	idx := [2]map[string]int{latchIndex(a), latchIndex(b)}
+	gs := [2]*aig.AIG{a, b}
+	live := relevantState(a, b)
+	sideName := [2]string{"first", "second"}
+	badInit := func(format string, args ...any) {
+		t.initOK = false
+		t.notes = append(t.notes, fmt.Sprintf(format, args...))
+	}
+	// registers present in both designs
 	for i, la := range a.Latches {
-		if !liveA[i] {
+		if !live[0][i] {
 			continue
 		}
-		if j, ok := ib[la.Name]; ok {
+		if j, ok := idx[1][la.Name]; ok {
 			lb := b.Latches[j]
 			if la.Init != lb.Init {
-				t.initOK = false
-				t.notes = append(t.notes, fmt.Sprintf("register %s has a different reset value (%v vs %v)", la.Name, la.Init, lb.Init))
+				badInit("register %s has a different reset value (%v vs %v)", la.Name, la.Init, lb.Init)
 			}
-			t.bindB[lb.Q] = aig.Lit(la.Q << 1)
-			t.obls = append(t.obls, Obligation{"next(" + la.Name + ")", la.D, lb.D})
+			t.bindB[lb.Q] = binding{aig.Lit(la.Q << 1), true}
+			t.obls = append(t.obls, Obligation{"next(" + la.Name + ")", la.D, lb.D, 0})
 		}
 	}
-	// registers only on one side
-	oneSide := func(x, y *aig.AIG, live []bool, iy map[string]int, flip bool) error {
-		for i, lx := range x.Latches {
-			if !live[i] {
+	// registers present on one side only: the other side must record what happened to them
+	for x := 0; x < 2; x++ {
+		y := 1 - x
+		gx, gy := gs[x], gs[y]
+		for i, lx := range gx.Latches {
+			if !live[x][i] {
 				continue
 			}
-			if _, ok := iy[lx.Name]; ok {
+			if _, ok := idx[y][lx.Name]; ok {
 				continue
 			}
-			target, ok := y.Removed[lx.Name]
+			target, ok := gy.Removed[lx.Name]
 			if !ok {
-				return fmt.Errorf("register %s exists only in the %s design and is not recorded as optimised away; use the bounded sequential check (-bmc N)", lx.Name, map[bool]string{false: "first", true: "second"}[flip])
+				return nil, fmt.Errorf("register %s exists only in the %s design and is not recorded as optimised away; use the bounded sequential check (-bmc N)", lx.Name, sideName[x])
 			}
+			q := aig.Lit(lx.Q << 1)
+			var tied aig.Lit // what lx.Q equals, in gx's graph
+			var obl Obligation
+			side := 1 + x // intra-design obligation side
 			switch target {
 			case "dead":
 				continue
 			case "0", "1":
-				val := target == "1"
-				if lx.Init != val {
-					t.initOK = false
-					t.notes = append(t.notes, fmt.Sprintf("register %s is constant %s in the optimised design but resets to %v", lx.Name, target, lx.Init))
+				tied = aig.False
+				if target == "1" {
+					tied = aig.True
 				}
-				c := aig.False
-				if val {
-					c = aig.True
+				if lx.Init != (target == "1") {
+					badInit("register %s is constant %s in the other design but resets to %v", lx.Name, target, lx.Init)
 				}
-				if !flip {
-					t.bindA[lx.Q] = c
-					t.obls = append(t.obls, Obligation{"next(" + lx.Name + ")", lx.D, c})
-				} else {
-					t.bindB[lx.Q] = c // resolved on the B side below
-					t.obls = append(t.obls, Obligation{"next(" + lx.Name + ")", c, lx.D})
-				}
+				obl = Obligation{"next(" + lx.Name + ")", lx.D, tied, side}
 			default:
-				j, ok := iy[target]
-				if !ok {
-					return fmt.Errorf("register %s is recorded as an alias of %s, which does not exist", lx.Name, target)
+				jx, okx := idx[x][target]
+				if !okx {
+					return nil, fmt.Errorf("register %s is recorded as an alias of %s, which does not exist in the %s design", lx.Name, target, sideName[x])
 				}
-				ly := y.Latches[j]
-				if !flip {
-					// x (in A) aliased to y (in B, also in A by name)
-					ja, ok := ia[target]
-					if !ok {
-						return fmt.Errorf("alias target %s missing from first design", target)
-					}
-					t.bindA[lx.Q] = aig.Lit(a.Latches[ja].Q << 1)
-					t.obls = append(t.obls, Obligation{"next(" + lx.Name + ")", lx.D, ly.D})
-				} else {
-					if _, ok := ib[target]; !ok {
-						return fmt.Errorf("alias target %s missing from second design", target)
-					}
-					// x in B aliased to y in A: tie B.x.Q := A.y.Q
-					t.bindB[lx.Q] = aig.Lit(ly.Q << 1)
-					t.obls = append(t.obls, Obligation{"next(" + lx.Name + ")", ly.D, lx.D})
+				lt := gx.Latches[jx]
+				tied = aig.Lit(lt.Q << 1)
+				if lx.Init != lt.Init {
+					badInit("registers %s and %s are merged but have different reset values", lx.Name, target)
 				}
-				if la := lx.Init; la != ly.Init {
-					t.initOK = false
-					t.notes = append(t.notes, fmt.Sprintf("alias %s/%s have different reset values", lx.Name, target))
+				if jy, ok := idx[y][target]; ok { // survivor exists on both sides
+					ly := gy.Latches[jy]
+					if x == 0 {
+						obl = Obligation{"next(" + lx.Name + ")", lx.D, ly.D, 0}
+					} else {
+						obl = Obligation{"next(" + lx.Name + ")", ly.D, lx.D, 0}
+					}
+				} else { // alias of an unobservable register: prove the two next-states equal in place
+					if gy.Removed[target] != "dead" {
+						return nil, fmt.Errorf("register %s aliases %s, which the other design neither contains nor records as removed", lx.Name, target)
+					}
+					obl = Obligation{"next(" + lx.Name + ")", lx.D, lt.D, side}
 				}
 			}
+			if x == 0 {
+				t.bindA[lx.Q] = tied
+			} else {
+				t.bindB[lx.Q] = binding{tied, false}
+			}
+			_ = q
+			t.obls = append(t.obls, obl)
 		}
-		return nil
-	}
-	if err := oneSide(a, b, liveA, ib, false); err != nil {
-		return nil, err
-	}
-	if err := oneSide(b, a, liveB, ia, true); err != nil {
-		return nil, err
 	}
 	return t, nil
 }
@@ -223,7 +265,7 @@ func propObligations(a, b *aig.AIG) ([]Obligation, error) {
 			if !ok {
 				return nil, fmt.Errorf("%s property %s missing from the second design", pair.kind, p.Name)
 			}
-			out = append(out, Obligation{pair.kind + " " + p.Name, p.Lit, l})
+			out = append(out, Obligation{pair.kind + " " + p.Name, p.Lit, l, 0})
 		}
 	}
 	return out, nil
@@ -247,7 +289,11 @@ func CheckComb(a, b *aig.AIG) (*Result, error) {
 	for _, p := range a.Outputs {
 		q := b.FindOutput(p.Name)
 		for i := range p.Bits {
-			obls = append(obls, Obligation{fmt.Sprintf("output %s[%d]", p.Name, i), p.Bits[i], q.Bits[i]})
+			name := "output " + p.Name
+			if len(p.Bits) > 1 {
+				name = fmt.Sprintf("output %s[%d]", p.Name, i)
+			}
+			obls = append(obls, Obligation{name, p.Bits[i], q.Bits[i], 0})
 		}
 	}
 	po, err := propObligations(a, b)
@@ -264,79 +310,26 @@ func CheckComb(a, b *aig.AIG) (*Result, error) {
 		return res, nil
 	}
 
-	s := sat.New()
-	encA, encB := aig.NewEncoder(a, s), aig.NewEncoder(b, s)
-	encB.FreeVar = func(id uint32) sat.Lit {
-		n := b.Nodes[id]
-		if n.Kind == aig.KInput {
-			pi := b.PIs[n.Idx]
-			return encA.Lit(a.FindInput(pi.Port).Bits[pi.Bit])
+	cm := buildCombMiter(a, b, obls, tie)
+	idx, model, conflicts := solveMiter(cm.m, cm.bits)
+	res.Conflicts = conflicts
+	res.Elapsed = time.Since(t0)
+	switch {
+	case idx == -1:
+		res.Verdict = Equivalent
+	case idx == -2:
+		res.Verdict = Inconclusive
+		res.Notes = append(res.Notes, "SAT solver gave up (conflict budget exhausted)")
+	default:
+		o := obls[idx]
+		cex := &Cex{Obligation: o.Name, Inputs: map[string]*big.Int{}}
+		for _, p := range a.Inputs {
+			cex.Inputs[p.Name] = model[p.Name]
 		}
-		return sat.MkLit(s.NewVar(), false)
+		cex.StateA, cex.StateB = stateValues(a, b, tie, model)
+		cex.Confirmed = replayCex(a, b, o, cex)
+		res.Verdict, res.Cex = Different, cex
 	}
-	resolveA := func(l aig.Lit) sat.Lit { return encA.Lit(l) }
-	constLit := func(l aig.Lit) sat.Lit { // constants only
-		v := sat.MkLit(s.NewVar(), false)
-		s.AddClause(v)
-		return v.NotIf(l == aig.False)
-	}
-	for q, l := range tie.bindA {
-		if l.ID() == 0 {
-			encA.Bind(q, constLit(l))
-		} else {
-			encA.Bind(q, resolveA(l))
-		}
-	}
-	for q, l := range tie.bindB {
-		if l.ID() == 0 {
-			encB.Bind(q, constLit(l))
-		} else {
-			encB.Bind(q, resolveA(l))
-		}
-	}
-	for _, o := range obls {
-		x, y := encA.Lit(o.A), encB.Lit(o.B)
-		if x == y {
-			continue
-		}
-		d := sat.MkLit(s.NewVar(), false)
-		s.AddClause(d.Not(), x, y)
-		s.AddClause(d.Not(), x.Not(), y.Not())
-		switch s.Solve(d) {
-		case sat.Unsat:
-			s.AddClause(d.Not())
-			s.AddClause(x.Not(), y)
-			s.AddClause(x, y.Not())
-		case sat.Sat:
-			cex := &Cex{Obligation: o.Name, Inputs: map[string]*big.Int{}, StateA: map[string]bool{}, StateB: map[string]bool{}}
-			for _, p := range a.Inputs {
-				v := new(big.Int)
-				for i, bit := range p.Bits {
-					if s.LitValue(encA.Lit(bit)) {
-						v.SetBit(v, i, 1)
-					}
-				}
-				cex.Inputs[p.Name] = v
-			}
-			for _, l := range a.Latches {
-				cex.StateA[l.Name] = s.LitValue(encA.Lit(aig.Lit(l.Q << 1)))
-			}
-			for _, l := range b.Latches {
-				cex.StateB[l.Name] = s.LitValue(encB.Lit(aig.Lit(l.Q << 1)))
-			}
-			cex.Confirmed = replayCex(a, b, o, cex)
-			res.Verdict, res.Cex = Different, cex
-			res.Conflicts, res.Elapsed = s.Conflicts, time.Since(t0)
-			return res, nil
-		default:
-			res.Verdict = Inconclusive
-			res.Notes = append(res.Notes, "SAT solver gave up on "+o.Name)
-			res.Elapsed = time.Since(t0)
-			return res, nil
-		}
-	}
-	res.Verdict = Equivalent
-	res.Conflicts, res.Elapsed = s.Conflicts, time.Since(t0)
 	return res, nil
 }
 
@@ -363,5 +356,11 @@ func replayCex(a, b *aig.AIG, o Obligation, c *Cex) bool {
 	}
 	load(a, sa, c.StateA)
 	load(b, sb, c.StateB)
-	return sa.Lit(o.A)&1 != sb.Lit(o.B)&1
+	switch o.Side {
+	case 0:
+		return sa.Lit(o.A)&1 != sb.Lit(o.B)&1
+	case 1:
+		return sa.Lit(o.A)&1 != sa.Lit(o.B)&1
+	}
+	return sb.Lit(o.A)&1 != sb.Lit(o.B)&1
 }

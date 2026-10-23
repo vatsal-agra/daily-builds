@@ -301,7 +301,18 @@ func AIGER(w io.Writer, g *aig.AIG) error {
 
 var bitName = regexp.MustCompile(`^(.*)\[(\d+)\]$`)
 
-// ReadAIGER parses ASCII AIGER (with optional latch reset values and symbols).
+// splitBit turns "name[3]" into ("name", 3); plain names are bit 0 of a 1-bit port.
+func splitBit(sym string) (string, int) {
+	if m := bitName.FindStringSubmatch(sym); m != nil {
+		b, _ := strconv.Atoi(m[2])
+		return m[1], b
+	}
+	return sym, 0
+}
+
+// ReadAIGER parses ASCII AIGER (with optional latch reset values and a symbol table).
+// Bit symbols like "a[3]" are regrouped into multi-bit ports; every latch is
+// clocked by an implicit clock named "clk".
 func ReadAIGER(r io.Reader) (*aig.AIG, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 1<<20), 1<<26)
@@ -316,271 +327,197 @@ func ReadAIGER(r io.Reader) (*aig.AIG, error) {
 	if len(hdr) < 6 || hdr[0] != "aag" {
 		return nil, fmt.Errorf("not an ASCII AIGER file (expected 'aag M I L O A' header)")
 	}
-	var nums [5]int
-	for i := range nums {
+	var h [5]int
+	for i := range h {
 		v, err := strconv.Atoi(hdr[i+1])
 		if err != nil || v < 0 {
 			return nil, fmt.Errorf("bad AIGER header")
 		}
-		nums[i] = v
+		h[i] = v
 	}
-	M, I, L, O, A := nums[0], nums[1], nums[2], nums[3], nums[4]
+	M, I, L, O, A := h[0], h[1], h[2], h[3], h[4]
 	if len(lines) < 1+I+L+O+A {
 		return nil, fmt.Errorf("AIGER file truncated")
 	}
-	g := aig.New()
-	lits := make([]aig.Lit, M+1) // AIGER var -> literal in g
-	lits[0] = aig.False
-	pos := 1
-	field := func(s string, n int) ([]uint32, error) {
-		f := strings.Fields(s)
+	nums := func(line string, n int) ([]uint32, error) {
+		f := strings.Fields(line)
 		if len(f) < n {
-			return nil, fmt.Errorf("malformed AIGER line %q", s)
+			return nil, fmt.Errorf("malformed AIGER line %q", line)
 		}
 		out := make([]uint32, n)
-		for i := 0; i < n; i++ {
+		for i := range out {
 			v, err := strconv.ParseUint(f[i], 10, 32)
 			if err != nil {
-				return nil, fmt.Errorf("malformed AIGER line %q", s)
+				return nil, fmt.Errorf("malformed AIGER line %q", line)
+			}
+			if int(v>>1) > M {
+				return nil, fmt.Errorf("AIGER literal %d exceeds the maximum variable index %d", v, M)
 			}
 			out[i] = uint32(v)
 		}
 		return out, nil
 	}
-	type pend struct {
-		cur, next uint32
-		init      uint32
-	}
-	piNames := make([]string, I)
-	for i := 0; i < I; i++ {
-		f, err := field(lines[pos], 1)
-		pos++
-		if err != nil || f[0]&1 == 1 || int(f[0]>>1) > M {
-			return nil, fmt.Errorf("bad AIGER input line")
-		}
-		piNames[i] = fmt.Sprintf("i%d", i)
-		lits[f[0]>>1] = aig.Lit(0) // placeholder; real literal assigned after symbols
-	}
-	// we need symbols before creating inputs to group them; scan the symbol table first
-	symStart := 1 + I + L + O + A
-	inSym, latSym, outSym := map[int]string{}, map[int]string{}, map[int]string{}
-	for _, ln := range lines[symStart:] {
+
+	// symbol table (after the AND section)
+	sym := map[byte]map[int]string{'i': {}, 'l': {}, 'o': {}}
+	for _, ln := range lines[1+I+L+O+A:] {
 		if ln == "c" {
 			break
 		}
-		if len(ln) < 3 {
-			continue
-		}
 		f := strings.SplitN(ln, " ", 2)
-		if len(f) != 2 {
+		if len(f) != 2 || len(f[0]) < 2 || sym[f[0][0]] == nil {
 			continue
 		}
-		idx, err := strconv.Atoi(f[0][1:])
-		if err != nil {
-			continue
-		}
-		switch f[0][0] {
-		case 'i':
-			inSym[idx] = f[1]
-		case 'l':
-			latSym[idx] = f[1]
-		case 'o':
-			outSym[idx] = f[1]
+		if idx, err := strconv.Atoi(f[0][1:]); err == nil {
+			sym[f[0][0]][idx] = f[1]
 		}
 	}
+
+	g := aig.New()
+	lits := make([]aig.Lit, M+1) // AIGER variable -> literal in g
+	pos := 1
+
 	// inputs
-	pos = 1
-	type ibit struct {
-		name string
-		bit  int
-	}
-	inLits := make([]aig.Lit, I)
-	inInfo := make([]ibit, I)
-	widths := map[string]int{}
-	order := []string{}
+	var inPorts []aig.Port
+	inIdx := map[string]int{}
 	for i := 0; i < I; i++ {
-		n, ok := inSym[i]
-		if !ok {
-			n = fmt.Sprintf("i%d", i)
-		}
-		b := 0
-		if m := bitName.FindStringSubmatch(n); m != nil {
-			n = m[1]
-			b, _ = strconv.Atoi(m[2])
-		}
-		if _, seen := widths[n]; !seen {
-			order = append(order, n)
-		}
-		if b+1 > widths[n] {
-			widths[n] = b + 1
-		}
-		inInfo[i] = ibit{n, b}
-	}
-	for i := 0; i < I; i++ {
-		f, _ := field(lines[pos], 1)
+		f, err := nums(lines[pos], 1)
 		pos++
-		l := g.AddInput(inInfo[i].name, inInfo[i].bit)
-		inLits[i] = l
-		lits[f[0]>>1] = l
-	}
-	for _, n := range order {
-		p := aig.Port{Name: n, Bits: make([]aig.Lit, widths[n])}
-		for i := range p.Bits {
-			p.Bits[i] = aig.False
-		}
-		for i, ib := range inInfo {
-			if ib.name == n {
-				p.Bits[ib.bit] = inLits[i]
-			}
-		}
-		g.Inputs = append(g.Inputs, p)
-	}
-	latches := make([]pend, L)
-	for i := 0; i < L; i++ {
-		ff := strings.Fields(lines[pos])
-		pos++
-		if len(ff) < 2 {
-			return nil, fmt.Errorf("bad AIGER latch line")
-		}
-		f, err := field(lines[pos-1], 2)
 		if err != nil {
 			return nil, err
 		}
-		init := uint32(0)
-		if len(ff) >= 3 {
-			v, err := strconv.Atoi(ff[2])
-			if err != nil {
-				return nil, err
+		if f[0]&1 == 1 || f[0] == 0 {
+			return nil, fmt.Errorf("bad AIGER input literal %d", f[0])
+		}
+		name, b := splitBit(orDefault(sym['i'][i], fmt.Sprintf("i%d", i)))
+		l := g.AddInput(name, b)
+		lits[f[0]>>1] = l
+		pi, ok := inIdx[name]
+		if !ok {
+			pi = len(inPorts)
+			inIdx[name] = pi
+			inPorts = append(inPorts, aig.Port{Name: name})
+		}
+		for len(inPorts[pi].Bits) <= b {
+			inPorts[pi].Bits = append(inPorts[pi].Bits, aig.False)
+		}
+		inPorts[pi].Bits[b] = l
+	}
+	g.Inputs = inPorts
+
+	// latches
+	var nexts []uint32
+	for i := 0; i < L; i++ {
+		f, err := nums(lines[pos], 2)
+		pos++
+		if err != nil {
+			return nil, err
+		}
+		init := false
+		if ff := strings.Fields(lines[pos-1]); len(ff) >= 3 {
+			switch ff[2] {
+			case "0":
+			case "1":
+				init = true
+			default:
+				return nil, fmt.Errorf("unsupported latch reset value %q (only 0 and 1)", ff[2])
 			}
-			init = uint32(v)
 		}
-		latches[i] = pend{f[0], f[1], init}
-		name := latSym[i]
-		if name == "" {
-			name = fmt.Sprintf("l%d", i)
-		}
-		q := g.AddLatch(name, init == 1)
+		q := g.AddLatch(orDefault(sym['l'][i], fmt.Sprintf("l%d", i)), init)
 		g.Latches[len(g.Latches)-1].Clock = "clk"
 		lits[f[0]>>1] = q
+		nexts = append(nexts, f[1])
 	}
+
+	// outputs (resolved after the ANDs exist)
 	outRefs := make([]uint32, O)
-	for i := 0; i < O; i++ {
-		f, err := field(lines[pos], 1)
+	for i := range outRefs {
+		f, err := nums(lines[pos], 1)
 		pos++
 		if err != nil {
 			return nil, err
 		}
 		outRefs[i] = f[0]
 	}
-	resolve := func(e uint32) (aig.Lit, error) {
-		v := int(e >> 1)
-		if v > M {
-			return 0, fmt.Errorf("literal %d exceeds M", e)
-		}
-		return lits[v].NotIf(e&1 == 1), nil
-	}
-	type andDef struct{ l, a, b uint32 }
-	defs := make([]andDef, A)
+
+	// AND gates may reference later definitions in ASCII AIGER: resolve on demand
+	type andDef struct{ a, b uint32 }
+	defs := map[int]andDef{}
 	for i := 0; i < A; i++ {
-		f, err := field(lines[pos], 3)
+		f, err := nums(lines[pos], 3)
 		pos++
 		if err != nil {
 			return nil, err
 		}
-		defs[i] = andDef{f[0], f[1], f[2]}
-	}
-	// ANDs may reference later definitions in ASCII AIGER; resolve iteratively
-	done := make([]bool, A)
-	remaining := A
-	for remaining > 0 {
-		progress := false
-		for i, d := range defs {
-			if done[i] {
-				continue
-			}
-			ready := func(e uint32) bool {
-				v := int(e >> 1)
-				if v > M {
-					return false
-				}
-				if v == 0 {
-					return true
-				}
-				isAnd := false
-				for j := range defs {
-					if int(defs[j].l>>1) == v && !done[j] {
-						isAnd = true
-					}
-				}
-				return !isAnd
-			}
-			if ready(d.a) && ready(d.b) {
-				a, err := resolve(d.a)
-				if err != nil {
-					return nil, err
-				}
-				b, err := resolve(d.b)
-				if err != nil {
-					return nil, err
-				}
-				lits[d.l>>1] = g.And(a, b)
-				done[i] = true
-				remaining--
-				progress = true
-			}
+		if f[0]&1 == 1 || f[0] == 0 {
+			return nil, fmt.Errorf("bad AIGER AND literal %d", f[0])
 		}
-		if !progress {
-			return nil, fmt.Errorf("AIGER file has a combinational cycle or undefined literal")
-		}
+		defs[int(f[0]>>1)] = andDef{f[1], f[2]}
 	}
-	for i, lp := range latches {
-		d, err := resolve(lp.next)
+	const inProgress = aig.Lit(0xFFFFFFFE)
+	var build func(v int) (aig.Lit, error)
+	build = func(v int) (aig.Lit, error) {
+		if v == 0 {
+			return aig.False, nil
+		}
+		switch lits[v] {
+		case inProgress:
+			return 0, fmt.Errorf("AIGER file has a combinational cycle through variable %d", v)
+		case 0:
+			d, ok := defs[v]
+			if !ok {
+				return 0, fmt.Errorf("AIGER variable %d is used but never defined", v)
+			}
+			lits[v] = inProgress
+			a, err := build(int(d.a >> 1))
+			if err != nil {
+				return 0, err
+			}
+			b, err := build(int(d.b >> 1))
+			if err != nil {
+				return 0, err
+			}
+			lits[v] = g.And(a.NotIf(d.a&1 == 1), b.NotIf(d.b&1 == 1))
+		}
+		return lits[v], nil
+	}
+	resolve := func(e uint32) (aig.Lit, error) {
+		l, err := build(int(e >> 1))
+		return l.NotIf(e&1 == 1), err
+	}
+	for i, n := range nexts {
+		d, err := resolve(n)
 		if err != nil {
 			return nil, err
 		}
 		g.Latches[i].D = d
 	}
-	// outputs grouped by symbol
-	outW := map[string]int{}
-	outOrder := []string{}
-	type obit struct {
-		name string
-		bit  int
-	}
-	oi := make([]obit, O)
-	for i := 0; i < O; i++ {
-		n, ok := outSym[i]
+	var outPorts []aig.Port
+	outIdx := map[string]int{}
+	for i, ref := range outRefs {
+		l, err := resolve(ref)
+		if err != nil {
+			return nil, err
+		}
+		name, b := splitBit(orDefault(sym['o'][i], fmt.Sprintf("o%d", i)))
+		pi, ok := outIdx[name]
 		if !ok {
-			n = fmt.Sprintf("o%d", i)
+			pi = len(outPorts)
+			outIdx[name] = pi
+			outPorts = append(outPorts, aig.Port{Name: name})
 		}
-		b := 0
-		if m := bitName.FindStringSubmatch(n); m != nil {
-			n = m[1]
-			b, _ = strconv.Atoi(m[2])
+		for len(outPorts[pi].Bits) <= b {
+			outPorts[pi].Bits = append(outPorts[pi].Bits, aig.False)
 		}
-		if _, seen := outW[n]; !seen {
-			outOrder = append(outOrder, n)
-		}
-		if b+1 > outW[n] {
-			outW[n] = b + 1
-		}
-		oi[i] = obit{n, b}
+		outPorts[pi].Bits[b] = l
 	}
-	for _, n := range outOrder {
-		p := aig.Port{Name: n, Bits: make([]aig.Lit, outW[n])}
-		for i := range p.Bits {
-			p.Bits[i] = aig.False
-		}
-		for i, ob := range oi {
-			if ob.name == n {
-				l, err := resolve(outRefs[i])
-				if err != nil {
-					return nil, err
-				}
-				p.Bits[ob.bit] = l
-			}
-		}
-		g.Outputs = append(g.Outputs, p)
-	}
+	g.Outputs = outPorts
 	return g, nil
+}
+
+func orDefault(s, d string) string {
+	if s == "" {
+		return d
+	}
+	return s
 }

@@ -104,6 +104,8 @@ type AIG struct {
 	// Removed records latches eliminated by sequential optimisation: original name ->
 	// "0"/"1" (stuck at constant), "dead" (unobservable) or the name of the surviving equal latch.
 	Removed map[string]string
+	// Warnings are non-fatal diagnostics produced during elaboration.
+	Warnings []string
 	// Rewrite enables 2-level local rewriting inside And().
 	Rewrite bool
 }
@@ -316,7 +318,10 @@ func (g *AIG) Depth() int {
 }
 
 // liveInfo marks nodes and latches reachable from outputs/properties, following latch D inputs.
-func (g *AIG) liveInfo() (nodes []bool, latches []bool) {
+func (g *AIG) liveInfo() (nodes []bool, latches []bool) { return g.liveInfoSeed(nil) }
+
+// liveInfoSeed is liveInfo with additional latches (seed[i]) treated as observable.
+func (g *AIG) liveInfoSeed(seed []bool) (nodes []bool, latches []bool) {
 	nodes = make([]bool, len(g.Nodes))
 	latches = make([]bool, len(g.Latches))
 	var stack []uint32
@@ -340,6 +345,11 @@ func (g *AIG) liveInfo() (nodes []bool, latches []bool) {
 	for _, p := range g.Assumes {
 		push(p.Lit)
 	}
+	for i, sd := range seed {
+		if sd {
+			push(Lit(g.Latches[i].Q << 1))
+		}
+	}
 	for len(stack) > 0 {
 		id := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -355,6 +365,10 @@ func (g *AIG) liveInfo() (nodes []bool, latches []bool) {
 	}
 	return
 }
+
+// LatchClosure marks the latches that influence an output, a property or any
+// latch in seed (transitively through next-state functions).
+func (g *AIG) LatchClosure(seed []bool) []bool { _, l := g.liveInfoSeed(seed); return l }
 
 // Live returns the nodes reachable from outputs and properties.
 func (g *AIG) Live() []bool { n, _ := g.liveInfo(); return n }

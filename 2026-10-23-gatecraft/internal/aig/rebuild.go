@@ -167,20 +167,24 @@ func (rb *rebuilder) finish() *AIG {
 			dst.Removed[l.Name] = "dead"
 		}
 	}
-	// re-point earlier removals whose target was removed in this pass
+	// re-point earlier removals whose target was itself removed in this pass: follow alias
+	// chains to a constant or a survivor; an alias of an unobservable latch keeps pointing
+	// at it (the equality still matters to the proof that the other latches were redundant).
+	resolved := map[string]string{}
 	for k, v := range dst.Removed {
-		for depth := 0; depth < len(src.Latches)+1; depth++ {
+		for depth := 0; depth <= len(src.Latches); depth++ {
 			if v == "0" || v == "1" || v == "dead" {
 				break
 			}
 			t, gone := dst.Removed[v]
-			if !gone {
+			if !gone || t == "dead" {
 				break
 			}
 			v = t
 		}
-		dst.Removed[k] = v
+		resolved[k] = v
 	}
+	dst.Removed = resolved
 	return dst
 }
 
@@ -271,5 +275,11 @@ func Balance(g *AIG) *AIG {
 		}
 		return items[0]
 	}
+	return rb.finish()
+}
+
+// Rebuild returns a structurally identical, independent copy of g (all latches kept).
+func Rebuild(g *AIG) *AIG {
+	rb := newRebuilder(g, false, nil)
 	return rb.finish()
 }

@@ -1,5 +1,7 @@
 # Gatecraft (work in progress)
 
+> Phase 3 (adversarial review) done — see [REVIEW.md](REVIEW.md): 10 findings fixed, each with a regression test.
+
 Verilog-subset hardware compiler, simulator, optimiser and formal checker. See [PLAN.md](PLAN.md).
 
 ## Status

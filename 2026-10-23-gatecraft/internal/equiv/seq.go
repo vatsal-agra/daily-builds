@@ -20,68 +20,80 @@ func CheckBounded(a, b *aig.AIG, depth int) (*Result, error) {
 	if err := singleClock(a, b); err != nil {
 		return nil, err
 	}
-	s := sat.New()
-	ua, ub := NewUnroller(a, s, true), NewUnroller(b, s, true)
-	ub.PIHook = func(t int, pi aig.PI) (sat.Lit, bool) {
-		return ua.Frame(t).Lit(a.FindInput(pi.Port).Bits[pi.Bit]), true
-	}
+	m, diffs := buildBoundedMiter(a, b, depth)
 	res := &Result{Method: fmt.Sprintf("bounded sequential miter, %d cycles from reset", depth)}
-	for t := 0; t < depth; t++ {
-		ea, eb := ua.Frame(t), ub.Frame(t)
-		d := sat.MkLit(s.NewVar(), false)
-		var diffs []sat.Lit
-		type pair struct {
-			name string
-			x, y sat.Lit
-		}
-		var ps []pair
-		for _, p := range a.Outputs {
-			q := b.FindOutput(p.Name)
-			for i := range p.Bits {
-				x, y := ea.Lit(p.Bits[i]), eb.Lit(q.Bits[i])
-				if x == y {
-					continue
-				}
-				v := sat.MkLit(s.NewVar(), false)
-				s.AddClause(v.Not(), x, y)
-				s.AddClause(v.Not(), x.Not(), y.Not())
-				diffs = append(diffs, v)
-				ps = append(ps, pair{fmt.Sprintf("output %s[%d]", p.Name, i), x, y})
-			}
-		}
-		res.Obligations += len(ps)
-		s.AddClause(append([]sat.Lit{d.Not()}, diffs...)...)
-		if len(diffs) == 0 {
+	for t, d := range diffs {
+		if d == aig.False {
 			continue
 		}
-		s.SetConflictBudget(s.Conflicts + 200000)
-		switch s.Solve(d) {
-		case sat.Sat:
-			tr := &Trace{Cycle: t}
-			for _, p := range ps {
-				if s.LitValue(p.x) != s.LitValue(p.y) {
-					tr.Fail = p.name
-					break
-				}
-			}
-			for k := 0; k <= t; k++ {
-				tr.Inputs = append(tr.Inputs, ua.Inputs(k))
-			}
-			tr.Confirmed = replayDiff(a, b, tr)
-			res.Verdict, res.Trace = Different, tr
-			res.Conflicts, res.Elapsed = s.Conflicts, time.Since(t0)
-			return res, nil
-		case sat.Unknown:
+		res.Obligations++
+		idx, model, conf := solveMiter(m, []aig.Lit{d})
+		res.Conflicts += conf
+		switch idx {
+		case -2:
 			res.Verdict = Inconclusive
 			res.Notes = append(res.Notes, fmt.Sprintf("SAT budget exhausted at cycle %d", t))
-			res.Conflicts, res.Elapsed = s.Conflicts, time.Since(t0)
+			res.Elapsed = time.Since(t0)
+			return res, nil
+		case 0:
+			tr := &Trace{Cycle: t}
+			for k := 0; k <= t; k++ {
+				in := map[string]*big.Int{}
+				for _, p := range a.Inputs {
+					in[p.Name] = model[fmt.Sprintf("%s@%d", p.Name, k)]
+					if in[p.Name] == nil {
+						in[p.Name] = new(big.Int)
+					}
+				}
+				tr.Inputs = append(tr.Inputs, in)
+			}
+			tr.Confirmed = replayDiff(a, b, tr)
+			tr.Fail = firstDifferingOutput(a, b, tr)
+			res.Verdict, res.Trace = Different, tr
+			res.Elapsed = time.Since(t0)
 			return res, nil
 		}
 	}
 	res.Verdict = Equivalent
 	res.Notes = append(res.Notes, fmt.Sprintf("outputs agree for the first %d cycles after reset (bounded guarantee only)", depth))
-	res.Conflicts, res.Elapsed = s.Conflicts, time.Since(t0)
+	res.Elapsed = time.Since(t0)
 	return res, nil
+}
+
+// firstDifferingOutput replays the trace and names an output bit that differs in the last cycle.
+func firstDifferingOutput(a, b *aig.AIG, tr *Trace) string {
+	sa, sb := aig.NewSimulator(a), aig.NewSimulator(b)
+	for t, in := range tr.Inputs {
+		for _, side := range []struct {
+			g *aig.AIG
+			s *aig.Simulator
+		}{{a, sa}, {b, sb}} {
+			for i, pi := range side.g.PIs {
+				var w uint64
+				if v := in[pi.Port]; v != nil && v.Bit(pi.Bit) == 1 {
+					w = ^uint64(0)
+				}
+				side.s.SetPI(i, w)
+			}
+			side.s.Eval()
+		}
+		if t == len(tr.Inputs)-1 {
+			for _, p := range a.Outputs {
+				q := b.FindOutput(p.Name)
+				for i := range p.Bits {
+					if sa.Lit(p.Bits[i])&1 != sb.Lit(q.Bits[i])&1 {
+						if len(p.Bits) == 1 {
+							return "output " + p.Name
+						}
+						return fmt.Sprintf("output %s[%d]", p.Name, i)
+					}
+				}
+			}
+		}
+		sa.Clock(nil)
+		sb.Clock(nil)
+	}
+	return ""
 }
 
 // replayDiff drives both designs through the trace in the simulator and confirms

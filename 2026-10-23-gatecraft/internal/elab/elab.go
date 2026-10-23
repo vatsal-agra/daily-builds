@@ -42,11 +42,22 @@ type bitRef struct {
 	bit int
 }
 
+type peekRec struct {
+	sig *signal
+	bit int
+	lit aig.Lit
+}
+
 type driver struct {
 	what    string
 	targets []bitRef
 	eval    func() []aig.Lit
 	state   int // 0 idle, 1 running, 2 done
+	// A running combinational block can answer reads of its own outputs that arrive
+	// through other logic (a legal, non-looping dependency) with the value it has
+	// computed so far; the value must still be the final one when the block ends.
+	peek   func(s *signal, bit int) (aig.Lit, bool)
+	peeked []peekRec
 }
 
 type clockedBlock struct {
@@ -76,6 +87,14 @@ type ctx struct {
 	inst   *hdl.Instance
 }
 
+func (c *ctx) warn(pos hdl.Pos, format string, args ...any) {
+	where := c.mod.File
+	if where == "" {
+		where = c.mod.Name
+	}
+	c.e.g.Warnings = append(c.e.g.Warnings, fmt.Sprintf("%s:%s: warning: %s", where, pos, fmt.Sprintf(format, args...)))
+}
+
 func (c *ctx) fail(pos hdl.Pos, format string, args ...any) {
 	where := c.mod.File
 	if where == "" {
@@ -102,7 +121,11 @@ func Elaborate(files []*hdl.File, opt Options) (g *aig.AIG, err error) {
 		}
 	}
 	if len(order) == 0 {
-		return nil, fmt.Errorf("no modules found")
+		var names []string
+		for _, f := range files {
+			names = append(names, f.Name)
+		}
+		return nil, fmt.Errorf("no modules found in %s", strings.Join(names, ", "))
 	}
 	top := opt.Top
 	if top == "" {
@@ -396,6 +419,7 @@ func (c *ctx) readSignal(s *signal, at hdl.Pos) []aig.Lit {
 // readRange resolves only bits [lo,hi) of s, so bit-level references do not
 // create false combinational loops through the rest of a vector.
 func (c *ctx) readRange(s *signal, at hdl.Pos, lo, hi int) []aig.Lit {
+	var early map[int]aig.Lit
 	for i := lo; i < hi; i++ {
 		if s.val[i] != aig.Undef {
 			continue
@@ -408,9 +432,26 @@ func (c *ctx) readRange(s *signal, at hdl.Pos, lo, hi int) []aig.Lit {
 			}
 			c.fail(at, "signal '%s' bit %d is never driven", s.name, i+s.lsb)
 		}
+		if d.state == 1 && d.peek != nil {
+			if v, ok := d.peek(s, i); ok {
+				if early == nil {
+					early = map[int]aig.Lit{}
+				}
+				early[i] = v
+				d.peeked = append(d.peeked, peekRec{s, i, v})
+				continue
+			}
+		}
 		c.e.runDriver(d)
 	}
-	return s.val
+	if early == nil {
+		return s.val
+	}
+	out := append([]aig.Lit(nil), s.val...)
+	for i, v := range early {
+		out[i] = v
+	}
+	return out
 }
 
 func (c *ctx) tryRead(s *signal) ([]aig.Lit, bool) {
@@ -533,6 +574,12 @@ func (c *ctx) installInstance(in *hdl.Instance) {
 		switch ps.dir {
 		case hdl.DirInput:
 			x, pw := pc.X, ps.width
+			if num, isNum := x.(*hdl.Number); !(isNum && num.Width == 0) {
+				if w := c.selfWidth(nil, x); w != pw {
+					c.warn(in.At, "port '%s' of instance %s is %d bits but the connected expression is %d bits (%s)",
+						name, in.Name, pw, w, map[bool]string{true: "truncated", false: "zero-extended"}[w > pw])
+				}
+			}
 			d := &driver{what: fmt.Sprintf("%s%s", child.path, name)}
 			for b := 0; b < pw; b++ {
 				d.targets = append(d.targets, bitRef{ps, b})
@@ -541,6 +588,10 @@ func (c *ctx) installInstance(in *hdl.Instance) {
 			child.setDriver(in.At, d)
 		case hdl.DirOutput:
 			w, writes := c.lvalue(nil, pc.X)
+			if w != ps.width {
+				c.warn(in.At, "output port '%s' of instance %s is %d bits but the connected net is %d bits (%s)",
+					name, in.Name, ps.width, w, map[bool]string{true: "truncated", false: "zero-extended"}[ps.width > w])
+			}
 			sort.SliceStable(writes, func(i, j int) bool { return writes[i].valIdx < writes[j].valIdx })
 			d := &driver{what: fmt.Sprintf("%s%s", child.path, name)}
 			for _, wr := range writes {
