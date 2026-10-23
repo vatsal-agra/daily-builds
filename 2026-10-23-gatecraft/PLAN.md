@@ -64,3 +64,17 @@ Required: 1–4. Stretch: 5, 6, 7 (+8 secondary).
 ## Documented limits
 Unsigned arithmetic only; single synchronous (posedge) style flops with initial value 0 unless
 declared; no async reset, tri-state, memories-as-arrays, delays, or `generate`.
+
+## Delivered (status at ship time)
+
+| # | Feature | Tier | Status |
+|---|---------|------|--------|
+| 1 | Verilog-subset frontend + elaborator → AIG | required | shipped |
+| 2 | Simulator + testbench scripts + VCD | required | shipped |
+| 3 | AIG optimiser (strash, rewrite, balance, FRAIG, seq cleanup) | required | shipped |
+| 4 | SAT equivalence checker with replayed counterexamples | required | shipped |
+| 5 | BMC + k-induction | stretch | shipped |
+| 6 | k-LUT technology mapper | stretch | shipped |
+| 7 | Exports (Verilog/BLIF/AIGER) + HTML report with waveform viewer | stretch | shipped |
+| 8 | Static timing (critical path) | secondary | shipped |
+| 9 | *(added)* Sequential equivalence across state encodings via mined inductive invariants | stretch+ | shipped |
