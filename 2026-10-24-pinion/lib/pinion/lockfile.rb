@@ -86,6 +86,14 @@ module Pinion
       problems
     end
 
+    # Non-fatal notices: locked versions that have since been yanked.
+    def warnings(registry)
+      @packages.filter_map do |n, l|
+        e = registry.entry(n, l.version)
+        "#{n} #{l.version} has been yanked from the registry (run `pinion update #{n}`)" if e&.yanked
+      end
+    end
+
     def reachable(roots)
       seen = {}
       stack = roots.dup

@@ -190,7 +190,10 @@ module Pinion
     def pick(pkg, cands)
       locked = @locked[pkg]
       return locked if locked && cands.include?(locked)
-      @strategy == :newest ? cands.last : cands.first
+      # a stable release beats any prerelease, even a numerically higher one
+      pool = cands.reject(&:prerelease?)
+      pool = cands if pool.empty?
+      @strategy == :newest ? pool.last : pool.first
     end
 
     # One incompatibility per dependency, widened to every adjacent version that declares

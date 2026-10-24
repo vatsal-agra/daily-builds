@@ -187,10 +187,12 @@ module Pinion
       o, manifest, registry, lock_path = load_project(argv, "usage: pinion verify [MANIFEST]")
       lock = read_lock(lock_path, required: true)
       problems = lock.verify(manifest, registry)
+      warnings = lock.warnings(registry)
       if o.json
-        @out.puts JSON.pretty_generate("ok" => problems.empty?, "problems" => problems)
+        @out.puts JSON.pretty_generate("ok" => problems.empty?, "problems" => problems, "warnings" => warnings)
       elsif problems.empty?
         @out.puts "lockfile OK (#{lock.packages.length} packages verified against manifest and registry)"
+        warnings.each { |w| @out.puts "warning: #{w}" }
       else
         @err.puts "lockfile is not valid:"
         problems.each { |p| @err.puts "  - #{p}" }

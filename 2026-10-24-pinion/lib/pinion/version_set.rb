@@ -125,16 +125,21 @@ module Pinion
       end
       if lo && lo.k == 0 && hi && hi.k == 0 && hi.v.pre == ["0"] && hi.v.patch == 0
         v = lo.v
-        if hi.v == v.next_major && v.major > 0 then return "^#{v}" end
-        if hi.v == v.next_minor then return(v.major == 0 ? "^#{v}" : "~#{v}") end
+        return "^#{v}" if hi.v == v.next_major && v.major > 0
+        if hi.v == v.next_minor
+          return "^#{v}" if v.major == 0 && v.minor > 0   # ^0.2.3 means <0.3.0; ^0.0.x would mean <0.0.(x+1)
+          return "~#{v}" if v.major > 0
+        end
       end
       parts = []
-      parts << (lo.k == 0 ? ">=#{lo.v}" : ">#{lo.v}") if lo
+      parts << (lo.k == 0 ? ">=#{display_bound(lo.v)}" : ">#{lo.v}") if lo
       parts << (hi.k == 1 ? "<=#{hi.v}" : "<#{display_upper(hi.v)}") if hi
       parts.join(" ")
     end
 
-    def display_upper(v) = (v.pre == ["0"] ? v.base : v)
+    # "2.0.0-0" is just how we say "before any 2.0.0 prerelease"; show it as 2.0.0.
+    def display_bound(v) = (v.pre == ["0"] ? v.base : v)
+    alias display_upper display_bound
 
     def normalize(ivs)
       ivs = ivs.reject { |iv| !iv.start.nil? && !iv.stop.nil? && !(iv.start < iv.stop) }

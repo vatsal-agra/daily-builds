@@ -2,7 +2,9 @@
 
 PubGrub-style dependency resolver in Ruby (no gems).
 
-**Status: Phase 2 (core build) complete.** Working end to end:
+**Status: Phase 3 (adversarial review) complete** — see [REVIEW.md](REVIEW.md) for 12 findings, all fixed.
+
+Working end to end:
 
 1. SemVer + constraint language + exact version-set algebra (`lib/pinion/version*.rb`, `constraint.rb`)
 2. PubGrub solver with conflict learning and backjumping (`solver.rb`)

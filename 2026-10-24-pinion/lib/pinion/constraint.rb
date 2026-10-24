@@ -19,12 +19,13 @@ module Pinion
     def parse(str)
       src = str.to_s.strip
       return VersionSet.any if src.empty? || src == "*"
-      alts = src.split("||").map(&:strip)
+      alts = src.split("||", -1).map(&:strip)
       raise ParseError, "empty alternative in constraint #{str.inspect}" if alts.any?(&:empty?)
       alts.map { |a| parse_and(a, str) }.reduce { |x, y| x.union(y) }
     end
 
     def parse_and(src, whole)
+      raise ParseError, "dangling '-' in range #{whole.inspect}" if src.match?(/\s-\s*\z/) || src.match?(/\A-\s/)
       if src =~ /\A(\S+)\s+-\s+(\S+)\z/
         lo = partial($1, whole)
         hi = partial($2, whole)
@@ -33,6 +34,9 @@ module Pinion
       src = src.gsub(/(\^|~>|~|>=|<=|==|!=|=|>|<)\s+(?=\d|[xX*])/, '\1') # allow ">= 1.0"
       toks = src.split(/[\s,]+/).reject(&:empty?)
       raise ParseError, "empty constraint #{whole.inspect}" if toks.empty?
+      toks.each do |t|
+        raise ParseError, "operator #{t.inspect} needs a version in constraint #{whole.inspect}" if t.match?(/\A(\^|~>|~|>=|<=|==|!=|=|>|<)\z/)
+      end
       toks.map { |t| comparator(t, whole) }.reduce { |x, y| x.intersect(y) }
     end
 

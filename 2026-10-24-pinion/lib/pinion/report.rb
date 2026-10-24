@@ -112,34 +112,49 @@ module Pinion
       @lines << Line.new(0, "", false)
     end
 
-    def visit(inc)
+    # Iterative (explicit task stack) so proofs thousands of steps deep cannot overflow the
+    # Ruby stack. Tasks run LIFO; decisions that depend on what has been written so far are
+    # taken when the task runs, which reproduces the order of the obvious recursive version.
+    def visit(root)
+      tasks = [[:visit, root]]
+      until tasks.empty?
+        kind, inc, extra = tasks.pop
+        case kind
+        when :blank then blank
+        when :emit then emit(inc, extra.call)
+        when :visit then plan(inc, tasks) unless @written.key?(inc)
+        end
+      end
+    end
+
+    def plan(inc, tasks)
       a = inc.cause.conflict
       b = inc.cause.other
       concl = generic(inc)
       if !a.conflict? && !b.conflict?
-        emit(inc, "Because #{describe(a)} and #{describe(b)}, #{concl}.")
+        tasks << [:emit, inc, -> { "Because #{describe(a)} and #{describe(b)}, #{concl}." }]
       elsif a.conflict? != b.conflict?
         derived, ext = a.conflict? ? [a, b] : [b, a]
         if @written.key?(derived)
-          emit(inc, "Because #{describe(ext)} and #{ref(derived)}, #{concl}.")
+          tasks << [:emit, inc, -> { "Because #{describe(ext)} and #{ref(derived)}, #{concl}." }]
         else
-          visit(derived)
-          emit(inc, "And because #{describe(ext)}, #{concl}.")
+          tasks << [:emit, inc, -> { "And because #{describe(ext)}, #{concl}." }]
+          tasks << [:visit, derived]
         end
       else
         wa = @written.key?(a)
         wb = @written.key?(b)
         if wa && wb
-          emit(inc, "Because #{ref(a)} and #{ref(b)}, #{concl}.")
+          tasks << [:emit, inc, -> { "Because #{ref(a)} and #{ref(b)}, #{concl}." }]
         elsif wa || wb
           known, other = wa ? [a, b] : [b, a]
-          visit(other)
-          emit(inc, "And because #{ref(known)}, #{concl}.")
+          tasks << [:emit, inc, -> { "And because #{ref(known)}, #{concl}." }]
+          tasks << [:visit, other]
         else
-          visit(a)
-          blank
-          visit(b)
-          emit(inc, "So, because #{ref(a)} and #{ref(b)}, #{concl}.")
+          tasks << [:emit, inc, -> { "So, because #{ref(a)} and #{ref(b)}, #{concl}." }]
+          tasks << [:visit, b]
+          tasks << [:blank, nil]
+          tasks << [:visit, a]
         end
       end
     end

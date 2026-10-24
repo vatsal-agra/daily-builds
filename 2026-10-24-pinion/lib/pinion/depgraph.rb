@@ -69,7 +69,10 @@ module Pinion
     end
 
     def explain_presence(pkg)
-      return "#{pkg} is not part of the solution" unless @solution.key?(pkg)
+      unless @solution.key?(pkg)
+        known = @universe.registry.known?(pkg)
+        return "#{pkg} is not part of the solution#{known ? ' (it exists in the registry but nothing selected depends on it)' : ' (and does not exist in the registry)'}"
+      end
       v = @solution[pkg]
       out = ["#{pkg} #{v} is in the solution because:"]
       paths_to(pkg).each do |path|
