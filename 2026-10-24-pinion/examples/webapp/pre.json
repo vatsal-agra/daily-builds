@@ -1,0 +1,7 @@
+{
+  "name": "shopfront",
+  "dependencies": {
+    "jsonkit": ">=2.0.0-rc.1",
+    "logsmith": ">=1.3.1"
+  }
+}

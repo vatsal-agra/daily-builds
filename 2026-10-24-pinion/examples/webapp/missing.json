@@ -1,0 +1,7 @@
+{
+  "name": "shopfront",
+  "dependencies": {
+    "webkit": "^2.0",
+    "telemetry-sdk": "^1.0"
+  }
+}

@@ -1,0 +1,313 @@
+{
+  "packages": {
+    "webkit": {
+      "1.0.0": {
+        "dependencies": {
+          "httpcore": "^1.0.0",
+          "routekit": "^1.0"
+        }
+      },
+      "1.1.0": {
+        "dependencies": {
+          "httpcore": "^1.0.0",
+          "routekit": "^1.0"
+        }
+      },
+      "2.0.0": {
+        "dependencies": {
+          "httpcore": "^1.0.0",
+          "routekit": "^1.0"
+        }
+      },
+      "2.1.0": {
+        "dependencies": {
+          "httpcore": "^1.0.0",
+          "routekit": "^1.0"
+        }
+      },
+      "2.2.0": {
+        "dependencies": {
+          "httpcore": "^1.1.0",
+          "routekit": "^1.0"
+        }
+      },
+      "2.3.0": {
+        "dependencies": {
+          "httpcore": "^1.2.0",
+          "routekit": "^1.0"
+        }
+      },
+      "2.4.0": {
+        "dependencies": {
+          "httpcore": "^1.2.0",
+          "routekit": "^1.0"
+        }
+      },
+      "3.0.0": {
+        "dependencies": {
+          "httpcore": "^2.0.0",
+          "routekit": "^1.0",
+          "tlslib": "^3.0"
+        }
+      }
+    },
+    "httpcore": {
+      "1.0.0": {
+        "dependencies": {
+          "tlslib": "^2.0.0"
+        }
+      },
+      "1.1.0": {
+        "dependencies": {
+          "tlslib": "^2.0.0"
+        }
+      },
+      "1.2.0": {
+        "dependencies": {
+          "tlslib": "^2.1.0"
+        }
+      },
+      "1.3.0": {
+        "dependencies": {
+          "tlslib": "^2.1.0"
+        }
+      },
+      "2.0.0": {
+        "dependencies": {
+          "tlslib": "^3.0.0"
+        }
+      },
+      "2.1.0": {
+        "dependencies": {
+          "tlslib": "^3.0.0"
+        }
+      }
+    },
+    "tlslib": {
+      "2.0.0": {
+        "dependencies": {
+          "cryptoprim": ">=1.0"
+        }
+      },
+      "2.1.0": {
+        "dependencies": {
+          "cryptoprim": ">=1.0"
+        }
+      },
+      "2.1.1": {
+        "dependencies": {
+          "cryptoprim": ">=1.0"
+        }
+      },
+      "3.0.0": {
+        "dependencies": {
+          "cryptoprim": ">=2.0"
+        }
+      },
+      "3.1.0": {
+        "dependencies": {
+          "cryptoprim": ">=2.0"
+        }
+      }
+    },
+    "cryptoprim": {
+      "1.0.0": {
+        "dependencies": {}
+      },
+      "1.1.0": {
+        "dependencies": {}
+      },
+      "2.0.0": {
+        "dependencies": {}
+      }
+    },
+    "routekit": {
+      "1.0.0": {
+        "dependencies": {
+          "unicodedata": "^1.0"
+        }
+      },
+      "1.0.1": {
+        "dependencies": {
+          "unicodedata": "^1.0"
+        }
+      },
+      "1.1.0": {
+        "dependencies": {
+          "unicodedata": "^1.0"
+        }
+      }
+    },
+    "unicodedata": {
+      "1.0.0": {
+        "dependencies": {}
+      },
+      "1.1.0": {
+        "dependencies": {}
+      }
+    },
+    "jsonkit": {
+      "0.9.0": {
+        "dependencies": {
+          "unicodedata": "^1.0"
+        }
+      },
+      "1.0.0": {
+        "dependencies": {
+          "unicodedata": "^1.0"
+        }
+      },
+      "1.1.0": {
+        "dependencies": {
+          "unicodedata": "^1.0"
+        }
+      },
+      "1.2.0": {
+        "dependencies": {
+          "unicodedata": "^1.0"
+        }
+      },
+      "2.0.0-rc.1": {
+        "dependencies": {
+          "unicodedata": "^1.1"
+        }
+      },
+      "2.0.0": {
+        "dependencies": {
+          "unicodedata": "^1.1"
+        }
+      }
+    },
+    "ormlite": {
+      "1.0.0": {
+        "dependencies": {
+          "jsonkit": "^1.0",
+          "sqldriver": "~>1.2"
+        }
+      },
+      "1.1.0": {
+        "dependencies": {
+          "jsonkit": "^1.0",
+          "sqldriver": "~>1.2"
+        }
+      },
+      "1.2.0": {
+        "dependencies": {
+          "jsonkit": "^1.0",
+          "sqldriver": "~>1.2"
+        }
+      },
+      "1.3.0": {
+        "dependencies": {
+          "jsonkit": "^1.0",
+          "sqldriver": "~>1.2"
+        }
+      },
+      "1.4.0": {
+        "dependencies": {
+          "jsonkit": "^1.0",
+          "sqldriver": "^1.3"
+        }
+      },
+      "1.5.0": {
+        "dependencies": {
+          "jsonkit": "^1.0",
+          "sqldriver": "^1.3"
+        }
+      },
+      "2.0.0": {
+        "dependencies": {
+          "jsonkit": "^2.0",
+          "sqldriver": "^2.0"
+        }
+      }
+    },
+    "sqldriver": {
+      "1.2.0": {
+        "dependencies": {
+          "cryptoprim": ">=1.0"
+        }
+      },
+      "1.2.1": {
+        "dependencies": {
+          "cryptoprim": ">=1.0"
+        }
+      },
+      "1.2.5": {
+        "dependencies": {
+          "cryptoprim": ">=1.0"
+        }
+      },
+      "1.3.0": {
+        "dependencies": {
+          "cryptoprim": ">=1.0"
+        }
+      },
+      "2.0.0": {
+        "dependencies": {
+          "cryptoprim": ">=2.0"
+        }
+      }
+    },
+    "logsmith": {
+      "1.0.0": {
+        "dependencies": {}
+      },
+      "1.1.0": {
+        "dependencies": {}
+      },
+      "1.2.0": {
+        "dependencies": {}
+      },
+      "1.3.0": {
+        "dependencies": {}
+      },
+      "1.3.1": {
+        "dependencies": {},
+        "yanked": true
+      },
+      "1.4.0": {
+        "dependencies": {}
+      }
+    },
+    "metrics": {
+      "0.5.0": {
+        "dependencies": {
+          "logsmith": "^1.4"
+        }
+      },
+      "0.6.0": {
+        "dependencies": {
+          "logsmith": "^1.4",
+          "jsonkit": "^1.1"
+        }
+      }
+    },
+    "authlib": {
+      "4.0.0": {
+        "dependencies": {
+          "tlslib": "^2.0",
+          "jsonkit": ">=1.0, <3"
+        }
+      },
+      "4.1.0": {
+        "dependencies": {
+          "tlslib": "^2.0",
+          "jsonkit": ">=1.0, <3"
+        }
+      },
+      "4.2.0": {
+        "dependencies": {
+          "tlslib": "^2.0",
+          "jsonkit": ">=1.0, <3"
+        }
+      },
+      "5.0.0": {
+        "dependencies": {
+          "tlslib": "^3.0",
+          "jsonkit": "^2.0"
+        }
+      }
+    }
+  }
+}
