@@ -110,7 +110,10 @@ module Pinion
 
     # Why nothing in `set` is installable for pkg (nil when the plain "no versions match" is the whole story).
     def empty_reason(pkg, set)
-      return "it does not exist in the registry" unless known?(pkg)
+      unless known?(pkg)
+        near = @registry.names.select { |n| edit_distance(n.downcase, pkg.downcase) <= [2, pkg.length / 4].max }.first(3)
+        return "it does not exist in the registry#{near.empty? ? '' : "; did you mean #{near.join(' or ')}?"}"
+      end
       hidden = @registry.versions(pkg).select { |v| set.include?(v) && !visible?(pkg, v) }
       return nil if hidden.empty?
       yanked = hidden.count { |v| @registry.entry(pkg, v).yanked }
@@ -122,6 +125,16 @@ module Pinion
     end
 
     private
+
+    def edit_distance(a, b)
+      prev = (0..b.length).to_a
+      a.each_char.with_index(1) do |ca, i|
+        cur = [i]
+        b.each_char.with_index(1) { |cb, j| cur << [prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca == cb ? 0 : 1)].min }
+        prev = cur
+      end
+      prev.last
+    end
 
     def visible?(pkg, v)
       return true if @locked[pkg] == v
