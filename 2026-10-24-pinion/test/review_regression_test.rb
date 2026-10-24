@@ -86,3 +86,6 @@ class ReviewRegressionLockTest < Minitest::Test
     end
   end
 end
+
+# F13-F16 are pinned in io_test.rb (lockfile typing), cli_test.rb (graph escaping),
+# fuzz_test.rb (oracle validity checks and mutation tests that rely on the fuzz timeout).

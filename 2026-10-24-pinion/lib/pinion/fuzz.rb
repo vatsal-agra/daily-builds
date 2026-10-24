@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "timeout"
 require_relative "resolver"
 require_relative "oracle"
 require_relative "gen"
@@ -10,9 +11,14 @@ module Pinion
     Outcome = Struct.new(:seed, :sat, :problems, :stats)
     Summary = Struct.new(:total, :sat, :unsat, :failures, :stats, :clauses_checked)
 
+    @solve_timeout = 5
+    class << self
+      attr_accessor :solve_timeout
+    end
+
     module_function
 
-    def run(start: 1, count: 200, gen: {})
+    def run(start: 1, count: 200, gen: {}, stop_after: nil)
       sum = Summary.new(0, 0, 0, [], Hash.new(0), 0)
       count.times do |i|
         o = check(start + i, **gen)
@@ -22,6 +28,7 @@ module Pinion
         sum.clauses_checked += o.stats[:clauses_checked].to_i
         sum.failures << o unless o.problems.empty?
         yield o if block_given?
+        break if stop_after && sum.failures.length >= stop_after
       end
       sum
     end
@@ -39,7 +46,7 @@ module Pinion
       %i[newest oldest].each do |strategy|
         solver = Solver.new(universe, manifest.dependencies, strategy: strategy)
         begin
-          sol = solver.solve
+          sol = Timeout.timeout(Fuzz.solve_timeout) { solver.solve }
           if truth.nil?
             problems << "#{strategy}: solver found #{sol} but the oracle proves unsatisfiable"
           else
@@ -48,6 +55,8 @@ module Pinion
             first_solution ||= sol if strategy == :newest
           end
           check_clauses(universe, manifest, solver.learned, problems, stats, "#{strategy} learned clause")
+        rescue Timeout::Error
+          problems << "#{strategy}: solver did not finish within #{Fuzz.solve_timeout}s (non-termination?)"
         rescue NoSolution => e
           if truth
             problems << "#{strategy}: solver says unsatisfiable but oracle found #{truth}"

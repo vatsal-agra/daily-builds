@@ -26,8 +26,13 @@ module Pinion
       raise LockfileError, "lockfile not found: #{path}" unless File.file?(path)
       h = JSON.parse(File.read(path))
       raise LockfileError, "#{path}: unsupported lockfile format" unless h.is_a?(Hash) && h["pinion_lock"] == FORMAT
-      pk = (h["packages"] || {}).to_h do |n, e|
-        [n, Locked.new(Version.parse(e["version"]), e["checksum"], e["dependencies"] || {})]
+      raw = h["packages"] || {}
+      raise LockfileError, "#{path}: \"packages\" must be an object" unless raw.is_a?(Hash)
+      pk = raw.to_h do |n, e|
+        raise LockfileError, "#{path}: entry for #{n} must be an object" unless e.is_a?(Hash)
+        deps = e["dependencies"] || {}
+        raise LockfileError, "#{path}: dependencies of #{n} must be an object" unless deps.is_a?(Hash)
+        [n, Locked.new(Version.parse(e["version"]), e["checksum"], deps)]
       end
       new(h["root"], h["manifest"], pk)
     rescue JSON::ParserError => e

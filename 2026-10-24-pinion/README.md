@@ -2,7 +2,7 @@
 
 PubGrub-style dependency resolver in Ruby (no gems).
 
-**Status: Phase 3 (adversarial review) complete** — see [REVIEW.md](REVIEW.md) for 12 findings, all fixed.
+**Status: Phase 5 (verification) complete** — `./verify.sh` is green: 155 tests, differential fuzz, demo tour, browser check. [REVIEW.md](REVIEW.md) lists 16 findings, all fixed. Stretch features shipped: differential fuzzer, conservative update + lock diff, HTML graph, prerelease/yank policy.
 
 Working end to end:
 

@@ -70,7 +70,7 @@ module Pinion
       stack = root_deps.keys
       until stack.empty?
         n = stack.pop
-        next if reach[n] || !solution[n]
+        next if reach[n] || !solution[n] || !universe.versions(n).include?(solution[n])
         reach[n] = true
         stack.concat(universe.deps(n, solution[n]).keys)
       end

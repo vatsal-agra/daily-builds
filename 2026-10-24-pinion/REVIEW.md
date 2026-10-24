@@ -4,7 +4,7 @@ Method: I attacked the code as a hostile reviewer — a parsing battery for vers
 constraints, a property test of the set algebra against pointwise membership (3,000 random
 pairs × every sample version), hostile CLI/manifest/lockfile inputs, performance probes
 (1,500-package chain, 40×25 wide graph, 12,000-deep failure proof), reading the generated
-explanations for quality, and the differential fuzzer (≈1,900 registries in several shapes,
+explanations for quality, and the differential fuzzer (≈2,000 registries in several shapes,
 against a brute-force oracle with every learned clause re-proven). Findings are listed in the
 order found; every one is fixed and pinned by a test in `test/review_regression_test.rb`.
 
@@ -22,6 +22,10 @@ order found; every one is fixed and pinned by a test in `test/review_regression_
 | F10 | test bug | Fuzzer's "explanation ends in failure" check failed on line-wrapped text ("version solving\n  failed"). | Compare on whitespace-normalised text. |
 | F11 | **correctness of proofs** (found by fuzzer) | `DependencyCause` leaves for self-dependencies collapsed to a single term, so the reporter and proof checker had no depender/dependency to show. | The cause now carries `(package, range, dep, dep_set)` explicitly; reporter and proof checker read from it. |
 | F12 | gap | A locked version that was later yanked passed `verify` silently. | `verify` still succeeds (the lock is consistent) but prints a `warning:` per yanked pin, and `--json` has a `warnings` array. |
+| F13 | **validation hole** (found writing Phase 5 tests) | `pinion.lock` with `"packages": []` loaded as an empty lock and `verify` treated it as consistent; non-object entries crashed later. | `Lockfile.load` type-checks `packages`, each entry and its `dependencies`, raising `LockfileError` with the file name. |
+| F14 | **security** (found by the hostile-name test) | The graph report's "Required by" column interpolated the manifest `name` unescaped — a manifest called `<script>…` injected script into the generated HTML. | Everything interpolated into the page goes through `CGI.escapeHTML`; JSON embedded in `<script>` has `</` escaped; test asserts the payload never appears raw. |
+| F15 | bug in the checker | `Oracle.valid?` raised `NoMethodError` when handed a solution containing a version that does not exist (exactly the case it exists to reject). | Reachability walk skips unavailable versions; the problem is reported instead. |
+| F16 | missing guard | A mutated/buggy solver that never terminates would hang the fuzzer forever. | Each fuzz solve runs under a timeout (`Fuzz.solve_timeout`, default 5 s) and non-termination is reported as a finding. |
 
 ## Re-run
 After the fixes: the parsing battery, set-algebra property test, hostile CLI session,
