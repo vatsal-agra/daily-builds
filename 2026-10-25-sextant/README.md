@@ -9,7 +9,7 @@ constrained Delaunay triangulation of PSLGs. (Work in progress — see PLAN.md f
 |-------|-------|
 | 1 Plan | done — `PLAN.md` |
 | 2 Core build | done — the four required features work end to end |
-| 3 Adversarial review | pending |
+| 3 Adversarial review | done — `REVIEW.md` |
 | 4 Stretch + polish | pending |
 | 5 Verification | pending |
 | 6 Ship | pending |

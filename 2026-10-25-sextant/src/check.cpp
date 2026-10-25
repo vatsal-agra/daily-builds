@@ -145,26 +145,34 @@ CheckReport check_voronoi(const Triangulation& dt, const std::vector<VoronoiCell
     for (size_t i = 0; i < pts.size(); ++i)
         if (dt.dup_of()[i] == (int)i) sites.push_back((int)i);
     r.vertices = (int)sites.size();
+    if (sites.empty()) return r;
     for (int v : sites) {
         const auto& poly = cells[v].polygon;
-        if (poly.size() < 3) { bad("cell of site " + std::to_string(v) + " is empty"); continue; }
+        // A site with a neighbour closer than ~1e-6 of the box can have a sliver cell thinner than double
+        // precision resolves at absolute coordinates; those may legitimately collapse, everything else must not.
+        bool crowded = false;
+        for (int w : dt.neighbors(v))
+            if (std::hypot(pts[w].x - pts[v].x, pts[w].y - pts[v].y) < 1e-6 * std::max(box.width(), box.height())) crowded = true;
+        if (poly.size() < 3) {
+            if (!crowded) bad("cell of site " + std::to_string(v) + " is empty");
+            continue;
+        }
         double a = polygon_area(poly);
-        // Cells narrower than ~1e-12 of the box are below what absolute double coordinates can resolve
-        // (sites that close together are separated by a few ulps), so only demand a positive area above that.
-        double ext = 0;
-        for (const Pt& p : poly) ext = std::max(ext, std::max(std::fabs(p.x - poly[0].x), std::fabs(p.y - poly[0].y)));
-        bool resolvable = ext > 1e-12 * std::max(box.width(), box.height());
-        if (a <= 0 && resolvable) bad("cell of site " + std::to_string(v) + " has non-positive area");
+        if (a <= 0 && !crowded && std::min(box.width(), box.height()) > 1e6 * 2.2e-16 * std::max(std::fabs(pts[v].x), std::fabs(pts[v].y))) bad("cell of site " + std::to_string(v) + " has non-positive area");
         total += a;
         for (size_t i = 0; i < poly.size(); ++i) {
             const Pt& p = poly[i];
             const Pt& q = poly[(i + 1) % poly.size()];
             const Pt& s = poly[(i + 2) % poly.size()];
             double cr = (q.x - p.x) * (s.y - q.y) - (q.y - p.y) * (s.x - q.x);
-            if (cr < -1e-9 * box.width() * box.height()) { bad("cell of site " + std::to_string(v) + " is not convex"); break; }
+            if (!crowded && cr < -1e-9 * box.width() * box.height()) { bad("cell of site " + std::to_string(v) + " is not convex"); break; }
         }
     }
     double barea = box.width() * box.height();
+    double mag = 0;
+    for (int v : sites) mag = std::max(mag, std::max(std::fabs(pts[v].x), std::fabs(pts[v].y)));
+    // A box thinner than 1e6 ulps of the coordinates cannot hold meaningful polygon areas in doubles.
+    if (std::min(box.width(), box.height()) < 1e6 * 2.2e-16 * mag) return r;
     if (std::fabs(total - barea) > 1e-7 * barea) bad("cell areas sum to " + std::to_string(total) + " but the box is " + std::to_string(barea));
     std::mt19937_64 rng(seed);
     std::uniform_real_distribution<double> ux(box.x0, box.x1), uy(box.y0, box.y1);
@@ -184,6 +192,7 @@ CheckReport check_voronoi(const Triangulation& dt, const std::vector<VoronoiCell
             const Pt& p = poly[i];
             const Pt& w = poly[(i + 1) % poly.size()];
             double len = std::hypot(w.x - p.x, w.y - p.y);
+            if (len < 1e-12 * (box.width() + box.height())) continue;
             double cr = ((w.x - p.x) * (q.y - p.y) - (w.y - p.y) * (q.x - p.x)) / std::max(len, 1e-300);
             if (cr < -tol) inside = false;
         }

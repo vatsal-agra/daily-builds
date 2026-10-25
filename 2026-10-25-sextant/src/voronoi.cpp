@@ -19,11 +19,14 @@ Box bounding_box(const std::vector<Pt>& pts, double margin) {
 }
 
 double polygon_area(const std::vector<Pt>& poly) {
+    // shoelace relative to the first vertex: with absolute coordinates a small polygon far from the
+    // origin loses all its digits to cancellation
+    if (poly.empty()) return 0;
     double a = 0;
     for (size_t i = 0; i < poly.size(); ++i) {
-        const Pt& p = poly[i];
-        const Pt& q = poly[(i + 1) % poly.size()];
-        a += p.x * q.y - q.x * p.y;
+        double px = poly[i].x - poly[0].x, py = poly[i].y - poly[0].y;
+        double qx = poly[(i + 1) % poly.size()].x - poly[0].x, qy = poly[(i + 1) % poly.size()].y - poly[0].y;
+        a += px * qy - qx * py;
     }
     return 0.5 * a;
 }
@@ -94,6 +97,19 @@ std::vector<VoronoiCell> voronoi_cells(const Triangulation& dt, const Box& box) 
             if (poly.empty()) break;
         }
         cells[v].site = v;
+        // Drop vertices that clipping duplicated up to rounding (relative to the cell's own extent).
+        if (poly.size() >= 3) {
+            double ext = 0;
+            for (const Pt& q : poly) ext = std::max(ext, std::max(std::fabs(q.x), std::fabs(q.y)));
+            double eps = 1e-12 * ext;
+            std::vector<Pt> clean;
+            for (const Pt& q : poly)
+                if (clean.empty() || std::fabs(q.x - clean.back().x) > eps || std::fabs(q.y - clean.back().y) > eps) clean.push_back(q);
+            while (clean.size() > 1 && std::fabs(clean.front().x - clean.back().x) <= eps &&
+                   std::fabs(clean.front().y - clean.back().y) <= eps)
+                clean.pop_back();
+            poly.swap(clean);
+        }
         for (Pt& q : poly) { q.x += s0.x; q.y += s0.y; }
         cells[v].polygon = poly;
         cells[v].unbounded = dt.degenerate() || on_hull[v];

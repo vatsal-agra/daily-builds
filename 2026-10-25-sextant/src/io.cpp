@@ -95,9 +95,9 @@ Input generate(const std::string& kind, int n, unsigned seed) {
         for (int i = 0; i < n; ++i)
             for (int j = 0; j < n; ++j) in.pts.push_back({(double)i, (double)j});
     } else if (kind == "circle") {  // all lattice points on x^2+y^2 = R^2: massively cocircular, exactly
+        if (n > 12) throw std::invalid_argument("circle: n must be <= 12 (radius is 5^n)");
         long R2 = 1;
-        for (int i = 0; i < std::max(1, n); ++i) R2 *= 5;  // 5^n has many representations as a sum of squares
-        if (n > 12) throw std::invalid_argument("circle: n <= 12");
+        for (int i = 0; i < n; ++i) R2 *= 5;  // 5^n has many representations as a sum of squares
         long R = (long)std::floor(std::sqrt((double)R2));
         for (long x = -R; x <= R; ++x) {
             long y2 = R2 - x * x;

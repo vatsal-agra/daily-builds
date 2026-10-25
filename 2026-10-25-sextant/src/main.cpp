@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -35,6 +36,7 @@ usage: sextant <command> [args] [options]
 
 common options:
   --svg FILE      write an SVG picture            --stats    print predicate-filter statistics
+  --mesh FILE     dump the exact mesh (hex floats) for tests/verify_mesh.py
   --verify        run the independent checker on the result (exit 1 on failure)
   '-' as <file> reads standard input
 )";
@@ -100,6 +102,19 @@ int finish_check(const Triangulation& dt, const Args& a, bool inside_only, bool 
     return r.ok() ? 0 : 1;
 }
 
+// Exact dump (hex floats) for independent verification by tests/verify_mesh.py.
+void write_mesh(const std::string& path, const Triangulation& dt, bool inside_only) {
+    std::ostringstream o;
+    char b[128];
+    for (size_t i = 0; i < dt.points().size(); ++i) {
+        std::snprintf(b, sizeof b, "v %zu %a %a\n", i, dt.points()[i].x, dt.points()[i].y);
+        o << b;
+    }
+    for (auto& t : dt.triangles(inside_only)) o << "t " << t[0] << " " << t[1] << " " << t[2] << "\n";
+    for (auto& s : dt.segments()) o << "s " << s.a << " " << s.b << "\n";
+    write_file(path, o.str());
+}
+
 Scene scene_with_hull(const Triangulation& dt, bool inside_only, const std::string& title) {
     Scene s = scene_from(dt, inside_only, title);
     s.hull = dt.boundary();
@@ -113,7 +128,8 @@ int cmd_delaunay(const Args& a) {
     Triangulation dt = Triangulation::delaunay(in.pts);
     double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     if (dt.degenerate()) {
-        std::printf("%zu points, %zu distinct: all collinear (or fewer than 3) — no triangles\n", in.pts.size(), dt.chain().size());
+        std::printf("%zu points, %zu distinct: %s — no triangles\n", in.pts.size(), dt.chain().size(),
+                    dt.chain().size() < 3 ? "fewer than 3 distinct points" : "all collinear");
     } else {
         size_t dups = 0;
         for (size_t i = 0; i < in.pts.size(); ++i) dups += dt.dup_of()[i] != (int)i;
@@ -121,6 +137,7 @@ int cmd_delaunay(const Args& a) {
                     dt.triangles().size(), dt.boundary().size(), dt.num_flips(), ms);
     }
     if (a.flag("svg")) write_file(a.get("svg"), render_svg(scene_with_hull(dt, false, "Delaunay triangulation"), {}));
+    if (a.flag("mesh")) write_mesh(a.get("mesh"), dt, false);
     if (a.flag("stats")) print_stats();
     return finish_check(dt, a, false, true);
 }
@@ -128,8 +145,11 @@ int cmd_delaunay(const Args& a) {
 int cmd_voronoi(const Args& a) {
     if (a.pos.size() != 1) throw std::runtime_error("voronoi needs exactly one input file");
     Input in = read_input_file(a.pos[0]);
+    double margin = a.num("margin", 0.1);
+    if (!(margin >= 0) || margin > 1e6) throw std::runtime_error("--margin must be between 0 and 1e6");
+    if (in.pts.empty()) { std::printf("0 sites, nothing to draw\n"); return 0; }
     Triangulation dt = Triangulation::delaunay(in.pts);
-    Box box = bounding_box(in.pts, a.num("margin", 0.1));
+    Box box = bounding_box(in.pts, margin);
     auto cells = voronoi_cells(dt, box);
     size_t unb = 0, sites = 0;
     for (size_t i = 0; i < cells.size(); ++i)
@@ -189,6 +209,9 @@ int cmd_cdt(const Args& a) {
     size_t extra = dt.points().size() - in.pts.size();
     std::printf("%zu input vertices (+%zu from segment intersections), %zu segments after splitting, %zu triangles%s\n", in.pts.size(), extra,
                 dt.segments().size(), dt.triangles(carve).size(), carve ? " inside the domain" : "");
+    if (a.flag("mesh")) write_mesh(a.get("mesh"), dt, carve);
+    if (carve && dt.triangles(true).empty() && !dt.degenerate())
+        std::printf("note: no triangle is inside the domain — the segments do not enclose a region (use --no-carve to keep the full triangulation)\n");
     if (a.flag("svg")) write_file(a.get("svg"), render_svg(scene_from(dt, carve, "Constrained Delaunay triangulation"), {}));
     if (a.flag("stats")) print_stats();
     return finish_check(dt, a, carve, false);
@@ -197,7 +220,14 @@ int cmd_cdt(const Args& a) {
 int cmd_nearest(const Args& a) {
     if (a.pos.size() != 3) throw std::runtime_error("nearest needs <file> X Y");
     Input in = read_input_file(a.pos[0]);
-    Pt q{std::atof(a.pos[1].c_str()), std::atof(a.pos[2].c_str())};
+    Pt q{0, 0};
+    {
+        char *e1 = nullptr, *e2 = nullptr;
+        q.x = std::strtod(a.pos[1].c_str(), &e1);
+        q.y = std::strtod(a.pos[2].c_str(), &e2);
+        if (*e1 || *e2 || !std::isfinite(q.x) || !std::isfinite(q.y)) throw std::runtime_error("nearest: X and Y must be finite numbers");
+    }
+    if (in.pts.empty()) throw std::runtime_error("nearest: the input has no points");
     Triangulation dt = Triangulation::delaunay(in.pts);
     int v = dt.nearest(q);
     std::printf("nearest site: #%d (%.17g, %.17g), distance %.12g\n", v, in.pts[v].x, in.pts[v].y,
@@ -233,7 +263,14 @@ int cmd_check(const Args& a) {
 
 int cmd_gen(const Args& a) {
     if (a.pos.empty()) throw std::runtime_error("gen needs a kind");
-    int n = a.pos.size() > 1 ? std::atoi(a.pos[1].c_str()) : 100;
+    int n = 100;
+    if (a.pos.size() > 1) {
+        char* e = nullptr;
+        long v = std::strtol(a.pos[1].c_str(), &e, 10);
+        if (a.pos[1].empty() || *e || v < 1 || v > 50000000) throw std::runtime_error("gen: count must be an integer in 1..50000000, got '" + a.pos[1] + "'");
+        n = (int)v;
+    }
+    if (a.pos.size() > 2) throw std::runtime_error("gen: unexpected argument '" + a.pos[2] + "'");
     Input in = generate(a.pos[0], n, (unsigned)a.num("seed", 1));
     std::cout << format_input(in);
     return 0;

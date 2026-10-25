@@ -10,6 +10,7 @@
 namespace sextant {
 
 namespace {
+constexpr double kMaxCoord = 1e75;
 inline int nx(int i) { return i == 2 ? 0 : i + 1; }
 inline int pv(int i) { return i == 0 ? 2 : i - 1; }
 inline uint64_t ekey(int a, int b) { return (uint64_t(uint32_t(a + 1)) << 32) | uint32_t(b + 1); }
@@ -430,6 +431,8 @@ void Triangulation::build(const std::vector<Pt>& in) {
     const int n = (int)pts_.size();
     for (const Pt& p : pts_)
         if (!std::isfinite(p.x) || !std::isfinite(p.y)) throw GeometryError("non-finite coordinate");
+        else if (std::fabs(p.x) > kMaxCoord || std::fabs(p.y) > kMaxCoord)
+            throw GeometryError("coordinate magnitude exceeds 1e75 (the exact predicates guarantee no overflow only below that)");
     dup_of_.resize(n);
     vtri_.assign(n, -1);
     std::iota(dup_of_.begin(), dup_of_.end(), 0);
@@ -597,45 +600,88 @@ Triangulation Triangulation::constrained(const std::vector<Pt>& in, const std::v
         if (a == b || !seen.insert(ukey(a, b)).second) continue;
         segs.push_back({a, b});
     }
-    // planarise: split properly crossing segments at their intersection point
-    for (int pass = 0;; ++pass) {
-        bool changed = false;
-        for (size_t i = 0; i < segs.size() && !changed; ++i)
-            for (size_t j = i + 1; j < segs.size() && !changed; ++j) {
-                auto [a, b] = segs[i];
-                auto [c, d] = segs[j];
-                if (a == c || a == d || b == c || b == d) continue;
-                int o1 = orient2d(pts[a], pts[b], pts[c]), o2 = orient2d(pts[a], pts[b], pts[d]);
-                int o3 = orient2d(pts[c], pts[d], pts[a]), o4 = orient2d(pts[c], pts[d], pts[b]);
-                if (o1 * o2 >= 0 || o3 * o4 >= 0) continue;
-                double rx = pts[b].x - pts[a].x, ry = pts[b].y - pts[a].y;
-                double sx = pts[d].x - pts[c].x, sy = pts[d].y - pts[c].y;
-                double denom = rx * sy - ry * sx;
-                double tt = ((pts[c].x - pts[a].x) * sy - (pts[c].y - pts[a].y) * sx) / denom;
-                Pt x{pts[a].x + tt * rx, pts[a].y + tt * ry};
-                int xid;
-                auto key = std::make_pair(x.x + 0.0, x.y + 0.0);
-                auto it = canon.find(key);
-                if (it != canon.end()) xid = it->second;
-                else { pts.push_back(x); xid = (int)pts.size() - 1; canon[key] = xid; }
-                auto add = [&](std::vector<std::pair<int, int>>& v, int p, int q) {
-                    if (p != q && seen.insert(ukey(p, q)).second) v.push_back({p, q});
-                };
-                std::pair<int, int> si = segs[i], sj = segs[j];
-                segs.erase(segs.begin() + j);
-                segs.erase(segs.begin() + i);
-                seen.erase(ukey(si.first, si.second));
-                seen.erase(ukey(sj.first, sj.second));
-                add(segs, si.first, xid); add(segs, xid, si.second);
-                add(segs, sj.first, xid); add(segs, xid, sj.second);
-                changed = true;
+    // Planarise: split properly crossing segments at their intersection point. Candidate pairs come
+    // from a uniform grid over segment bounding boxes, so the cost is O(S + K) rather than O(S^2) per
+    // round; rounding the intersection to a double can create a new crossing, so repeat to a fixed point.
+    for (int round = 0;; ++round) {
+        if (round > 64) throw GeometryError("segment planarisation did not converge");
+        const size_t S = segs.size();
+        if (S < 2) break;
+        double gx0 = 1e300, gy0 = 1e300, gx1 = -1e300, gy1 = -1e300;
+        for (auto& [a, b] : segs)
+            for (int v : {a, b}) {
+                gx0 = std::min(gx0, pts[v].x); gx1 = std::max(gx1, pts[v].x);
+                gy0 = std::min(gy0, pts[v].y); gy1 = std::max(gy1, pts[v].y);
             }
-        if (!changed) break;
-        if (pass > 100000) throw GeometryError("segment planarisation did not converge");
+        int G = std::max(1, std::min(512, (int)std::sqrt((double)S)));
+        double cw = std::max((gx1 - gx0) / G, 1e-300), ch = std::max((gy1 - gy0) / G, 1e-300);
+        auto cell = [&](double v, double lo, double w) { return std::max(0, std::min(G - 1, (int)((v - lo) / w))); };
+        std::vector<std::vector<int>> grid((size_t)G * G);
+        for (size_t i = 0; i < S; ++i) {
+            auto [a, b] = segs[i];
+            int cx0 = cell(std::min(pts[a].x, pts[b].x), gx0, cw), cx1 = cell(std::max(pts[a].x, pts[b].x), gx0, cw);
+            int cy0 = cell(std::min(pts[a].y, pts[b].y), gy0, ch), cy1 = cell(std::max(pts[a].y, pts[b].y), gy0, ch);
+            for (int cy = cy0; cy <= cy1; ++cy)
+                for (int cx = cx0; cx <= cx1; ++cx) grid[(size_t)cy * G + cx].push_back((int)i);
+        }
+        std::set<uint64_t> tested;
+        std::vector<std::vector<std::pair<double, int>>> cuts(S);  // per segment: (parameter, vertex id)
+        bool any = false;
+        for (auto& bucket : grid)
+            for (size_t u = 0; u < bucket.size(); ++u)
+                for (size_t w = u + 1; w < bucket.size(); ++w) {
+                    int i = bucket[u], j = bucket[w];
+                    if (!tested.insert(((uint64_t)i << 32) | (uint32_t)j).second) continue;
+                    auto [a, b] = segs[i];
+                    auto [c, d] = segs[j];
+                    if (a == c || a == d || b == c || b == d) continue;
+                    int o1 = orient2d(pts[a], pts[b], pts[c]), o2 = orient2d(pts[a], pts[b], pts[d]);
+                    int o3 = orient2d(pts[c], pts[d], pts[a]), o4 = orient2d(pts[c], pts[d], pts[b]);
+                    if (o1 * o2 >= 0 || o3 * o4 >= 0) continue;
+                    double rx = pts[b].x - pts[a].x, ry = pts[b].y - pts[a].y;
+                    double sx = pts[d].x - pts[c].x, sy = pts[d].y - pts[c].y;
+                    double denom = rx * sy - ry * sx;
+                    double tt = ((pts[c].x - pts[a].x) * sy - (pts[c].y - pts[a].y) * sx) / denom;
+                    double uu = ((pts[c].x - pts[a].x) * ry - (pts[c].y - pts[a].y) * rx) / denom;
+                    Pt x{pts[a].x + tt * rx, pts[a].y + tt * ry};
+                    auto key = std::make_pair(x.x + 0.0, x.y + 0.0);
+                    int xid;
+                    auto it = canon.find(key);
+                    if (it != canon.end()) xid = it->second;
+                    else { pts.push_back(x); xid = (int)pts.size() - 1; canon[key] = xid; }
+                    cuts[i].push_back({tt, xid});
+                    cuts[j].push_back({uu, xid});
+                    any = true;
+                }
+        if (!any) break;
+        std::vector<std::pair<int, int>> next;
+        seen.clear();
+        auto add = [&](int p, int q) {
+            if (p != q && seen.insert(ukey(p, q)).second) next.push_back({p, q});
+        };
+        for (size_t i = 0; i < S; ++i) {
+            std::sort(cuts[i].begin(), cuts[i].end());
+            int prev = segs[i].first;
+            for (auto& [t, v] : cuts[i]) { add(prev, v); prev = v; }
+            add(prev, segs[i].second);
+        }
+        segs.swap(next);
     }
     T.build(pts);
     if (!T.has_triangles_) {
-        if (!segs.empty()) throw GeometryError("cannot constrain: input points are collinear");
+        // All vertices on one line: there is nothing to triangulate, but the PSLG is still valid. Each
+        // segment becomes the run of consecutive chain edges between its endpoints.
+        std::map<int, size_t> pos;
+        for (size_t k = 0; k < T.chain_.size(); ++k) pos[T.chain_[k]] = k;
+        std::set<uint64_t> have;
+        for (auto& [a, b] : segs) {
+            size_t i = pos.at(T.dup_of_[a]), j = pos.at(T.dup_of_[b]);
+            if (i > j) std::swap(i, j);
+            for (size_t k = i; k < j; ++k) {
+                int p = T.chain_[k], q = T.chain_[k + 1];
+                if (have.insert(ukey(p, q)).second) T.segs_.push_back({p, q});
+            }
+        }
         return T;
     }
     // map canonical segment endpoints; duplicates in pts already point to canonical ids via cid

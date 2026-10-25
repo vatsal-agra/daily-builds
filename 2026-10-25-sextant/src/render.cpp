@@ -57,7 +57,7 @@ std::string render_svg(const Scene& s, const SvgOptions& opt) {
     if (!s.cells.empty()) {
         o << "<g fill='none' stroke='#5b7fb5' stroke-width='1.2' stroke-linejoin='round'>\n";
         for (auto& c : s.cells) {
-            if (c.polygon.size() < 3 || s.cells.empty()) continue;
+            if (c.polygon.size() < 3) continue;
             if (c.site >= 0 && !s.is_site[c.site]) continue;
             o << "<polygon points='";
             for (auto& p : c.polygon) o << fmt(X(p.x)) << "," << fmt(Y(p.y)) << " ";
