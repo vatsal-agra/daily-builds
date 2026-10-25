@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sextant viewer</title>
+<style>
+:root{
+  --bg:#f6f4ef; --panel:#fffdf9; --ink:#23211d; --muted:#6c675e; --line:#ddd7ca;
+  --edge:#3b3935; --seg:#171512; --vor:#4f78b8; --hull:#c4572d; --pt:#171512; --accent:#2d6f63;
+  --focus:rgba(45,111,99,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#16181b; --panel:#1e2125; --ink:#ece9e2; --muted:#9a968d; --line:#33373c;
+    --edge:#c9c5bb; --seg:#f4efe3; --vor:#7fa6e0; --hull:#ee8b63; --pt:#f4efe3; --accent:#5dc0aa;
+    --focus:rgba(93,192,170,.2);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16181b; --panel:#1e2125; --ink:#ece9e2; --muted:#9a968d; --line:#33373c;
+  --edge:#c9c5bb; --seg:#f4efe3; --vor:#7fa6e0; --hull:#ee8b63; --pt:#f4efe3; --accent:#5dc0aa;
+  --focus:rgba(93,192,170,.2);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column}
+header{display:flex;align-items:baseline;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:15px;margin:0;letter-spacing:.02em}
+header .sub{color:var(--muted);font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+button.theme{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit}
+button.theme:hover{border-color:var(--accent)}
+main{flex:1;display:flex;min-height:0}
+#stage{flex:1;position:relative;min-width:0}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+canvas.drag{cursor:grabbing}
+aside{width:300px;border-left:1px solid var(--line);background:var(--panel);padding:16px 18px;overflow:auto}
+aside h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:18px 0 8px;font-weight:600}
+aside h2:first-child{margin-top:0}
+label.chk{display:flex;align-items:center;gap:9px;padding:3px 0;cursor:pointer}
+input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+dl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0}
+dt{color:var(--muted)} dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+#hist{display:block;width:100%;height:84px}
+#info{min-height:150px;font-size:13px}
+#info .empty{color:var(--muted)}
+.legend{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;margin-top:6px}
+.legend i{flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,#d64d3e,#ecbe54,#42a08a)}
+.hint{color:var(--muted);font-size:12px;margin-top:14px}
+@media (max-width:760px){main{flex-direction:column}aside{width:auto;border-left:0;border-top:1px solid var(--line);max-height:46vh}#stage{min-height:50vh}}
+</style>
+</head>
+<body>
+<header><h1>Sextant</h1><div class="sub" id="title"></div><button class="theme" id="theme" title="Toggle light / dark">Theme</button></header>
+<main>
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <aside>
+    <h2>Layers</h2>
+    <label class="chk"><input type="checkbox" id="L_fill" checked> Quality colouring</label>
+    <label class="chk"><input type="checkbox" id="L_tri" checked> Triangle edges</label>
+    <label class="chk"><input type="checkbox" id="L_vor"> Voronoi cells</label>
+    <label class="chk"><input type="checkbox" id="L_seg" checked> Constrained segments</label>
+    <label class="chk"><input type="checkbox" id="L_hull"> Convex hull</label>
+    <label class="chk"><input type="checkbox" id="L_pts" checked> Points</label>
+    <label class="chk"><input type="checkbox" id="L_circ" checked> Circumcircle on hover</label>
+    <h2>Mesh</h2>
+    <dl id="stats"></dl>
+    <h2>Smallest angle per triangle</h2>
+    <canvas id="hist" style="position:static;cursor:default"></canvas>
+    <div class="legend"><span>0°</span><i></i><span>60°</span></div>
+    <h2>Under the cursor</h2>
+    <div id="info"><span class="empty">Hover a triangle to inspect it. Its circumcircle is empty of other vertices — that is the Delaunay property.</span></div>
+    <div class="hint">Scroll to zoom, drag to pan, double-click to reset.</div>
+  </aside>
+</main>
+<script>
+const D = {"title":"Delaunay triangulation","pts":[0.903604026,0.85023614,0.783820465,0.9253171,0.252903664,0.135885825,0.224540656,0.0996503353,0.0220877387,0.68584287,0.654084972,0.968395173,0.803331404,0.132778344,0.200773138,0.0676243601,0.998279826,0.565972154,0.356482555,0.383774414,0.0572948781,0.0706237898,0.464492748,0.437040314,0.77657131,0.327403989,0.468083209,0.128678177,0.366600902,0.175613175,0.425655295,0.357997028,0.981092813,0.338141093,0.376118763,0.587630977,0.680802451,0.530539114,0.78488878,0.993067672,0.118615831,0.750994538,0.856011103,0.713898537,0.392340557,0.39677764,0.791251928,0.169080191,0.811244258,0.0215171318,0.150926284,0.720817553,0.0831669488,0.390855661,0.324812684,0.0504628785,0.517899497,0.170669722,0.506496402,0.818984179,0.660376969,0.716120284,0.364241332,0.180293825,0.346461195,0.202246145,0.954646252,0.116424319,0.0294762461,0.857185291,0.396141308,0.78731132,0.543996318,0.141186547,0.717343669,0.162076049,0.370880886,0.938163055,0.262334221,0.956804682,0.257813255,0.595795763,0.556065945,0.67493252,0.404558196,0.33905627,0.965099043,0.312574486,0.749154919,0.70279519,0.345039628,0.494542079,0.641090951,0.302486512,0.0530250656,0.185125141,0.772653073,0.487208658,0.376058164,0.513386703,0.223209055,0.563104231,0.0874411608,0.627357481,0.375449361,0.615321821,0.736321372,0.38468736,0.631905698,0.652428274,0.520500764,0.55122258,0.0990268421,0.982647413,0.232644726,0.943596568,0.812218213,0.137248232,0.47855909,0.00731310608,0.347029776,0.118040479,0.522255076,0.451737505,0.174854382,0.531241929,0.27955036,0.312567354,0.825286946,0.672760008,0.845141169,0.931056436,0.0426665533,0.14558162,0.79560141,0.360344095,0.375082576,0.747733343,0.0621182503,0.639920755,0.0810449405,0.583543278,0.715924517,0.713549665,0.787955119,0.848652748,0.549767722,0.603950516,0.619682715,0.426488867,0.10423724,0.618872329,0.672287385,0.71656934,0.216891899,0.427401095,0.580443191,0.420473312,0.179459894,0.181335724,0.125180433,0.712085888,0.675666239,0.892563886,0.433444006,0.241502281,0.575222436,0.375163886,0.0313746961,0.863327609,0.00519817714,0.923578947,0.209265546,0.40744514,0.231859801,0.53053648,0.186352835,0.753267151,0.418727481,0.365074503,0.248919544,0.381592208,0.999123762,0.877796137,0.682977964,0.0902937356,0.926520029,0.429750207,0.710572408,0.207189525,0.517033825,0.945239739,0.678478526,0.197084686,0.920798592,0.834894439,0.682261914,0.414885888,0.0900150441,0.97982237,0.710001309,0.187626133,0.0384768273,0.192999635,0.870043123,0.268656291,0.227716479,0.806640518,0.620036584,0.01749197,0.698105206,0.5299948,0.815818306,0.724136977,0.340631399,0.929666941,0.149158328,0.780236843,0.0643622083,0.897444043,0.833317576,0.292954749,0.0614114137,0.162189073,0.687096633,0.740902019,0.595272488,0.0360407063,0.43011747,0.000244870309,0.956668737,0.167372224,0.0596324681,0.668264624,0.272232553,0.471581207,0.899968996,0.370295305,0.827411235,0.595408585,0.311446931,0.0495495246,0.847365657,0.942208104,0.183264204,0.532001164,0.748779219,0.761441833,0.715844988,0.595843812,0.454853778,0.993210154,0.970161266,0.211718236,0.615230115,0.898493561,0.195266371,0.586121534,0.48592716,0.411132472,0.426878046,0.330682733,0.111996144,0.34425922,0.535857446,0.458756382,0.536192839,0.250656321,0.0645134646,0.691613147,0.673503764,0.821689729,0.848792947,0.800715009,0.0531145149,0.500929501,0.922977641,0.463340039,0.666109267,0.875610786,0.105647703,0.665763897,0.523123422,0.460584195,0.862044922,0.84146795,0.56744242,0.854199721,0.352385617,0.824963051,0.2595257,0.489170891,0.0619714552,0.347368413,0.648846447,0.798976311,0.663548489,0.402582168,0.274669021,0.345917417,0.488313046,0.88365205,0.767657619,0.0466013505,0.27674944,0.127877363,0.896523632,0.437961982,0.11148981,0.0673800324,0.387683872,0.466964635,0.85358005,0.0195577853,0.352874299,0.69570779,0.340423773,0.854333093,0.740234468,0.940749023,0.54853815,0.0407523693,0.132856439,0.649059978,0.279732184,0.193553012,0.89480154,0.145764723,0.442589069,0.24561889,0.384587617,0.243916896,0.196868565,0.752452548,0.840188064,0.0250953379,0.607355474,0.492157878,0.914429158,0.815337599,0.948469568,0.630346498,0.91327273,0.716186973,0.159887793,0.160105631,0.737415578,0.302536284,0.747727208,0.880047832,0.875042744,0.543430845,0.00391090309,0.371602959,0.129144866,0.648740227,0.189524952,0.349439839,0.441562119,0.689341172,0.898285225,0.169939726,0.31708017,0.538078526,0.438269606,0.67291377,0.758736023,0.939110143,0.920031089,0.869720054,0.935455756,0.556828211,0.0301957345,0.433040415,0.41436858,0.370275233,0.555667318,0.758120532,0.857369622,0.340929944,0.979358573,0.0821902261,0.821902319,0.255954632,0.188221351,0.217296129,0.973426137,0.390355423,0.757939466,0.479160747,0.493495757,0.132218149,0.569191843,0.81401418,0.324700301,0.966951307,0.847895525,0.085931145,0.148375673,0.824551497,0.916245952,0.59570014,0.449226242,0.757272937,0.152149758,0.953374634,0.485045868,0.927890636,0.989045534,0.173554584,0.00262594644,0.502147433,0.314276696,0.480029477,0.486113707,0.8103267,0.00228054788,0.601825603,0.55819884,0.403672267,0.405029175,0.140290999,0.84714823,0.872946242,0.955095919,0.643420505,0.593538673,0.695713031,0.80679292,0.321542034,0.280325008,0.856733112,0.661017304,0.0577729973,0.686524155,0.506028848,0.380515167,0.742913272,0.518011038,0.837719656,0.991287786,0.159869516,0.656835645,0.680268267,0.669114013,0.63113074,0.988348947,0.824199416,0.521983331,0.257456138,0.787107699,0.0554884986,0.216464875,0.710988066,0.110108279,0.508438656,0.56112863,0.00541646276,0.373949615,0.891083954,0.467684166,0.971185558,0.252750914,0.286240868,0.104601441,0.11199168,0.971581638,0.332414941,0.68788904,0.419631456,0.401635634,0.42855998,0.859106799,0.531475212,0.197211072,0.159694521,0.813481229,0.815612666,0.861652309,0.0316072794,0.846612392,0.0739030428,0.0201559286,0.979060248,0.956058238,0.229830198,0.981228509,0.864077722,0.136164955,0.519613872,0.889810184,0.321947686,0.113086855,0.948740231,0.290273883,0.980683354,0.669060751,0.871300141,0.0718553797,0.605643968,0.378008704,0.736252359,0.746429397,0.209868226,0.0592422897,0.278337778,0.619908196,0.114760957,0.223493545,0.0884631821,0.946598328,0.719102933,0.602531155,0.572828133,0.157513225,0.551945593,0.214799214,0.740408127,0.213660711,0.363606299,0.63127023,0.811727931,0.490619497,0.975738204,0.109050507,0.749160881,0.706498097,0.419208137,0.33195921,0.451623603,0.83890828,0.430234253,0.314099538,0.687718126,0.0990047643,0.493727808,0.0729241719,0.613312866,0.769195717,0.143239606,0.492397038,0.606365636,0.622859965,0.588668723,0.426489191,0.0413921136,0.805021999,0.534558467,0.163806491,0.23058527,0.648440036,0.160640288,0.48561027,0.762448751,0.700550572,0.47778429,0.871321955,0.775429176,0.451524395,0.664215813,0.786531337,0.193040349,0.748660481,0.532505177,0.426600562,0.19054482,0.330766875,0.212724873,0.877065411,0.545248781,0.68637393,0.238703304,0.162242882,0.579231424,0.456756278,0.605442879,0.13603315,0.842700384,0.663220188,0.83963601,0.156783071,0.136119534,0.0141464102,0.596821111,0.633571598,0.459902891,0.159695227,0.0892374534,0.218273117,0.2860473,0.671724056,0.970890013,0.00693498854,0.618868525,0.237381837,0.541571077,0.243464288,0.493993181,0.174581731,0.970315457],"sites":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"tris":[10,154,232,254,120,152,154,10,114,66,111,47,237,3,2,232,154,293,293,154,7,160,253,36,254,7,120,47,111,172,7,254,3,293,7,3,10,232,66,66,232,111,290,3,237,27,120,114,47,172,274,66,47,101,66,101,176,293,3,290,232,293,290,232,290,172,111,232,172,79,237,192,101,252,176,79,172,237,172,290,237,237,2,162,274,192,294,79,192,274,172,79,274,228,104,113,272,114,59,210,13,282,120,27,60,252,274,131,120,7,114,7,154,114,27,114,272,60,27,272,272,59,13,192,237,162,100,37,251,120,60,152,2,3,152,3,254,152,210,272,13,60,14,31,2,152,162,60,31,162,152,60,162,259,294,231,178,294,259,283,162,32,162,31,32,14,60,210,60,272,210,13,59,195,133,285,46,131,294,178,283,32,165,14,210,282,31,14,282,31,282,165,32,31,165,165,282,82,89,42,15,82,282,164,195,36,28,47,274,252,101,47,252,131,274,294,146,252,131,176,252,146,267,26,86,285,251,173,291,70,249,231,283,63,283,165,63,146,131,26,178,259,86,34,84,85,186,26,267,259,90,86,186,176,26,176,146,26,90,259,149,63,165,42,87,145,297,162,283,231,26,131,86,131,178,86,267,86,77,86,90,77,206,264,45,42,187,9,294,192,231,192,162,231,145,117,206,82,164,130,231,63,149,259,231,149,117,264,206,42,130,15,42,165,130,165,82,130,275,37,96,90,149,9,187,42,89,22,187,235,155,235,11,89,15,129,63,42,9,149,63,9,298,77,117,77,90,117,298,117,145,206,45,181,117,90,264,90,9,264,129,130,224,50,297,40,176,186,205,205,291,208,15,130,129,9,187,22,9,22,235,264,9,235,275,92,37,187,89,129,264,235,155,45,264,155,187,129,11,235,187,11,59,114,228,59,228,160,195,59,160,160,228,113,151,24,225,160,113,253,92,216,151,285,94,251,195,160,36,253,113,216,113,104,216,253,216,92,253,92,275,94,100,251,164,282,28,282,13,28,13,195,28,96,285,133,36,253,275,164,28,224,275,96,133,280,23,180,115,204,126,130,164,224,224,28,133,180,163,115,96,37,100,96,100,94,285,96,94,167,156,239,251,37,269,104,228,24,167,24,156,104,24,151,216,104,151,180,242,102,269,23,280,251,269,280,151,225,269,24,228,156,167,239,240,239,190,33,24,167,240,225,24,240,225,240,198,115,220,204,239,156,190,198,240,33,240,239,33,92,151,269,37,92,269,269,225,6,225,198,6,6,198,58,189,245,118,6,58,23,269,6,23,163,33,115,58,198,163,198,33,163,58,163,180,23,58,180,67,189,265,153,93,138,115,33,220,33,190,220,46,285,173,78,74,168,133,46,83,205,137,291,115,126,242,180,115,242,36,275,133,28,36,133,11,129,61,138,193,8,132,78,168,98,234,292,251,280,191,191,102,110,224,133,83,209,83,78,209,129,83,129,224,83,141,61,132,242,126,43,78,83,74,168,74,292,98,148,53,129,209,61,11,61,141,55,168,256,61,209,132,209,78,132,258,226,266,17,49,287,74,83,148,83,46,148,194,48,281,173,251,191,148,46,53,46,173,53,277,263,194,166,258,103,234,98,263,98,53,263,148,98,292,74,148,292,292,234,277,234,263,277,191,180,102,280,180,191,245,43,233,93,118,193,53,67,265,53,173,12,118,245,233,173,191,12,12,191,214,191,110,214,12,214,67,53,12,67,67,214,189,214,110,189,189,110,245,110,102,245,189,118,265,245,102,43,102,242,43,204,220,16,126,204,16,233,43,16,43,126,16,194,265,48,208,291,296,53,265,194,263,53,194,185,138,8,52,17,287,93,193,138,193,16,8,233,16,193,118,233,193,118,93,153,265,118,153,153,138,236,236,138,175,137,267,227,205,186,137,186,267,137,70,244,257,116,140,134,69,116,4,257,244,62,199,103,288,140,177,161,296,69,4,291,249,268,291,137,70,137,227,70,268,249,75,249,70,75,20,25,108,286,128,161,70,227,244,77,298,122,227,267,244,267,77,244,298,145,87,257,62,122,244,77,62,62,77,122,122,298,87,4,116,134,80,140,161,181,49,17,250,218,68,128,122,50,70,257,286,75,70,286,286,257,128,257,122,128,87,297,50,122,87,50,291,268,69,296,291,69,84,34,288,51,75,140,69,268,51,268,75,51,69,51,140,116,69,140,25,88,108,108,88,103,134,140,80,155,11,49,45,155,49,140,75,177,297,181,40,177,75,161,75,286,161,80,161,25,139,248,81,25,161,226,161,128,226,4,262,34,271,222,54,45,49,181,182,279,179,297,145,181,145,206,181,226,128,40,128,50,40,141,132,55,201,276,207,52,40,17,40,181,17,270,73,41,132,168,55,11,141,55,270,287,55,40,52,266,226,40,266,266,52,157,85,109,241,157,52,182,52,287,182,182,287,279,287,270,279,270,55,73,215,144,158,218,250,179,73,55,256,250,157,179,157,182,179,134,80,262,4,134,262,262,80,20,80,25,20,84,109,85,299,57,39,84,288,109,88,166,103,25,226,88,108,103,199,262,20,108,88,226,166,226,258,166,103,266,68,258,266,103,262,108,199,208,296,85,262,199,288,34,262,288,56,247,125,4,34,85,296,4,85,56,246,202,109,246,99,241,109,99,109,288,246,299,202,57,241,99,56,99,246,56,56,202,299,246,288,202,158,144,229,35,201,207,35,218,201,202,288,57,288,103,57,157,250,68,266,157,68,229,207,150,57,103,215,215,103,144,103,68,144,218,179,201,18,217,105,144,68,35,68,218,35,230,203,261,107,38,197,201,179,276,48,265,273,125,230,261,35,207,229,144,35,229,158,229,107,215,158,107,215,107,39,57,215,39,299,39,247,56,299,247,107,229,38,71,222,44,247,39,197,39,107,197,271,256,18,179,279,41,229,150,203,38,229,203,38,203,230,247,197,125,38,230,125,197,38,125,222,124,44,119,236,175,287,49,55,49,11,55,213,221,30,276,179,41,30,76,112,271,124,222,73,256,271,279,270,41,292,277,217,168,292,217,168,217,18,256,168,18,217,277,105,105,281,124,105,277,281,277,194,281,18,105,124,271,18,124,150,207,219,213,41,54,125,261,5,276,188,29,213,54,221,54,222,221,41,73,54,73,271,54,30,221,76,281,48,273,276,41,188,112,76,71,207,29,219,170,8,212,41,213,188,213,30,188,76,221,71,221,222,71,143,196,260,64,200,170,273,236,119,175,138,284,273,265,236,265,153,236,281,273,119,124,281,119,170,212,171,119,175,284,97,169,223,284,138,185,16,220,8,284,185,200,119,284,200,127,139,81,119,200,64,124,119,64,44,124,64,243,223,91,188,30,147,64,21,106,44,64,106,185,8,170,200,185,170,171,212,255,106,21,278,64,170,171,21,64,171,260,289,127,29,188,196,207,276,29,219,29,196,125,295,19,143,260,127,248,135,174,30,112,147,289,135,248,219,196,143,150,219,143,44,106,123,1,65,121,71,44,123,112,71,123,188,147,260,196,188,260,112,123,135,147,112,135,147,135,289,260,147,289,261,203,95,143,127,95,150,143,95,203,150,95,169,255,223,81,248,174,289,248,139,127,289,139,127,81,5,212,8,223,125,5,295,21,171,278,261,95,5,95,127,5,5,81,295,295,159,19,295,81,159,81,174,159,136,278,169,72,123,238,106,278,136,142,136,169,174,135,72,135,123,72,106,136,238,123,106,238,142,0,211,238,136,142,278,171,169,171,255,169,255,212,223,19,121,91,169,97,0,142,169,0,1,72,211,1,211,65,97,223,243,121,65,184,174,72,1,159,183,19,238,142,211,72,238,211,223,8,91,174,1,183,159,174,183,183,1,19,19,1,121,97,243,184,0,97,184,65,211,184,211,0,184,121,184,91,184,243,91],"segs":[],"cells":[],"hull":[91,19,125,56,241,85,208,205,176,66,10,114,228,156,190,220,8],"hullOn":true};
+const P = D.pts, T = D.tris, S = D.segs, C = D.cells, H = D.hull, SITE = D.sites;
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const $ = id => document.getElementById(id);
+$('title').textContent = D.title;
+document.title = 'Sextant — ' + D.title;
+
+// ---- derived data ---------------------------------------------------------------------------
+const nT = T.length / 3;
+const px = i => P[2*i], py = i => P[2*i+1];
+function angles(a, b, c) {
+  const L = (p, q, r) => { const ux = px(q)-px(p), uy = py(q)-py(p), vx = px(r)-px(p), vy = py(r)-py(p);
+    return Math.atan2(Math.abs(ux*vy-uy*vx), ux*vx+uy*vy) * 180 / Math.PI; };
+  return [L(a,b,c), L(b,c,a), L(c,a,b)];
+}
+const minAng = new Float32Array(nT), area = new Float32Array(nT);
+let amin = 180, amax = 0, asum = 0;
+for (let t = 0; t < nT; ++t) {
+  const a = T[3*t], b = T[3*t+1], c = T[3*t+2];
+  const an = angles(a, b, c);
+  minAng[t] = Math.min(an[0], an[1], an[2]);
+  area[t] = 0.5 * ((px(b)-px(a))*(py(c)-py(a)) - (py(b)-py(a))*(px(c)-px(a)));
+  amin = Math.min(amin, minAng[t]); amax = Math.max(amax, Math.max(an[0], an[1], an[2])); asum += area[t];
+}
+function ramp(a) {
+  const t = Math.max(0, Math.min(1, a / 60));
+  const lo = [214,77,62], mid = [236,190,84], hi = [66,160,138];
+  const [A, B] = t < .5 ? [lo, mid] : [mid, hi], u = t < .5 ? t*2 : (t-.5)*2;
+  return 'rgb(' + A.map((v, i) => Math.round(v + (B[i]-v)*u)).join(',') + ')';
+}
+const rampCache = Array.from({length: 61}, (_, i) => ramp(i));
+
+// bounds
+let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+for (let i = 0; i < P.length/2; ++i) { if (!SITE[i]) continue; bx0 = Math.min(bx0, px(i)); bx1 = Math.max(bx1, px(i)); by0 = Math.min(by0, py(i)); by1 = Math.max(by1, py(i)); }
+if (D.box) { bx0 = Math.min(bx0, D.box[0]); by0 = Math.min(by0, D.box[1]); bx1 = Math.max(bx1, D.box[2]); by1 = Math.max(by1, D.box[3]); }
+if (!isFinite(bx0)) { bx0 = by0 = 0; bx1 = by1 = 1; }
+if (bx1 - bx0 < 1e-12) { bx0 -= .5; bx1 += .5; } if (by1 - by0 < 1e-12) { by0 -= .5; by1 += .5; }
+
+// uniform grid over triangles for hover hit-testing
+const GN = Math.max(1, Math.min(256, Math.floor(Math.sqrt(nT / 4)) || 1));
+const grid = Array.from({length: GN*GN}, () => []);
+const gcell = (v, lo, hi) => Math.max(0, Math.min(GN-1, Math.floor((v-lo)/(hi-lo)*GN)));
+for (let t = 0; t < nT; ++t) {
+  const xs = [px(T[3*t]), px(T[3*t+1]), px(T[3*t+2])], ys = [py(T[3*t]), py(T[3*t+1]), py(T[3*t+2])];
+  const x0 = gcell(Math.min(...xs), bx0, bx1), x1 = gcell(Math.max(...xs), bx0, bx1);
+  const y0 = gcell(Math.min(...ys), by0, by1), y1 = gcell(Math.max(...ys), by0, by1);
+  for (let y = y0; y <= y1; ++y) for (let x = x0; x <= x1; ++x) grid[y*GN+x].push(t);
+}
+function pick(wx, wy) {
+  const bucket = grid[gcell(wy, by0, by1)*GN + gcell(wx, bx0, bx1)];
+  for (const t of bucket) {
+    const a = T[3*t], b = T[3*t+1], c = T[3*t+2];
+    const o = (p, q) => (px(q)-px(p))*(wy-py(p)) - (py(q)-py(p))*(wx-px(p));
+    if (o(a,b) >= 0 && o(b,c) >= 0 && o(c,a) >= 0) return t;
+  }
+  return -1;
+}
+
+// ---- view -----------------------------------------------------------------------------------
+let scale = 1, ox = 0, oy = 0, W = 0, Hh = 0, dpr = 1, hover = -1;
+function fit() {
+  const pad = 36, w = bx1 - bx0, h = by1 - by0;
+  scale = Math.min((W - 2*pad) / w, (Hh - 2*pad) / h);
+  ox = (W - w*scale) / 2 - bx0*scale;
+  oy = (Hh + h*scale) / 2 + by0*scale;
+}
+const sx = x => x*scale + ox, sy = y => oy - y*scale;
+const wx = x => (x - ox) / scale, wy = y => (oy - y) / scale;
+function resize() {
+  const r = cv.getBoundingClientRect(); dpr = window.devicePixelRatio || 1;
+  W = r.width; Hh = r.height; cv.width = Math.max(1, Math.round(W*dpr)); cv.height = Math.max(1, Math.round(Hh*dpr));
+  if (!resize.once) { fit(); resize.once = true; }
+  draw();
+}
+const on = id => $(id).checked;
+function draw() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, Hh);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const dense = nT > 60000 && scale * 0 === 0;
+  if (on('L_fill') && nT) {
+    for (let t = 0; t < nT; ++t) {
+      const a = T[3*t], b = T[3*t+1], c = T[3*t+2];
+      ctx.beginPath(); ctx.moveTo(sx(px(a)), sy(py(a))); ctx.lineTo(sx(px(b)), sy(py(b))); ctx.lineTo(sx(px(c)), sy(py(c))); ctx.closePath();
+      ctx.fillStyle = rampCache[Math.min(60, Math.round(minAng[t]))]; ctx.globalAlpha = .5; ctx.fill();
+      if (dense) { ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = .6; ctx.stroke(); }
+    }
+    ctx.globalAlpha = 1;
+  }
+  if (on('L_tri') && nT) {
+    ctx.strokeStyle = css('--edge'); ctx.lineWidth = nT > 20000 ? .4 : .8; ctx.globalAlpha = nT > 20000 ? .6 : .85;
+    ctx.beginPath();
+    for (let t = 0; t < nT; ++t) {
+      const a = T[3*t], b = T[3*t+1], c = T[3*t+2];
+      ctx.moveTo(sx(px(a)), sy(py(a))); ctx.lineTo(sx(px(b)), sy(py(b))); ctx.lineTo(sx(px(c)), sy(py(c))); ctx.closePath();
+    }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  if (on('L_vor') && C.length) {
+    ctx.strokeStyle = css('--vor'); ctx.lineWidth = 1.5; ctx.beginPath();
+    for (const poly of C) { if (poly.length < 6) continue; ctx.moveTo(sx(poly[0]), sy(poly[1]));
+      for (let i = 2; i < poly.length; i += 2) ctx.lineTo(sx(poly[i]), sy(poly[i+1])); ctx.closePath(); }
+    ctx.stroke();
+    if (D.box) { ctx.setLineDash([4, 4]); ctx.globalAlpha = .6; ctx.strokeRect(sx(D.box[0]), sy(D.box[3]), (D.box[2]-D.box[0])*scale, (D.box[3]-D.box[1])*scale); ctx.setLineDash([]); ctx.globalAlpha = 1; }
+  }
+  if (on('L_seg') && S.length) {
+    ctx.strokeStyle = css('--seg'); ctx.lineWidth = 2.4; ctx.beginPath();
+    for (let i = 0; i < S.length; i += 2) { ctx.moveTo(sx(px(S[i])), sy(py(S[i]))); ctx.lineTo(sx(px(S[i+1])), sy(py(S[i+1]))); }
+    ctx.stroke();
+  }
+  if (on('L_hull') && H.length) {
+    ctx.strokeStyle = css('--hull'); ctx.lineWidth = 2; ctx.setLineDash([7, 5]); ctx.beginPath();
+    H.forEach((v, i) => i ? ctx.lineTo(sx(px(v)), sy(py(v))) : ctx.moveTo(sx(px(v)), sy(py(v)))); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+  }
+  if (hover >= 0 && on('L_circ')) {
+    const a = T[3*hover], b = T[3*hover+1], c = T[3*hover+2];
+    const cc = circum(a, b, c);
+    ctx.strokeStyle = css('--accent'); ctx.lineWidth = 1.6; ctx.fillStyle = css('--focus');
+    ctx.beginPath(); ctx.arc(sx(cc.x), sy(cc.y), cc.r*scale, 0, 6.2832); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx(px(a)), sy(py(a))); ctx.lineTo(sx(px(b)), sy(py(b))); ctx.lineTo(sx(px(c)), sy(py(c))); ctx.closePath();
+    ctx.lineWidth = 2.4; ctx.stroke();
+    ctx.fillStyle = css('--accent'); ctx.beginPath(); ctx.arc(sx(cc.x), sy(cc.y), 3, 0, 6.2832); ctx.fill();
+  }
+  if (on('L_pts') && P.length/2 <= 40000) {
+    ctx.fillStyle = css('--pt'); const r = P.length/2 > 3000 ? 1.4 : 2.6;
+    for (let i = 0; i < P.length/2; ++i) { if (!SITE[i]) continue; ctx.beginPath(); ctx.arc(sx(px(i)), sy(py(i)), r, 0, 6.2832); ctx.fill(); }
+  }
+}
+function circum(a, b, c) {
+  const ax = px(a), ay = py(a), bx = px(b)-ax, by = py(b)-ay, cx = px(c)-ax, cy = py(c)-ay;
+  const d = 2*(bx*cy - by*cx), b2 = bx*bx+by*by, c2 = cx*cx+cy*cy;
+  const ux = (cy*b2 - by*c2)/d, uy = (bx*c2 - cx*b2)/d;
+  return {x: ax+ux, y: ay+uy, r: Math.hypot(ux, uy)};
+}
+
+// ---- side panel -----------------------------------------------------------------------------
+const fmt = (v, n = 4) => Number.isFinite(v) ? (Math.abs(v) >= 1e5 || (v !== 0 && Math.abs(v) < 1e-3) ? v.toExponential(2) : (+v.toPrecision(n)).toString()) : '–';
+(function stats() {
+  const rows = [['Vertices', SITE.reduce((a, b) => a + b, 0)], ['Triangles', nT]];
+  if (S.length) rows.push(['Segments', S.length/2]);
+  if (nT) { rows.push(['Smallest angle', fmt(amin, 3) + '°'], ['Largest angle', fmt(amax, 4) + '°'], ['Total area', fmt(asum)]); }
+  if (C.length) rows.push(['Voronoi cells', C.filter(p => p.length >= 6).length]);
+  $('stats').innerHTML = rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + v + '</dd>').join('');
+})();
+function histogram() {
+  const h = $('hist'), g = h.getContext('2d'), r = h.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  h.width = Math.round(r.width*d); h.height = Math.round(r.height*d); g.setTransform(d, 0, 0, d, 0, 0);
+  const bins = new Array(12).fill(0); for (let t = 0; t < nT; ++t) bins[Math.min(11, Math.floor(minAng[t]/5))]++;
+  const mx = Math.max(1, ...bins), bw = r.width / 12;
+  bins.forEach((n, i) => { const hh = (r.height - 16) * n / mx; g.fillStyle = ramp(i*5 + 2.5);
+    g.fillRect(i*bw + 1.5, r.height - 14 - hh, bw - 3, hh); });
+  g.fillStyle = css('--muted'); g.font = '10px system-ui'; g.textAlign = 'center';
+  [0, 20, 40, 60].forEach(a => g.fillText(a + '°', Math.min(r.width-8, Math.max(8, a/60*r.width)), r.height - 2));
+}
+function info(t) {
+  if (t < 0) { $('info').innerHTML = '<span class="empty">Hover a triangle to inspect it. Its circumcircle is empty of other vertices — that is the Delaunay property.</span>'; return; }
+  const a = T[3*t], b = T[3*t+1], c = T[3*t+2], an = angles(a, b, c), cc = circum(a, b, c);
+  $('info').innerHTML = '<dl>' +
+    '<dt>Vertices</dt><dd>' + a + ', ' + b + ', ' + c + '</dd>' +
+    '<dt>Angles</dt><dd>' + an.map(v => v.toFixed(1)).join(' · ') + '°</dd>' +
+    '<dt>Area</dt><dd>' + fmt(area[t]) + '</dd>' +
+    '<dt>Circumcentre</dt><dd>' + fmt(cc.x) + ', ' + fmt(cc.y) + '</dd>' +
+    '<dt>Circumradius</dt><dd>' + fmt(cc.r) + '</dd>' +
+    '<dt>Radius / shortest edge</dt><dd>' + fmt(cc.r / Math.min(Math.hypot(px(a)-px(b), py(a)-py(b)), Math.hypot(px(b)-px(c), py(b)-py(c)), Math.hypot(px(c)-px(a), py(c)-py(a)))) + '</dd></dl>';
+}
+
+// ---- interaction ----------------------------------------------------------------------------
+let drag = null;
+cv.addEventListener('pointerdown', e => { drag = {x: e.clientX, y: e.clientY, ox, oy}; cv.classList.add('drag'); cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointerup', () => { drag = null; cv.classList.remove('drag'); });
+cv.addEventListener('pointermove', e => {
+  const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (drag) { ox = drag.ox + e.clientX - drag.x; oy = drag.oy + e.clientY - drag.y; draw(); return; }
+  const t = pick(wx(x), wy(y)); if (t !== hover) { hover = t; info(t); draw(); }
+});
+cv.addEventListener('pointerleave', () => { if (hover >= 0) { hover = -1; info(-1); draw(); } });
+cv.addEventListener('wheel', e => {
+  e.preventDefault(); const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const k = Math.exp(-e.deltaY * 0.0015), wxp = wx(x), wyp = wy(y);
+  scale *= k; ox = x - wxp*scale; oy = y + wyp*scale; draw();
+}, {passive: false});
+cv.addEventListener('dblclick', () => { fit(); draw(); });
+document.querySelectorAll('input[type=checkbox]').forEach(c => c.addEventListener('change', draw));
+$('theme').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme') ||
+    (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark'); histogram(); draw();
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { histogram(); draw(); });
+// layers with no data are disabled rather than silently doing nothing
+for (const [id, has] of [['L_vor', C.length], ['L_seg', S.length], ['L_hull', H.length], ['L_fill', nT], ['L_tri', nT], ['L_circ', nT]]) {
+  if (!has) { $(id).checked = false; $(id).disabled = true; $(id).parentElement.style.opacity = .45; }
+}
+if (C.length) $('L_vor').checked = true, $('L_fill').checked = false;
+if (D.hullOn) $('L_hull').checked = true;
+new ResizeObserver(() => { resize(); histogram(); }).observe($('stage'));
+</script>
+</body>
+</html>

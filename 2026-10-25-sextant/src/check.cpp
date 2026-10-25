@@ -184,19 +184,34 @@ CheckReport check_voronoi(const Triangulation& dt, const std::vector<VoronoiCell
             double d = (pts[v].x - q.x) * (pts[v].x - q.x) + (pts[v].y - q.y) * (pts[v].y - q.y);
             if (d < bd) { bd = d; best = v; }
         }
-        // q must be inside the cell of `best` (or on its boundary within tolerance)
-        const auto& poly = cells[best].polygon;
-        bool inside = poly.size() >= 3;
+        // q must lie in the cell of its nearest site. Distances are compared in double precision, so sites
+        // whose distance is within rounding of the best are accepted as equally near.
         double tol = 1e-9 * (box.width() + box.height());
-        for (size_t i = 0; inside && i < poly.size(); ++i) {
-            const Pt& p = poly[i];
-            const Pt& w = poly[(i + 1) % poly.size()];
-            double len = std::hypot(w.x - p.x, w.y - p.y);
-            if (len < 1e-12 * (box.width() + box.height())) continue;
-            double cr = ((w.x - p.x) * (q.y - p.y) - (w.y - p.y) * (q.x - p.x)) / std::max(len, 1e-300);
-            if (cr < -tol) inside = false;
+        double worst_all = -1e300;
+        bool found = false;
+        for (int cand : sites) {
+            double d = (pts[cand].x - q.x) * (pts[cand].x - q.x) + (pts[cand].y - q.y) * (pts[cand].y - q.y);
+            if (d > bd * (1 + 1e-12)) continue;
+            const auto& poly = cells[cand].polygon;
+            if (poly.size() < 3) { found = true; break; }  // a collapsed sliver cell cannot be tested
+            double worst = 0;
+            for (size_t i = 0; i < poly.size(); ++i) {
+                const Pt& p = poly[i];
+                const Pt& w = poly[(i + 1) % poly.size()];
+                double len = std::hypot(w.x - p.x, w.y - p.y);
+                if (len < 1e-12 * (box.width() + box.height())) continue;
+                double cr = ((w.x - p.x) * (q.y - p.y) - (w.y - p.y) * (q.x - p.x)) / len;
+                worst = std::min(worst, cr);
+            }
+            worst_all = std::max(worst_all, worst);
+            if (worst >= -tol) { found = true; break; }
         }
-        if (!inside) { bad("sample point not inside the cell of its nearest site " + std::to_string(best)); break; }
+        if (!found) {
+            char buf[200];
+            std::snprintf(buf, sizeof buf, "sample (%.17g, %.17g) is nearest to site %d but %.3g outside its cell", q.x, q.y, best, -worst_all);
+            bad(buf);
+            break;
+        }
     }
     return r;
 }

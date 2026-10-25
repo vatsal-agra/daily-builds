@@ -11,10 +11,19 @@ Scene scene_from(const Triangulation& dt, bool inside_only, const std::string& t
     Scene s;
     s.title = title;
     s.pts = dt.points();
-    s.is_site.assign(s.pts.size(), 0);
-    for (size_t i = 0; i < s.pts.size(); ++i) s.is_site[i] = dt.dup_of()[i] == (int)i;
     s.tris = dt.triangles(inside_only);
     for (auto& g : dt.segments()) s.segs.push_back({g.a, g.b});
+    // A vertex is shown only if it belongs to the picture: the mesh, a segment, or (for inputs with no
+    // triangles at all) the point set. This hides e.g. the far-away buffer box that refinement adds.
+    s.is_site.assign(s.pts.size(), 0);
+    if (dt.degenerate()) {
+        for (int v : dt.chain()) s.is_site[v] = 1;
+    } else {
+        for (auto& t : s.tris) for (int v : t) s.is_site[v] = 1;
+        for (auto& g : s.segs) s.is_site[g.first] = s.is_site[g.second] = 1;
+        if (s.tris.empty())
+            for (size_t i = 0; i < s.pts.size(); ++i) s.is_site[i] = dt.dup_of()[i] == (int)i;
+    }
     return s;
 }
 

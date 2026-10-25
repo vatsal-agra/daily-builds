@@ -299,6 +299,7 @@ int Triangulation::insert_point(int vid, bool respect, std::vector<int>* created
         rej_[nt] = 0;
     }
     if (created) created->insert(created->end(), fresh.begin(), fresh.end());
+    if (track_) changed_.insert(changed_.end(), fresh.begin(), fresh.end());
     return vid;
 }
 
@@ -339,6 +340,7 @@ void Triangulation::split_edge(int t, int i, int vid, std::vector<int>* created)
     hint_ = t1;
     if (tris_[hint_].ghost()) hint_ = t2;
     if (created) created->insert(created->end(), {t1, t2, u1, u2});
+    if (track_) changed_.insert(changed_.end(), {t1, t2, u1, u2});
     std::vector<std::pair<int, int>> st{{t1, 2}, {t2, 1}, {u1, 2}, {u2, 1}};
     legalize(st);
 }
@@ -376,6 +378,7 @@ void Triangulation::flip(int t, int i) {
     replace_neighbor(n_bd, u, t);
     replace_neighbor(n_ca, t, u);
     ++flips_;
+    if (track_) { changed_.push_back(t); changed_.push_back(u); }
 }
 
 void Triangulation::legalize(std::vector<std::pair<int, int>>& st, std::vector<int>* touched) {

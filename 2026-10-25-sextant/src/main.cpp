@@ -30,12 +30,15 @@ usage: sextant <command> [args] [options]
   voronoi  <file>                  Voronoi diagram clipped to a box     [--margin F]
   hull     <file>                  exact convex hull (and triangulation boundary cross-check)
   cdt      <file>                  constrained Delaunay triangulation of a PSLG  [--no-carve]
+  refine   <file.poly>             Ruppert quality mesh of a PSLG   [--angle 25] [--area A] [--max-points N]
+  lloyd    <file>                  centroidal Voronoi relaxation    [--iters 20] [--out FILE]
   nearest  <file> X Y              nearest site via greedy descent on the Delaunay graph
   check    <file>                  build, then run the full independent certificate
   predicates                       self-test of the exact predicates on adversarial inputs
 
 common options:
   --svg FILE      write an SVG picture            --stats    print predicate-filter statistics
+  --html FILE     write a self-contained interactive viewer
   --mesh FILE     dump the exact mesh (hex floats) for tests/verify_mesh.py
   --verify        run the independent checker on the result (exit 1 on failure)
   '-' as <file> reads standard input
@@ -137,6 +140,7 @@ int cmd_delaunay(const Args& a) {
                     dt.triangles().size(), dt.boundary().size(), dt.num_flips(), ms);
     }
     if (a.flag("svg")) write_file(a.get("svg"), render_svg(scene_with_hull(dt, false, "Delaunay triangulation"), {}));
+    if (a.flag("html")) write_file(a.get("html"), render_html(scene_with_hull(dt, false, "Delaunay triangulation")));
     if (a.flag("mesh")) write_mesh(a.get("mesh"), dt, false);
     if (a.flag("stats")) print_stats();
     return finish_check(dt, a, false, true);
@@ -166,6 +170,11 @@ int cmd_voronoi(const Args& a) {
         s.cells = cells; s.box = box; s.has_box = true;
         SvgOptions o; o.fill_by_angle = false;
         write_file(a.get("svg"), render_svg(s, o));
+    }
+    if (a.flag("html")) {
+        Scene s = scene_from(dt, false, "Voronoi diagram over Delaunay triangulation");
+        s.cells = cells; s.box = box; s.has_box = true;
+        write_file(a.get("html"), render_html(s));
     }
     if (a.flag("stats")) print_stats();
     return rc;
@@ -209,12 +218,87 @@ int cmd_cdt(const Args& a) {
     size_t extra = dt.points().size() - in.pts.size();
     std::printf("%zu input vertices (+%zu from segment intersections), %zu segments after splitting, %zu triangles%s\n", in.pts.size(), extra,
                 dt.segments().size(), dt.triangles(carve).size(), carve ? " inside the domain" : "");
+    if (a.flag("html")) write_file(a.get("html"), render_html(scene_from(dt, carve, "Constrained Delaunay triangulation")));
     if (a.flag("mesh")) write_mesh(a.get("mesh"), dt, carve);
     if (carve && dt.triangles(true).empty() && !dt.degenerate())
         std::printf("note: no triangle is inside the domain — the segments do not enclose a region (use --no-carve to keep the full triangulation)\n");
     if (a.flag("svg")) write_file(a.get("svg"), render_svg(scene_from(dt, carve, "Constrained Delaunay triangulation"), {}));
     if (a.flag("stats")) print_stats();
     return finish_check(dt, a, carve, false);
+}
+
+int cmd_refine(const Args& a) {
+    if (a.pos.size() != 1) throw std::runtime_error("refine needs exactly one input file");
+    Input in = read_input_file(a.pos[0]);
+    if (in.segs.empty()) throw std::runtime_error("refine needs a PSLG (a .poly file with 's i j' segments)");
+    Triangulation dt = Triangulation::constrained(in.pts, in.segs, true);
+    size_t before = dt.triangles(true).size();
+    RefineOptions ro;
+    ro.min_angle = a.num("angle", 25.0);
+    ro.max_area = a.num("area", 0.0);
+    ro.max_steiner = (int)a.num("max-points", 200000);
+    auto t0 = std::chrono::steady_clock::now();
+    RefineReport rep = dt.refine(ro);
+    double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    std::printf("refined %zu -> %zu triangles with %d Steiner points (%d on segments) in %.0f ms; angles %.2f..%.2f deg%s\n", before,
+                dt.triangles(true).size(), rep.steiner_points, rep.segment_splits, ms, rep.min_angle, rep.max_angle,
+                rep.hit_cap ? "  [stopped at --max-points]" : "");
+    int rc = 0;
+    if (rep.min_angle + 1e-9 < ro.min_angle && !rep.hit_cap)
+        std::printf("note: target %.1f deg not reached — sharp input angles (< 60 deg) can defeat Ruppert's guarantee\n", ro.min_angle);
+    if (a.flag("svg")) write_file(a.get("svg"), render_svg(scene_from(dt, true, "Ruppert-refined mesh"), {}));
+    if (a.flag("html")) write_file(a.get("html"), render_html(scene_from(dt, true, "Ruppert-refined mesh, min angle " + std::to_string((int)rep.min_angle) + "°")));
+    if (a.flag("mesh")) write_mesh(a.get("mesh"), dt, true);
+    if (a.flag("verify")) {
+        CheckOptions co;
+        co.inside_only = true;
+        CheckReport r = check_triangulation(dt, co);
+        // every segment must be free of encroaching vertices (Ruppert's conformity condition)
+        size_t enc = 0;
+        for (const Segment& s : dt.segments())
+            for (size_t v = 0; v < dt.points().size(); ++v)
+                if (dt.dup_of()[v] == (int)v && (int)v != s.a && (int)v != s.b) {
+                    const Pt &pa = dt.points()[s.a], &pb = dt.points()[s.b], &pv = dt.points()[v];
+                    if ((pa.x - pv.x) * (pb.x - pv.x) + (pa.y - pv.y) * (pb.y - pv.y) < 0) ++enc;
+                }
+        std::printf("verify: %s; segments encroached by a vertex: %zu\n", r.summary().c_str(), enc);
+        rc = r.ok() ? 0 : 1;
+    }
+    if (a.flag("stats")) print_stats();
+    return rc;
+}
+
+int cmd_lloyd(const Args& a) {
+    if (a.pos.size() != 1) throw std::runtime_error("lloyd needs exactly one input file");
+    Input in = read_input_file(a.pos[0]);
+    if (in.pts.size() < 3) throw std::runtime_error("lloyd needs at least 3 points");
+    int iters = (int)a.num("iters", 20);
+    if (iters < 0 || iters > 100000) throw std::runtime_error("--iters must be in 0..100000");
+    double margin = a.num("margin", 0.0);
+    if (!(margin >= 0) || margin > 1e6) throw std::runtime_error("--margin must be between 0 and 1e6");
+    Box box = bounding_box(in.pts, margin);
+    LloydReport rep;
+    std::vector<Pt> out = lloyd(in.pts, box, iters, &rep);
+    std::printf("Lloyd relaxation, %d iterations: quantisation energy %.6g -> %.6g (%.1f%% lower)\n", iters, rep.energy.front(), rep.energy.back(),
+                rep.energy.front() > 0 ? 100.0 * (1 - rep.energy.back() / rep.energy.front()) : 0.0);
+    Triangulation dt = Triangulation::delaunay(out);
+    if (a.flag("svg")) {
+        Scene s = scene_from(dt, false, "Centroidal Voronoi tessellation after Lloyd relaxation");
+        s.cells = voronoi_cells(dt, box); s.box = box; s.has_box = true;
+        SvgOptions o; o.fill_by_angle = false;
+        write_file(a.get("svg"), render_svg(s, o));
+    }
+    if (a.flag("html")) {
+        Scene s = scene_from(dt, false, "Centroidal Voronoi tessellation after Lloyd relaxation");
+        s.cells = voronoi_cells(dt, box); s.box = box; s.has_box = true;
+        write_file(a.get("html"), render_html(s));
+    }
+    if (a.flag("out")) {
+        Input o;
+        o.pts = out;
+        write_file(a.get("out"), format_input(o));
+    }
+    return 0;
 }
 
 int cmd_nearest(const Args& a) {
@@ -291,6 +375,8 @@ int main(int argc, char** argv) {
         if (cmd == "voronoi") return cmd_voronoi(a);
         if (cmd == "hull") return cmd_hull(a);
         if (cmd == "cdt") return cmd_cdt(a);
+        if (cmd == "refine") return cmd_refine(a);
+        if (cmd == "lloyd") return cmd_lloyd(a);
         if (cmd == "nearest") return cmd_nearest(a);
         if (cmd == "check") return cmd_check(a);
         std::fprintf(stderr, "sextant: unknown command '%s'\n\n%s", cmd.c_str(), kUsage);

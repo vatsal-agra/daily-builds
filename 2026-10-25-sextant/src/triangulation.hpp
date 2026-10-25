@@ -96,6 +96,8 @@ private:
     bool has_triangles_ = false;
     bool carved_ = false;
     std::mt19937 rng_{12345};
+    bool track_ = false;           // record changed triangles (refinement work queue)
+    std::vector<int> changed_;
 
     // mesh primitives
     int new_tri();
@@ -117,6 +119,7 @@ private:
     void build(const std::vector<Pt>& pts);
     void carve_domain();
     bool encroaches(const Pt& p, const Segment& s) const;
+    bool split_segment(int si, std::vector<int>& dirty_segs);
     int add_vertex(const Pt& p);
     void link_all(const std::vector<int>& tris);
 };
