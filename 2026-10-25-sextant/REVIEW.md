@@ -6,7 +6,7 @@ random segment soups (integer and float), a CLI abuse sweep (empty / one-point /
 huge / dangling-segment inputs, bad flags), scale tests (200k uniform, 90k-point grid, 100k points on a circle,
 50k collinear + 1), and an independent Python `Fraction` mesh verifier that shares no code with the C++.
 
-## Findings (all fixed)
+## Findings (13, all fixed)
 
 | # | Severity | Finding | Fix |
 |---|----------|---------|-----|
@@ -22,6 +22,7 @@ huge / dangling-segment inputs, bad flags), scale tests (200k uniform, 90k-point
 | 10 | Low | `cdt` of an open segment chain printed "0 triangles inside the domain" with no explanation. | Prints a note that the segments enclose no region and suggests `--no-carve`. |
 | 11 | Low | `gen circle N` computed 5^N before range-checking N (overflow for large N); render.cpp had a dead condition. | Check first; dead code removed. |
 | 12 | Low | The in-tree checker shares the predicate implementation with the code it checks. | Added `tests/verify_mesh.py` + `--mesh` export (hex floats): an all-rational independent re-verification of orientation, manifoldness, Euler and the **global** empty-circle property. |
+| 13 | Low | Found by the *final* fuzz round (seed 12, iteration 418): the Voronoi sampler declared a sample "outside its cell" because two sites 3e-11 apart are *tied* in double-precision distance, so brute force named the wrong one (a checker false positive, not a library bug). | Sampler accepts any site whose distance is within 1e-12 relative of the best; failure messages now report the sample, the site and the distance outside. Re-ran 7 further seeds × 4000 iterations: 0 failures. |
 
 ## Honest limitations left in (documented in README)
 
