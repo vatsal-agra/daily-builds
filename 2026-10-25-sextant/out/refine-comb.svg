@@ -1,0 +1,614 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 900' width='900' height='900' font-family='system-ui,sans-serif'>
+<rect width='100%' height='100%' fill='#fbfaf7'/>
+<g stroke='#3a3a3a' stroke-width='0.6' stroke-linejoin='round' opacity='1'>
+<polygon fill='#83ab75' fill-opacity='0.55' points='424,450 424,452.3 425.3,451.1'/>
+<polygon fill='#98af6e' fill-opacity='0.55' points='430.1,451.5 428.6,451.5 430.1,453.1'/>
+<polygon fill='#81ab75' fill-opacity='0.55' points='430.5,454.6 431.6,452.9 430.1,453.1'/>
+<polygon fill='#beb662' fill-opacity='0.55' points='437.7,452.8 436.2,451.5 436.6,453.4'/>
+<polygon fill='#adb267' fill-opacity='0.55' points='436.2,451.5 435.4,453 436.6,453.4'/>
+<polygon fill='#79a978' fill-opacity='0.55' points='439.3,450 437.7,451.2 439.3,451.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='443.9,450 442.3,448.5 442.3,450'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='450,450 448.5,448.5 448.5,450'/>
+<polygon fill='#5da481' fill-opacity='0.55' points='446.7,454.6 448.4,454.6 447.6,453'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='468.4,449.2 469.9,448.5 468.4,447.3'/>
+<polygon fill='#66a67e' fill-opacity='0.55' points='453.1,451.5 451.5,451.5 452.2,453'/>
+<polygon fill='#acb268' fill-opacity='0.55' points='454.6,451.5 453.8,453 455,453.3'/>
+<polygon fill='#6ba77c' fill-opacity='0.55' points='456.5,454.6 458.1,454.6 457.6,453.1'/>
+<polygon fill='#58a382' fill-opacity='0.55' points='459.8,454.6 460.6,453.2 459.1,453.3'/>
+<polygon fill='#75a979' fill-opacity='0.55' points='460.7,451.5 462.3,452.8 462.3,451.2'/>
+<polygon fill='#46a088' fill-opacity='0.55' points='464.6,454.6 465.5,453.2 463.8,453.2'/>
+<polygon fill='#98af6e' fill-opacity='0.55' points='471.4,451.5 469.9,451.5 469.9,453.1'/>
+<polygon fill='#49a187' fill-opacity='0.55' points='425.7,452.8 427,451.5 425.3,451.1'/>
+<polygon fill='#73a87a' fill-opacity='0.55' points='424,446.6 425.6,447.8 425.5,445.4'/>
+<polygon fill='#84ab74' fill-opacity='0.55' points='431.6,452.9 433.1,451.5 431.6,451.4'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='431.6,449.2 433.1,448.5 431.6,447.3'/>
+<polygon fill='#96ae6f' fill-opacity='0.55' points='436.2,446.9 437.5,448.2 437.7,446.9'/>
+<polygon fill='#71a87a' fill-opacity='0.55' points='439.3,450 437.7,449.4 437.7,451.2'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='443.9,450 445.4,448.5 443.9,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='443.9,446.9 445.4,448.5 445.4,446.9'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='451.5,448.5 450,446.9 450,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='450,446.9 451.5,448.5 451.5,446.9'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='457.7,448.5 456.1,446.9 456.1,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='454.6,450 456.1,450.8 456.1,448.5'/>
+<polygon fill='#75a979' fill-opacity='0.55' points='462.3,452.8 463.8,451.5 462.3,451.2'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='462.3,449.2 463.8,448.5 462.3,447.3'/>
+<polygon fill='#84ab74' fill-opacity='0.55' points='468.4,452.9 469.9,451.5 468.4,451.4'/>
+<polygon fill='#5ba481' fill-opacity='0.55' points='474.4,449.4 473,448.5 473,450'/>
+<polygon fill='#56a383' fill-opacity='0.55' points='472.8,454.6 474.4,454.6 473.7,453.1'/>
+<polygon fill='#c8b75f' fill-opacity='0.55' points='425.7,452.8 424,452.3 424,453.4'/>
+<polygon fill='#d7ba5a' fill-opacity='0.55' points='474.5,445.4 476,447.7 476,445.4'/>
+<polygon fill='#72a87a' fill-opacity='0.55' points='461.4,454.6 462.3,452.8 460.6,453.2'/>
+<polygon fill='#8cad72' fill-opacity='0.55' points='443.9,452.7 442.3,451.5 442.5,453.3'/>
+<polygon fill='#84ab74' fill-opacity='0.55' points='430.1,451.5 431.6,452.9 431.6,451.4'/>
+<polygon fill='#81ab75' fill-opacity='0.55' points='431.6,452.9 430.1,451.5 430.1,453.1'/>
+<polygon fill='#bbb563' fill-opacity='0.55' points='437,454.6 437.7,452.8 436.6,453.4'/>
+<polygon fill='#64a67e' fill-opacity='0.55' points='446.9,451.5 445.9,453.1 447.6,453'/>
+<polygon fill='#8dad72' fill-opacity='0.55' points='442.3,451.5 440.8,451.5 441,453.2'/>
+<polygon fill='#63a57f' fill-opacity='0.55' points='466.3,454.6 467.9,454.6 466.9,453.3'/>
+<polygon fill='#6ea77b' fill-opacity='0.55' points='457.7,451.5 456.1,452.7 457.6,453.1'/>
+<polygon fill='#a8b269' fill-opacity='0.55' points='459.2,451.5 457.6,453.1 459.1,453.3'/>
+<polygon fill='#9fb06c' fill-opacity='0.55' points='472,453 471.4,451.5 469.9,453.1'/>
+<polygon fill='#69a67d' fill-opacity='0.55' points='471.2,454.6 472,453 469.9,453.1'/>
+<polygon fill='#4ca186' fill-opacity='0.55' points='473,451.5 472,453 473.7,453.1'/>
+<polygon fill='#4ea286' fill-opacity='0.55' points='445.1,454.6 446.7,454.6 445.9,453.1'/>
+<polygon fill='#b1b366' fill-opacity='0.55' points='450,452.7 450,454.6 451.6,454.6'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='457.7,450 456.1,448.5 456.1,450.8'/>
+<polygon fill='#4fa285' fill-opacity='0.55' points='438.6,454.6 440.2,454.6 439.3,453.1'/>
+<polygon fill='#98af6e' fill-opacity='0.55' points='443.9,452.7 443.5,454.6 445.1,454.6'/>
+<polygon fill='#b2b366' fill-opacity='0.55' points='450,452.7 451.6,454.6 452.2,453'/>
+<polygon fill='#46a088' fill-opacity='0.55' points='440.2,454.6 441.9,454.6 441,453.2'/>
+<polygon fill='#61a57f' fill-opacity='0.55' points='454.6,451.5 453.1,451.5 453.8,453'/>
+<polygon fill='#8fad71' fill-opacity='0.55' points='451.5,451.5 450,452.7 452.2,453'/>
+<polygon fill='#84ab74' fill-opacity='0.55' points='437,454.6 438.6,454.6 437.7,452.8'/>
+<polygon fill='#52a284' fill-opacity='0.55' points='440.2,454.6 441,453.2 439.3,453.1'/>
+<polygon fill='#81ab75' fill-opacity='0.55' points='456.1,452.7 456.5,454.6 457.6,453.1'/>
+<polygon fill='#58a382' fill-opacity='0.55' points='436.2,451.5 434.7,451.5 435.4,453'/>
+<polygon fill='#45a088' fill-opacity='0.55' points='459.8,454.6 461.4,454.6 460.6,453.2'/>
+<polygon fill='#6da77c' fill-opacity='0.55' points='462.3,452.8 460.7,451.5 460.6,453.2'/>
+<polygon fill='#6da77c' fill-opacity='0.55' points='462.3,452.8 463,454.6 463.8,453.2'/>
+<polygon fill='#7baa77' fill-opacity='0.55' points='431.6,452.9 430.5,454.6 432.1,454.6'/>
+<polygon fill='#b4b465' fill-opacity='0.55' points='433.7,454.6 435.4,453 433.2,453.1'/>
+<polygon fill='#75a979' fill-opacity='0.55' points='436.2,451.5 437.7,452.8 437.7,451.2'/>
+<polygon fill='#75a979' fill-opacity='0.55' points='437.7,452.8 439.3,451.5 437.7,451.2'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='437.7,446.9 436.2,445.4 436.2,446.9'/>
+<polygon fill='#66a67e' fill-opacity='0.55' points='447.6,453 448.5,451.5 446.9,451.5'/>
+<polygon fill='#95ae6f' fill-opacity='0.55' points='466.9,451.5 465.3,451.5 465.5,453.2'/>
+<polygon fill='#9caf6d' fill-opacity='0.55' points='430.1,453.1 428.6,451.5 427.8,453'/>
+<polygon fill='#bab563' fill-opacity='0.55' points='456.1,452.7 454.6,451.5 455,453.3'/>
+<polygon fill='#64a67e' fill-opacity='0.55' points='453.8,453 453.3,454.6 454.9,454.6'/>
+<polygon fill='#45a088' fill-opacity='0.55' points='464.6,454.6 466.3,454.6 465.5,453.2'/>
+<polygon fill='#84ab74' fill-opacity='0.55' points='466.9,451.5 468.4,452.9 468.4,451.4'/>
+<polygon fill='#84ab74' fill-opacity='0.55' points='462.3,452.8 461.4,454.6 463,454.6'/>
+<polygon fill='#a2b16b' fill-opacity='0.55' points='460.6,453.2 459.2,451.5 459.1,453.3'/>
+<polygon fill='#95ae6f' fill-opacity='0.55' points='460.6,453.2 460.7,451.5 459.2,451.5'/>
+<polygon fill='#a0b06b' fill-opacity='0.55' points='433.7,454.6 435.4,454.6 435.4,453'/>
+<polygon fill='#6ba77c' fill-opacity='0.55' points='463.8,451.5 462.3,452.8 463.8,453.2'/>
+<polygon fill='#47a088' fill-opacity='0.55' points='463,454.6 464.6,454.6 463.8,453.2'/>
+<polygon fill='#61a57f' fill-opacity='0.55' points='428.6,451.5 427,451.5 427.8,453'/>
+<polygon fill='#79a978' fill-opacity='0.55' points='427.8,453 427,451.5 425.7,452.8'/>
+<polygon fill='#97af6e' fill-opacity='0.55' points='436.2,448.5 437.7,449.4 437.5,448.2'/>
+<polygon fill='#71a87a' fill-opacity='0.55' points='436.2,450 437.7,451.2 437.7,449.4'/>
+<polygon fill='#6ba77c' fill-opacity='0.55' points='437.7,449.4 436.2,448.5 436.2,450'/>
+<polygon fill='#64a67f' fill-opacity='0.55' points='472,453 473,451.5 471.4,451.5'/>
+<polygon fill='#58a482' fill-opacity='0.55' points='424,453.4 425.6,454.6 425.7,452.8'/>
+<polygon fill='#4fa285' fill-opacity='0.55' points='446.7,454.6 447.6,453 445.9,453.1'/>
+<polygon fill='#9baf6d' fill-opacity='0.55' points='442.3,451.5 441,453.2 442.5,453.3'/>
+<polygon fill='#58a482' fill-opacity='0.55' points='441,453.2 441.9,454.6 442.5,453.3'/>
+<polygon fill='#87ac74' fill-opacity='0.55' points='441,453.2 440.8,451.5 439.3,453.1'/>
+<polygon fill='#9baf6d' fill-opacity='0.55' points='440.8,451.5 439.3,451.5 439.3,453.1'/>
+<polygon fill='#7daa77' fill-opacity='0.55' points='433.1,451.5 431.6,452.9 433.2,453.1'/>
+<polygon fill='#65a67e' fill-opacity='0.55' points='432.1,454.6 433.7,454.6 433.2,453.1'/>
+<polygon fill='#86ac74' fill-opacity='0.55' points='443.5,454.6 443.9,452.7 442.5,453.3'/>
+<polygon fill='#66a67e' fill-opacity='0.55' points='441.9,454.6 443.5,454.6 442.5,453.3'/>
+<polygon fill='#56a383' fill-opacity='0.55' points='465.5,453.2 466.3,454.6 466.9,453.3'/>
+<polygon fill='#71a87a' fill-opacity='0.55' points='467.9,454.6 468.4,452.9 466.9,453.3'/>
+<polygon fill='#7baa77' fill-opacity='0.55' points='468.4,452.9 467.9,454.6 469.5,454.6'/>
+<polygon fill='#50a285' fill-opacity='0.55' points='453.8,453 453.1,451.5 452.2,453'/>
+<polygon fill='#bcb563' fill-opacity='0.55' points='474.4,449.4 473,450 474.5,451.8'/>
+<polygon fill='#a2b06b' fill-opacity='0.55' points='425.5,445.4 425.6,447.8 427,446.9'/>
+<polygon fill='#57a383' fill-opacity='0.55' points='474.4,447.7 473,448.5 474.4,449.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='468.4,445.4 466.9,446.9 468.4,447.3'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='462.3,445.4 460.7,446.9 462.3,447.3'/>
+<polygon fill='#79a978' fill-opacity='0.55' points='463.8,450 462.3,451.2 463.8,451.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='456.1,446.9 454.6,445.4 454.6,446.9'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='456.1,446.9 454.6,448.5 456.1,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='450,446.9 451.5,445.4 450,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='451.5,451.5 451.5,450 450.2,451.3'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='443.9,446.9 445.4,445.4 443.9,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='445.4,451.5 445.4,450 444.1,451.4'/>
+<polygon fill='#6ba77c' fill-opacity='0.55' points='437.7,449.4 439.3,450 439.3,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='437.7,446.9 439.3,445.4 437.7,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='437.7,446.9 439.3,448.5 439.3,446.9'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='431.6,445.4 430.1,446.9 431.6,447.3'/>
+<polygon fill='#85ab74' fill-opacity='0.55' points='433.1,450 431.6,451.4 433.1,451.5'/>
+<polygon fill='#45a089' fill-opacity='0.55' points='424,450 425.3,451.1 425.6,449.4'/>
+<polygon fill='#85ab74' fill-opacity='0.55' points='469.9,450 468.4,451.4 469.9,451.5'/>
+<polygon fill='#82ab75' fill-opacity='0.55' points='447.6,453 448.4,454.6 448.9,453.4'/>
+<polygon fill='#52a284' fill-opacity='0.55' points='472,453 472.8,454.6 473.7,453.1'/>
+<polygon fill='#62a57f' fill-opacity='0.55' points='471.2,454.6 472.8,454.6 472,453'/>
+<polygon fill='#76a979' fill-opacity='0.55' points='469.5,454.6 471.2,454.6 469.9,453.1'/>
+<polygon fill='#6ca77c' fill-opacity='0.55' points='428.8,454.6 430.1,453.1 427.8,453'/>
+<polygon fill='#64a67e' fill-opacity='0.55' points='427.8,453 427.2,454.6 428.8,454.6'/>
+<polygon fill='#52a284' fill-opacity='0.55' points='424,452.3 425.7,452.8 425.3,451.1'/>
+<polygon fill='#9eb06c' fill-opacity='0.55' points='427.2,454.6 427.8,453 425.7,452.8'/>
+<polygon fill='#9fb06c' fill-opacity='0.55' points='425.6,454.6 427.2,454.6 425.7,452.8'/>
+<polygon fill='#a2b06b' fill-opacity='0.55' points='448.5,451.5 447.6,453 448.9,453.4'/>
+<polygon fill='#acb268' fill-opacity='0.55' points='450,452.7 448.5,451.5 448.9,453.4'/>
+<polygon fill='#7faa76' fill-opacity='0.55' points='445.4,451.5 443.9,452.7 445.9,453.1'/>
+<polygon fill='#97af6e' fill-opacity='0.55' points='443.9,452.7 445.1,454.6 445.9,453.1'/>
+<polygon fill='#5fa580' fill-opacity='0.55' points='453.3,454.6 453.8,453 452.2,453'/>
+<polygon fill='#61a57f' fill-opacity='0.55' points='451.6,454.6 453.3,454.6 452.2,453'/>
+<polygon fill='#9caf6d' fill-opacity='0.55' points='459.2,451.5 457.7,451.5 457.6,453.1'/>
+<polygon fill='#cab85e' fill-opacity='0.55' points='439.3,448.5 437.7,446.9 437.5,448.2'/>
+<polygon fill='#aeb367' fill-opacity='0.55' points='437.7,449.4 439.3,448.5 437.5,448.2'/>
+<polygon fill='#88ac73' fill-opacity='0.55' points='427,450 425.3,451.1 427,451.5'/>
+<polygon fill='#7aaa77' fill-opacity='0.55' points='427,450 425.6,449.4 425.3,451.1'/>
+<polygon fill='#89ac73' fill-opacity='0.55' points='465.5,453.2 465.3,451.5 463.8,453.2'/>
+<polygon fill='#9caf6d' fill-opacity='0.55' points='465.3,451.5 463.8,451.5 463.8,453.2'/>
+<polygon fill='#a0b06b' fill-opacity='0.55' points='435.4,453 435.4,454.6 436.6,453.4'/>
+<polygon fill='#a0b06b' fill-opacity='0.55' points='435.4,454.6 437,454.6 436.6,453.4'/>
+<polygon fill='#71a87a' fill-opacity='0.55' points='463.8,450 462.3,449.2 462.3,451.2'/>
+<polygon fill='#71a87a' fill-opacity='0.55' points='460.7,450 462.3,451.2 462.3,449.2'/>
+<polygon fill='#79a978' fill-opacity='0.55' points='462.3,451.2 460.7,450 460.7,451.5'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='460.7,448.5 462.3,449.2 462.3,447.3'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='460.7,448.5 460.7,450 462.3,449.2'/>
+<polygon fill='#75a979' fill-opacity='0.55' points='462.3,447.3 463.8,448.5 463.8,446.9'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='462.3,445.4 462.3,447.3 463.8,446.9'/>
+<polygon fill='#76a979' fill-opacity='0.55' points='428.8,454.6 430.5,454.6 430.1,453.1'/>
+<polygon fill='#acb268' fill-opacity='0.55' points='453.8,453 454.9,454.6 455,453.3'/>
+<polygon fill='#78a978' fill-opacity='0.55' points='446.9,451.5 445.4,451.5 445.9,453.1'/>
+<polygon fill='#9db06c' fill-opacity='0.55' points='424,447.7 424,450 425.6,449.4'/>
+<polygon fill='#5aa482' fill-opacity='0.55' points='425.6,447.8 427,448.5 427,446.9'/>
+<polygon fill='#9baf6d' fill-opacity='0.55' points='424,447.7 425.6,449.4 425.6,447.8'/>
+<polygon fill='#4ea286' fill-opacity='0.55' points='425.6,449.4 427,448.5 425.6,447.8'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='425.5,445.4 427,446.9 427,445.4'/>
+<polygon fill='#95ae6f' fill-opacity='0.55' points='468.4,452.9 466.9,451.5 466.9,453.3'/>
+<polygon fill='#a0b06c' fill-opacity='0.55' points='466.9,451.5 465.5,453.2 466.9,453.3'/>
+<polygon fill='#57a383' fill-opacity='0.55' points='473,446.9 473,448.5 474.4,447.7'/>
+<polygon fill='#b3b465' fill-opacity='0.55' points='473,450 473,451.5 474.5,451.8'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='473,446.9 474.5,445.4 473,445.4'/>
+<polygon fill='#c9b75e' fill-opacity='0.55' points='476,447.7 474.5,445.4 474.4,447.7'/>
+<polygon fill='#a4b16a' fill-opacity='0.55' points='474.5,445.4 473,446.9 474.4,447.7'/>
+<polygon fill='#a0b06b' fill-opacity='0.55' points='476,447.7 474.4,447.7 474.4,449.4'/>
+<polygon fill='#a0b06c' fill-opacity='0.55' points='476,450 476,447.7 474.4,449.4'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='462.3,449.2 463.8,450 463.8,448.5'/>
+<polygon fill='#60a580' fill-opacity='0.55' points='457.6,453.1 458.1,454.6 459.1,453.3'/>
+<polygon fill='#66a67e' fill-opacity='0.55' points='458.1,454.6 459.8,454.6 459.1,453.3'/>
+<polygon fill='#5ea580' fill-opacity='0.55' points='425.6,449.4 427,450 427,448.5'/>
+<polygon fill='#b1b366' fill-opacity='0.55' points='476,452.3 476,450 474.5,451.8'/>
+<polygon fill='#ceb85d' fill-opacity='0.55' points='474.4,454.6 476,454.6 476,453.4'/>
+<polygon fill='#9eb06c' fill-opacity='0.55' points='476,450 474.4,449.4 474.5,451.8'/>
+<polygon fill='#9caf6d' fill-opacity='0.55' points='476,453.4 473.7,453.1 474.4,454.6'/>
+<polygon fill='#4ea286' fill-opacity='0.55' points='473,451.5 473.7,453.1 474.5,451.8'/>
+<polygon fill='#b5b465' fill-opacity='0.55' points='476,453.4 474.5,451.8 473.7,453.1'/>
+<polygon fill='#79a978' fill-opacity='0.55' points='436.2,450 436.2,451.5 437.7,451.2'/>
+<polygon fill='#ebb953' fill-opacity='0.55' points='476,453.4 476,452.3 474.5,451.8'/>
+<polygon fill='#c5b760' fill-opacity='0.55' points='425.5,445.4 424,445.4 424,446.6'/>
+<polygon fill='#d0b95c' fill-opacity='0.55' points='424,446.6 424,447.7 425.6,447.8'/>
+<polygon fill='#83ab75' fill-opacity='0.55' points='469.9,450 468.4,449.2 468.4,451.4'/>
+<polygon fill='#83ab75' fill-opacity='0.55' points='466.9,450 468.4,451.4 468.4,449.2'/>
+<polygon fill='#85ab74' fill-opacity='0.55' points='468.4,451.4 466.9,450 466.9,451.5'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='466.9,448.5 468.4,449.2 468.4,447.3'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='466.9,448.5 466.9,450 468.4,449.2'/>
+<polygon fill='#75a979' fill-opacity='0.55' points='468.4,447.3 469.9,448.5 469.9,446.9'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='468.4,445.4 468.4,447.3 469.9,446.9'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='468.4,449.2 469.9,450 469.9,448.5'/>
+<polygon fill='#6da77c' fill-opacity='0.55' points='439.3,451.5 437.7,452.8 439.3,453.1'/>
+<polygon fill='#72a87a' fill-opacity='0.55' points='437.7,452.8 438.6,454.6 439.3,453.1'/>
+<polygon fill='#bdb562' fill-opacity='0.55' points='456.5,454.6 456.1,452.7 455,453.3'/>
+<polygon fill='#b0b366' fill-opacity='0.55' points='454.9,454.6 456.5,454.6 455,453.3'/>
+<polygon fill='#83ab75' fill-opacity='0.55' points='433.1,450 431.6,449.2 431.6,451.4'/>
+<polygon fill='#83ab75' fill-opacity='0.55' points='430.1,450 431.6,451.4 431.6,449.2'/>
+<polygon fill='#85ab74' fill-opacity='0.55' points='431.6,451.4 430.1,450 430.1,451.5'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='430.1,448.5 431.6,449.2 431.6,447.3'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='430.1,448.5 430.1,450 431.6,449.2'/>
+<polygon fill='#75a979' fill-opacity='0.55' points='431.6,447.3 433.1,448.5 433.1,446.9'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='431.6,445.4 431.6,447.3 433.1,446.9'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='431.6,449.2 433.1,450 433.1,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='431.6,445.4 433.1,446.9 433.1,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='468.4,445.4 469.9,446.9 469.9,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='462.3,445.4 463.8,446.9 463.8,445.4'/>
+<polygon fill='#75a979' fill-opacity='0.55' points='431.6,447.3 430.1,446.9 430.1,448.5'/>
+<polygon fill='#75a979' fill-opacity='0.55' points='462.3,447.3 460.7,446.9 460.7,448.5'/>
+<polygon fill='#75a979' fill-opacity='0.55' points='468.4,447.3 466.9,446.9 466.9,448.5'/>
+<polygon fill='#6fa87b' fill-opacity='0.55' points='431.6,452.9 432.1,454.6 433.2,453.1'/>
+<polygon fill='#a2b16b' fill-opacity='0.55' points='435.4,453 434.7,451.5 433.2,453.1'/>
+<polygon fill='#98af6e' fill-opacity='0.55' points='434.7,451.5 433.1,451.5 433.2,453.1'/>
+<polygon fill='#ceb85d' fill-opacity='0.55' points='424,453.4 424,454.6 425.6,454.6'/>
+<polygon fill='#81ab75' fill-opacity='0.55' points='469.9,451.5 468.4,452.9 469.9,453.1'/>
+<polygon fill='#81ab75' fill-opacity='0.55' points='468.4,452.9 469.5,454.6 469.9,453.1'/>
+<polygon fill='#8aac73' fill-opacity='0.55' points='448.4,454.6 450,454.6 448.9,453.4'/>
+<polygon fill='#a3b16a' fill-opacity='0.55' points='450,454.6 450,452.7 448.9,453.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='456.1,446.9 457.7,448.5 457.7,446.9'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='456.1,446.9 457.7,445.4 456.1,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='454.6,450 456.1,448.5 454.6,448.5'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='457.7,451.5 457.7,450 456.1,450.8'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='456.1,448.5 457.7,450 457.7,448.5'/>
+<polygon fill='#6ca77c' fill-opacity='0.55' points='454.6,451.5 456.1,452.7 456.1,450.8'/>
+<polygon fill='#6ca77c' fill-opacity='0.55' points='456.1,452.7 457.7,451.5 456.1,450.8'/>
+<polygon fill='#68a67d' fill-opacity='0.55' points='456.1,450.8 454.6,450 454.6,451.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='450,446.9 448.5,445.4 448.5,446.9'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='450,446.9 448.5,448.5 450,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='450,446.9 451.5,446.9 451.5,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='443.9,446.9 442.3,445.4 442.3,446.9'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='442.3,448.5 443.9,450 443.9,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='443.9,446.9 445.4,446.9 445.4,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='443.9,452.7 445.4,451.5 444.1,451.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='445.4,450 443.9,450 444.1,451.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='443.9,446.9 443.9,445.4 442.3,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='450,452.7 451.5,451.5 450.2,451.3'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='451.5,450 450,450 450.2,451.3'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='450,446.9 450,445.4 448.5,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='456.1,446.9 454.6,446.9 454.6,448.5'/>
+<polygon fill='#97af6e' fill-opacity='0.55' points='436.2,446.9 436.2,448.5 437.5,448.2'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='448.5,448.5 450,450 450,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='450,450 451.5,448.5 450,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='445.4,448.5 443.9,446.9 443.9,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='443.9,446.9 442.3,448.5 443.9,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='443.9,446.9 442.3,446.9 442.3,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='450,446.9 448.5,446.9 448.5,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='456.1,446.9 456.1,445.4 454.6,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='456.1,446.9 457.7,446.9 457.7,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='437.7,446.9 439.3,446.9 439.3,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='437.7,446.9 437.7,445.4 436.2,445.4'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='443.9,450 445.4,450 445.4,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='450,450 451.5,450 451.5,448.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='450,450 448.5,450 448.5,451.5'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='443.9,450 442.3,450 442.3,451.5'/>
+<polygon fill='#b8b464' fill-opacity='0.55' points='443.9,450 442.3,451.5 444.1,451.4'/>
+<polygon fill='#9fb06c' fill-opacity='0.55' points='442.3,451.5 443.9,452.7 444.1,451.4'/>
+<polygon fill='#bab563' fill-opacity='0.55' points='450,450 448.5,451.5 450.2,451.3'/>
+<polygon fill='#a1b06b' fill-opacity='0.55' points='448.5,451.5 450,452.7 450.2,451.3'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='431.6,445.4 430.1,445.4 430.1,446.9'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='468.4,445.4 466.9,445.4 466.9,446.9'/>
+<polygon fill='#97af6f' fill-opacity='0.55' points='462.3,445.4 460.7,445.4 460.7,446.9'/>
+</g>
+<g stroke='#1d1d1d' stroke-width='2.2' stroke-linecap='round'>
+<line x1='454.6' y1='451.5' x2='453.1' y2='451.5'/>
+<line x1='453.1' y1='451.5' x2='451.5' y2='451.5'/>
+<line x1='437' y1='454.6' x2='438.6' y2='454.6'/>
+<line x1='438.6' y1='454.6' x2='440.2' y2='454.6'/>
+<line x1='456.5' y1='454.6' x2='458.1' y2='454.6'/>
+<line x1='458.1' y1='454.6' x2='459.8' y2='454.6'/>
+<line x1='436.2' y1='451.5' x2='434.7' y2='451.5'/>
+<line x1='434.7' y1='451.5' x2='433.1' y2='451.5'/>
+<line x1='463' y1='454.6' x2='464.6' y2='454.6'/>
+<line x1='464.6' y1='454.6' x2='466.3' y2='454.6'/>
+<line x1='466.9' y1='451.5' x2='465.3' y2='451.5'/>
+<line x1='465.3' y1='451.5' x2='463.8' y2='451.5'/>
+<line x1='430.1' y1='451.5' x2='428.6' y2='451.5'/>
+<line x1='428.6' y1='451.5' x2='427' y2='451.5'/>
+<line x1='459.8' y1='454.6' x2='461.4' y2='454.6'/>
+<line x1='461.4' y1='454.6' x2='463' y2='454.6'/>
+<line x1='433.7' y1='454.6' x2='435.4' y2='454.6'/>
+<line x1='435.4' y1='454.6' x2='437' y2='454.6'/>
+<line x1='469.5' y1='454.6' x2='471.2' y2='454.6'/>
+<line x1='471.2' y1='454.6' x2='472.8' y2='454.6'/>
+<line x1='424' y1='450' x2='424' y2='452.3'/>
+<line x1='443.5' y1='454.6' x2='445.1' y2='454.6'/>
+<line x1='445.1' y1='454.6' x2='446.7' y2='454.6'/>
+<line x1='442.3' y1='451.5' x2='440.8' y2='451.5'/>
+<line x1='440.8' y1='451.5' x2='439.3' y2='451.5'/>
+<line x1='440.2' y1='454.6' x2='441.9' y2='454.6'/>
+<line x1='441.9' y1='454.6' x2='443.5' y2='454.6'/>
+<line x1='466.3' y1='454.6' x2='467.9' y2='454.6'/>
+<line x1='467.9' y1='454.6' x2='469.5' y2='454.6'/>
+<line x1='450' y1='454.6' x2='451.6' y2='454.6'/>
+<line x1='451.6' y1='454.6' x2='453.3' y2='454.6'/>
+<line x1='476' y1='452.3' x2='476' y2='450'/>
+<line x1='439.3' y1='451.5' x2='439.3' y2='450'/>
+<line x1='439.3' y1='450' x2='439.3' y2='448.5'/>
+<line x1='424' y1='447.7' x2='424' y2='450'/>
+<line x1='446.7' y1='454.6' x2='448.4' y2='454.6'/>
+<line x1='448.4' y1='454.6' x2='450' y2='454.6'/>
+<line x1='473' y1='451.5' x2='471.4' y2='451.5'/>
+<line x1='471.4' y1='451.5' x2='469.9' y2='451.5'/>
+<line x1='424' y1='454.6' x2='425.6' y2='454.6'/>
+<line x1='425.6' y1='454.6' x2='427.2' y2='454.6'/>
+<line x1='460.7' y1='451.5' x2='459.2' y2='451.5'/>
+<line x1='459.2' y1='451.5' x2='457.7' y2='451.5'/>
+<line x1='460.7' y1='448.5' x2='460.7' y2='450'/>
+<line x1='460.7' y1='450' x2='460.7' y2='451.5'/>
+<line x1='427.2' y1='454.6' x2='428.8' y2='454.6'/>
+<line x1='428.8' y1='454.6' x2='430.5' y2='454.6'/>
+<line x1='453.3' y1='454.6' x2='454.9' y2='454.6'/>
+<line x1='454.9' y1='454.6' x2='456.5' y2='454.6'/>
+<line x1='448.5' y1='451.5' x2='446.9' y2='451.5'/>
+<line x1='446.9' y1='451.5' x2='445.4' y2='451.5'/>
+<line x1='427' y1='448.5' x2='427' y2='446.9'/>
+<line x1='427' y1='446.9' x2='427' y2='445.4'/>
+<line x1='476' y1='450' x2='476' y2='447.7'/>
+<line x1='476' y1='447.7' x2='476' y2='445.4'/>
+<line x1='473' y1='445.4' x2='473' y2='446.9'/>
+<line x1='473' y1='446.9' x2='473' y2='448.5'/>
+<line x1='476' y1='445.4' x2='474.5' y2='445.4'/>
+<line x1='474.5' y1='445.4' x2='473' y2='445.4'/>
+<line x1='463.8' y1='451.5' x2='463.8' y2='450'/>
+<line x1='463.8' y1='450' x2='463.8' y2='448.5'/>
+<line x1='427' y1='451.5' x2='427' y2='450'/>
+<line x1='427' y1='450' x2='427' y2='448.5'/>
+<line x1='473' y1='448.5' x2='473' y2='450'/>
+<line x1='473' y1='450' x2='473' y2='451.5'/>
+<line x1='472.8' y1='454.6' x2='474.4' y2='454.6'/>
+<line x1='474.4' y1='454.6' x2='476' y2='454.6'/>
+<line x1='436.2' y1='448.5' x2='436.2' y2='450'/>
+<line x1='436.2' y1='450' x2='436.2' y2='451.5'/>
+<line x1='476' y1='454.6' x2='476' y2='453.4'/>
+<line x1='476' y1='453.4' x2='476' y2='452.3'/>
+<line x1='427' y1='445.4' x2='425.5' y2='445.4'/>
+<line x1='425.5' y1='445.4' x2='424' y2='445.4'/>
+<line x1='424' y1='445.4' x2='424' y2='446.6'/>
+<line x1='424' y1='446.6' x2='424' y2='447.7'/>
+<line x1='466.9' y1='448.5' x2='466.9' y2='450'/>
+<line x1='466.9' y1='450' x2='466.9' y2='451.5'/>
+<line x1='469.9' y1='451.5' x2='469.9' y2='450'/>
+<line x1='469.9' y1='450' x2='469.9' y2='448.5'/>
+<line x1='430.1' y1='448.5' x2='430.1' y2='450'/>
+<line x1='430.1' y1='450' x2='430.1' y2='451.5'/>
+<line x1='433.1' y1='451.5' x2='433.1' y2='450'/>
+<line x1='433.1' y1='450' x2='433.1' y2='448.5'/>
+<line x1='433.1' y1='448.5' x2='433.1' y2='446.9'/>
+<line x1='433.1' y1='446.9' x2='433.1' y2='445.4'/>
+<line x1='469.9' y1='448.5' x2='469.9' y2='446.9'/>
+<line x1='469.9' y1='446.9' x2='469.9' y2='445.4'/>
+<line x1='463.8' y1='448.5' x2='463.8' y2='446.9'/>
+<line x1='463.8' y1='446.9' x2='463.8' y2='445.4'/>
+<line x1='430.1' y1='445.4' x2='430.1' y2='446.9'/>
+<line x1='430.1' y1='446.9' x2='430.1' y2='448.5'/>
+<line x1='460.7' y1='445.4' x2='460.7' y2='446.9'/>
+<line x1='460.7' y1='446.9' x2='460.7' y2='448.5'/>
+<line x1='466.9' y1='445.4' x2='466.9' y2='446.9'/>
+<line x1='466.9' y1='446.9' x2='466.9' y2='448.5'/>
+<line x1='430.5' y1='454.6' x2='432.1' y2='454.6'/>
+<line x1='432.1' y1='454.6' x2='433.7' y2='454.6'/>
+<line x1='424' y1='452.3' x2='424' y2='453.4'/>
+<line x1='424' y1='453.4' x2='424' y2='454.6'/>
+<line x1='457.7' y1='451.5' x2='457.7' y2='450'/>
+<line x1='457.7' y1='450' x2='457.7' y2='448.5'/>
+<line x1='454.6' y1='448.5' x2='454.6' y2='450'/>
+<line x1='454.6' y1='450' x2='454.6' y2='451.5'/>
+<line x1='451.5' y1='448.5' x2='451.5' y2='446.9'/>
+<line x1='451.5' y1='446.9' x2='451.5' y2='445.4'/>
+<line x1='445.4' y1='448.5' x2='445.4' y2='446.9'/>
+<line x1='445.4' y1='446.9' x2='445.4' y2='445.4'/>
+<line x1='445.4' y1='445.4' x2='443.9' y2='445.4'/>
+<line x1='443.9' y1='445.4' x2='442.3' y2='445.4'/>
+<line x1='451.5' y1='445.4' x2='450' y2='445.4'/>
+<line x1='450' y1='445.4' x2='448.5' y2='445.4'/>
+<line x1='454.6' y1='445.4' x2='454.6' y2='446.9'/>
+<line x1='454.6' y1='446.9' x2='454.6' y2='448.5'/>
+<line x1='436.2' y1='445.4' x2='436.2' y2='446.9'/>
+<line x1='436.2' y1='446.9' x2='436.2' y2='448.5'/>
+<line x1='442.3' y1='445.4' x2='442.3' y2='446.9'/>
+<line x1='442.3' y1='446.9' x2='442.3' y2='448.5'/>
+<line x1='448.5' y1='445.4' x2='448.5' y2='446.9'/>
+<line x1='448.5' y1='446.9' x2='448.5' y2='448.5'/>
+<line x1='457.7' y1='445.4' x2='456.1' y2='445.4'/>
+<line x1='456.1' y1='445.4' x2='454.6' y2='445.4'/>
+<line x1='457.7' y1='448.5' x2='457.7' y2='446.9'/>
+<line x1='457.7' y1='446.9' x2='457.7' y2='445.4'/>
+<line x1='439.3' y1='448.5' x2='439.3' y2='446.9'/>
+<line x1='439.3' y1='446.9' x2='439.3' y2='445.4'/>
+<line x1='439.3' y1='445.4' x2='437.7' y2='445.4'/>
+<line x1='437.7' y1='445.4' x2='436.2' y2='445.4'/>
+<line x1='445.4' y1='451.5' x2='445.4' y2='450'/>
+<line x1='445.4' y1='450' x2='445.4' y2='448.5'/>
+<line x1='451.5' y1='451.5' x2='451.5' y2='450'/>
+<line x1='451.5' y1='450' x2='451.5' y2='448.5'/>
+<line x1='448.5' y1='448.5' x2='448.5' y2='450'/>
+<line x1='448.5' y1='450' x2='448.5' y2='451.5'/>
+<line x1='442.3' y1='448.5' x2='442.3' y2='450'/>
+<line x1='442.3' y1='450' x2='442.3' y2='451.5'/>
+<line x1='433.1' y1='445.4' x2='431.6' y2='445.4'/>
+<line x1='431.6' y1='445.4' x2='430.1' y2='445.4'/>
+<line x1='469.9' y1='445.4' x2='468.4' y2='445.4'/>
+<line x1='468.4' y1='445.4' x2='466.9' y2='445.4'/>
+<line x1='463.8' y1='445.4' x2='462.3' y2='445.4'/>
+<line x1='462.3' y1='445.4' x2='460.7' y2='445.4'/>
+</g>
+<g fill='#1d1d1d'>
+<circle cx='424' cy='454.6' r='2.2'/>
+<circle cx='476' cy='454.6' r='2.2'/>
+<circle cx='476' cy='445.4' r='2.2'/>
+<circle cx='473' cy='445.4' r='2.2'/>
+<circle cx='473' cy='451.5' r='2.2'/>
+<circle cx='469.9' cy='451.5' r='2.2'/>
+<circle cx='469.9' cy='445.4' r='2.2'/>
+<circle cx='466.9' cy='445.4' r='2.2'/>
+<circle cx='466.9' cy='451.5' r='2.2'/>
+<circle cx='463.8' cy='451.5' r='2.2'/>
+<circle cx='463.8' cy='445.4' r='2.2'/>
+<circle cx='460.7' cy='445.4' r='2.2'/>
+<circle cx='460.7' cy='451.5' r='2.2'/>
+<circle cx='457.7' cy='451.5' r='2.2'/>
+<circle cx='457.7' cy='445.4' r='2.2'/>
+<circle cx='454.6' cy='445.4' r='2.2'/>
+<circle cx='454.6' cy='451.5' r='2.2'/>
+<circle cx='451.5' cy='451.5' r='2.2'/>
+<circle cx='451.5' cy='445.4' r='2.2'/>
+<circle cx='448.5' cy='445.4' r='2.2'/>
+<circle cx='448.5' cy='451.5' r='2.2'/>
+<circle cx='445.4' cy='451.5' r='2.2'/>
+<circle cx='445.4' cy='445.4' r='2.2'/>
+<circle cx='442.3' cy='445.4' r='2.2'/>
+<circle cx='442.3' cy='451.5' r='2.2'/>
+<circle cx='439.3' cy='451.5' r='2.2'/>
+<circle cx='439.3' cy='445.4' r='2.2'/>
+<circle cx='436.2' cy='445.4' r='2.2'/>
+<circle cx='436.2' cy='451.5' r='2.2'/>
+<circle cx='433.1' cy='451.5' r='2.2'/>
+<circle cx='433.1' cy='445.4' r='2.2'/>
+<circle cx='430.1' cy='445.4' r='2.2'/>
+<circle cx='430.1' cy='451.5' r='2.2'/>
+<circle cx='427' cy='451.5' r='2.2'/>
+<circle cx='427' cy='445.4' r='2.2'/>
+<circle cx='424' cy='445.4' r='2.2'/>
+<circle cx='424' cy='450' r='2.2'/>
+<circle cx='476' cy='450' r='2.2'/>
+<circle cx='450' cy='454.6' r='2.2'/>
+<circle cx='437' cy='454.6' r='2.2'/>
+<circle cx='430.5' cy='454.6' r='2.2'/>
+<circle cx='427.2' cy='454.6' r='2.2'/>
+<circle cx='433.7' cy='454.6' r='2.2'/>
+<circle cx='443.5' cy='454.6' r='2.2'/>
+<circle cx='440.2' cy='454.6' r='2.2'/>
+<circle cx='463' cy='454.6' r='2.2'/>
+<circle cx='456.5' cy='454.6' r='2.2'/>
+<circle cx='459.8' cy='454.6' r='2.2'/>
+<circle cx='469.5' cy='454.6' r='2.2'/>
+<circle cx='466.3' cy='454.6' r='2.2'/>
+<circle cx='472.8' cy='454.6' r='2.2'/>
+<circle cx='450' cy='452.7' r='2.2'/>
+<circle cx='453.3' cy='454.6' r='2.2'/>
+<circle cx='443.9' cy='452.7' r='2.2'/>
+<circle cx='453.1' cy='451.5' r='2.2'/>
+<circle cx='438.6' cy='454.6' r='2.2'/>
+<circle cx='456.1' cy='452.7' r='2.2'/>
+<circle cx='437.7' cy='452.8' r='2.2'/>
+<circle cx='458.1' cy='454.6' r='2.2'/>
+<circle cx='434.7' cy='451.5' r='2.2'/>
+<circle cx='457.6' cy='453.1' r='2.2'/>
+<circle cx='464.6' cy='454.6' r='2.2'/>
+<circle cx='431.6' cy='452.9' r='2.2'/>
+<circle cx='437.7' cy='451.2' r='2.2'/>
+<circle cx='439.3' cy='448.5' r='2.2'/>
+<circle cx='446.7' cy='454.6' r='2.2'/>
+<circle cx='465.3' cy='451.5' r='2.2'/>
+<circle cx='428.6' cy='451.5' r='2.2'/>
+<circle cx='453.8' cy='453' r='2.2'/>
+<circle cx='462.3' cy='452.8' r='2.2'/>
+<circle cx='461.4' cy='454.6' r='2.2'/>
+<circle cx='460.6' cy='453.2' r='2.2'/>
+<circle cx='435.4' cy='454.6' r='2.2'/>
+<circle cx='465.5' cy='453.2' r='2.2'/>
+<circle cx='430.1' cy='453.1' r='2.2'/>
+<circle cx='436.2' cy='448.5' r='2.2'/>
+<circle cx='437.7' cy='449.4' r='2.2'/>
+<circle cx='471.2' cy='454.6' r='2.2'/>
+<circle cx='424' cy='452.3' r='2.2'/>
+<circle cx='445.1' cy='454.6' r='2.2'/>
+<circle cx='440.8' cy='451.5' r='2.2'/>
+<circle cx='441.9' cy='454.6' r='2.2'/>
+<circle cx='441' cy='453.2' r='2.2'/>
+<circle cx='435.4' cy='453' r='2.2'/>
+<circle cx='442.5' cy='453.3' r='2.2'/>
+<circle cx='468.4' cy='452.9' r='2.2'/>
+<circle cx='467.9' cy='454.6' r='2.2'/>
+<circle cx='451.6' cy='454.6' r='2.2'/>
+<circle cx='476' cy='452.3' r='2.2'/>
+<circle cx='427' cy='448.5' r='2.2'/>
+<circle cx='473' cy='448.5' r='2.2'/>
+<circle cx='469.9' cy='448.5' r='2.2'/>
+<circle cx='463.8' cy='448.5' r='2.2'/>
+<circle cx='460.7' cy='448.5' r='2.2'/>
+<circle cx='457.7' cy='448.5' r='2.2'/>
+<circle cx='454.6' cy='448.5' r='2.2'/>
+<circle cx='451.5' cy='448.5' r='2.2'/>
+<circle cx='448.5' cy='448.5' r='2.2'/>
+<circle cx='445.4' cy='448.5' r='2.2'/>
+<circle cx='442.3' cy='448.5' r='2.2'/>
+<circle cx='439.3' cy='450' r='2.2'/>
+<circle cx='437.7' cy='446.9' r='2.2'/>
+<circle cx='433.1' cy='448.5' r='2.2'/>
+<circle cx='430.1' cy='448.5' r='2.2'/>
+<circle cx='424' cy='447.7' r='2.2'/>
+<circle cx='466.9' cy='448.5' r='2.2'/>
+<circle cx='448.4' cy='454.6' r='2.2'/>
+<circle cx='472' cy='453' r='2.2'/>
+<circle cx='471.4' cy='451.5' r='2.2'/>
+<circle cx='427.8' cy='453' r='2.2'/>
+<circle cx='425.6' cy='454.6' r='2.2'/>
+<circle cx='425.7' cy='452.8' r='2.2'/>
+<circle cx='447.6' cy='453' r='2.2'/>
+<circle cx='445.9' cy='453.1' r='2.2'/>
+<circle cx='452.2' cy='453' r='2.2'/>
+<circle cx='459.2' cy='451.5' r='2.2'/>
+<circle cx='437.5' cy='448.2' r='2.2'/>
+<circle cx='425.3' cy='451.1' r='2.2'/>
+<circle cx='463.8' cy='453.2' r='2.2'/>
+<circle cx='436.6' cy='453.4' r='2.2'/>
+<circle cx='462.3' cy='451.2' r='2.2'/>
+<circle cx='460.7' cy='450' r='2.2'/>
+<circle cx='462.3' cy='449.2' r='2.2'/>
+<circle cx='462.3' cy='447.3' r='2.2'/>
+<circle cx='428.8' cy='454.6' r='2.2'/>
+<circle cx='454.9' cy='454.6' r='2.2'/>
+<circle cx='446.9' cy='451.5' r='2.2'/>
+<circle cx='425.6' cy='449.4' r='2.2'/>
+<circle cx='425.6' cy='447.8' r='2.2'/>
+<circle cx='427' cy='446.9' r='2.2'/>
+<circle cx='466.9' cy='453.3' r='2.2'/>
+<circle cx='476' cy='447.7' r='2.2'/>
+<circle cx='473' cy='446.9' r='2.2'/>
+<circle cx='474.5' cy='445.4' r='2.2'/>
+<circle cx='474.4' cy='447.7' r='2.2'/>
+<circle cx='474.4' cy='449.4' r='2.2'/>
+<circle cx='463.8' cy='450' r='2.2'/>
+<circle cx='459.1' cy='453.3' r='2.2'/>
+<circle cx='427' cy='450' r='2.2'/>
+<circle cx='473' cy='450' r='2.2'/>
+<circle cx='474.4' cy='454.6' r='2.2'/>
+<circle cx='473.7' cy='453.1' r='2.2'/>
+<circle cx='474.5' cy='451.8' r='2.2'/>
+<circle cx='436.2' cy='450' r='2.2'/>
+<circle cx='476' cy='453.4' r='2.2'/>
+<circle cx='425.5' cy='445.4' r='2.2'/>
+<circle cx='424' cy='446.6' r='2.2'/>
+<circle cx='468.4' cy='451.4' r='2.2'/>
+<circle cx='466.9' cy='450' r='2.2'/>
+<circle cx='468.4' cy='449.2' r='2.2'/>
+<circle cx='468.4' cy='447.3' r='2.2'/>
+<circle cx='469.9' cy='450' r='2.2'/>
+<circle cx='439.3' cy='453.1' r='2.2'/>
+<circle cx='455' cy='453.3' r='2.2'/>
+<circle cx='431.6' cy='451.4' r='2.2'/>
+<circle cx='430.1' cy='450' r='2.2'/>
+<circle cx='431.6' cy='449.2' r='2.2'/>
+<circle cx='431.6' cy='447.3' r='2.2'/>
+<circle cx='433.1' cy='450' r='2.2'/>
+<circle cx='433.1' cy='446.9' r='2.2'/>
+<circle cx='469.9' cy='446.9' r='2.2'/>
+<circle cx='463.8' cy='446.9' r='2.2'/>
+<circle cx='430.1' cy='446.9' r='2.2'/>
+<circle cx='460.7' cy='446.9' r='2.2'/>
+<circle cx='466.9' cy='446.9' r='2.2'/>
+<circle cx='432.1' cy='454.6' r='2.2'/>
+<circle cx='433.2' cy='453.1' r='2.2'/>
+<circle cx='424' cy='453.4' r='2.2'/>
+<circle cx='469.9' cy='453.1' r='2.2'/>
+<circle cx='448.9' cy='453.4' r='2.2'/>
+<circle cx='456.1' cy='446.9' r='2.2'/>
+<circle cx='456.1' cy='448.5' r='2.2'/>
+<circle cx='457.7' cy='450' r='2.2'/>
+<circle cx='456.1' cy='450.8' r='2.2'/>
+<circle cx='454.6' cy='450' r='2.2'/>
+<circle cx='450' cy='446.9' r='2.2'/>
+<circle cx='451.5' cy='446.9' r='2.2'/>
+<circle cx='443.9' cy='446.9' r='2.2'/>
+<circle cx='445.4' cy='446.9' r='2.2'/>
+<circle cx='443.9' cy='450' r='2.2'/>
+<circle cx='443.9' cy='445.4' r='2.2'/>
+<circle cx='450' cy='450' r='2.2'/>
+<circle cx='450' cy='445.4' r='2.2'/>
+<circle cx='454.6' cy='446.9' r='2.2'/>
+<circle cx='436.2' cy='446.9' r='2.2'/>
+<circle cx='450' cy='448.5' r='2.2'/>
+<circle cx='443.9' cy='448.5' r='2.2'/>
+<circle cx='442.3' cy='446.9' r='2.2'/>
+<circle cx='448.5' cy='446.9' r='2.2'/>
+<circle cx='456.1' cy='445.4' r='2.2'/>
+<circle cx='457.7' cy='446.9' r='2.2'/>
+<circle cx='439.3' cy='446.9' r='2.2'/>
+<circle cx='437.7' cy='445.4' r='2.2'/>
+<circle cx='445.4' cy='450' r='2.2'/>
+<circle cx='451.5' cy='450' r='2.2'/>
+<circle cx='448.5' cy='450' r='2.2'/>
+<circle cx='442.3' cy='450' r='2.2'/>
+<circle cx='444.1' cy='451.4' r='2.2'/>
+<circle cx='450.2' cy='451.3' r='2.2'/>
+<circle cx='431.6' cy='445.4' r='2.2'/>
+<circle cx='468.4' cy='445.4' r='2.2'/>
+<circle cx='462.3' cy='445.4' r='2.2'/>
+</g>
+<text x='12' y='888' font-size='13' fill='#555'>Ruppert-refined mesh</text>
+</svg>

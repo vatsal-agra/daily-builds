@@ -1,0 +1,40 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 859' width='900' height='859' font-family='system-ui,sans-serif'>
+<rect width='100%' height='100%' fill='#fbfaf7'/>
+<g stroke='#3a3a3a' stroke-width='0.6' stroke-linejoin='round' opacity='1'>
+<polygon fill='#c9b85e' fill-opacity='0.55' points='192.5,825.9 450,638.8 290.8,523.2'/>
+<polygon fill='#c9b75e' fill-opacity='0.55' points='450,638.8 707.5,825.9 609.2,523.2'/>
+<polygon fill='#c9b85e' fill-opacity='0.55' points='33.33,336.1 290.8,523.2 351.6,336.1'/>
+<polygon fill='#cab85e' fill-opacity='0.55' points='450,33.33 351.6,336.1 548.4,336.1'/>
+<polygon fill='#cab85e' fill-opacity='0.55' points='548.4,336.1 609.2,523.2 866.7,336.1'/>
+</g>
+<g stroke='#1d1d1d' stroke-width='2.2' stroke-linecap='round'>
+<line x1='450' y1='33.33' x2='351.6' y2='336.1'/>
+<line x1='351.6' y1='336.1' x2='290.8' y2='523.2'/>
+<line x1='290.8' y1='523.2' x2='192.5' y2='825.9'/>
+<line x1='33.33' y1='336.1' x2='290.8' y2='523.2'/>
+<line x1='290.8' y1='523.2' x2='450' y2='638.8'/>
+<line x1='450' y1='638.8' x2='707.5' y2='825.9'/>
+<line x1='192.5' y1='825.9' x2='450' y2='638.8'/>
+<line x1='450' y1='638.8' x2='609.2' y2='523.2'/>
+<line x1='609.2' y1='523.2' x2='866.7' y2='336.1'/>
+<line x1='707.5' y1='825.9' x2='609.2' y2='523.2'/>
+<line x1='609.2' y1='523.2' x2='548.4' y2='336.1'/>
+<line x1='548.4' y1='336.1' x2='450' y2='33.33'/>
+<line x1='866.7' y1='336.1' x2='548.4' y2='336.1'/>
+<line x1='548.4' y1='336.1' x2='351.6' y2='336.1'/>
+<line x1='351.6' y1='336.1' x2='33.33' y2='336.1'/>
+</g>
+<g fill='#1d1d1d'>
+<circle cx='450' cy='33.33' r='2.2'/>
+<circle cx='33.33' cy='336.1' r='2.2'/>
+<circle cx='192.5' cy='825.9' r='2.2'/>
+<circle cx='707.5' cy='825.9' r='2.2'/>
+<circle cx='866.7' cy='336.1' r='2.2'/>
+<circle cx='290.8' cy='523.2' r='2.2'/>
+<circle cx='450' cy='638.8' r='2.2'/>
+<circle cx='609.2' cy='523.2' r='2.2'/>
+<circle cx='351.6' cy='336.1' r='2.2'/>
+<circle cx='548.4' cy='336.1' r='2.2'/>
+</g>
+<text x='12' y='847' font-size='13' fill='#555'>Constrained Delaunay triangulation</text>
+</svg>
