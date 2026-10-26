@@ -147,6 +147,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p = add("conflicts", cmd_conflicts, "list parser conflicts with example inputs")
     p.add_argument("-m", "--method", choices=METHODS); p.add_argument("-v", "--verbose", action="store_true")
     p = add("states", cmd_states, "dump the LR automaton or action/goto grid", method="lalr")
+    p.set_defaults(lr_only=True)
     p.add_argument("--grid", action="store_true")
     p = add("parse", cmd_parse, "parse input", io=True, method="lalr")
     p.add_argument("--format", choices=["tree", "sexp", "json"], default="tree")
@@ -160,11 +161,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     add("transform", cmd_transform, "eliminate left recursion + left-factor toward LL(1)")
 
     args = ap.parse_args(argv)
+    if getattr(args, "lr_only", False) and args.method not in METHODS:
+        ap.error(f"--method must be one of {', '.join(METHODS)} for this command")
+    if args.cmd == "gen" and args.method not in METHODS:
+        ap.error(f"--method must be one of {', '.join(METHODS)} for gen")
     try:
         style = "right" if args.cmd in ("ll1", "transform") or getattr(args, "method", None) == "ll1" else "left"
         lang = Language.from_file(args.grammar, ebnf_style=style)
         return args.fn(lang, args)
     except GrammarError as e:
         print(f"grammar error: {e}", file=sys.stderr); return 2
-    except FileNotFoundError as e:
+    except (OSError, UnicodeError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr); return 2

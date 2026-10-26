@@ -52,6 +52,7 @@ class Grammar:
     precedence: Dict[str, Tuple[int, str]] = field(default_factory=dict)
     hidden: set = field(default_factory=set)   # helper nonterminals from EBNF sugar
     by_lhs: Dict[str, List[Production]] = field(default_factory=dict)
+    prec_used: set = field(default_factory=set)  # names referenced by %prec
 
     def __post_init__(self):
         self.reindex()
@@ -129,29 +130,26 @@ def _scan(src: str) -> List[_T]:
             if not buf:
                 raise GrammarError("empty string literal", line)
             toks.append(_T("str", "".join(buf), line)); i = j + 1
-        elif c == "/" and toks and toks[-1].kind in ("ident",) and _regex_context(toks):
-            j, buf = i + 1, []
-            while j < n and src[j] != "/":
-                if src[j] == "\\" and j + 1 < n:
-                    if src[j + 1] == "/":
-                        buf.append("/")
-                    else:
-                        buf.append(src[j:j + 2])
-                    j += 2
-                elif src[j] == "\n":
-                    raise GrammarError("unterminated regex", line)
-                else:
-                    buf.append(src[j]); j += 1
-            if j >= n:
-                raise GrammarError("unterminated regex", line)
-            toks.append(_T("regex", "".join(buf), line)); i = j + 1
-        elif c == "/" and toks and toks[-1].kind == "directive" and toks[-1].val == "%skip":
-            j, buf = i + 1, []
-            while j < n and src[j] != "/":
-                if src[j] == "\\" and j + 1 < n:
+        elif c == "/" and toks and (
+                (toks[-1].kind == "ident" and _regex_context(toks))
+                or (toks[-1].kind == "directive" and toks[-1].val == "%skip")):
+            j, buf, in_class = i + 1, [], False
+            while j < n and (in_class or src[j] != "/"):
+                ch = src[j]
+                if ch == "\\" and j + 1 < n:
                     buf.append("/" if src[j + 1] == "/" else src[j:j + 2]); j += 2
-                else:
-                    buf.append(src[j]); j += 1
+                    continue
+                if ch == "\n":
+                    raise GrammarError("unterminated regex", line)
+                if ch == "[" and not in_class:
+                    in_class = True
+                    buf.append(ch); j += 1
+                    if j < n and src[j] == "^": buf.append("^"); j += 1
+                    if j < n and src[j] == "]": buf.append("]"); j += 1   # literal ']' first in class
+                    continue
+                if ch == "]" and in_class:
+                    in_class = False
+                buf.append(ch); j += 1
             if j >= n:
                 raise GrammarError("unterminated regex", line)
             toks.append(_T("regex", "".join(buf), line)); i = j + 1
@@ -193,6 +191,7 @@ class _Parser:
         self.hidden: set = set()
         self.productions: List[Production] = []
         self.counter = 0
+        self.prec_used: set = set()
 
     def peek(self) -> _T: return self.toks[self.p]
     def next(self) -> _T:
@@ -355,6 +354,7 @@ class _Parser:
     def emit(self, lhs, rhs, prec_name, line):
         prec = None
         if prec_name is not None:
+            self.prec_used.add(prec_name)
             if prec_name not in self.precedence:
                 raise GrammarError(f"%prec {prec_name} has no precedence declaration", line)
             prec = self.precedence[prec_name]
@@ -382,9 +382,11 @@ class _Parser:
         if start not in self.defined:
             raise GrammarError(f"start symbol {start} has no rules")
         # pseudo-tokens named only in %prec/%left (e.g. UMINUS) are not real terminals
-        return Grammar(start, self.productions, self.terminals, self.nonterminals,
-                       self.token_regex, self.literals, self.skips,
-                       {k: v for k, v in self.precedence.items()}, self.hidden)
+        g = Grammar(start, self.productions, self.terminals, self.nonterminals,
+                    self.token_regex, self.literals, self.skips,
+                    {k: v for k, v in self.precedence.items()}, self.hidden)
+        g.prec_used = self.prec_used
+        return g
 
 
 def load_grammar(src: str, ebnf_style: str = "left") -> Grammar:

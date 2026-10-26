@@ -177,7 +177,23 @@ class Analysis:
         if un:
             issues.append(f"unreachable symbols: {', '.join(un)}")
         for comp in self.left_recursive():
-            issues.append("left recursion: " + " ⇒ ".join(comp))
+            if all(c in g.hidden for c in comp):
+                continue                      # EBNF helper recursion is deliberate and LR-friendly
+            issues.append("left recursion: " + " ⇒ ".join(c for c in comp if c not in g.hidden)
+                          + "  (fine for LR/Earley; blocks LL(1) until `transform`)")
+        used = {s for p in g.productions for s in p.rhs}
+        unused = [t for t in g.terminals if t not in used]
+        if unused:
+            issues.append(f"declared but unused tokens: {', '.join(unused)}")
+        seen = {}
+        for p in g.productions:
+            k = (p.lhs, p.rhs)
+            if k in seen:
+                issues.append(f"duplicate production: {p}")
+            seen[k] = p
+        stray = [t for t in g.precedence if t not in g.terminals and t not in g.prec_used]
+        if stray:
+            issues.append(f"precedence declared for pseudo-tokens that no %prec references: {', '.join(stray)}")
         for comp in self.cyclic():
             issues.append("cyclic derivation (A ⇒+ A, infinitely ambiguous): " + ", ".join(comp))
         lines.append("diagnostics  : " + ("none" if not issues else ""))

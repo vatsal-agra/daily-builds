@@ -6,7 +6,6 @@ ambiguous spans, and detect infinite ambiguity (A ⇒+ A cycles).
 """
 from __future__ import annotations
 
-import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import islice
@@ -17,6 +16,7 @@ from .grammar import END, Grammar
 from .lexer import Token
 from .lr import ParseError, _syntax_msg
 from .tree import Node, flatten_children
+from .util import run_deep
 
 Item = Tuple[int, int, int]           # (production, dot, origin)
 INF = float("inf")
@@ -72,51 +72,76 @@ class EarleyResult:
 
     def count(self) -> float:
         """Number of distinct parse trees (``inf`` when the grammar is cyclic on this input)."""
-        old = sys.getrecursionlimit()
-        sys.setrecursionlimit(max(old, 200000))
-        try:
-            return sum(self._count_item(r, self.n) for r in self.roots)
-        finally:
-            sys.setrecursionlimit(old)
+        return run_deep(lambda: sum(self._count_item(r, self.n) for r in self.roots))
 
     # ---- enumeration ----------------------------------------------------
     def trees(self, limit: int = 10) -> List[Node]:
-        old = sys.getrecursionlimit()
-        sys.setrecursionlimit(max(old, 200000))
-        try:
-            return list(islice(self._root_trees(), limit))
-        finally:
-            sys.setrecursionlimit(old)
+        if limit == 1 and not self.parser.cyclic and self.roots:
+            return [self._first_tree()]
+        return run_deep(lambda: list(islice(self._root_trees(), limit)))
+
+    def _first_tree(self) -> Node:
+        """Iteratively build the canonical (first-in-order) tree; no recursion, linear time.
+
+        Matches the first tree of the generator-based enumeration, so deep inputs such as a
+        20 000-term left-recursive sum are handled without touching the recursion limit."""
+        g = self.parser.g
+        root_item = min(self.roots)
+        root = Node(g.productions[root_item[0]].lhs, [])
+        order, work = [root], [(root, root_item, self.n)]
+        while work:
+            node, (pi, dot, origin), pos = work.pop()
+            kids = []
+            while dot > 0:
+                k, child = min(self.charts[pos].deriv[(pi, dot, origin)], key=lambda d: (d[0], d[1] or ()))
+                if child is None:
+                    kids.append(self.tokens[pos - 1])
+                else:
+                    sub = Node(g.productions[child[0]].lhs, [])
+                    kids.append(sub); order.append(sub); work.append((sub, child, pos))
+                dot -= 1; pos = k
+            kids.reverse()
+            node.children = kids
+        for node in order:
+            if node.name not in g.hidden:
+                node.children = flatten_children(node.children, g.hidden)
+        return root
 
     def _root_trees(self) -> Iterator[Node]:
         for r in sorted(self.roots):
             yield from self._tree_of(r, self.n, frozenset())
 
     def _tree_of(self, item: Item, end: int, stack) -> Iterator[Node]:
-        key = (item, end)
-        if key in stack:                      # skip cyclic re-entry → finite sample
-            return
-        stack = stack | {key}
-        p = self.parser.g.productions[item[0]]
-        for kids in self._seq(item, end, stack):
-            if p.lhs not in self.parser.g.hidden:
-                kids = flatten_children(kids, self.parser.g.hidden)
-            yield Node(p.lhs, list(kids))
+        if self.parser.cyclic:                # only cyclic grammars can loop; the check is O(depth)
+            key = (item, end)
+            if key in stack:                  # skip cyclic re-entry → finite sample
+                return
+            stack = stack | {key}
+        hidden = self.parser.g.hidden
+        lhs = self.parser.g.productions[item[0]].lhs
+        for cell in self._seq(item, end, stack):
+            kids = []
+            while cell is not None:           # cons-list → list (keeps long sequences O(n))
+                cell, v = cell
+                kids.append(v)
+            kids.reverse()
+            if lhs not in hidden:
+                kids = flatten_children(kids, hidden)
+            yield Node(lhs, kids)
 
-    def _seq(self, item: Item, end: int, stack) -> Iterator[list]:
+    def _seq(self, item: Item, end: int, stack) -> Iterator[Optional[tuple]]:
+        """Yield derivations of ``rhs[:dot]`` over origin..end as cons cells ``(prev, child)``."""
         pi, dot, origin = item
         if dot == 0:
-            yield []
+            yield None
             return
         for k, child in sorted(self.charts[end].deriv[item], key=lambda d: (d[0], d[1] or ())):
-            if child is None:
-                tok = self.tokens[end - 1]
-                for left in self._seq((pi, dot - 1, origin), k, stack):
-                    yield left + [tok]
-            else:
-                for left in self._seq((pi, dot - 1, origin), k, stack):
+            for left in self._seq((pi, dot - 1, origin), k, stack):
+                if child is None:
+                    yield (left, self.tokens[end - 1])
+                else:
                     for sub in self._tree_of(child, end, stack):
-                        yield left + [sub]
+                        yield (left, sub)
 
     # ---- ambiguity ------------------------------------------------------
     def ambiguities(self) -> List[str]:
@@ -146,6 +171,7 @@ class EarleyParser:
         self.g = grammar
         self.an = analysis or Analysis(grammar)
         self.terminals = set(grammar.terminals) | {END}
+        self.cyclic = bool(self.an.cyclic())
 
     def parse(self, tokens: List[Token]) -> EarleyResult:
         g = self.g
@@ -164,7 +190,8 @@ class EarleyParser:
                 if dot == len(p.rhs):
                     if origin == i:
                         ch.empty_done[p.lhs].append(item)
-                    for parent in list(charts[origin].waiting.get(p.lhs, ())):
+                    waiters = charts[origin].waiting.get(p.lhs, ())
+                    for parent in (list(waiters) if origin == i else waiters):
                         self._add(charts, i, (parent[0], parent[1] + 1, parent[2]), (origin, item))
                 else:
                     sym = p.rhs[dot]

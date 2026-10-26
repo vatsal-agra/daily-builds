@@ -13,8 +13,25 @@ class Node:
     name: str
     children: List[Union["Node", Token]] = field(default_factory=list)
 
+    def __repr__(self):
+        return f"Node({self.name!r}, <{len(self.children)} children>)"
+
     def __eq__(self, other):
-        return isinstance(other, Node) and self.name == other.name and self.children == other.children
+        if not isinstance(other, Node):
+            return NotImplemented
+        stack = [(self, other)]
+        while stack:
+            a, b = stack.pop()
+            if isinstance(a, Token) or isinstance(b, Token):
+                if not (isinstance(a, Token) and isinstance(b, Token)) or (a.type, a.text) != (b.type, b.text):
+                    return False
+            elif a.name != b.name or len(a.children) != len(b.children):
+                return False
+            else:
+                stack.extend(zip(a.children, b.children))
+        return True
+
+    __hash__ = None
 
     def leaves(self):
         stack = [self]
@@ -33,7 +50,7 @@ class Node:
         out, stack = [], [self]
         while stack:
             n = stack.pop()
-            if n == ")":
+            if isinstance(n, str):
                 out.append(")")
             elif isinstance(n, Token):
                 out.append(_atom(n))
@@ -61,25 +78,43 @@ class Node:
         return "\n".join(lines)
 
     def to_json(self):
-        def conv(n):
+        root = {}
+        stack = [(self, root)]
+        while stack:
+            n, slot = stack.pop()
             if isinstance(n, Token):
-                return {"token": n.type, "text": n.text, "line": n.line, "col": n.col}
-            return {"rule": n.name, "children": [conv(c) for c in n.children]}
-        return conv(self)
+                slot.update(token=n.type, text=n.text, line=n.line, col=n.col)
+            else:
+                slot["rule"] = n.name
+                slot["children"] = [{} for _ in n.children]
+                stack.extend(zip(n.children, slot["children"]))
+        return root
 
     def json(self, indent=2) -> str:
-        return json.dumps(self.to_json(), indent=indent)
+        from .util import run_deep
+        if indent and self.count() > 2000:   # indentation of deep left-nested trees is quadratic
+            indent = None
+        return run_deep(lambda: json.dumps(self.to_json(), indent=indent))
 
     def compact(self) -> "Node":
         """Collapse chains of single-child nonterminals (unit productions)."""
-        def go(n):
-            if isinstance(n, Token):
-                return n
-            kids = [go(c) for c in n.children]
-            if len(kids) == 1 and isinstance(kids[0], Node):
-                return kids[0]
-            return Node(n.name, kids)
-        return go(self)
+        def collapse(n):
+            while isinstance(n, Node) and len(n.children) == 1 and isinstance(n.children[0], Node):
+                n = n.children[0]
+            return n
+        root = collapse(self)
+        out = Node(root.name, [])
+        stack = [(root, out)]
+        while stack:
+            src, dst = stack.pop()
+            for c in src.children:
+                if isinstance(c, Token):
+                    dst.children.append(c)
+                else:
+                    c = collapse(c)
+                    nn = Node(c.name, [])
+                    dst.children.append(nn); stack.append((c, nn))
+        return out
 
     def count(self) -> int:
         return sum(1 for _ in self._walk())
