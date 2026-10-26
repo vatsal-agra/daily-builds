@@ -1,0 +1,5 @@
+# LR(1) but NOT LALR(1): merging the two 'c' states creates a reduce/reduce conflict.
+%skip /[ ]+/
+S : 'a' A 'd' | 'b' B 'd' | 'a' B 'e' | 'b' A 'e' ;
+A : 'c' ;
+B : 'c' ;

@@ -1,0 +1,3 @@
+# ε-rules and unbounded ambiguity: S -> S S | a | ε  (try: ambig -e 'a')
+%skip /[ ]+/
+S : S S | 'a' | ;

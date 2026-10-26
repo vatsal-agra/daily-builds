@@ -1,0 +1,9 @@
+# Same language, conflict resolved by precedence: 'else' binds to the nearest 'if'.
+%token ID /[a-z]+/
+%skip /[ ]+/
+%nonassoc LOWER
+%nonassoc 'else'
+stmt : 'if' ID 'then' stmt %prec LOWER
+     | 'if' ID 'then' stmt 'else' stmt
+     | ID
+     ;

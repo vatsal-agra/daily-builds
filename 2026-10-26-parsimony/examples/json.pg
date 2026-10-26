@@ -1,0 +1,8 @@
+# JSON, written with EBNF sugar. LALR(1).
+%token STRING /"([^"\\]|\\.)*"/
+%token NUMBER /-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?/
+%skip /[ \t\r\n]+/
+value  : object | array | STRING | NUMBER | 'true' | 'false' | 'null' ;
+object : '{' (pair (',' pair)*)? '}' ;
+pair   : STRING ':' value ;
+array  : '[' (value (',' value)*)? ']' ;

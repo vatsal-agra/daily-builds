@@ -1,0 +1,17 @@
+# Arithmetic with precedence/associativity resolved by declarations.
+%token NUM /[0-9]+(\.[0-9]+)?/
+%skip /[ \t\r\n]+/
+%left '+' '-'
+%left '*' '/'
+%right '^'
+%right UMINUS
+%start expr
+expr : expr '+' expr
+     | expr '-' expr
+     | expr '*' expr
+     | expr '/' expr
+     | expr '^' expr
+     | '-' expr %prec UMINUS
+     | '(' expr ')'
+     | NUM
+     ;

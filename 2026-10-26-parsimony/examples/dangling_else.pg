@@ -1,0 +1,7 @@
+# Classic dangling-else: genuinely ambiguous, so conflicts in every LR class.
+%token ID /[a-z]+/
+%skip /[ ]+/
+stmt : 'if' ID 'then' stmt
+     | 'if' ID 'then' stmt 'else' stmt
+     | ID
+     ;

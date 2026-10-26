@@ -1,0 +1,6 @@
+# Dragon-book 4.49: LALR(1) but NOT SLR(1) (FOLLOW(R) contains '=').
+%token id /[a-z]+/
+%skip /[ ]+/
+S : L '=' R | R ;
+L : '*' R | id ;
+R : L ;

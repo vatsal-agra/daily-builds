@@ -1,0 +1,3 @@
+# Ambiguous on purpose: Catalan-many parses of n+n+...+n. Use `ambig`.
+%skip /[ ]+/
+E : E '+' E | 'n' ;

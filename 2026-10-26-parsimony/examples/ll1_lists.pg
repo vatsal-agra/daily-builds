@@ -1,0 +1,9 @@
+# Naturally LL(1): a tiny statement language.
+%token ID /[a-z]+/
+%token NUM /[0-9]+/
+%skip /[ \t\r\n]+/
+prog : stmt* ;
+stmt : ID '=' expr ';' | 'print' expr ';' ;
+expr : term (('+' | '-') term)* ;
+term : atom (('*' | '/') atom)* ;
+atom : NUM | ID | '(' expr ')' ;
