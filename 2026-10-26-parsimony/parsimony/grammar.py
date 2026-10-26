@@ -10,6 +10,9 @@ Syntax (comments start with ``#`` or ``//``)::
     %start expr
     expr : expr '+' expr  | NUM | '(' expr ')' | '-' expr %prec UMINUS ;
 
+Rules whose names start with an underscore are *hidden*: their children are spliced into
+the parent in parse trees (this is also how the EBNF helpers vanish).
+
 The reserved name ``error`` may appear in rules (``stmt : error ';' ;``) to mark
 resynchronisation points for ``parse --recover``.
 
@@ -80,12 +83,38 @@ class Grammar:
                        dict(self.token_regex), dict(self.literals), list(self.skips),
                        dict(self.precedence), set(self.hidden if hidden is None else hidden))
 
-    def pretty(self) -> str:
+    def _fmt_sym(self, s: str) -> str:
+        if s in self.literals:
+            return "'" + self.literals[s].replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n") + "'"
+        return s
+
+    def pretty(self, full: bool = False) -> str:
+        """Render as DSL text. With ``full=True`` the token/skip/precedence declarations are
+        included, so the output can be fed straight back into ``load_grammar``."""
         out = []
+        if full:
+            for name, rx in self.token_regex.items():
+                out.append(f"%token {name} /{rx.replace('/', chr(92) + '/')}/")
+            for rx in self.skips:
+                out.append(f"%skip /{rx.replace('/', chr(92) + '/')}/")
+            levels: Dict[int, Tuple[str, List[str]]] = {}
+            for name, (lvl, assoc) in self.precedence.items():
+                levels.setdefault(lvl, (assoc, []))[1].append(self._fmt_sym(name))
+            for lvl in sorted(levels):
+                out.append(f"%{levels[lvl][0]} {' '.join(levels[lvl][1])}")
+            out.append(f"%start {self.start}")
         for nt in self.nonterminals:
-            alts = [" ".join(p.rhs) if p.rhs else "ε" for p in self.by_lhs.get(nt, [])]
+            alts = []
+            for p in self.by_lhs.get(nt, []):
+                alt = " ".join(self._fmt_sym(x) for x in p.rhs) or "%empty"
+                default = next((self.precedence[x] for x in reversed(p.rhs)
+                                if x in self.precedence and x in self.terminals), None)
+                if p.prec != default and p.prec is not None:     # explicit %prec must survive
+                    name = next(n for n, v in self.precedence.items() if v == p.prec)
+                    alt += f" %prec {self._fmt_sym(name)}"
+                alts.append(alt)
             if alts:
-                out.append(f"{nt} : " + "\n    | ".join(alts))
+                out.append(f"{nt} : " + "\n    | ".join(alts) + "\n    ;")
         return "\n".join(out)
 
 
@@ -273,6 +302,8 @@ class _Parser:
             raise GrammarError(f"{name.val} is declared both as token and rule", name.line)
         if name.val not in self.nonterminals:
             self.nonterminals.append(name.val)
+        if name.val.startswith("_"):          # convention: _rules vanish from parse trees
+            self.hidden.add(name.val)
         self.rules.append((name.val, alts, name.line))
 
     # raw structure: alternatives = list of (items, prec_name); item = ('sym', name, line) |
@@ -320,6 +351,8 @@ class _Parser:
     # -- second pass: resolve, desugar
     def fresh(self, hint):
         self.counter += 1
+        while f"_{hint}{self.counter}" in self.nonterminals or f"_{hint}{self.counter}" in self.defined:
+            self.counter += 1
         name = f"_{hint}{self.counter}"
         self.nonterminals.append(name); self.hidden.add(name)
         return name

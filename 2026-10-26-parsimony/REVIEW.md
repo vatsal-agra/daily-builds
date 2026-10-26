@@ -21,6 +21,9 @@ stress inputs of 3 000–60 000 tokens. Every finding below was reproduced befor
 | 11 | Conflict reports only gave a shortest prefix, which for dangling-else is not a sentence that exhibits the ambiguity. | weak UX | **Fixed in Phase 4**: `witness` / `conflicts --witness` search for a real ambiguous sentence and print both parse trees (dangling-else → `if ID then if ID then ID else ID`). |
 | 12 | (Phase 4) LL(1) parser attached terminal children out of order (terminals were appended at match time, nonterminals at predict time). | bug | Slots reserved at predict time; LL(1) trees now equal LALR trees (tested). |
 | 13 | (Phase 4) Writing Parsimony's own DSL as a grammar exposed a real ambiguity (`%prec X` vs `%prec` + atom `X`); caught by `witness`. | grammar bug | Argument made mandatory; the DSL grammar is now SLR(1). |
+| 14 | (Phase 5) `Grammar.pretty()` output — what `transform` prints — was not valid DSL (no `;`, `ε` token, no token/precedence declarations) and silently dropped `%prec` overrides. Found by the new round-trip test over every example. | bug | `pretty(full=True)` emits `%token/%skip/%left…/%start`, `%empty`, `;` and explicit `%prec`; round-trips every example. |
+| 15 | (Phase 5) `transform` ran Paull's substitution on *all* nonterminals, rewriting rules that were never left-recursive (noise on already-LL(1) grammars). | wasteful/UX | Only nonterminals inside a left-recursive component are touched; LL-friendly grammars report "nothing to do". |
+| 16 | (Phase 5) User rules named `_x` and generated EBNF helpers could collide; hidden-ness could not be written in the DSL, so printed helper rules re-loaded as visible. | design gap | Leading-underscore rules are hidden by convention; generated names skip existing names. |
 
 ## Things attacked that held up
 - LALR lookahead propagation vs canonical LR(1): identical acceptance on ~600 fuzzed grammars;
@@ -35,3 +38,7 @@ stress inputs of 3 000–60 000 tokens. Every finding below was reproduced befor
 ## Re-run
 `/tmp`-style probes and the fuzzer were re-run after the fixes: zero of findings 1–10 reproduce
 (they are now regression tests in Phase 5). Findings 11–13 were closed in Phase 4.
+
+## Mutation check (Phase 5)
+To make sure the suite is not decorative: (a) disabling LALR lookahead propagation fails 39 tests;
+(b) changing yacc's left-associativity rule (`rl == tl and left → reduce`) fails 2 tests. Both reverted.

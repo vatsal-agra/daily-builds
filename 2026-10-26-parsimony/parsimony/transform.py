@@ -28,9 +28,12 @@ def make_ll1_friendly(g: Grammar) -> Tuple[Grammar, List[str]]:
         rules[name] = []; order.append(name); hidden.add(name)
         return name
 
-    # --- left recursion (Paull)
-    for i, a in enumerate(list(order)):
-        for b in list(order)[:i]:
+    # --- left recursion (Paull); only nonterminals that actually take part in a left-recursive
+    # cycle are touched, so already-LL-friendly rules are left exactly as written.
+    in_cycle = {nt for comp in an.left_recursive() for nt in comp}
+    cyc_order = [nt for nt in order if nt in in_cycle]
+    for i, a in enumerate(list(cyc_order)):
+        for b in cyc_order[:i]:
             if b not in rules or not rules[a]:
                 continue
             new, substituted = [], False

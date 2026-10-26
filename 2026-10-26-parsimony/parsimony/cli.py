@@ -186,7 +186,7 @@ def cmd_transform(lang: Language, args) -> int:
     g2, log = make_ll1_friendly(lang.grammar)
     for l in log:
         print("# " + l)
-    print(g2.pretty())
+    print(g2.pretty(full=True))
     t = build_ll1(g2, Analysis(g2))
     print(f"\n# LL(1) conflicts after transform: {len(t.conflicts)}")
     return 0
@@ -239,5 +239,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return args.fn(lang, args)
     except GrammarError as e:
         print(f"grammar error: {e}", file=sys.stderr); return 2
+    except BrokenPipeError:
+        sys.stderr.close()                      # e.g. `parsimony states ... | head`; not an error
+        return 0
     except (OSError, UnicodeError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr); return 2
