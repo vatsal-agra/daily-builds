@@ -17,7 +17,8 @@ class Language:
     """A compiled grammar. Tables are built lazily and cached per method."""
 
     def __init__(self, source: str, ebnf_style: str = "left"):
-        self.source = source
+        self.source, self.ebnf_style = source, ebnf_style
+        self._ll1_twin: Optional["Language"] = None
         self.grammar: Grammar = load_grammar(source, ebnf_style)
         self.analysis = Analysis(self.grammar)
         self.lexer = Lexer(self.grammar)
@@ -27,6 +28,14 @@ class Language:
     def from_file(cls, path: str, **kw) -> "Language":
         with open(path, encoding="utf-8") as f:
             return cls(f.read(), **kw)
+
+    def ll1_language(self) -> "Language":
+        """The same grammar with right-recursive EBNF helpers (left-recursive ones can never be LL(1))."""
+        if self.ebnf_style == "right":
+            return self
+        if self._ll1_twin is None:
+            self._ll1_twin = Language(self.source, "right")
+        return self._ll1_twin
 
     def table(self, method: str = "lalr") -> LRTable:
         if method not in self._tables:
@@ -46,7 +55,8 @@ class Language:
             return res.trees(1)[0]
         if method == "ll1":
             from .ll1 import LL1Parser
-            return LL1Parser(self.grammar, self.analysis).parse(toks, trace)
+            twin = self.ll1_language()
+            return LL1Parser(twin.grammar, twin.analysis).parse(twin.tokenize(text), trace)
         raise ValueError(f"unknown method {method!r}; choose from {ALL_METHODS}")
 
     def earley(self, text: str) -> EarleyResult:

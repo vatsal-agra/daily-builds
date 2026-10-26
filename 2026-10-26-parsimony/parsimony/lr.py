@@ -402,6 +402,72 @@ class LRParser:
                 return values[0]
 
 
+@dataclass
+class RecoveryResult:
+    tree: Optional[Node]
+    errors: List[ParseError]
+
+
+def _parse_recovering(self: "LRParser", tokens: List[Token]) -> RecoveryResult:
+    """yacc-style error recovery using the ``error`` pseudo-terminal.
+
+    On a syntax error: report it (unless still suppressed), pop states until one can shift
+    ``error``, shift it, then discard input until the lookahead is acceptable. Errors within
+    three shifts of the previous one are not reported again (cascade suppression)."""
+    tb, hidden = self.table, self.g.hidden
+    states, values = [0], []
+    errors: List[ParseError] = []
+    pos, quiet, progress = 0, 0, True
+    while True:
+        tok = tokens[pos]
+        act = tb.action[states[-1]].get(tok.type)
+        if act is None:
+            exp = sorted(tb.action[states[-1]])
+            if quiet == 0:
+                errors.append(ParseError(_syntax_msg(tok, exp), tok, exp))
+            quiet = 3
+            if not progress:                       # no token consumed since last recovery → force progress
+                if tok.type == END:
+                    return RecoveryResult(None, errors)
+                pos += 1
+            while states and not (tb.action[states[-1]].get("error", ("",))[0] == "s"):
+                states.pop()
+                if values and len(values) >= len(states):
+                    values.pop()
+            if not states:
+                return RecoveryResult(None, errors)
+            while len(values) > len(states) - 1:
+                values.pop()
+            skipped = []
+            states.append(tb.action[states[-1]]["error"][1])
+            slot = Token("error", "", tok.line, tok.col, tok.pos)
+            values.append(slot)
+            while tb.action[states[-1]].get(tokens[pos].type) is None:
+                if tokens[pos].type == END:
+                    return RecoveryResult(None, errors)
+                skipped.append(tokens[pos].text); pos += 1
+            values[-1] = Token("error", " ".join(skipped), slot.line, slot.col, slot.pos)
+            progress = bool(skipped)
+            continue
+        if act[0] == "s":
+            states.append(act[1]); values.append(tok); pos += 1
+            quiet = max(0, quiet - 1); progress = True
+        elif act[0] == "r":
+            p = tb.prods[act[1]]
+            k = len(p.rhs)
+            kids = values[len(values) - k:] if k else []
+            if k:
+                del values[-k:]; del states[-k:]
+            kids = flatten_children(kids, hidden) if p.lhs not in hidden else kids
+            values.append(Node(p.lhs, list(kids)))
+            states.append(tb.goto[states[-1]][p.lhs])
+        else:
+            return RecoveryResult(values[0], errors)
+
+
+LRParser.parse_recovering = _parse_recovering
+
+
 def _sym(v) -> str:
     return v.type if isinstance(v, Token) else v.name
 

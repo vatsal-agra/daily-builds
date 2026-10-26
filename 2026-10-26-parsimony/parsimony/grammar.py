@@ -10,6 +10,9 @@ Syntax (comments start with ``#`` or ``//``)::
     %start expr
     expr : expr '+' expr  | NUM | '(' expr ')' | '-' expr %prec UMINUS ;
 
+The reserved name ``error`` may appear in rules (``stmt : error ';' ;``) to mark
+resynchronisation points for ``parse --recover``.
+
 EBNF suffixes ``* + ?`` and parenthesised groups ``( a | b )`` are desugared into hidden
 helper nonterminals that are spliced away again when parse trees are built.
 """
@@ -326,6 +329,9 @@ class _Parser:
         if kind == "sym":
             name, line = item[1], item[2]
             if name in self.terminals or name in self.nonterminals or name in self.defined:
+                return name
+            if name == "error":      # yacc-style recovery pseudo-terminal; never produced by the lexer
+                self.add_terminal("error")
                 return name
             raise GrammarError(f"undefined symbol {name}", line)
         if kind == "group":

@@ -18,7 +18,9 @@ stress inputs of 3 000–60 000 tokens. Every finding below was reproduced befor
 | 8 | Earley completion copied the waiting list for every completed item. | perf | Copy only when `origin == i` (the only case where waiters can be added mid-loop). |
 | 9 | `states -m earley`, `gen -m ll1` crashed with a traceback; unreadable input file → traceback. | UX | argparse-level validation; `OSError/UnicodeError/ValueError` reported as `error:` with exit code 2. |
 | 10 | The class summary said "smallest LR class: LR(0)" for the precedence-driven expression grammar — true only because `%left/%right` silently resolved the conflicts. | misleading | Summary now says "(given the %left/%right/%prec declarations)". |
-| 11 | Conflict reports only gave a shortest prefix, which for dangling-else is not a sentence that exhibits the ambiguity. | weak UX | Phase 4 adds `witness`: searches for a real ambiguous sentence and prints both parse trees. |
+| 11 | Conflict reports only gave a shortest prefix, which for dangling-else is not a sentence that exhibits the ambiguity. | weak UX | **Fixed in Phase 4**: `witness` / `conflicts --witness` search for a real ambiguous sentence and print both parse trees (dangling-else → `if ID then if ID then ID else ID`). |
+| 12 | (Phase 4) LL(1) parser attached terminal children out of order (terminals were appended at match time, nonterminals at predict time). | bug | Slots reserved at predict time; LL(1) trees now equal LALR trees (tested). |
+| 13 | (Phase 4) Writing Parsimony's own DSL as a grammar exposed a real ambiguity (`%prec X` vs `%prec` + atom `X`); caught by `witness`. | grammar bug | Argument made mandatory; the DSL grammar is now SLR(1). |
 
 ## Things attacked that held up
 - LALR lookahead propagation vs canonical LR(1): identical acceptance on ~600 fuzzed grammars;
@@ -32,4 +34,4 @@ stress inputs of 3 000–60 000 tokens. Every finding below was reproduced befor
 
 ## Re-run
 `/tmp`-style probes and the fuzzer were re-run after the fixes: zero of findings 1–10 reproduce
-(they are now regression tests in Phase 5). Finding 11 is closed in Phase 4.
+(they are now regression tests in Phase 5). Findings 11–13 were closed in Phase 4.

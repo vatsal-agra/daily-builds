@@ -1,0 +1,11 @@
+# Statement list with yacc-style error recovery: a bad statement is skipped up to its ';'.
+%token ID /[a-z]+/
+%token NUM /[0-9]+/
+%skip /[ \t\r\n]+/
+%left '+' '-'
+%left '*'
+prog : stmt* ;
+stmt : ID '=' expr ';'
+     | error ';'
+     ;
+expr : expr '+' expr | expr '-' expr | expr '*' expr | NUM | ID | '(' expr ')' ;

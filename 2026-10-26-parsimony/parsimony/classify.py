@@ -13,7 +13,8 @@ def classify(lang: Language) -> List[Tuple[str, bool, str]]:
     rows = []
     try:
         from .ll1 import build_ll1
-        t = build_ll1(lang.grammar, lang.analysis)
+        twin = lang.ll1_language()
+        t = build_ll1(twin.grammar, twin.analysis)
         rows.append(("LL(1)", not t.conflicts, f"{len(t.conflicts)} conflict(s)" if t.conflicts else "predictive table is conflict-free"))
     except ImportError:
         pass

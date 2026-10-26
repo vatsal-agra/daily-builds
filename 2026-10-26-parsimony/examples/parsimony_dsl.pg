@@ -1,0 +1,27 @@
+# Parsimony's own grammar DSL, described in Parsimony. Used by the self-check (tests):
+# every examples/*.pg file must parse with the parser generated from this very file.
+# RULE_HEAD uses a regex lookahead so `NAME :` is one token — this is what lets a plain
+# LALR(1) grammar tell the end of `%left '+' '-'` from the start of the next rule.
+%token RULE_HEAD /[A-Za-z_][A-Za-z0-9_]*(?=[ \t\r\n]*:)/
+%token ID        /[A-Za-z_][A-Za-z0-9_]*/
+%token DIRECTIVE /%[A-Za-z_]+/
+%token STRING    /'(\\.|[^'\\\n])+'|"(\\.|[^"\\\n])+"/
+%token REGEX     /\/(\\.|\[(\\.|[^\]\\\n])*\]|[^\/\\\n\[])+\//
+%skip /[ \t\r\n]+/
+%skip /#[^\n]*/
+%skip /\/\/[^\n]*/
+%skip /\/\*([^*]|\*+[^*\/])*\*+\//
+
+grammar   : item+ ;
+item      : directive | rule ;
+directive : DIRECTIVE (ID | STRING | REGEX)* ;
+rule      : RULE_HEAD ':' alts ';' ;
+alts      : seq ('|' seq)* ;
+seq       : element* ;
+element   : atom ('*' | '+' | '?')*
+          | '%prec' (ID | STRING)
+          | '%empty'
+          ;
+atom      : ID | STRING | '(' alts ')' ;
+# (The witness finder caught a real ambiguity in the first draft: `%prec X` vs `%prec` + atom `X`.
+#  Making the argument mandatory fixed it.)
