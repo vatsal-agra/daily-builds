@@ -5,6 +5,7 @@ package graph
 
 import (
 	"fmt"
+	"math"
 	"sort"
 
 	"bayou/internal/bn"
@@ -89,20 +90,6 @@ func Weight(card []int, vs []int) float64 {
 	return w
 }
 
-// fillIn counts the edges that eliminating v would add among its neighbours.
-func fillIn(g *Undirected, v int) int {
-	nb := g.Neighbors(v)
-	f := 0
-	for i, a := range nb {
-		for _, b := range nb[i+1:] {
-			if !g.Has(a, b) {
-				f++
-			}
-		}
-	}
-	return f
-}
-
 // Heuristic selects the greedy elimination criterion.
 type Heuristic int
 
@@ -111,9 +98,19 @@ const (
 	MinWeight                  // smallest resulting clique weight, ties by fill-in
 )
 
-// EliminationOrder greedily orders the vertices in `among` (all vertices if nil).
-// Vertices not in `among` are ignored (treated as already removed).
+// EliminationOrder greedily orders the vertices in `among` (all vertices if
+// nil) for elimination. Vertices outside `among` stay in the graph as fixed
+// neighbours (they are never eliminated, e.g. query variables).
 func EliminationOrder(g *Undirected, card []int, among []int, h Heuristic) []int {
+	order, _ := EliminationPlan(g, card, among, h)
+	return order
+}
+
+// EliminationPlan is EliminationOrder that also reports log2 of the largest
+// clique state space the order will create, so callers can refuse hopeless
+// plans before allocating anything. Scores are cached and only the neighbours
+// of an eliminated vertex are re-scored, so planning is near-linear on sparse graphs.
+func EliminationPlan(g *Undirected, card []int, among []int, h Heuristic) (order []int, maxLog2 float64) {
 	w := g.Clone()
 	alive := map[int]bool{}
 	if among == nil {
@@ -125,35 +122,65 @@ func EliminationOrder(g *Undirected, card []int, among []int, h Heuristic) []int
 			alive[v] = true
 		}
 	}
-	// Remove vertices outside `among` from the working graph.
-	for v := 0; v < g.N; v++ {
-		if !alive[v] {
-			for u := range w.Adj[v] {
-				delete(w.Adj[u], v)
-			}
-			w.Adj[v] = map[int]bool{}
-		}
+	type score struct {
+		fill int
+		wt   float64
 	}
-	var order []int
-	for len(alive) > 0 {
-		best, bf, bw := -1, 0, 0.0
-		for v := range alive {
-			f := fillIn(w, v)
-			cl := append(w.Neighbors(v), v)
-			wt := Weight(card, cl)
-			better := false
-			switch {
-			case best == -1:
-				better = true
-			case h == MinFill:
-				better = f < bf || (f == bf && (wt < bw || (wt == bw && v < best)))
-			default:
-				better = wt < bw || (wt == bw && (f < bf || (f == bf && v < best)))
-			}
-			if better {
-				best, bf, bw = v, f, wt
+	sc := make([]score, g.N)
+	rescore := func(v int) {
+		nb := w.Neighbors(v)
+		f := 0
+		for i, a := range nb {
+			for _, b := range nb[i+1:] {
+				if !w.Has(a, b) {
+					f++
+				}
 			}
 		}
+		lw := math.Log2(float64(card[v]))
+		for _, u := range nb {
+			lw += math.Log2(float64(card[u]))
+		}
+		sc[v] = score{f, lw}
+	}
+	for v := range alive {
+		rescore(v)
+	}
+	better := func(v, best int) bool {
+		if best == -1 {
+			return true
+		}
+		a, b := sc[v], sc[best]
+		if h == MinFill {
+			if a.fill != b.fill {
+				return a.fill < b.fill
+			}
+			if a.wt != b.wt {
+				return a.wt < b.wt
+			}
+			return v < best
+		}
+		if a.wt != b.wt {
+			return a.wt < b.wt
+		}
+		if a.fill != b.fill {
+			return a.fill < b.fill
+		}
+		return v < best
+	}
+	todo := make([]int, 0, len(alive))
+	for v := range alive {
+		todo = append(todo, v)
+	}
+	sort.Ints(todo)
+	for len(todo) > 0 {
+		bi, best := -1, -1
+		for i, v := range todo {
+			if better(v, best) {
+				bi, best = i, v
+			}
+		}
+		maxLog2 = math.Max(maxLog2, sc[best].wt)
 		nb := w.Neighbors(best)
 		for i, a := range nb {
 			for _, b := range nb[i+1:] {
@@ -164,10 +191,16 @@ func EliminationOrder(g *Undirected, card []int, among []int, h Heuristic) []int
 			delete(w.Adj[u], best)
 		}
 		w.Adj[best] = map[int]bool{}
+		todo = append(todo[:bi], todo[bi+1:]...)
 		delete(alive, best)
 		order = append(order, best)
+		for _, u := range nb {
+			if alive[u] {
+				rescore(u)
+			}
+		}
 	}
-	return order
+	return order, maxLog2
 }
 
 // Triangulate eliminates in the given order and returns the elimination cliques
@@ -199,16 +232,25 @@ func Triangulate(g *Undirected, order []int) (cliques [][]int, fill *Undirected)
 	return cliques, fill
 }
 
-// MaximalCliques keeps only cliques that are not subsets of another one.
+// MaximalCliques keeps only cliques that are not subsets of another one. A
+// clique can only be contained in a clique that shares its first variable, so
+// each is compared with that variable's bucket instead of with all cliques.
 func MaximalCliques(cs [][]int) [][]int {
+	byVar := map[int][]int{}
+	for i, c := range cs {
+		for _, v := range c {
+			byVar[v] = append(byVar[v], i)
+		}
+	}
 	var out [][]int
 	for i, c := range cs {
 		sub := false
-		for j, d := range cs {
-			if i == j {
-				continue
-			}
-			if len(d) > len(c) || (len(d) == len(c) && j < i) {
+		if len(c) > 0 {
+			for _, j := range byVar[c[0]] {
+				d := cs[j]
+				if j == i || len(d) < len(c) || (len(d) == len(c) && j > i) {
+					continue
+				}
 				if isSubset(c, d) {
 					sub = true
 					break
@@ -283,23 +325,52 @@ type JTEdge struct {
 // the running-intersection property. Disconnected components are joined by
 // empty separators, so the result is always a single tree.
 func BuildJunctionTree(n *bn.Network, h Heuristic) (*JunctionTree, error) {
-	card := make([]int, len(n.Vars))
-	for i := range card {
-		card[i] = n.Card(i)
+	cl, a := analyze(n, h)
+	if a.Log2States > MaxLog2States {
+		return nil, fmt.Errorf("%w: the best elimination order found has a clique of %d variables (about 2^%.0f states, limit 2^%d)",
+			ErrTooWide, a.Width+1, a.Log2States, MaxLog2States)
 	}
-	g := Moralize(n)
-	order := EliminationOrder(g, card, nil, h)
-	elim, _ := Triangulate(g, order)
-	cl := MaximalCliques(elim)
 	jt := &JunctionTree{Cliques: cl, Adj: make([][]int, len(cl))}
+	// Candidate edges: pairs of cliques sharing a variable, weighted by separator
+	// size. Pairs sharing nothing are only needed to join components (weight 0)
+	// and are added afterwards, which keeps construction near-linear on sparse graphs.
 	type cand struct{ a, b, w int }
 	var cands []cand
-	for i := range cl {
-		for j := i + 1; j < len(cl); j++ {
-			cands = append(cands, cand{i, j, len(Intersect(cl[i], cl[j]))})
+	seenPair := map[[2]int]bool{}
+	byVar := map[int][]int{}
+	for i, c := range cl {
+		for _, v := range c {
+			byVar[v] = append(byVar[v], i)
 		}
 	}
-	sort.SliceStable(cands, func(x, y int) bool { return cands[x].w > cands[y].w })
+	vars := make([]int, 0, len(byVar))
+	for v := range byVar {
+		vars = append(vars, v)
+	}
+	sort.Ints(vars)
+	for _, v := range vars {
+		group := byVar[v]
+		for x, i := range group {
+			for _, j := range group[x+1:] {
+				if k := [2]int{i, j}; !seenPair[k] {
+					seenPair[k] = true
+					cands = append(cands, cand{i, j, len(Intersect(cl[i], cl[j]))})
+				}
+			}
+		}
+	}
+	sort.SliceStable(cands, func(x, y int) bool {
+		if cands[x].w != cands[y].w {
+			return cands[x].w > cands[y].w
+		}
+		if cands[x].a != cands[y].a {
+			return cands[x].a < cands[y].a
+		}
+		return cands[x].b < cands[y].b
+	})
+	for i := 1; i < len(cl); i++ { // chain the components together with empty separators
+		cands = append(cands, cand{i - 1, i, 0})
+	}
 	uf := make([]int, len(cl))
 	for i := range uf {
 		uf[i] = i
@@ -327,6 +398,46 @@ func BuildJunctionTree(n *bn.Network, h Heuristic) (*JunctionTree, error) {
 		return nil, err
 	}
 	return jt, nil
+}
+
+// MaxLog2States is the largest clique state space (log2) the engines will build.
+const MaxLog2States = 25
+
+// ErrTooWide marks networks whose treewidth makes exact inference impractical.
+var ErrTooWide = fmt.Errorf("treewidth too large for exact inference")
+
+// Analysis summarises the triangulation of a network's moral graph.
+type Analysis struct {
+	Width      int     // treewidth upper bound: largest clique size − 1
+	Log2States float64 // log2 of the largest clique's state-space size
+	NumCliques int
+}
+
+// Analyze triangulates without building the tree (cheap diagnostic for `info`).
+func Analyze(n *bn.Network, h Heuristic) Analysis {
+	_, a := analyze(n, h)
+	return a
+}
+
+func analyze(n *bn.Network, h Heuristic) ([][]int, Analysis) {
+	card := make([]int, len(n.Vars))
+	for i := range card {
+		card[i] = n.Card(i)
+	}
+	g := Moralize(n)
+	order := EliminationOrder(g, card, nil, h)
+	elim, _ := Triangulate(g, order)
+	cl := MaximalCliques(elim)
+	a := Analysis{NumCliques: len(cl)}
+	for _, c := range cl {
+		a.Width = max(a.Width, len(c)-1)
+		lg := 0.0
+		for _, v := range c {
+			lg += math.Log2(float64(card[v]))
+		}
+		a.Log2States = math.Max(a.Log2States, lg)
+	}
+	return cl, a
 }
 
 // CheckRunningIntersection verifies that for each variable the cliques containing

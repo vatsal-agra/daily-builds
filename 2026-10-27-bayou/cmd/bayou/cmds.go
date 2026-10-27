@@ -36,12 +36,13 @@ func cmdInfo(args []string, out io.Writer) error {
 		edges += len(v.Parents)
 		maxPar = max(maxPar, len(v.Parents))
 	}
-	jt, err := graph.BuildJunctionTree(net, graph.MinFill)
-	if err != nil {
-		return err
+	an := graph.Analyze(net, graph.MinFill)
+	fmt.Fprintf(out, "network    %s\nvariables  %d\nedges      %d (max in-degree %d)\nparameters %d free\n", net.Name, len(net.Vars), edges, maxPar, net.NumParams())
+	fmt.Fprintf(out, "treewidth  ≤ %d (%d cliques, largest table ≈ 2^%.1f states)\n", an.Width, an.NumCliques, an.Log2States)
+	if an.Log2States > graph.MaxLog2States {
+		fmt.Fprintf(out, "warning    exact inference is infeasible here (limit 2^%d); use `bayou approx`\n", graph.MaxLog2States)
 	}
-	fmt.Fprintf(out, "network   %s\nvariables %d\nedges     %d (max in-degree %d)\nparameters %d free\n", net.Name, len(net.Vars), edges, maxPar, net.NumParams())
-	fmt.Fprintf(out, "treewidth %d (%d cliques)\n\n", jt.TreeWidth(), len(jt.Cliques))
+	fmt.Fprintln(out)
 	ch := net.Children()
 	for v, x := range net.Vars {
 		par := "—"
@@ -419,13 +420,13 @@ func cmdDsep(args []string, out io.Writer) error {
 	sep := graph.DSeparated(net, xs, ys, zs)
 	given := "nothing"
 	if len(zs) > 0 {
-		given = strings.Join(nameList(net, zs), ", ")
+		given = "{" + strings.Join(nameList(net, zs), ", ") + "}"
 	}
 	rel := "are d-separated"
 	if !sep {
 		rel = "are NOT d-separated (dependent in general)"
 	}
-	fmt.Fprintf(out, "{%s} and {%s} %s given {%s}\n", strings.Join(nameList(net, xs), ", "), strings.Join(nameList(net, ys), ", "), rel, given)
+	fmt.Fprintf(out, "{%s} and {%s} %s given %s\n", strings.Join(nameList(net, xs), ", "), strings.Join(nameList(net, ys), ", "), rel, given)
 	return nil
 }
 
@@ -626,11 +627,25 @@ func cmdLearn(args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		kl, err := learn.KLJoint(tn, learned)
-		if err != nil {
-			return err
+		if len(ds.Cols) == len(net.Vars) {
+			kl, err := learn.KLJoint(tn, learned)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "vs. %s: KL(truth‖learned) = %.6f nats, max CPT difference %.4f\n", tn.Name, kl, learn.MaxCPTDiff(tn, learned))
+		} else {
+			// Latent variables are only identifiable up to relabelling their states, so
+			// parameter distance is meaningless; compare how well each model explains the data.
+			lt, err := learn.LogLikelihood(tn, ds)
+			if err != nil {
+				return err
+			}
+			ll, err := learn.LogLikelihood(learned, ds)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "vs. %s (latent variables): data log-likelihood truth %.4f, learned %.4f (per row gap %.5f)\n", tn.Name, lt, ll, (lt-ll)/float64(max(1, len(ds.Rows))))
 		}
-		fmt.Fprintf(out, "vs. %s: KL(truth‖learned) = %.6f nats, max CPT difference %.4f\n", tn.Name, kl, learn.MaxCPTDiff(tn, learned))
 	}
 	if *outFile != "" {
 		if err := os.WriteFile(*outFile, []byte(parse.FormatBN(learned)), 0o644); err != nil {

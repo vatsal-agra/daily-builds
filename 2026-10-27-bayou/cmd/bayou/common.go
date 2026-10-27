@@ -87,7 +87,7 @@ func distTable(w io.Writer, net *bn.Network, f *factor.Factor, indent string) {
 		}
 	}
 	for _, r := range rows {
-		fmt.Fprintf(w, "%s%-*s  %9.6f  %s\n", indent, width, r.label, r.p, bar(r.p, 30))
+		fmt.Fprintf(w, "%s%-*s  %s  %s\n", indent, width, r.label, fmtP(r.p), bar(r.p, 30))
 	}
 }
 
@@ -105,4 +105,13 @@ func nameList(net *bn.Network, ids []int) []string {
 		out[i] = net.Vars[v].Name
 	}
 	return out
+}
+
+// fmtP prints a probability in 10 columns, switching to scientific notation for
+// values that fixed-point would round to zero.
+func fmtP(p float64) string {
+	if p > 0 && p < 1e-4 {
+		return fmt.Sprintf("%10.3e", p)
+	}
+	return fmt.Sprintf("%10.6f", p)
 }

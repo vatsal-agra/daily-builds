@@ -1,6 +1,7 @@
 package parse
 
 import (
+	"bufio"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -24,7 +25,11 @@ var missingTokens = map[string]bool{"": true, "?": true, "na": true, "nan": true
 // ReadCSV reads a dataset for net. The header names the variables (a subset of
 // the network is fine: the others are latent). Cells "", "?", "NA" are missing.
 func ReadCSV(net *bn.Network, r io.Reader) (*Dataset, error) {
-	cr := csv.NewReader(r)
+	br := bufio.NewReader(r)
+	if b, err := br.Peek(3); err == nil && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF {
+		br.Discard(3) // UTF-8 byte-order mark written by Excel
+	}
+	cr := csv.NewReader(br)
 	cr.FieldsPerRecord = -1
 	cr.TrimLeadingSpace = true
 	hdr, err := cr.Read()

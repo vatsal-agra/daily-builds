@@ -43,6 +43,9 @@ func (n *Network) AddVar(name string, states []string) (int, error) {
 	if name == "" {
 		return 0, fmt.Errorf("variable name is empty")
 	}
+	if bad(name) {
+		return 0, fmt.Errorf("variable name %q contains a control character", name)
+	}
 	if _, dup := n.index[name]; dup {
 		return 0, fmt.Errorf("duplicate variable %q", name)
 	}
@@ -51,6 +54,9 @@ func (n *Network) AddVar(name string, states []string) (int, error) {
 	}
 	seen := map[string]bool{}
 	for _, s := range states {
+		if bad(s) {
+			return 0, fmt.Errorf("variable %q: state %q contains a control character", name, s)
+		}
 		if s == "" || seen[s] {
 			return 0, fmt.Errorf("variable %q has an empty or duplicate state %q", name, s)
 		}
@@ -61,6 +67,15 @@ func (n *Network) AddVar(name string, states []string) (int, error) {
 	n.index[name] = id
 	n.SetParents(id, nil)
 	return id, nil
+}
+
+func bad(s string) bool {
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return true
+		}
+	}
+	return false
 }
 
 // ID looks up a variable by name.
@@ -523,3 +538,24 @@ func (n *Network) EvidenceString(ev Evidence) string {
 func pow(x, y float64) float64 { return math.Pow(x, y) }
 func sqrt(x float64) float64   { return math.Sqrt(x) }
 func ln(x float64) float64     { return math.Log(x) }
+
+// Renormalize rescales every CPT row whose sum deviates from 1 by more than
+// 1e-12 (rows that pass Validate's looser tolerance), so inference sees exact
+// distributions. Rows that are already normalised are left bit-for-bit alone.
+func (n *Network) Renormalize() {
+	for v := range n.Vars {
+		c := n.Card(v)
+		for r := 0; r < n.ParentConfigs(v); r++ {
+			row := n.Vars[v].CPT[r*c : (r+1)*c]
+			sum := 0.0
+			for _, p := range row {
+				sum += p
+			}
+			if sum > 0 && math.Abs(sum-1) > 1e-12 {
+				for i := range row {
+					row[i] /= sum
+				}
+			}
+		}
+	}
+}

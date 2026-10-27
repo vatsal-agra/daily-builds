@@ -11,6 +11,7 @@ import (
 
 	"bayou/internal/bn"
 	"bayou/internal/factor"
+	"bayou/internal/graph"
 )
 
 // ErrImpossible is returned when the evidence has probability zero.
@@ -21,6 +22,22 @@ type Result struct {
 	Posterior   *factor.Factor // normalised joint posterior over the query variables
 	LogEvidence float64        // log P(evidence)
 	MaxClique   int            // largest intermediate factor scope (VE) – a cost measure
+	Eliminated  int            // variables summed out (after barren-node pruning)
+}
+
+// ErrTooLarge wraps failures where exact inference needs a table beyond
+// factor.MaxStates: the network's treewidth is too high for exact methods.
+var ErrTooLarge = errors.New("network is too densely connected for exact inference")
+
+// guard converts a factor.TooLargeError panic into ErrTooLarge.
+func guard(err *error) {
+	if r := recover(); r != nil {
+		if tl, ok := r.(*factor.TooLargeError); ok {
+			*err = fmt.Errorf("%w: %v (try `bayou approx` for sampling-based inference)", ErrTooLarge, tl)
+			return
+		}
+		panic(r)
+	}
 }
 
 func checkQuery(net *bn.Network, query []int, ev bn.Evidence) error {
@@ -71,64 +88,33 @@ func relevantFactors(net *bn.Network, keep []int, ev bn.Evidence) (fs []*factor.
 	return fs, rel
 }
 
-// eliminate removes every variable in vars from the factor list by greedy
-// min-fill ordering (on the live interaction graph) using op(sum or max).
-// It returns the new list, the elimination sequence and the largest scope seen.
-func eliminate(fs []*factor.Factor, vars []int, card func(int) int, isMax bool, arg map[int]*factor.Factor) ([]*factor.Factor, []int, int) {
-	todo := map[int]bool{}
-	for _, v := range vars {
-		todo[v] = true
+// eliminate removes every variable in vars from the factor list, one at a time,
+// with sum or max. The order comes from a min-fill plan over the interaction
+// graph of the current factors, and a plan that would need a table beyond
+// factor.MaxStates is rejected before any table is built. It returns the new
+// list, the elimination sequence and the largest scope seen.
+func eliminate(fs []*factor.Factor, vars []int, nvars int, card func(int) int, isMax bool, arg map[int]*factor.Factor) ([]*factor.Factor, []int, int) {
+	if len(vars) == 0 {
+		return fs, nil, 0
 	}
-	var seq []int
+	g := graph.NewUndirected(nvars)
+	cardv := make([]int, nvars)
+	for v := range cardv {
+		cardv[v] = card(v)
+	}
+	for _, f := range fs {
+		for i, a := range f.Vars {
+			for _, b := range f.Vars[i+1:] {
+				g.AddEdge(a, b)
+			}
+		}
+	}
+	seq, lg := graph.EliminationPlan(g, cardv, vars, graph.MinFill)
+	if lg > 25 {
+		panic(&factor.TooLargeError{Log2: lg})
+	}
 	maxScope := 0
-	for len(todo) > 0 {
-		// interaction neighbours of each todo variable
-		best, bf, bw := -1, 0, 0.0
-		ids := make([]int, 0, len(todo))
-		for v := range todo {
-			ids = append(ids, v)
-		}
-		sort.Ints(ids)
-		for _, v := range ids {
-			nb := map[int]bool{}
-			for _, f := range fs {
-				if f.Has(v) {
-					for _, u := range f.Vars {
-						if u != v {
-							nb[u] = true
-						}
-					}
-				}
-			}
-			list := make([]int, 0, len(nb))
-			for u := range nb {
-				list = append(list, u)
-			}
-			sort.Ints(list)
-			fill := 0
-			for i, a := range list {
-				for _, b := range list[i+1:] {
-					adj := false
-					for _, f := range fs {
-						if f.Has(a) && f.Has(b) {
-							adj = true
-							break
-						}
-					}
-					if !adj {
-						fill++
-					}
-				}
-			}
-			w := float64(card(v))
-			for _, u := range list {
-				w *= float64(card(u))
-			}
-			if best == -1 || fill < bf || (fill == bf && w < bw) {
-				best, bf, bw = v, fill, w
-			}
-		}
-		v := best
+	for _, v := range seq {
 		var in, out []*factor.Factor
 		for _, f := range fs {
 			if f.Has(v) {
@@ -148,14 +134,13 @@ func eliminate(fs []*factor.Factor, vars []int, card func(int) int, isMax bool, 
 			res = prod.SumOut(v)
 		}
 		fs = append(out, res)
-		seq = append(seq, v)
-		delete(todo, v)
 	}
 	return fs, seq, maxScope
 }
 
 // VE computes the posterior joint P(query | ev) by variable elimination.
-func VE(net *bn.Network, query []int, ev bn.Evidence) (*Result, error) {
+func VE(net *bn.Network, query []int, ev bn.Evidence) (res *Result, err error) {
+	defer guard(&err)
 	if err := checkQuery(net, query, ev); err != nil {
 		return nil, err
 	}
@@ -170,7 +155,7 @@ func VE(net *bn.Network, query []int, ev bn.Evidence) (*Result, error) {
 			elim = append(elim, v)
 		}
 	}
-	fs, _, ms := eliminate(fs, elim, net.Card, false, nil)
+	fs, _, ms := eliminate(fs, elim, len(net.Vars), net.Card, false, nil)
 	joint := factor.ProductAll(fs)
 	le := joint.LogTotal()
 	if math.IsInf(le, -1) {
@@ -180,7 +165,7 @@ func VE(net *bn.Network, query []int, ev bn.Evidence) (*Result, error) {
 	if len(post.Vars) != len(query) {
 		return nil, fmt.Errorf("internal error: posterior scope %v does not match query", post.Vars)
 	}
-	return &Result{Posterior: post, LogEvidence: le, MaxClique: ms}, nil
+	return &Result{Posterior: post, LogEvidence: le, MaxClique: ms, Eliminated: len(elim)}, nil
 }
 
 // LogEvidence computes log P(ev) by variable elimination.
@@ -204,7 +189,8 @@ type MAPResult struct {
 // every other hidden variable (marginal MAP). With mapVars = all hidden
 // variables this is the most probable explanation (MPE). Ties resolve to the
 // lowest state index of the variable eliminated last.
-func MAP(net *bn.Network, mapVars []int, ev bn.Evidence) (*MAPResult, error) {
+func MAP(net *bn.Network, mapVars []int, ev bn.Evidence) (res *MAPResult, err error) {
+	defer guard(&err)
 	if err := checkQuery(net, mapVars, ev); err != nil {
 		return nil, err
 	}
@@ -223,9 +209,9 @@ func MAP(net *bn.Network, mapVars []int, ev bn.Evidence) (*MAPResult, error) {
 			sumVars = append(sumVars, v)
 		}
 	}
-	fs, _, _ = eliminate(fs, sumVars, net.Card, false, nil)
+	fs, _, _ = eliminate(fs, sumVars, len(net.Vars), net.Card, false, nil)
 	arg := map[int]*factor.Factor{}
-	fs, seq, _ := eliminate(fs, mapVars, net.Card, true, arg)
+	fs, seq, _ := eliminate(fs, mapVars, len(net.Vars), net.Card, true, arg)
 	final := factor.ProductAll(fs)
 	if len(final.Vars) != 0 {
 		return nil, fmt.Errorf("internal error: MAP left scope %v", final.Vars)

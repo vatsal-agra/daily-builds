@@ -125,6 +125,7 @@ func ParseBIF(file, src string) (*bn.Network, error) {
 	if errs := net.Validate(); len(errs) > 0 {
 		return nil, &Error{file, 1, 1, errs[0].Error()}
 	}
+	net.Renormalize()
 	return net, nil
 }
 

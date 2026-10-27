@@ -116,7 +116,8 @@ type Calibrated struct {
 }
 
 // Calibrate runs two-pass message passing under the given evidence.
-func (j *JT) Calibrate(ev bn.Evidence) (*Calibrated, error) {
+func (j *JT) Calibrate(ev bn.Evidence) (cal *Calibrated, err error) {
+	defer guard(&err)
 	if err := checkQuery(j.Net, nil, ev); err != nil {
 		return nil, err
 	}
@@ -181,7 +182,7 @@ func (j *JT) Calibrate(ev bn.Evidence) (*Calibrated, error) {
 			}
 		}
 	}
-	cal := &Calibrated{jt: j, Ev: ev, Belief: make([]*factor.Factor, nc)}
+	cal = &Calibrated{jt: j, Ev: ev, Belief: make([]*factor.Factor, nc)}
 	for c := 0; c < nc; c++ {
 		b := psi[c]
 		for _, ei := range j.Tree.Adj[c] {

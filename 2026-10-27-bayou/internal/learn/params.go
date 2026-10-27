@@ -66,7 +66,7 @@ func Fit(net *bn.Network, ds *parse.Dataset, alpha float64) (*bn.Network, error)
 		fam := append([]int{v}, net.Vars[v].Parents...)
 		for _, u := range fam {
 			if _, ok := col[u]; !ok {
-				return nil, fmt.Errorf("variable %s (needed by the family of %s) is latent; use EM instead of plain maximum likelihood", net.Vars[u].Name, net.Vars[v].Name)
+				return nil, fmt.Errorf("variable %s is not a column of the data but %s's family needs it; add --em to treat it as latent", net.Vars[u].Name, net.Vars[v].Name)
 			}
 		}
 		c := net.Card(v)

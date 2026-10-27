@@ -43,6 +43,7 @@ func lex(file, src string, puncts string, keepNL, blockComments bool) ([]token, 
 	var toks []token
 	line, col := 1, 1
 	i := 0
+	src = strings.TrimPrefix(src, "\ufeff") // byte-order mark from Excel / Windows editors
 	adv := func() {
 		if src[i] == '\n' {
 			line++
@@ -95,6 +96,16 @@ func lex(file, src string, puncts string, keepNL, blockComments bool) ([]token, 
 				}
 				if src[i] == '\\' && i+1 < len(src) {
 					adv()
+					switch src[i] {
+					case 'n':
+						b.WriteByte('\n')
+					case 't':
+						b.WriteByte('\t')
+					default: // \\ \" and anything else stand for themselves
+						b.WriteByte(src[i])
+					}
+					adv()
+					continue
 				}
 				b.WriteByte(src[i])
 				adv()

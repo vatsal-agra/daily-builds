@@ -141,6 +141,9 @@ func ParseBN(file, src string) (*bn.Network, error) {
 			return nil, ps.errAt(t, "unknown declaration %q (expected 'network', 'var' or 'cpt')", t.s)
 		}
 	}
+	if len(net.Vars) == 0 {
+		return nil, &Error{file, 1, 1, "the network declares no variables"}
+	}
 	// Resolve CPTs after all variables are known so cpt order is free.
 	for v := range net.Vars {
 		pd := cpts[v]
@@ -174,8 +177,12 @@ func ParseBN(file, src string) (*bn.Network, error) {
 	if errs := net.Validate(); len(errs) > 0 {
 		return nil, &Error{file, 1, 1, errs[0].Error()}
 	}
+	net.Renormalize()
 	return net, nil
 }
+
+// isWildcard: only a bare * matches any state; a quoted "*" is a state name.
+func isWildcard(t token) bool { return t.k == tWord && t.s == "*" }
 
 type rowSpec struct {
 	tok    token
@@ -206,30 +213,32 @@ func (ps *parser) parseRow(nparents int) (rowSpec, error) {
 	return r, err
 }
 
-// parseNumbers reads comma separated numbers up to end of line / '}'.
+// parseNumbers reads numbers separated by commas and/or spaces up to the end
+// of the line (or a closing '}'). A trailing comma continues onto the next line.
 func (ps *parser) parseNumbers() ([]float64, error) {
 	var out []float64
 	for {
-		t := ps.next()
-		if t.k != tWord {
-			return nil, ps.errAt(t, "expected a probability, found %s", describe(t))
-		}
-		x, err := parseProb(t.s)
-		if err != nil {
-			return nil, ps.errAt(t, "%v", err)
-		}
-		out = append(out, x)
-		if ps.accept(",") {
-			ps.skipNL() // a trailing comma continues the list on the next line
+		t := ps.peek()
+		switch {
+		case t.k == tWord:
+			x, err := parseProb(t.s)
+			if err != nil {
+				return nil, ps.errAt(t, "%v", err)
+			}
+			ps.p++
+			out = append(out, x)
+			if ps.accept(",") {
+				ps.skipNL()
+			}
 			continue
+		case len(out) == 0:
+			return nil, ps.errAt(t, "expected a probability, found %s", describe(t))
+		case t.k == tNL || t.k == tEOF || (t.k == tPunct && t.s == "}"):
+			return out, nil
+		default:
+			return nil, ps.errAt(t, "unexpected %s in a list of probabilities", describe(t))
 		}
-		break
 	}
-	nt := ps.peek()
-	if nt.k != tNL && nt.k != tEOF && !(nt.k == tPunct && nt.s == "}") {
-		return nil, ps.errAt(nt, "unexpected %s after probabilities", describe(nt))
-	}
-	return out, nil
 }
 
 func parseProb(s string) (float64, error) {
@@ -259,7 +268,7 @@ func fillRows(net *bn.Network, v int, rows []rowSpec, file string) error {
 		for _, r := range rows {
 			isWild := false
 			for _, s := range r.states {
-				if s.s == "*" {
+				if isWildcard(s) {
 					isWild = true
 				}
 			}
@@ -272,7 +281,7 @@ func fillRows(net *bn.Network, v int, rows []rowSpec, file string) error {
 			// Enumerate matching parent configurations.
 			cand := make([][]int, len(x.Parents))
 			for i, p := range x.Parents {
-				if r.states[i].s == "*" {
+				if isWildcard(r.states[i]) {
 					for s := 0; s < net.Card(p); s++ {
 						cand[i] = append(cand[i], s)
 					}
@@ -324,8 +333,24 @@ func fillRows(net *bn.Network, v int, rows []rowSpec, file string) error {
 }
 
 func quoteIfNeeded(s string) string {
-	if s == "" || strings.ContainsAny(s, " \t\n{},:|=#\"") || strings.HasPrefix(s, "//") || strings.Contains(s, "/*") || s == "*" {
-		return strconv.Quote(s)
+	if s == "" || strings.ContainsAny(s, " \t\n\r{},:|=#\"\\") || strings.HasPrefix(s, "//") || strings.Contains(s, "/*") || s == "*" {
+		var b strings.Builder
+		b.WriteByte('"')
+		for _, r := range s {
+			switch r {
+			case '"', '\\':
+				b.WriteByte('\\')
+				b.WriteRune(r)
+			case '\n':
+				b.WriteString(`\n`)
+			case '\t':
+				b.WriteString(`\t`)
+			default:
+				b.WriteRune(r)
+			}
+		}
+		b.WriteByte('"')
+		return b.String()
 	}
 	return s
 }

@@ -14,6 +14,31 @@ import (
 	"sort"
 )
 
+// MaxStates bounds the number of entries of any single factor table.
+const MaxStates = 1 << 25
+
+// TooLargeError is the panic value raised when an operation would allocate a
+// table larger than MaxStates. Engines recover it and report an ordinary error.
+type TooLargeError struct{ Log2 float64 }
+
+func (e *TooLargeError) Error() string {
+	return fmt.Sprintf("a factor with about 2^%.0f entries would be needed (limit 2^25)", math.Ceil(e.Log2))
+}
+
+func checkSize(card []int) int {
+	n, lg := 1, 0.0
+	for _, c := range card {
+		lg += math.Log2(float64(c))
+	}
+	if lg > 25 {
+		panic(&TooLargeError{lg})
+	}
+	for _, c := range card {
+		n *= c
+	}
+	return n
+}
+
 // Factor is a table over Vars (strictly ascending variable ids).
 // Val is laid out with Vars[0] slowest and the last variable fastest.
 type Factor struct {
@@ -33,14 +58,13 @@ func New(vars, card []int, vals []float64) *Factor {
 	}
 	sort.Slice(ps, func(i, j int) bool { return ps[i].v < ps[j].v })
 	f := &Factor{Vars: make([]int, len(ps)), Card: make([]int, len(ps))}
-	n := 1
 	for i, p := range ps {
 		if i > 0 && ps[i-1].v == p.v {
 			panic(fmt.Sprintf("factor.New: duplicate variable %d", p.v))
 		}
 		f.Vars[i], f.Card[i] = p.v, p.c
-		n *= p.c
 	}
+	n := checkSize(f.Card)
 	f.Val = make([]float64, n)
 	if vals == nil {
 		for i := range f.Val {
@@ -196,10 +220,7 @@ func unionScope(a, b *Factor) (vars, card []int) {
 func combine(a, b *Factor, op func(x, y float64) float64) *Factor {
 	vars, card := unionScope(a, b)
 	out := &Factor{Vars: vars, Card: card}
-	n := 1
-	for _, c := range card {
-		n *= c
-	}
+	n := checkSize(card)
 	out.Val = make([]float64, n)
 	walkUnion(vars, card, a, b, func(r, ia, ib int) { out.Val[r] = op(a.Val[ia], b.Val[ib]) })
 	out.LogScale = a.LogScale + b.LogScale
