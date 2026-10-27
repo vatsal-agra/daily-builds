@@ -43,3 +43,31 @@ that is identical for the values it can see).
 * Exact inference is capped at 2²⁵ states per table; beyond that use sampling (`approx`, Phase 4).
 * `Random` init of EM also randomises deterministic CPTs; use the default start for models with hard logic.
 * BIF `table` for a child *with* parents uses Bayou's layout (parents slowest, child fastest); per-row entries are unambiguous and are what Bayou writes.
+
+---
+
+# Round 2 — review of the stretch features (Phases 4–5)
+
+Same method (hostile inputs, oracles, mutation testing, and — for the UI — actually looking at
+screenshots in light/dark/phone). All fixed; regression tests in brackets.
+
+| # | Sev | Finding | Fix |
+|---|-----|---------|-----|
+| 14 | **high** | **Structure search returned graphs *worse than the truth*.** Pure greedy hill-climbing stalled in local optima on the classic collider traps: on sprinkler / burglar-alarm / car data (30k–200k rows) it returned SHD 4–6 and a BIC *lower* than the true graph's score — i.e. a search failure, not a statistical one. | Switched to tabu search: take the best non-tabu move even if it lowers the score, remember the best graph, stop after a patience window; aspiration lets a tabu move through if it beats the best. All four reference networks now recover the exact equivalence class (SHD 0), Asia included under BDeu. [`TestHillClimbRecoversKnownStructures`] |
+| 15 | medium | Gibbs "effective sample size" was just the sample count, so the CLI claimed 160,000 independent samples for a chain with strong autocorrelation (car network error 0.024). | Batch-means ESS per posterior cell (worst cell reported), plus split-chain Gelman–Rubin R̂; a deterministic X=Y=Z chain is flagged with R̂ = ∞. [`TestGibbsRhatFlagsStuckChains`, `TestSamplersConvergeToExact`] |
+| 16 | medium | LW silently returned garbage-quality answers for rare evidence. | Reports ESS and warns when ESS < 100; ESS provably collapses on rare evidence. [`TestESSDropsWithRareEvidence`] |
+| 17 | medium | **The mutation run showed weak tests**: a quoted `"*"` state test passed even if quoting were ignored (explicit rows masked it); K2/BDeu had no numeric test; CPDAG rules R2/R3 were never exercised. | Test redesigned so only correct behaviour passes; closed-form K2/BDeu/BIC checks; R2/R3 cases; plus a brute-force property test: the CPDAG equals the intersection of every DAG in the Markov-equivalence class (150 random graphs, all orientations enumerated). Mutation run now kills 18/18 non-equivalent mutants (2 equivalent mutants documented in `tests/mutation.sh`). |
+| 18 | medium | Report UI defects found in screenshots: percentage text overprinted the bar's end; the theme button glyph rendered as "‹"; selecting a node dimmed *observed* nodes (hiding the evidence); the zoom toolbar covered the top node after fit; inspector label/chip rows misaligned; "P(evidence) 1.00" for no evidence. | All fixed and re-checked in light, dark and 390 px phone widths. `tests/browser_check.js` drives the real DOM (mouse and keyboard) and compares the page's numbers to the Go engine. |
+| 19 | low | HTML-injection surface in the report (network/variable names are user data). | Names reach the DOM only via `textContent`; JSON is embedded with `<`, `>`, `&`, U+2028/9 escaped; `<title>` is HTML-escaped. [`TestBuildEscapesHostileNames`] |
+| 20 | low | `-h` on a subcommand printed nothing. | Prints that command's flags. |
+
+## Things I checked and found correct (stretch)
+* Value of information equals the brute-force mutual information I(T;X|e) on 60 random nets, is exactly 0 for d-separated candidates, and never negative.
+* The in-browser engine agrees with the Go junction tree to 1e-9 on 173 feasible + 19 impossible random evidence sets (incl. log P(e) and d-connectedness).
+* Samplers are deterministic per seed; LW stays within 6 standard errors on 40 random problems.
+* Covered-edge reversals leave BIC and BDeu unchanged (score equivalence) and the CPDAG unchanged.
+
+## Remaining honest limits
+* Gibbs cannot move through hard deterministic constraints (R̂ flags it; block sampling not implemented).
+* Structure search is local search, not a guarantee: Asia needs BDeu at 20k rows (BIC at 20k stops 23 log-points below the true graph even with restarts; at 200k rows both are exact).
+* The report refuses networks whose largest clique exceeds 2²⁰ states or 120 variables.

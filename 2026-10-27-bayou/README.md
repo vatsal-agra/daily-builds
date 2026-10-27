@@ -2,7 +2,7 @@
 
 A from-scratch **Bayesian-network engine** in Go (standard library only).
 
-**Status: Phase 4 complete — 4 required + 4 stretch features shipped (sampling, structure learning, value of information, interactive HTML report).** See `PLAN.md` for the
+**Status: Phase 5 complete — `./verify.sh` is green (88 Go tests, 8-step CLI demo, headless-browser check, mutation run). Phase 4: — 4 required + 4 stretch features shipped (sampling, structure learning, value of information, interactive HTML report).** See `PLAN.md` for the
 full feature list; the README is rewritten for the final release in Phase 6.
 
 ## Try it

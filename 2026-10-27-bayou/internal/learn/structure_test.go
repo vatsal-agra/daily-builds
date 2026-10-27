@@ -245,3 +245,152 @@ func TestApplyFitsParameters(t *testing.T) {
 		t.Fatalf("learned model explains the data far worse (%g vs %g)", ll, llTruth)
 	}
 }
+
+func TestCPDAGMeekRules(t *testing.T) {
+	// R2: 0→1←2 compels 1→3 (R1); 0→1→3 plus the edge 0—3 then forces 0→3.
+	r2 := CPDAG([][]int{{}, {0, 2}, {}, {0, 1}})
+	if r2[1][3] != Fwd || r2[0][3] != Fwd {
+		t.Fatalf("R2: %v", r2)
+	}
+	// R3: a=0, c=1, d=2, b=3; c→b←d is a v-structure, a is adjacent to all three ⇒ a→b.
+	r3 := CPDAG([][]int{{}, {0}, {0}, {1, 2, 0}})
+	if r3[1][3] != Fwd || r3[2][3] != Fwd || r3[0][3] != Fwd || r3[0][1] != Und || r3[0][2] != Und {
+		t.Fatalf("R3: %v", r3)
+	}
+}
+
+func TestScoresMatchClosedForms(t *testing.T) {
+	net := bn.New("one")
+	net.AddVar("A", []string{"x", "y"})
+	ds := &parse.Dataset{Cols: []int{0}, Rows: [][]int{{0}, {0}, {0}, {1}, {1}}} // counts 3, 2
+	lg := func(x float64) float64 { v, _ := math.Lgamma(x); return v }
+	k2, _ := ScoreStructure(net, ds, [][]int{{}}, StructureOptions{Score: K2})
+	if want := math.Log(6.0 * 2 / 720); math.Abs(k2-want) > 1e-12 { // 1!·3!·2!/6!
+		t.Fatalf("K2 %g want %g", k2, want)
+	}
+	// BDeu with ESS = number of states uses a Dirichlet(1,1) prior: identical to K2 here.
+	bd, _ := ScoreStructure(net, ds, [][]int{{}}, StructureOptions{Score: BDeu, ESS: 2})
+	if math.Abs(bd-k2) > 1e-12 {
+		t.Fatalf("BDeu(ess=2) %g should equal K2 %g for one binary variable", bd, k2)
+	}
+	bdHalf, _ := ScoreStructure(net, ds, [][]int{{}}, StructureOptions{Score: BDeu, ESS: 1}) // Dirichlet(½,½)
+	if want := lg(1) - lg(1+5) + lg(3.5) - lg(0.5) + lg(2.5) - lg(0.5); math.Abs(bdHalf-want) > 1e-12 {
+		t.Fatalf("BDeu(ess=1) %g want %g", bdHalf, want)
+	}
+	bic, _ := ScoreStructure(net, ds, [][]int{{}}, StructureOptions{Score: BIC})
+	if want := 3*math.Log(3.0/5) + 2*math.Log(2.0/5) - 0.5*math.Log(5); math.Abs(bic-want) > 1e-12 {
+		t.Fatalf("BIC %g want %g", bic, want)
+	}
+}
+
+// The CPDAG must be exactly the graph in which an edge is directed iff every
+// DAG of the Markov-equivalence class directs it that way. Brute force: enumerate
+// every orientation of the skeleton, keep the acyclic ones with the same
+// v-structures, and compare edge by edge.
+func TestCPDAGEqualsIntersectionOfEquivalenceClass(t *testing.T) {
+	rng := rand.New(rand.NewSource(17))
+	vstructs := func(par [][]int) map[[3]int]bool {
+		adj := map[[2]int]bool{}
+		for v, ps := range par {
+			for _, p := range ps {
+				adj[[2]int{p, v}], adj[[2]int{v, p}] = true, true
+			}
+		}
+		out := map[[3]int]bool{}
+		for v, ps := range par {
+			for i, a := range ps {
+				for _, b := range ps[i+1:] {
+					if !adj[[2]int{a, b}] {
+						x, y := a, b
+						if x > y {
+							x, y = y, x
+						}
+						out[[3]int{x, v, y}] = true
+					}
+				}
+			}
+		}
+		return out
+	}
+	acyclic := func(par [][]int) bool {
+		n := bn.New("x")
+		for i := range par {
+			n.AddVar(string(rune('a'+i)), []string{"0", "1"})
+		}
+		for v := range par {
+			n.SetParents(v, par[v])
+		}
+		return n.FindCycle() == nil
+	}
+	sameV := func(a, b map[[3]int]bool) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		for k := range a {
+			if !b[k] {
+				return false
+			}
+		}
+		return true
+	}
+	tested := 0
+	for trial := 0; trial < 150; trial++ {
+		g := bn.Random(rng, bn.RandomOpts{Vars: 5, MaxParents: 3, MaxCard: 2, EdgeProb: 0.2 + 0.7*rng.Float64()})
+		par := parentsOf(g)
+		var edges [][2]int // skeleton as (lo, hi)
+		for v, ps := range par {
+			for _, p := range ps {
+				lo, hi := p, v
+				if lo > hi {
+					lo, hi = hi, lo
+				}
+				edges = append(edges, [2]int{lo, hi})
+			}
+		}
+		if len(edges) == 0 || len(edges) > 10 {
+			continue
+		}
+		want := vstructs(par)
+		// seen[e] bit 0: some class member has lo→hi; bit 1: some has hi→lo
+		seen := make([]int, len(edges))
+		for mask := 0; mask < 1<<len(edges); mask++ {
+			cand := make([][]int, 5)
+			for i, e := range edges {
+				from, to := e[0], e[1]
+				if mask>>i&1 == 1 {
+					from, to = to, from
+				}
+				cand[to] = append(cand[to], from)
+			}
+			if !acyclic(cand) || !sameV(vstructs(cand), want) {
+				continue
+			}
+			for i := range edges {
+				if mask>>i&1 == 0 {
+					seen[i] |= 1
+				} else {
+					seen[i] |= 2
+				}
+			}
+		}
+		cp := CPDAG(par)
+		for i, e := range edges {
+			var wantState int
+			switch seen[i] {
+			case 1:
+				wantState = Fwd // lo → hi
+			case 2:
+				wantState = Bwd
+			default:
+				wantState = Und
+			}
+			if cp[e[0]][e[1]] != wantState {
+				t.Fatalf("trial %d: edge %v is %d in the CPDAG but the equivalence class says %d (parents %v)", trial, e, cp[e[0]][e[1]], wantState, par)
+			}
+		}
+		tested++
+	}
+	if tested < 80 {
+		t.Fatalf("only %d graphs tested", tested)
+	}
+}

@@ -269,3 +269,16 @@ func TestRowsAreRenormalizedButExactRowsUntouched(t *testing.T) {
 		t.Fatal("an already normalised row was modified")
 	}
 }
+
+// A quoted "*" is a state name, so a lone "*" row must NOT fill the other parent states.
+func TestQuotedStarRowDoesNotFillOtherRows(t *testing.T) {
+	src := "var A { \"*\", b }\nvar B { u, v }\ncpt A = .5,.5\ncpt B | A {\n \"*\": 1, 0\n}\n"
+	if _, err := ParseBN("x", src); err == nil || !strings.Contains(err.Error(), "no row for A=b") {
+		t.Fatalf("want a missing-row error, got %v", err)
+	}
+	// ...while a bare * is a wildcard and does fill them
+	src = "var A { x, b }\nvar B { u, v }\ncpt A = .5,.5\ncpt B | A {\n *: 1, 0\n}\n"
+	if _, err := ParseBN("x", src); err != nil {
+		t.Fatal(err)
+	}
+}
