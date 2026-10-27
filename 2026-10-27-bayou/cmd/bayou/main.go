@@ -33,6 +33,10 @@ func init() {
 		{"tree", "NET", "print the junction tree (cliques and separators)", cmdTree},
 		{"sample", "NET -n N [--seed S] [--missing P] [--hide A,B] [-o data.csv]", "forward-sample a dataset", cmdSample},
 		{"learn", "NET data.csv [--alpha A] [--em] [-o out.bn] [--truth NET]", "learn parameters (MLE or EM)", cmdLearn},
+		{"structure", "NET data.csv [--score bic|k2|bdeu] [--truth NET] [-o out.bn]", "learn the graph from data (tabu search)", cmdStructure},
+		{"voi", "NET -q A [-e ...] [--cost X=2,...] [--detail]", "which next observation is most informative about A?", cmdVOI},
+		{"report", "NET [-e ...] -o report.html", "interactive self-contained HTML report", cmdReport},
+		{"approx", "NET -q A [-e ...] [--method lw|gibbs] [-n N]", "approximate inference (sampling) with error vs. exact", cmdApprox},
 		{"gen", "--vars N [--seed S] [-o out.bn]", "generate a random network", cmdGen},
 	}
 }
@@ -97,6 +101,9 @@ func parseArgs(fs *flag.FlagSet, args []string) ([]string, error) {
 	for {
 		if err := fs.Parse(args); err != nil {
 			if errors.Is(err, flag.ErrHelp) {
+				fs.SetOutput(os.Stdout)
+				fmt.Fprintf(os.Stdout, "usage of bayou %s:\n", fs.Name())
+				fs.PrintDefaults()
 				return nil, err
 			}
 			return nil, usageError(err.Error())

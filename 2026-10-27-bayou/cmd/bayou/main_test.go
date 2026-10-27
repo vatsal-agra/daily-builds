@@ -228,3 +228,103 @@ func TestInfoWarnsWhenIntractable(t *testing.T) {
 		t.Fatalf("rc=%d %q", rc, e)
 	}
 }
+
+func TestApproxCommand(t *testing.T) {
+	o := mustOK(t, "approx", ex("burglar.bn"), "-q", "Burglary", "-e", "Alarm=yes", "-n", "50000", "--json")
+	var r struct {
+		MaxAbsError float64 `json:"max_abs_error"`
+		ESS         float64 `json:"ess"`
+	}
+	if err := json.Unmarshal([]byte(o), &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.MaxAbsError > 0.02 || r.ESS < 100 {
+		t.Fatalf("LW result off: %+v", r)
+	}
+	o = mustOK(t, "approx", ex("student.bn"), "-q", "Grade", "--method", "gibbs", "-n", "5000")
+	if !strings.Contains(o, "R̂") || !strings.Contains(o, "exact (variable elimination) differs") {
+		t.Fatal(o)
+	}
+	// works where exact inference cannot
+	p := filepath.Join(t.TempDir(), "big.bn")
+	os.WriteFile(p, []byte(mustOK(t, "gen", "--vars", "150", "--parents", "4", "--seed", "2")), 0o644)
+	o = mustOK(t, "approx", p, "-q", "X149", "-e", "X0=s0", "--method", "gibbs", "-n", "2000")
+	if !strings.Contains(o, "infeasible") {
+		t.Fatalf("expected the infeasibility note:\n%s", o)
+	}
+	_, e, rc := bayou(t, "approx", ex("asia.bn"), "-q", "Smoking", "-e", "Either=no,Tuberculosis=yes")
+	if rc != 1 || !strings.Contains(e, "probability zero") {
+		t.Fatalf("rc=%d %q", rc, e)
+	}
+	if _, _, rc := bayou(t, "approx", ex("asia.bn"), "-q", "Smoking", "--method", "magic"); rc != 2 {
+		t.Fatal("bad method accepted")
+	}
+}
+
+func TestStructureCommand(t *testing.T) {
+	dir := t.TempDir()
+	csv, out := filepath.Join(dir, "d.csv"), filepath.Join(dir, "l.bn")
+	mustOK(t, "sample", ex("student.bn"), "-n", "20000", "--seed", "5", "-o", csv)
+	o := mustOK(t, "structure", ex("student.bn"), csv, "--score", "bic", "--truth", ex("student.bn"), "-o", out)
+	if !strings.Contains(o, "SHD 0") || !strings.Contains(o, "Intelligence → Grade") {
+		t.Fatal(o)
+	}
+	mustOK(t, "check", out)
+	if _, e, rc := bayou(t, "structure", ex("student.bn"), csv, "--score", "aic"); rc != 2 || !strings.Contains(e, "unknown score") {
+		t.Fatalf("rc=%d %q", rc, e)
+	}
+	// a CSV that lacks columns cannot be used for structure learning
+	os.WriteFile(csv, []byte("Difficulty,Grade\neasy,A\nhard,B\n"), 0o644)
+	if _, e, rc := bayou(t, "structure", ex("student.bn"), csv); rc != 1 || !strings.Contains(e, "every variable") {
+		t.Fatalf("rc=%d %q", rc, e)
+	}
+}
+
+func TestVOICommand(t *testing.T) {
+	o := mustOK(t, "voi", ex("car.bn"), "-q", "BatteryDead", "-e", "Starts=no", "--detail", "--cost", "Radio=0.1")
+	if !strings.Contains(o, "gain/cost") || !strings.Contains(o, "if you observe") {
+		t.Fatal(o)
+	}
+	var r struct {
+		Cands []struct {
+			Variable string  `json:"variable"`
+			Gain     float64 `json:"gain_bits"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal([]byte(mustOK(t, "voi", ex("car.bn"), "-q", "BatteryDead", "--json")), &r); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Cands) != 9 || r.Cands[0].Gain < r.Cands[1].Gain {
+		t.Fatalf("%+v", r.Cands)
+	}
+	for _, bad := range [][]string{{"--cost", "Radio"}, {"--cost", "Nope=1"}, {"--cost", "Radio=-1"}, {"--cost", "Radio=abc"}} {
+		args := append([]string{"voi", ex("car.bn"), "-q", "BatteryDead"}, bad...)
+		if _, _, rc := bayou(t, args...); rc == 0 {
+			t.Errorf("accepted %v", bad)
+		}
+	}
+}
+
+func TestReportCommand(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "r.html")
+	mustOK(t, "report", ex("asia.bn"), "-e", "Smoking=yes", "-o", p)
+	b, _ := os.ReadFile(p)
+	s := string(b)
+	for _, want := range []string{"<!doctype html>", "BayouEngine", `"name":"Asia"`, "prefers-color-scheme"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("report lacks %q", want)
+		}
+	}
+	if strings.Contains(s, "http://") && strings.Contains(strings.ReplaceAll(s, "http://www.w3.org/2000/svg", ""), "http://") {
+		t.Error("report must be self-contained (no external URLs)")
+	}
+	if strings.Contains(s, "https://") {
+		t.Error("report references an external resource")
+	}
+	if _, e, rc := bayou(t, "report", ex("asia.bn")); rc != 2 || !strings.Contains(e, "-o") {
+		t.Fatalf("rc=%d %q", rc, e)
+	}
+	if _, e, rc := bayou(t, "report", ex("asia.bn"), "-o", p, "-e", "Either=no,Tuberculosis=yes"); rc != 1 || !strings.Contains(e, "impossible") {
+		t.Fatalf("rc=%d %q", rc, e)
+	}
+}

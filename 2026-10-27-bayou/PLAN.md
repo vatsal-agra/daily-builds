@@ -36,7 +36,7 @@ examples/           Real networks: asia, sprinkler, alarm-lite, student, car-dia
 |---|---------|------|
 | 1 | **Model language + validation**: `.bn` DSL and BIF import/export, CPT checks (sums to 1, cycles, arity, unknown parents), round-trip printer, CSV data reader | **required** |
 | 2 | **Exact inference by variable elimination**: posterior marginals under evidence, joint evidence probability P(e), MPE (most probable explanation) and MAP over a variable subset, min-fill ordering, impossible-evidence detection, brute-force oracle | **required** |
-| 3 | **Junction tree + structural queries**: moralise → triangulate → max cliques → junction tree → Hugin calibration giving *all* marginals in one pass; d-separation (Bayes-ball), Markov blanket, independence listing | **required** |
+| 3 | **Junction tree + structural queries**: moralise → triangulate → max cliques → junction tree → Shafer–Shenoy calibration giving *all* marginals in one pass; d-separation (Bayes-ball), Markov blanket, independence listing | **required** |
 | 4 | **Parameter learning**: forward sampling of datasets, MLE with Laplace smoothing, EM for missing values / latent variables (using the junction tree for E-step), log-likelihood tracking | **required** |
 | 5 | **Approximate inference**: likelihood weighting and Gibbs sampling with convergence/error report vs. exact | stretch |
 | 6 | **Structure learning**: hill-climbing over DAGs with BIC / K2 scoring, add/delete/reverse moves, recovery metrics (SHD) | stretch |

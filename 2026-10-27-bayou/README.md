@@ -2,7 +2,7 @@
 
 A from-scratch **Bayesian-network engine** in Go (standard library only).
 
-**Status: Phase 3 complete — required features built and adversarially reviewed (13 findings fixed, see REVIEW.md).** See `PLAN.md` for the
+**Status: Phase 4 complete — 4 required + 4 stretch features shipped (sampling, structure learning, value of information, interactive HTML report).** See `PLAN.md` for the
 full feature list; the README is rewritten for the final release in Phase 6.
 
 ## Try it
@@ -19,3 +19,9 @@ go build -o bayou ./cmd/bayou
 2. Exact inference by variable elimination: posteriors, P(evidence), MPE and marginal-MAP
 3. Junction tree (Shafer–Shenoy calibration, all marginals in one pass) + d-separation, Markov blankets
 4. Parameter learning: forward sampling, smoothed MLE, EM for missing/latent data
+
+## Stretch features (done)
+5. Approximate inference — likelihood weighting + multi-chain Gibbs with ESS and R̂ (`bayou approx`), works on networks exact inference cannot touch
+6. Structure learning — tabu search over DAGs with BIC / K2 / BDeu, CPDAG-based SHD against a reference (`bayou structure`)
+7. Interactive HTML report with an in-browser exact engine (`bayou report`)
+8. Value of information — rank the next observation by expected entropy reduction, with test costs (`bayou voi`)
