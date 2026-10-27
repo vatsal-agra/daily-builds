@@ -1,0 +1,23 @@
+# The classic cloudy / sprinkler / rain / wet-grass network (Russell & Norvig).
+network Sprinkler
+
+var Cloudy    { true, false }
+var Sprinkler { on, off }
+var Rain      { true, false }
+var WetGrass  { true, false }
+
+cpt Cloudy = 0.5, 0.5
+cpt Sprinkler | Cloudy {
+    true:  0.1, 0.9
+    false: 0.5, 0.5
+}
+cpt Rain | Cloudy {
+    true:  0.8, 0.2
+    false: 0.2, 0.8
+}
+cpt WetGrass | Sprinkler, Rain {
+    on,  true:  0.99, 0.01
+    on,  false: 0.90, 0.10
+    off, true:  0.90, 0.10
+    off, false: 0.00, 1.00
+}

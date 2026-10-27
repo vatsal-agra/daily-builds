@@ -1,0 +1,46 @@
+# A car-won't-start diagnostic network (invented numbers, realistic structure).
+network CarDiagnosis
+
+var BatteryAge  { new, old }
+var BatteryDead { yes, no }
+var AlternatorBroken { yes, no }
+var FuelEmpty   { yes, no }
+var FuelPumpBad { yes, no }
+var Lights      { bright, dim, off }
+var Radio       { works, dead }
+var FuelGauge   { empty, ok }
+var EngineCranks { yes, no }
+var Starts      { yes, no }
+
+cpt BatteryAge = 0.7, 0.3
+cpt AlternatorBroken = 0.05, 0.95
+cpt FuelEmpty = 0.08, 0.92
+cpt FuelPumpBad = 0.04, 0.96
+cpt BatteryDead | BatteryAge, AlternatorBroken {
+    new, yes: 0.15, 0.85
+    new, no:  0.01, 0.99
+    old, yes: 0.60, 0.40
+    old, no:  0.12, 0.88
+}
+cpt Lights | BatteryDead {
+    yes: 0.02, 0.28, 0.70
+    no:  0.90, 0.09, 0.01
+}
+cpt Radio | BatteryDead {
+    yes: 0.03, 0.97
+    no:  0.97, 0.03
+}
+cpt FuelGauge | FuelEmpty {
+    yes: 0.95, 0.05
+    no:  0.03, 0.97
+}
+cpt EngineCranks | BatteryDead {
+    yes: 0.05, 0.95
+    no:  0.98, 0.02
+}
+cpt Starts | EngineCranks, FuelEmpty, FuelPumpBad {
+    yes, no,  no:  0.95, 0.05
+    yes, no,  yes: 0.01, 0.99
+    yes, yes, *:   0.00, 1.00
+    no,  *,   *:   0.00, 1.00
+}

@@ -1,0 +1,25 @@
+# Pearl's burglar alarm (Russell & Norvig numbers): explaining away in action.
+network Burglar
+
+var Burglary   { yes, no }
+var Earthquake { yes, no }
+var Alarm      { yes, no }
+var JohnCalls  { yes, no }
+var MaryCalls  { yes, no }
+
+cpt Burglary = 0.001, 0.999
+cpt Earthquake = 0.002, 0.998
+cpt Alarm | Burglary, Earthquake {
+    yes, yes: 0.95,  0.05
+    yes, no:  0.94,  0.06
+    no,  yes: 0.29,  0.71
+    no,  no:  0.001, 0.999
+}
+cpt JohnCalls | Alarm {
+    yes: 0.90, 0.10
+    no:  0.05, 0.95
+}
+cpt MaryCalls | Alarm {
+    yes: 0.70, 0.30
+    no:  0.01, 0.99
+}

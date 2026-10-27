@@ -1,0 +1,26 @@
+# Koller & Friedman's "student" network (Fig. 3.4).
+network Student
+
+var Difficulty   { easy, hard }
+var Intelligence { low, high }
+var Grade        { A, B, C }
+var SAT          { low, high }
+var Letter       { weak, strong }
+
+cpt Difficulty = 0.6, 0.4
+cpt Intelligence = 0.7, 0.3
+cpt Grade | Intelligence, Difficulty {
+    low,  easy: 0.30, 0.40, 0.30
+    low,  hard: 0.05, 0.25, 0.70
+    high, easy: 0.90, 0.08, 0.02
+    high, hard: 0.50, 0.30, 0.20
+}
+cpt SAT | Intelligence {
+    low:  0.95, 0.05
+    high: 0.20, 0.80
+}
+cpt Letter | Grade {
+    A: 0.10, 0.90
+    B: 0.40, 0.60
+    C: 0.99, 0.01
+}

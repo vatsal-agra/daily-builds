@@ -1,0 +1,40 @@
+# Lauritzen & Spiegelhalter (1988) "Asia" chest-clinic network.
+network Asia
+
+var VisitAsia   { yes, no }
+var Tuberculosis { yes, no }
+var Smoking     { yes, no }
+var LungCancer  { yes, no }
+var Bronchitis  { yes, no }
+var Either      { yes, no }     # TB or cancer (deterministic OR)
+var XRay        { abnormal, normal }
+var Dyspnea     { yes, no }
+
+cpt VisitAsia = 0.01, 0.99
+cpt Smoking = 0.5, 0.5
+cpt Tuberculosis | VisitAsia {
+    yes: 0.05, 0.95
+    no:  0.01, 0.99
+}
+cpt LungCancer | Smoking {
+    yes: 0.10, 0.90
+    no:  0.01, 0.99
+}
+cpt Bronchitis | Smoking {
+    yes: 0.60, 0.40
+    no:  0.30, 0.70
+}
+cpt Either | Tuberculosis, LungCancer {
+    no, no: 0, 1
+    *,  *:  1, 0
+}
+cpt XRay | Either {
+    yes: 0.98, 0.02
+    no:  0.05, 0.95
+}
+cpt Dyspnea | Bronchitis, Either {
+    yes, yes: 0.9, 0.1
+    yes, no:  0.8, 0.2
+    no,  yes: 0.7, 0.3
+    no,  no:  0.1, 0.9
+}

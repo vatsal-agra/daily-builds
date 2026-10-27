@@ -1,0 +1,34 @@
+# A 5-step hidden Markov model unrolled as a Bayesian network. The Weather
+# variables are latent: use `bayou learn --em` on a CSV that omits them.
+network WeatherHMM
+
+var W1 { sun, rain }
+var W2 { sun, rain }
+var W3 { sun, rain }
+var W4 { sun, rain }
+var W5 { sun, rain }
+var U1 { umbrella, none }
+var U2 { umbrella, none }
+var U3 { umbrella, none }
+var U4 { umbrella, none }
+var U5 { umbrella, none }
+
+cpt W1 = 0.6, 0.4
+cpt W2 | W1 { sun: 0.8, 0.2
+              rain: 0.3, 0.7 }
+cpt W3 | W2 { sun: 0.8, 0.2
+              rain: 0.3, 0.7 }
+cpt W4 | W3 { sun: 0.8, 0.2
+              rain: 0.3, 0.7 }
+cpt W5 | W4 { sun: 0.8, 0.2
+              rain: 0.3, 0.7 }
+cpt U1 | W1 { sun: 0.1, 0.9
+              rain: 0.8, 0.2 }
+cpt U2 | W2 { sun: 0.1, 0.9
+              rain: 0.8, 0.2 }
+cpt U3 | W3 { sun: 0.1, 0.9
+              rain: 0.8, 0.2 }
+cpt U4 | W4 { sun: 0.1, 0.9
+              rain: 0.8, 0.2 }
+cpt U5 | W5 { sun: 0.1, 0.9
+              rain: 0.8, 0.2 }
