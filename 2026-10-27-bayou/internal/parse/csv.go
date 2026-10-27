@@ -65,11 +65,11 @@ func ReadCSV(net *bn.Network, r io.Reader) (*Dataset, error) {
 		row := make([]int, len(rec))
 		for i, cell := range rec {
 			cell = strings.TrimSpace(cell)
-			if missingTokens[strings.ToLower(cell)] {
+			s, ok := net.StateID(ds.Cols[i], cell)
+			if !ok && missingTokens[strings.ToLower(cell)] { // a real state named "none"/"NA" wins over the marker
 				row[i] = Missing
 				continue
 			}
-			s, ok := net.StateID(ds.Cols[i], cell)
 			if !ok {
 				return nil, fmt.Errorf("csv line %d, column %s: %q is not a state (states: %s)", line, net.Vars[ds.Cols[i]].Name, cell, strings.Join(net.Vars[ds.Cols[i]].States, ", "))
 			}
@@ -90,13 +90,14 @@ func WriteCSV(w io.Writer, net *bn.Network, ds *Dataset) error {
 	if err := cw.Write(hdr); err != nil {
 		return err
 	}
+	marker := missingMarker(net, ds)
 	for _, row := range ds.Rows {
 		rec := make([]string, len(row))
 		for i, s := range row {
 			if s != Missing {
 				rec[i] = net.Vars[ds.Cols[i]].States[s]
 			} else {
-				rec[i] = "?"
+				rec[i] = marker
 			}
 		}
 		if err := cw.Write(rec); err != nil {
@@ -105,4 +106,20 @@ func WriteCSV(w io.Writer, net *bn.Network, ds *Dataset) error {
 	}
 	cw.Flush()
 	return cw.Error()
+}
+
+// missingMarker picks a cell text for "missing" that no column's state uses.
+func missingMarker(net *bn.Network, ds *Dataset) string {
+	for _, m := range []string{"?", "NA", "<missing>"} {
+		clash := false
+		for _, v := range ds.Cols {
+			if _, ok := net.StateID(v, m); ok {
+				clash = true
+			}
+		}
+		if !clash {
+			return m
+		}
+	}
+	return "<missing>"
 }
