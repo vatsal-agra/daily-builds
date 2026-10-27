@@ -2,7 +2,7 @@
 
 A from-scratch **Bayesian-network engine** in Go (standard library only).
 
-**Status: Phase 2 complete — the four required features work end to end.** See `PLAN.md` for the
+**Status: Phase 3 complete — required features built and adversarially reviewed (13 findings fixed, see REVIEW.md).** See `PLAN.md` for the
 full feature list; the README is rewritten for the final release in Phase 6.
 
 ## Try it
