@@ -601,6 +601,21 @@ mod tests {
     }
 
     #[test]
+    fn tip_clipping_cleans_error_branches_when_no_count_filter_is_used() {
+        let mut rng = Rng::new(9);
+        let g = rand_dna(&mut rng, 20_000);
+        let reads = shotgun(&mut rng, &g, 25, 100, 0.0004);
+        let refs: Vec<&[u8]> = reads.iter().map(|r| r.as_slice()).collect();
+        let no_clip = AsmParams { min_count: Some(1), tip_len: Some(0), pop_bubbles: false, min_contig: 50, ..AsmParams::default() };
+        let raw = assemble(&refs, &no_clip).unwrap();
+        // errors inside reads form bubbles, errors at read ends form tips: the two cleanups together
+        let clipped = assemble(&refs, &AsmParams { tip_len: None, pop_bubbles: true, ..no_clip.clone() }).unwrap();
+        assert!(clipped.stats.tips_removed > 5 && clipped.stats.bubbles_popped > 5, "{:?}", clipped.stats);
+        assert!(clipped.contigs.len() * 2 <= raw.contigs.len(), "tip clipping must merge fragments: {} vs {}", clipped.contigs.len(), raw.contigs.len());
+        assert!(clipped.stats.n50 > 2 * raw.stats.n50, "{} vs {}", clipped.stats.n50, raw.stats.n50);
+    }
+
+    #[test]
     fn auto_cutoff_finds_the_valley() {
         // error mode at 1, valley near 4-5, coverage peak near 20
         let mut h = vec![0u64; 256];

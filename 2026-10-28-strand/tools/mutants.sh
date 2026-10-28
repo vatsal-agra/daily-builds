@@ -40,5 +40,6 @@ mut src/seq.rs "if r.names.contains(&f.name) {" "if false {"
 mut src/mapper.rs "if flag & 4 == 0 && !(seq.is_empty() && flag & (256 | 2048) != 0) {" "if flag & 4 == 0 {"
 mut src/fm.rs "if sa_samples.iter().any(|&s| s as usize >= n) {" "if false {"
 mut src/dbg.rs "if sm[v] > 0.8 * sm[peak]" "if false && sm[v] > 0.8 * sm[peak]"
+mut src/dbg.rs "if attached_to_junction {" "if false {"
 echo "mutants killed: $KILLED, surviving: $SURV, equivalent: $EQ"
 [ "$SURV" -eq 0 ]

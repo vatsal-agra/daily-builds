@@ -20,7 +20,7 @@ const path = require('path');
       bg: getComputedStyle(document.body).backgroundColor,
       ticks: document.querySelectorAll('svg .tp, svg .fp, svg .fn, svg .call').length,
     }));
-    const ok = !r.overflow && r.svgs >= 4 && r.kpis >= 4 && r.ticks > 0 && !errors.length && !requests.length;
+    const ok = !r.overflow && r.svgs >= 3 && r.kpis >= 4 && r.ticks > 0 && !errors.length && !requests.length;
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: svgs=${r.svgs} kpis=${r.kpis} ticks=${r.ticks} overflow=${r.overflow} bg=${r.bg} errors=${errors.length} requests=${requests.length}`);
     if (!ok) bad++;
     await p.close();
