@@ -580,6 +580,27 @@ mod tests {
     }
 
     #[test]
+    fn contigs_break_exactly_at_repeat_junctions() {
+        // U1 R U2 R U3 with perfect reads: the repeat R must be its own unitig (merge on entry,
+        // branch on exit), giving exactly U1, R, U2, U3 — and every contig must be genome sequence.
+        let mut rng = Rng::new(8);
+        let (u1, u2, u3, r) = (rand_dna(&mut rng, 1500), rand_dna(&mut rng, 1500), rand_dna(&mut rng, 1500), rand_dna(&mut rng, 300));
+        let g: Vec<u8> = [u1.as_slice(), &r, &u2, &r, &u3].concat();
+        let reads = shotgun(&mut rng, &g, 60, 100, 0.0);
+        let refs: Vec<&[u8]> = reads.iter().map(|r| r.as_slice()).collect();
+        let a = assemble(&refs, &AsmParams { min_count: Some(1), min_contig: 50, ..AsmParams::default() }).unwrap();
+        assert_eq!(a.contigs.len(), 4, "{:?}", a.contigs.iter().map(|c| c.seq.len()).collect::<Vec<_>>());
+        let gs = String::from_utf8(g.clone()).unwrap();
+        let rs = String::from_utf8(crate::seq::revcomp_ascii(&g)).unwrap();
+        for c in &a.contigs {
+            let cs = String::from_utf8(c.seq.clone()).unwrap();
+            assert!(gs.contains(&cs) || rs.contains(&cs));
+        }
+        let shortest = a.contigs.iter().map(|c| c.seq.len()).min().unwrap();
+        assert!((300..=335).contains(&shortest), "repeat unitig should be ~R plus k-1 overlap context, got {}", shortest);
+    }
+
+    #[test]
     fn auto_cutoff_finds_the_valley() {
         // error mode at 1, valley near 4-5, coverage peak near 20
         let mut h = vec![0u64; 256];
