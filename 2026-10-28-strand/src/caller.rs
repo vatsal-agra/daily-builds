@@ -109,15 +109,22 @@ fn genotype_posterior(ll: &[f64], ploidy: u8) -> (usize, f64, f64) {
     (best, qual, gq)
 }
 
-fn ln_fact(n: u32) -> f64 {
-    (2..=n).map(|i| (i as f64).ln()).sum()
-}
-
 /// Two-sided Fisher exact test on [[a,b],[c,d]].
 pub fn fisher_exact(a: u32, b: u32, c: u32, d: u32) -> f64 {
-    let n = a + b + c + d;
+    let n = (a + b + c + d) as usize;
+    let mut lf = vec![0.0f64; n + 1];
+    for i in 2..=n {
+        lf[i] = lf[i - 1] + (i as f64).ln();
+    }
     let (r1, r2, c1) = (a + b, c + d, a + c);
-    let lp = |x: u32| ln_fact(r1) + ln_fact(r2) + ln_fact(c1) + ln_fact(n - c1) - ln_fact(n) - ln_fact(x) - ln_fact(r1 - x) - ln_fact(c1 - x) - ln_fact(r2 - (c1 - x));
+    let lp = |x: u32| {
+        lf[r1 as usize] + lf[r2 as usize] + lf[c1 as usize] + lf[n - c1 as usize]
+            - lf[n]
+            - lf[x as usize]
+            - lf[(r1 - x) as usize]
+            - lf[(c1 - x) as usize]
+            - lf[(r2 - (c1 - x)) as usize]
+    };
     let lo = c1.saturating_sub(r2);
     let hi = r1.min(c1);
     let p_obs = lp(a);
@@ -163,24 +170,16 @@ pub fn call_variants(refs: &[(String, Vec<u8>)], sam: &SamFile, p: &CallParams) 
     let mut counts: Vec<Vec<[u16; 4]>> = refs.iter().map(|(_, s)| vec![[0u16; 4]; s.len()]).collect();
     let mut events: HashMap<(usize, usize, Vec<u8>, Vec<u8>), EventAgg> = HashMap::new();
 
-    let usable = |r: &crate::mapper::SamRecord, stats: &mut CallStats| -> bool {
-        if !r.is_mapped() {
-            stats.reads_unmapped += 1;
-            return false;
-        }
-        if r.flag & (256 | 2048 | 1024) != 0 {
-            return false;
-        }
-        if r.mapq < p.min_mapq {
-            stats.reads_low_mapq += 1;
-            return false;
-        }
-        true
-    };
+    let usable = |r: &crate::mapper::SamRecord| -> bool { r.is_mapped() && r.flag & (256 | 2048 | 1024) == 0 && r.mapq >= p.min_mapq };
 
     // ---- pass 1: pileup counts and indel events ----
     for r in &sam.records {
-        if !usable(r, &mut stats) {
+        if !r.is_mapped() {
+            stats.reads_unmapped += 1;
+        } else if r.flag & (256 | 2048 | 1024) == 0 && r.mapq < p.min_mapq {
+            stats.reads_low_mapq += 1;
+        }
+        if !usable(r) {
             continue;
         }
         let ci = *idx.get(r.rname.as_str()).ok_or_else(|| format!("read {} maps to unknown contig {}", r.name, r.rname))?;
@@ -266,7 +265,7 @@ pub fn call_variants(refs: &[(String, Vec<u8>)], sam: &SamFile, p: &CallParams) 
     // ---- pass 2: gather qualities at candidate sites ----
     if !cand.is_empty() {
         for r in &sam.records {
-            if !r.is_mapped() || r.flag & (256 | 2048 | 1024) != 0 || r.mapq < p.min_mapq {
+            if !usable(r) {
                 continue;
             }
             let ci = idx[r.rname.as_str()];
@@ -345,18 +344,68 @@ pub fn call_variants(refs: &[(String, Vec<u8>)], sam: &SamFile, p: &CallParams) 
 
     // ---- indel genotyping ----
     stats.indel_events_examined = events.len();
-    for ((ci, pos, r, a), agg) in &events {
+    let mut ev_list: Vec<(usize, usize, Vec<u8>, Vec<u8>, EventAgg)> =
+        events.into_iter().filter(|(_, a)| a.fwd + a.rev >= p.min_alt).map(|((ci, pos, r, a), agg)| (ci, pos, r, a, agg)).collect();
+    ev_list.sort_by(|a, b| (a.0, a.1, &a.2, &a.3).cmp(&(b.0, b.1, &b.2, &b.3)));
+    // Reads count as evidence for the reference allele only if one unbroken aligned block covers
+    // the event plus FLANK bases either side; a read that is clipped or ends at the indel says nothing.
+    const FLANK: usize = 5;
+    let mut ref_support = vec![(0u32, 0u32); ev_list.len()];
+    if !ev_list.is_empty() {
+        for r in &sam.records {
+            if !usable(r) {
+                continue;
+            }
+            let ci = idx[r.rname.as_str()];
+            let rev = r.flag & 16 != 0;
+            let mut rp = r.pos;
+            for &(op, n) in &r.cigar {
+                match op {
+                    b'M' | b'=' | b'X' => {
+                        let (bs, be) = (rp, rp + n);
+                        rp += n;
+                        if be < bs + 2 * FLANK + 2 {
+                            continue;
+                        }
+                        let (lo_pos, hi_pos) = (bs + FLANK - 1, be - FLANK - 1);
+                        let first = ev_list.partition_point(|e| (e.0, e.1) < (ci, lo_pos));
+                        for k in first..ev_list.len() {
+                            let e = &ev_list[k];
+                            if e.0 != ci || e.1 > hi_pos {
+                                break;
+                            }
+                            if e.1 + 1 >= bs + FLANK && e.1 + e.2.len() + FLANK <= be {
+                                if rev {
+                                    ref_support[k].1 += 1
+                                } else {
+                                    ref_support[k].0 += 1
+                                }
+                            }
+                        }
+                    }
+                    b'D' | b'N' => rp += n,
+                    _ => {}
+                }
+            }
+        }
+    }
+    for (k, (ci, pos, r, a, agg)) in ev_list.iter().enumerate() {
         let (name, s) = &refs[*ci];
         let alt_n = agg.fwd + agg.rev;
-        if alt_n < p.min_alt {
-            continue;
-        }
-        // depth: reads spanning the anchor and the base after it
-        let depth = coverage[*ci][*pos] as u32;
-        let depth = depth.max(alt_n);
-        let ref_n = depth - alt_n;
-        let (unit, at): (Vec<u8>, usize) = if a.len() > r.len() { (a[1..].to_vec(), pos + 1) } else { (r[1..].to_vec(), pos + 1) };
-        let copies = repeat_copies(s, at + unit.len().min(0), &unit);
+        let (ref_f, ref_r) = ref_support[k];
+        let ref_n = ref_f + ref_r;
+        let depth = ref_n + alt_n;
+        // repeat context: how many copies of the inserted / deleted unit follow the anchor
+        let (unit, copies) = if a.len() > r.len() {
+            let u = a[1..].to_vec();
+            let c = repeat_copies(s, pos + 1, &u);
+            (u, c)
+        } else {
+            let u = r[1..].to_vec();
+            let c = repeat_copies(s, pos + 1, &u).saturating_sub(1);
+            (u, c)
+        };
+        let _ = unit;
         let eps = (0.004 * (1.0 + copies as f64)).min(0.15);
         let ll = |x_alt: bool, y_alt: Option<bool>| -> f64 {
             let pr_alt = |al: bool| if al { 1.0 - eps } else { eps };
@@ -381,9 +430,7 @@ pub fn call_variants(refs: &[(String, Vec<u8>)], sam: &SamFile, p: &CallParams) 
             (_, 1) => (0, 1),
             _ => (1, 1),
         });
-        // reference-supporting strand split is not tracked per event; compare against even split
-        let half = ref_n / 2;
-        v.filter = filter_for(depth, alt_n, qual, (half, ref_n - half, agg.fwd, agg.rev), p);
+        v.filter = filter_for(depth, alt_n, qual, (ref_f, ref_r, agg.fwd, agg.rev), p);
         out.push(v);
     }
 

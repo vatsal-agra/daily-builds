@@ -45,7 +45,12 @@ pub fn revcomp_codes(s: &[u8]) -> Vec<u8> {
     s.iter().rev().map(|&c| 5 - c).collect()
 }
 
-/// ASCII -> codes. Non-ACGT bytes become 1 (A); returns the count of such bytes.
+/// ASCII -> codes, with ambiguity codes mapped to 0 (matches nothing). Used for reads and queries.
+pub fn to_codes_n(s: &[u8]) -> Vec<u8> {
+    s.iter().map(|&b| encode(b).unwrap_or(0)).collect()
+}
+
+/// ASCII -> codes. Non-ACGT bytes become 1 (A); returns the count of such bytes (reference building).
 pub fn to_codes(s: &[u8]) -> (Vec<u8>, usize) {
     let mut amb = 0;
     let v = s
@@ -127,29 +132,35 @@ pub fn write_fasta<W: Write>(w: &mut W, name: &str, seq: &[u8]) -> std::io::Resu
 }
 
 pub fn parse_fastq(text: &str) -> Result<Vec<Fastq>, String> {
+    let lines: Vec<&str> = text.lines().map(|l| l.trim_end_matches('\r')).collect();
     let mut out = Vec::new();
-    let mut lines = text.lines().enumerate().filter(|(_, l)| !l.trim().is_empty());
-    while let Some((ln, h)) = lines.next() {
-        let h = h.trim_end_matches('\r');
-        let name = h
+    let mut i = 0;
+    while i < lines.len() {
+        // blank lines are only tolerated between records: a zero-length read has a blank sequence line
+        if lines[i].trim().is_empty() {
+            i += 1;
+            continue;
+        }
+        let name = lines[i]
             .strip_prefix('@')
-            .ok_or_else(|| format!("line {}: expected '@' record header, got {:?}", ln + 1, h))?
+            .ok_or_else(|| format!("line {}: expected '@' record header, got {:?}", i + 1, lines[i]))?
             .split_whitespace()
             .next()
             .unwrap_or("")
             .to_string();
-        let (_, seq) = lines.next().ok_or_else(|| format!("line {}: truncated record", ln + 1))?;
-        let (_, plus) = lines.next().ok_or_else(|| format!("line {}: truncated record", ln + 1))?;
-        let (_, qual) = lines.next().ok_or_else(|| format!("line {}: truncated record (no quality line)", ln + 1))?;
-        if !plus.starts_with('+') {
-            return Err(format!("line {}: expected '+' separator", ln + 3));
+        if i + 3 >= lines.len() {
+            return Err(format!("line {}: truncated record {}", i + 1, name));
         }
-        let seq = seq.trim_end_matches('\r').to_ascii_uppercase().into_bytes();
-        let qual = qual.trim_end_matches('\r').as_bytes().to_vec();
+        if !lines[i + 2].starts_with('+') {
+            return Err(format!("line {}: expected '+' separator", i + 3));
+        }
+        let seq = lines[i + 1].to_ascii_uppercase().into_bytes();
+        let qual = lines[i + 3].as_bytes().to_vec();
         if seq.len() != qual.len() {
-            return Err(format!("line {}: read {} has {} bases but {} quality values", ln + 1, name, seq.len(), qual.len()));
+            return Err(format!("line {}: read {} has {} bases but {} quality values", i + 1, name, seq.len(), qual.len()));
         }
         out.push(Fastq { name, seq, qual });
+        i += 4;
     }
     Ok(out)
 }
@@ -185,6 +196,13 @@ pub fn write_fastq<W: Write>(w: &mut W, r: &Fastq) -> std::io::Result<()> {
     w.write_all(b"\n")
 }
 
+fn hash64(mut x: u64) -> u64 {
+    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^ (x >> 31)
+}
+
 /// Concatenated multi-record reference in code space.
 #[derive(Clone, Debug)]
 pub struct Reference {
@@ -202,10 +220,23 @@ impl Reference {
         }
         let mut r = Reference { names: vec![], offsets: vec![], lens: vec![], codes: vec![], ambiguous: 0 };
         for f in recs {
+            if r.names.contains(&f.name) {
+                return Err(format!("duplicate reference record name {:?}", f.name));
+            }
             if f.seq.is_empty() {
                 return Err(format!("reference record {} is empty", f.name));
             }
-            let (c, amb) = to_codes(&f.seq);
+            // Ambiguous bases (N, IUPAC) become a deterministic pseudo-random base, as BWA does, so a
+            // long run of N does not turn into a poly-A trap that attracts low-complexity reads.
+            let base = r.codes.len();
+            let (mut c, amb) = to_codes(&f.seq);
+            if amb > 0 {
+                for (i, &b) in f.seq.iter().enumerate() {
+                    if encode(b).is_none() {
+                        c[i] = 1 + (hash64((base + i) as u64) >> 33) as u8 % 4;
+                    }
+                }
+            }
             r.ambiguous += amb;
             r.names.push(f.name.clone());
             r.offsets.push(r.codes.len());
@@ -265,6 +296,30 @@ mod tests {
         assert!(parse_fastq("@r\nACGT\n+\nIII\n").is_err());
         assert!(parse_fastq("@r\nACGT\n").is_err());
         assert!(parse_fastq("r\nACGT\n+\nIIII\n").is_err());
+        // a zero-length read keeps its (blank) sequence and quality lines
+        let r = parse_fastq("@e\n\n+\n\n@f\nAC\n+\nII\n").unwrap();
+        assert_eq!(r.len(), 2);
+        assert!(r[0].seq.is_empty());
+        assert_eq!(r[1].seq, b"AC");
+        assert!(parse_fastq("\n\n@a\nAC\n+\nII\n\n\n").unwrap().len() == 1);
+    }
+
+    #[test]
+    fn n_runs_do_not_become_poly_a() {
+        let f = parse_fasta(&format!(">a\nACGT{}ACGT\n", "N".repeat(200))).unwrap();
+        let r = Reference::from_fasta(&f).unwrap();
+        assert_eq!(r.ambiguous, 200);
+        let a_count = r.codes[4..204].iter().filter(|&&c| c == 1).count();
+        assert!(a_count > 20 && a_count < 90, "N run should be mixed bases, got {} A's", a_count);
+        assert!(r.codes.iter().all(|&c| (1..=4).contains(&c)));
+        // deterministic
+        assert_eq!(r.codes, Reference::from_fasta(&f).unwrap().codes);
+    }
+
+    #[test]
+    fn duplicate_reference_names_rejected() {
+        let f = parse_fasta(">a\nACGT\n>a\nGGGG\n").unwrap();
+        assert!(Reference::from_fasta(&f).is_err());
     }
 
     #[test]

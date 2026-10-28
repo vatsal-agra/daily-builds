@@ -161,7 +161,7 @@ fn load_index(path: &str, sa_rate: usize) -> Result<FmIndex, CliError> {
     let recs = seq::parse_fasta(&text).map_err(|e| CliError::Run(format!("{}: {}", path, e)))?;
     let r = Reference::from_fasta(&recs)?;
     if r.ambiguous > 0 {
-        eprintln!("warning: {} ambiguous (non-ACGT) reference bases were treated as A", r.ambiguous);
+        eprintln!("warning: {} ambiguous (non-ACGT) reference bases were replaced by pseudo-random bases", r.ambiguous);
     }
     Ok(FmIndex::build(r, sa_rate))
 }
@@ -273,23 +273,22 @@ fn cmd_search(a: &[String]) -> R {
     };
     for (s, codes) in strands {
         let r = fm.search(&codes);
-        println!("strand {}: {} occurrence(s)", s, r.len());
-        let mut shown = 0;
-        let mut locs: Vec<usize> = (r.lo..r.hi.min(r.lo + 100_000)).map(|row| fm.locate_row(row)).collect();
-        locs.sort_unstable();
-        for g in locs {
-            if let Some((rid, off)) = fm.reference.locate(g) {
-                if off + codes.len() > fm.reference.lens[rid] {
-                    continue; // straddles a contig boundary
-                }
-                if shown < max_hits {
-                    println!("  {}:{}", fm.reference.names[rid], off + 1);
-                }
-                shown += 1;
-            }
+        if r.len() > 2_000_000 {
+            println!("strand {}: {} occurrence(s) (too many to enumerate)", s, r.len());
+            continue;
         }
-        if shown > max_hits {
-            println!("  ... {} more", shown - max_hits);
+        // drop hits that would straddle a boundary between two FASTA records
+        let mut locs: Vec<(usize, usize)> = (r.lo..r.hi)
+            .filter_map(|row| fm.reference.locate(fm.locate_row(row)))
+            .filter(|&(rid, off)| off + codes.len() <= fm.reference.lens[rid])
+            .collect();
+        locs.sort_unstable();
+        println!("strand {}: {} occurrence(s)", s, locs.len());
+        for &(rid, off) in locs.iter().take(max_hits) {
+            println!("  {}:{}", fm.reference.names[rid], off + 1);
+        }
+        if locs.len() > max_hits {
+            println!("  ... {} more", locs.len() - max_hits);
         }
     }
     Ok(())
@@ -298,12 +297,22 @@ fn cmd_search(a: &[String]) -> R {
 fn seq_arg(s: &str) -> Result<Vec<u8>, CliError> {
     if std::path::Path::new(s).is_file() {
         let recs = seq::read_fasta(s)?;
+        check_nucleotides(&recs[0].seq, s)?;
         return Ok(recs[0].seq.clone());
     }
-    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_alphabetic()) {
-        return Err(CliError::Usage(format!("{:?} is neither a file nor a nucleotide string", s)));
-    }
+    check_nucleotides(s.as_bytes(), s)?;
     Ok(s.to_ascii_uppercase().into_bytes())
+}
+
+fn check_nucleotides(seq: &[u8], what: &str) -> Result<(), CliError> {
+    if seq.is_empty() {
+        return Err(CliError::Usage(format!("{:?} is neither an existing file nor a nucleotide string", what)));
+    }
+    if let Some((i, &b)) = seq.iter().enumerate().find(|(_, b)| !matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T' | b'N')) {
+        let hint = if b.to_ascii_uppercase() == b'U' { " (RNA? use T for U)" } else { "" };
+        return Err(CliError::Usage(format!("invalid nucleotide {:?} at position {} of the sequence{}; allowed: A C G T N", b as char, i + 1, hint)));
+    }
+    Ok(())
 }
 
 fn cmd_align(a: &[String]) -> R {
@@ -327,8 +336,8 @@ fn cmd_align(a: &[String]) -> R {
             Some((off.min(0) - w, off.max(0) + w))
         }
     };
-    let qc = seq::to_codes(&q).0;
-    let tc = seq::to_codes(&t).0;
+    let qc = seq::to_codes_n(&q);
+    let tc = seq::to_codes_n(&t);
     let aln = align(&qc, &tc, mode, &sc, band)?.ok_or_else(|| CliError::Run("no alignment exists within the given band".into()))?;
     println!("mode {:?}   score {}   identity {:.1}%   edit distance {}", mode, aln.score, aln.identity() * 100.0, aln.edit_distance());
     println!("query {}..{} of {}   target {}..{} of {}", aln.q_start + 1, aln.q_end, q.len(), aln.t_start + 1, aln.t_end, t.len());
@@ -441,17 +450,8 @@ fn cmd_call(a: &[String]) -> R {
 fn print_eval(ev: &strand::vcf::Evaluation) {
     println!("{:<7} {:>6} {:>6} {:>6} {:>10} {:>8} {:>8} {:>8}", "class", "TP", "FP", "FN", "precision", "recall", "F1", "GT-conc");
     for (n, c) in [("SNP", &ev.snp), ("indel", &ev.indel)] {
-        println!(
-            "{:<7} {:>6} {:>6} {:>6} {:>10.4} {:>8.4} {:>8.4} {:>8.4}",
-            n,
-            c.tp,
-            c.fp,
-            c.fn_,
-            c.precision(),
-            c.recall(),
-            c.f1(),
-            c.gt_concordance()
-        );
+        let gt = if c.tp == 0 { format!("{:>8}", "-") } else { format!("{:>8.4}", c.gt_concordance()) };
+        println!("{:<7} {:>6} {:>6} {:>6} {:>10.4} {:>8.4} {:>8.4} {}", n, c.tp, c.fp, c.fn_, c.precision(), c.recall(), c.f1(), gt);
     }
 }
 

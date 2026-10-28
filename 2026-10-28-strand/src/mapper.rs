@@ -12,7 +12,7 @@
 
 use crate::align::{align, Alignment, Mode, Scoring};
 use crate::fm::FmIndex;
-use crate::seq::{revcomp_ascii, revcomp_codes, Fastq};
+use crate::seq::{revcomp_ascii, Fastq};
 use std::io::Write;
 
 #[derive(Clone, Debug)]
@@ -84,7 +84,7 @@ struct Seed {
 }
 
 fn read_codes(seq: &[u8]) -> Vec<u8> {
-    seq.iter().map(|&b| crate::seq::encode(b).unwrap_or(0)).collect()
+    crate::seq::to_codes_n(seq)
 }
 
 fn find_seeds(fm: &FmIndex, read: &[u8], min_len: usize) -> Vec<Seed> {
@@ -122,11 +122,13 @@ struct Cand {
     diag: i64,
     weight: usize,
     repetitive: bool,
+    /// a single seed spans the whole read: the alignment is exact and needs no DP
+    exact: bool,
 }
 
 fn candidates(fm: &FmIndex, p: &MapParams, orient: [&[u8]; 2]) -> Vec<Cand> {
     // (reverse, diag, seed length, repetitive)
-    let mut hits: Vec<(bool, i64, usize, bool)> = Vec::new();
+    let mut hits: Vec<(bool, i64, usize, bool, bool)> = Vec::new();
     for (rev, read) in orient.iter().enumerate() {
         let mut seeds = find_seeds(fm, read, p.min_seed);
         if seeds.is_empty() {
@@ -137,7 +139,7 @@ fn candidates(fm: &FmIndex, p: &MapParams, orient: [&[u8]; 2]) -> Vec<Cand> {
             let take = occ.min(p.max_occ);
             for row in sd.lo..sd.lo + take {
                 let tp = fm.locate_row(row) as i64;
-                hits.push((rev == 1, tp - sd.qs as i64, sd.len, occ > p.max_occ));
+                hits.push((rev == 1, tp - sd.qs as i64, sd.len, occ > p.max_occ, sd.len == read.len()));
             }
         }
     }
@@ -145,18 +147,19 @@ fn candidates(fm: &FmIndex, p: &MapParams, orient: [&[u8]; 2]) -> Vec<Cand> {
     let mut cands: Vec<Cand> = Vec::new();
     let mut last_diag = i64::MIN;
     let mut best_len = 0usize;
-    for &(rev, diag, len, rep) in &hits {
+    for &(rev, diag, len, rep, exact) in &hits {
         let new = match cands.last() {
             Some(c) => c.reverse != rev || diag - last_diag > p.band as i64,
             None => true,
         };
         if new {
-            cands.push(Cand { reverse: rev, diag, weight: 0, repetitive: false });
+            cands.push(Cand { reverse: rev, diag, weight: 0, repetitive: false, exact: false });
             best_len = 0;
         }
         let c = cands.last_mut().unwrap();
         c.weight += len;
         c.repetitive |= rep;
+        c.exact |= exact;
         if len > best_len {
             best_len = len;
             c.diag = diag;
@@ -189,6 +192,10 @@ fn extend_candidate(fm: &FmIndex, p: &MapParams, q: &[u8], c: &Cand) -> Option<E
     let we = (c.diag + qlen + pad).min(re);
     if we <= ws {
         return None;
+    }
+    if c.exact && c.diag >= rs && c.diag + qlen <= re {
+        let aln = Alignment { score: q.len() as i32 * p.scoring.matched, q_start: 0, q_end: q.len(), t_start: 0, t_end: q.len(), ops: vec![(b'=', q.len())] };
+        return Some(Extended { rid, pos: (c.diag - rs) as usize, reverse: c.reverse, aln, repetitive: c.repetitive });
     }
     let target = &rf.codes[ws as usize..we as usize];
     let cd = c.diag - ws;
@@ -257,7 +264,6 @@ fn revcomp_codes_with_n(c: &[u8]) -> Vec<u8> {
 
 pub fn map_all(fm: &FmIndex, p: &MapParams, reads: &[Fastq]) -> Result<Vec<MapResult>, String> {
     p.validate()?;
-    let _ = revcomp_codes(&[]); // keep the plain helper linked for doc purposes
     if p.threads <= 1 || reads.len() < 64 {
         return Ok(reads.iter().map(|r| map_read(fm, p, r)).collect());
     }
@@ -418,7 +424,8 @@ pub fn parse_sam(text: &str) -> Result<SamFile, String> {
         let cigar = parse_cigar(f[5]).map_err(|e| format!("line {}: {}", ln + 1, e))?;
         let seq: Vec<u8> = if f[9] == "*" { vec![] } else { f[9].to_ascii_uppercase().into_bytes() };
         let qual: Vec<u8> = if f[10] == "*" { vec![b'I'; seq.len()] } else { f[10].as_bytes().to_vec() };
-        if flag & 4 == 0 {
+        // secondary / supplementary records legitimately carry SEQ '*'
+        if flag & 4 == 0 && !(seq.is_empty() && flag & (256 | 2048) != 0) {
             if pos1 == 0 {
                 return Err(format!("line {}: mapped read with POS 0", ln + 1));
             }
@@ -654,6 +661,15 @@ mod tests {
         let ev = evaluate_sam(&sam, 5);
         assert_eq!(ev.unparseable, 1);
         assert_eq!(ev.correct, 2);
+    }
+
+    #[test]
+    fn secondary_records_may_omit_sequence() {
+        let s = "a\t256\tc\t5\t0\t4M\t*\t0\t0\t*\t*\nb\t0\tc\t5\t60\t4M\t*\t0\t0\tACGT\tIIII\n";
+        let f = parse_sam(s).unwrap();
+        assert_eq!(f.records.len(), 2);
+        // but a primary mapped record without SEQ is an error
+        assert!(parse_sam("a\t0\tc\t5\t0\t4M\t*\t0\t0\t*\t*\n").is_err());
     }
 
     #[test]

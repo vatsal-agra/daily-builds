@@ -184,7 +184,14 @@ impl FmIndex {
         for &s in &self.sa_samples {
             w.write_all(&s.to_le_bytes())?;
         }
-        w.write_all(&checksum(&self.bwt).to_le_bytes())?;
+        let mut sum = checksum(&self.bwt);
+        for &s in &self.sa_samples {
+            sum = sum.rotate_left(5) ^ s as u64;
+        }
+        for nm in &self.reference.names {
+            sum = sum.rotate_left(5) ^ checksum(nm.as_bytes());
+        }
+        w.write_all(&sum.to_le_bytes())?;
         w.flush()
     }
 
@@ -241,8 +248,21 @@ impl FmIndex {
             sa_samples.push(u32le(take(4)?));
         }
         let sum = u64le(take(8)?);
-        if sum != checksum(&bwt) {
+        let mut want = checksum(&bwt);
+        for &s in &sa_samples {
+            want = want.rotate_left(5) ^ s as u64;
+        }
+        for nm in &names {
+            want = want.rotate_left(5) ^ checksum(nm.as_bytes());
+        }
+        if sum != want {
             return Err("index checksum mismatch (file is corrupt)".into());
+        }
+        if p != buf.len() {
+            return Err("trailing bytes after index data".into());
+        }
+        if sa_samples.iter().any(|&s| s as usize >= n) {
+            return Err("corrupt index (suffix-array sample out of range)".into());
         }
         let mut offsets = vec![];
         let mut o = 0;

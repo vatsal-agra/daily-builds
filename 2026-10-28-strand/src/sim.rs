@@ -126,14 +126,12 @@ fn transversion(rng: &mut Rng, b: u8) -> u8 {
 /// Genome with interspersed repeat families (diverged copies) and microsatellites.
 pub fn make_genome(rng: &mut Rng, p: &SimParams) -> Vec<u8> {
     let mut g: Vec<u8> = (0..p.length).map(|_| random_base(rng, p.gc)).collect();
-    let n_fam = (p.length / 30_000).clamp(2, 12);
     let target = (p.length as f64 * p.repeat_frac) as usize;
     let mut used = 0usize;
     while used < target {
         let unit_len = rng.range(150, 600).min(p.length / 10);
         let unit: Vec<u8> = (0..unit_len).map(|_| random_base(rng, p.gc)).collect();
         let copies = rng.range(2, 5);
-        let _ = n_fam;
         for _ in 0..copies {
             let div = 0.005 + rng.f64() * 0.03;
             let mut copy = Vec::with_capacity(unit_len + 8);
@@ -325,7 +323,14 @@ pub fn simulate(p: &SimParams) -> Result<SimOutput, String> {
     // uneven chromosome lengths
     let mut cuts: Vec<f64> = (0..p.chroms).map(|_| 0.6 + rng.f64()).collect();
     let tot: f64 = cuts.iter().sum();
-    let mut lens: Vec<usize> = cuts.iter_mut().map(|c| ((*c / tot) * p.length as f64) as usize).collect();
+    let floor = p.length / (2 * p.chroms);
+    let mut lens: Vec<usize> = cuts.iter_mut().map(|c| (((*c / tot) * p.length as f64) as usize).max(floor)).collect();
+    // the floor may overshoot: trim the largest chromosome so the total is exact
+    while lens.iter().sum::<usize>() > p.length {
+        let (imax, _) = lens.iter().enumerate().max_by_key(|(_, &l)| l).unwrap();
+        let over = lens.iter().sum::<usize>() - p.length;
+        lens[imax] -= over.min(lens[imax] - floor);
+    }
     let sum: usize = lens.iter().sum();
     *lens.last_mut().unwrap() += p.length - sum;
     let mut out = SimOutput { chroms: vec![], truth: vec![], reads: vec![] };
