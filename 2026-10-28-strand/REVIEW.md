@@ -39,3 +39,20 @@ the simulator's truth. Each finding below was reproduced before being fixed; "ev
 * Single-end reads only; indels longer than the band (24) are reported as clipped half-alignments (no supplementary/chimeric records).
 * One alternate allele per site; no MNP phasing; no read-group/BAM support.
 * Reference length limited to 4 Gb by 32-bit sample positions (asserted).
+
+## Second pass (Phases 4–5: assembler, evaluator, tests)
+
+| # | Finding | Fix |
+|---|---------|-----|
+| 16 | Assembly evaluator clipped away errors at chunk boundaries (SNPs and indels that fall on a 500-bp chunk edge were reported as 0 errors — test with 4 planted SNPs + 1 deletion on chunk boundaries returned 0.0/100 kb). | Chunks must align end to end (`clip_penalty` huge); chunks overlap by 100 bp and errors are counted only in each chunk's core; a deletion exactly on the core boundary is attributed to the chunk before it. |
+| 17 | The mutation harness (`tools/mutants.sh`) first reverted with `git checkout -- src`, which silently **wiped my uncommitted new tests** mid-run, making every later mutant look "surviving". Caught because the survivors were implausible. | Harness now backs up `src/` and restores it from the backup via `trap`; tests are committed before mutation runs. |
+| 18 | First mutation run: 4 genuine survivors → missing tests for strand-bias filtering, STR-aware indel error model, index sample-range validation, auto-cutoff noise rejection, het-fraction in the simulator, repeat-junction unitig breaks. | Added one targeted test for each (all now killed). |
+| 19 | Tip clipping had never fired in any demo (`tips clipped 0`: the count cut-off removes error k-mers first), so the code path was untested in practice. A direct test (no count filter) showed the first version barely helped (465 vs 590 fragments) because errors inside reads form *bubbles* — the two cleanups only work together. | Test now runs a no-filter regime with both cleanups and requires ≥ 2× fewer contigs and ≥ 2× N50; mutating the tip detector fails it. |
+| 20 | `report_check.js` demanded 4 SVGs but the demo report has 3 (2 contigs + spectrum): verify.sh went red on a wrong expectation, not a product bug. | Threshold corrected. |
+
+Final mutation score: **19 mutants, 16 killed, 3 equivalent** — (a) `FLANK` bounds are redundant with the window search range, (b) `changed`-flag early exit only matters for graphs needing > 1 clean/pop round, (c) the whole-read exact fast path is an optimisation proven byte-identical to the DP path (SAM diffed on 250 k reads).
+
+### Additional known limits (assembler)
+* k ≤ 31, single k, no paired-end scaffolding: microsatellites and repeats longer than the read length break contigs (N50 ≈ 4.5–5.7 kb on a 200 kb genome with 8 % repeats and 75 STRs; 95 % genome fraction, 0 misassemblies).
+* Bubble popping assumes simple bubbles (single-unitig branches ≤ 4k+20 bp); complex tangles are left alone.
+* `eval-asm` anchors 500-bp chunks; a repeat-copy chunk with MAPQ 0 is excluded from misassembly chaining.
