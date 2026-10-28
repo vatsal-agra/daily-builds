@@ -9,6 +9,7 @@ use strand::mapper::{evaluate_sam, map_all, read_sam, write_sam, MapParams};
 use strand::seq::{self, Reference};
 use strand::sim::{simulate, SimParams};
 use strand::vcf::{evaluate, read_vcf, write_vcf, Kind};
+use strand::{asmeval, dbg, mash, report};
 
 const HELP: &str = "\
 strand — genomics toolkit: FM-index aligner, variant caller, assembler
@@ -30,6 +31,13 @@ USAGE: strand <command> [options]
               call SNPs and indels
   eval-vcf  REF.fa TRUTH.vcf CALLS.vcf              precision / recall by class
   eval-map  ALN.sam [--tolerance N]                 mapping accuracy from simulated read names
+  assemble  READS.(fq|fa) -o CONTIGS.fa [-k 31 --min-count N --min-contig N --tip-len N --no-bubbles --spectrum]
+              de Bruijn assembly with tip clipping and bubble popping
+  eval-asm  TRUTH.fa CONTIGS.fa [--threads N]     genome fraction, misassemblies, error rates, NGA50
+  mash      A.fa B.fa [C.fa ...] [-k 21 -s 1000]  MinHash distances + UPGMA tree (one genome per file)
+  report    --ref REF.fa --sam ALN.sam --calls CALLS.vcf -o REPORT.html [--truth TRUTH.vcf]
+                    [--assemble READS --assembly-truth TRUTH.fa -k 31 --title T]
+              self-contained HTML report (coverage tracks, accuracy, assembly)
   demo      [--length N --seed S --threads N]       run the whole pipeline on a fresh simulation
   help
 ";
@@ -54,6 +62,10 @@ fn main() -> ExitCode {
         "call" => cmd_call(rest),
         "eval-vcf" => cmd_eval_vcf(rest),
         "eval-map" => cmd_eval_map(rest),
+        "assemble" => cmd_assemble(rest),
+        "eval-asm" => cmd_eval_asm(rest),
+        "mash" => cmd_mash(rest),
+        "report" => cmd_report(rest),
         "demo" => cmd_demo(rest),
         other => Err(CliError::Usage(format!("unknown command {:?} (try `strand help`)", other))),
     };
@@ -505,6 +517,190 @@ fn cmd_eval_map(a: &[String]) -> R {
     Ok(())
 }
 
+fn asm_params(a: &Args) -> Result<dbg::AsmParams, CliError> {
+    let d = dbg::AsmParams::default();
+    let p = dbg::AsmParams {
+        k: a.num("k", d.k)?,
+        min_count: match a.opts.get("min-count") {
+            None => None,
+            Some(_) => Some(a.num("min-count", 0u32)?),
+        },
+        min_contig: a.num("min-contig", d.min_contig)?,
+        tip_len: match a.opts.get("tip-len") {
+            None => None,
+            Some(_) => Some(a.num("tip-len", 0usize)?),
+        },
+        pop_bubbles: !a.flags.contains("no-bubbles"),
+        bubble_identity: d.bubble_identity,
+    };
+    p.validate().map_err(CliError::Usage)?;
+    Ok(p)
+}
+
+fn print_asm_stats(s: &dbg::AsmStats) {
+    println!(
+        "reads {}   distinct k-mers {}   solid {} (cut-off {}{}; coverage peak ~{}x)",
+        s.reads,
+        s.kmers_distinct,
+        s.kmers_solid,
+        s.cutoff,
+        if s.cutoff_auto { " auto" } else { "" },
+        s.coverage_peak
+    );
+    println!("tips clipped {}   bubbles popped {}", s.tips_removed, s.bubbles_popped);
+    println!("contigs {}   total {} bp   largest {}   N50 {}   L50 {}   N90 {}", s.contigs, s.total_len, s.largest, s.n50, s.l50, s.n90);
+}
+
+fn print_spectrum(h: &[u64]) {
+    let max = h.iter().skip(1).take(80).copied().max().unwrap_or(1).max(1);
+    println!("k-mer spectrum (multiplicity: distinct k-mers)");
+    for (c, &n) in h.iter().enumerate().skip(1).take(60) {
+        if n == 0 {
+            continue;
+        }
+        println!("{:>4} {:>9} {}", c, n, "#".repeat((50.0 * n as f64 / max as f64).ceil() as usize));
+    }
+}
+
+fn cmd_assemble(a: &[String]) -> R {
+    let a = parse_args(a, &["o", "k", "min-count", "min-contig", "tip-len"], &["no-bubbles", "spectrum"])?;
+    a.need(1, "READS")?;
+    let out = a.opts.get("o").ok_or_else(|| CliError::Usage("-o CONTIGS.fa is required".into()))?.clone();
+    let p = asm_params(&a)?;
+    let reads = seq::read_reads(&a.pos[0])?;
+    if reads.is_empty() {
+        return Err(CliError::Run(format!("{}: no reads", a.pos[0])));
+    }
+    let slices: Vec<&[u8]> = reads.iter().map(|r| r.seq.as_slice()).collect();
+    let t = Instant::now();
+    let asm = dbg::assemble(&slices, &p)?;
+    if a.flags.contains("spectrum") {
+        print_spectrum(&asm.spectrum);
+    }
+    let mut w = create(&out)?;
+    for (i, c) in asm.contigs.iter().enumerate() {
+        io(seq::write_fasta(&mut w, &format!("contig_{} len={} cov={:.1}", i + 1, c.seq.len(), c.cov), &c.seq), &out)?;
+    }
+    io(w.flush(), &out)?;
+    print_asm_stats(&asm.stats);
+    eprintln!("{:.2}s -> {}", t.elapsed().as_secs_f64(), out);
+    if asm.contigs.is_empty() {
+        return Err(CliError::Run("assembly produced no contigs above --min-contig".into()));
+    }
+    Ok(())
+}
+
+fn print_asm_eval(ev: &asmeval::AsmEval) {
+    println!("truth {} bp   assembly {} bp in {} contigs", ev.truth_len, ev.assembly_len, ev.contigs);
+    println!("genome fraction {:.2}%   duplication ratio {:.3}   unaligned {} bp", 100.0 * ev.genome_fraction, ev.duplication_ratio, ev.unaligned_bases);
+    println!("misassemblies {}   mismatches {:.1} /100kb   indels {:.1} /100kb   NGA50 {}", ev.misassemblies, ev.mismatches_per_100kb, ev.indels_per_100kb, ev.nga50);
+}
+
+fn cmd_eval_asm(a: &[String]) -> R {
+    let a = parse_args(a, &["threads"], &[])?;
+    a.need(2, "TRUTH.fa CONTIGS.fa")?;
+    let fm = load_index(&a.pos[0], 8)?;
+    let contigs: Vec<dbg::Contig> = seq::read_fasta(&a.pos[1])?.into_iter().map(|f| dbg::Contig { seq: f.seq, cov: 0.0 }).collect();
+    let ev = asmeval::evaluate_assembly(&fm, &contigs, a.num("threads", 4)?)?;
+    print_asm_eval(&ev);
+    for (i, c) in ev.per_contig.iter().enumerate().take(10) {
+        println!("  contig_{}: {} bp, {} block(s), {} misassembl{}, {} bp unaligned", i + 1, c.len, c.blocks, c.misassemblies, if c.misassemblies == 1 { "y" } else { "ies" }, c.unaligned);
+    }
+    Ok(())
+}
+
+fn cmd_mash(a: &[String]) -> R {
+    let a = parse_args(a, &["k", "s"], &[])?;
+    if a.pos.len() < 2 {
+        return Err(CliError::Usage("need at least two genome files".into()));
+    }
+    let k: usize = a.num("k", 21)?;
+    let size: usize = a.num("s", 1000)?;
+    let mut names = Vec::new();
+    let mut sketches = Vec::new();
+    for path in &a.pos {
+        let recs = seq::read_fasta(path)?;
+        let seqs: Vec<&[u8]> = recs.iter().map(|r| r.seq.as_slice()).collect();
+        sketches.push(mash::sketch(&seqs, k, size).map_err(|e| CliError::Run(format!("{}: {}", path, e)))?);
+        let base = std::path::Path::new(path).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| path.clone());
+        let mut nm: String = base.chars().map(|c| if c.is_alphanumeric() || c == '_' || c == '-' || c == '.' { c } else { '_' }).collect();
+        while names.contains(&nm) {
+            nm.push('_');
+        }
+        names.push(nm);
+    }
+    let d = mash::distance_matrix(&sketches)?;
+    print!("{:<14}", "");
+    for n in &names {
+        print!(" {:>10}", n.chars().take(10).collect::<String>());
+    }
+    println!();
+    for (i, row) in d.iter().enumerate() {
+        print!("{:<14}", names[i].chars().take(14).collect::<String>());
+        for v in row {
+            print!(" {:>10.5}", v);
+        }
+        println!();
+    }
+    println!("\n{}", mash::upgma_newick(&names, &d)?);
+    Ok(())
+}
+
+fn cmd_report(a: &[String]) -> R {
+    let a = parse_args(a, &["ref", "sam", "calls", "truth", "o", "assemble", "assembly-truth", "k", "title", "threads"], &[])?;
+    a.need(0, "no positional arguments (use --ref, --sam, --calls, -o)")?;
+    let need = |k: &str| -> Result<String, CliError> { a.opts.get(k).cloned().ok_or_else(|| CliError::Usage(format!("--{} is required", k))) };
+    let (ref_path, sam_path, calls_path, out) = (need("ref")?, need("sam")?, need("calls")?, need("o")?);
+    let refs = fasta_map(&ref_path)?;
+    let sam = read_sam(&sam_path)?;
+    let calls = read_vcf(&calls_path)?;
+    let cp = CallParams::default();
+    // pile-up depth for the coverage track (same filters as the caller)
+    let cr = call_variants(&refs, &sam, &cp)?;
+    let refmap: HashMap<String, Vec<u8>> = refs.iter().cloned().collect();
+    let truth = match a.opts.get("truth") {
+        Some(p) => Some(read_vcf(p)?),
+        None => None,
+    };
+    let ev = truth.as_ref().map(|t| evaluate(&refmap, t, &calls));
+    let me = evaluate_sam(&sam, 20);
+    let me_opt = if me.unparseable < me.total { Some(me) } else { None };
+    let threads: usize = a.num("threads", 4)?;
+    let asm_store;
+    let asm_eval_store;
+    let mut asm_input = None;
+    if let Some(rp) = a.opts.get("assemble") {
+        let reads = seq::read_reads(rp)?;
+        let slices: Vec<&[u8]> = reads.iter().map(|r| r.seq.as_slice()).collect();
+        let p = dbg::AsmParams { k: a.num("k", 31)?, ..dbg::AsmParams::default() };
+        p.validate().map_err(CliError::Usage)?;
+        asm_store = dbg::assemble(&slices, &p)?;
+        asm_eval_store = match a.opts.get("assembly-truth") {
+            Some(tp) => {
+                let fm = load_index(tp, 8)?;
+                Some(asmeval::evaluate_assembly(&fm, &asm_store.contigs, threads)?)
+            }
+            None => None,
+        };
+        asm_input = Some(report::AssemblyInput { stats: &asm_store.stats, contigs: &asm_store.contigs, spectrum: Some(&asm_store.spectrum), eval: asm_eval_store.as_ref() });
+    }
+    let html = report::render(&report::ReportInput {
+        title: a.opts.get("title").cloned().unwrap_or_else(|| "Strand run report".into()),
+        contigs: refs.iter().map(|(n, s)| (n.clone(), s.len())).collect(),
+        coverage: cr.coverage,
+        calls: &calls,
+        evaluation: ev.as_ref(),
+        sam: Some(&sam),
+        map_eval: me_opt.as_ref(),
+        assembly: asm_input,
+    });
+    let mut w = create(&out)?;
+    io(w.write_all(html.as_bytes()), &out)?;
+    io(w.flush(), &out)?;
+    eprintln!("wrote {} ({:.1} KB)", out, html.len() as f64 / 1024.0);
+    Ok(())
+}
+
 fn cmd_demo(a: &[String]) -> R {
     let a = parse_args(a, &["length", "seed", "threads", "o"], &[])?;
     let dir = a.opts.get("o").cloned().unwrap_or_else(|| format!("{}/strand-demo-{}", std::env::temp_dir().display(), std::process::id()));
@@ -548,6 +744,38 @@ fn cmd_demo(a: &[String]) -> R {
     let refmap: HashMap<String, Vec<u8>> = refs.into_iter().collect();
     let ev = evaluate(&refmap, &sim.truth, &cr.variants);
     print_eval(&ev);
-    println!("   outputs in {}", dir);
+
+    println!("== 5. assemble (haploid sample of the same size, no reference used) ==");
+    let ap = SimParams { ploidy: 1, chroms: 1, length: p.length.min(300_000), seed: p.seed + 100, coverage: 40.0, ..SimParams::default() };
+    let asim = simulate(&ap)?;
+    let slices: Vec<&[u8]> = asim.reads.iter().map(|r| r.seq.as_slice()).collect();
+    let t = Instant::now();
+    let asm = dbg::assemble(&slices, &dbg::AsmParams::default())?;
+    print_asm_stats(&asm.stats);
+    println!("   assembled in {:.2}s", t.elapsed().as_secs_f64());
+    let truth_rec = seq::Fasta { name: "truth".into(), seq: asim.chroms[0].haplotypes[0].clone() };
+    let afm = FmIndex::build(Reference::from_fasta(&[truth_rec])?, 8);
+    let aev = asmeval::evaluate_assembly(&afm, &asm.contigs, threads)?;
+    print_asm_eval(&aev);
+
+    println!("== 6. report ==");
+    let truth_for_report = &sim.truth;
+    let ev2 = evaluate(&refmap, truth_for_report, &cr.variants);
+    let html = report::render(&report::ReportInput {
+        title: format!("Strand demo — {} bp, seed {}", p.length, p.seed),
+        contigs: contigs.clone(),
+        coverage: cr.coverage,
+        calls: &cr.variants,
+        evaluation: Some(&ev2),
+        sam: Some(&sam),
+        map_eval: Some(&me),
+        assembly: Some(report::AssemblyInput { stats: &asm.stats, contigs: &asm.contigs, spectrum: Some(&asm.spectrum), eval: Some(&aev) }),
+    });
+    let rp = format!("{}/report.html", dir);
+    let mut w = create(&rp)?;
+    io(w.write_all(html.as_bytes()), &rp)?;
+    io(w.flush(), &rp)?;
+    println!("   {}", rp);
+    println!("   all outputs in {}", dir);
     Ok(())
 }

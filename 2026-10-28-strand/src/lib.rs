@@ -7,3 +7,7 @@ pub mod vcf;
 pub mod sim;
 pub mod mapper;
 pub mod caller;
+pub mod dbg;
+pub mod asmeval;
+pub mod mash;
+pub mod report;

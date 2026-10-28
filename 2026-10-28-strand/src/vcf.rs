@@ -233,6 +233,9 @@ impl ClassStats {
 pub struct Evaluation {
     pub snp: ClassStats,
     pub indel: ClassStats,
+    pub matched: Vec<Variant>,
+    /// per input call, in input order: None = not PASS (ignored), Some(true) = true positive, Some(false) = false positive
+    pub call_class: Vec<Option<bool>>,
     pub missed: Vec<Variant>,
     pub false_calls: Vec<Variant>,
 }
@@ -253,15 +256,24 @@ pub fn evaluate(refs: &HashMap<String, Vec<u8>>, truth: &[Variant], calls: &[Var
         o
     };
     let truth: Vec<Variant> = truth.iter().map(norm).collect();
-    let calls: Vec<Variant> = calls.iter().filter(|c| c.filter == "." || c.filter == "PASS").map(norm).collect();
+    let passing: Vec<bool> = calls.iter().map(|c| c.filter == "." || c.filter == "PASS").collect();
+    let calls_n: Vec<Variant> = calls.iter().filter(|c| c.filter == "." || c.filter == "PASS").map(norm).collect();
+    let calls = calls_n;
     let tmap: HashMap<_, _> = truth.iter().map(|v| (v.key(), v)).collect();
     let cmap: HashMap<_, _> = calls.iter().map(|v| (v.key(), v)).collect();
     let mut ev = Evaluation::default();
+    {
+        let mut it = calls.iter();
+        for &p in &passing {
+            ev.call_class.push(if p { Some(tmap.contains_key(&it.next().unwrap().key())) } else { None });
+        }
+    }
     for t in &truth {
         let cs = if t.kind() == Kind::Snp { &mut ev.snp } else { &mut ev.indel };
         match cmap.get(&t.key()) {
             Some(c) => {
                 cs.tp += 1;
+                ev.matched.push((*c).clone());
                 let canon = |g: Option<(u8, u8)>| g.map(|(a, b)| (a.min(b), a.max(b)));
                 if canon(c.gt) == canon(t.gt) {
                     cs.gt_match += 1;
