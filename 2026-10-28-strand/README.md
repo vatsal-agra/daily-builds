@@ -22,7 +22,7 @@ headless-browser check of the HTML report.
 
 ## Run it
 
-Requires Rust ≥ 1.75 (tested on 1.97). Node + Playwright are optional (browser check only).
+Requires Rust ≥ 1.70 (tested on 1.97). Node + Playwright are optional (browser check only).
 
 ```bash
 cargo build --release
@@ -72,9 +72,9 @@ Measured by `verify.sh` / the review runs (simulated data, so truth is exact):
 | 200 kb diploid, 30×, 100-bp reads | 99.6 % of mapped reads at true locus (100.000 % at MAPQ ≥ 20); SNP precision 1.000 / recall 0.95; indel precision 1.000 / recall ≥ 0.95; genotype concordance ≥ 0.98 |
 | 5 Mb, 4 contigs, 250 k reads | index 1.2 s (1.5 B/base on disk), mapping ~35 k reads/s on 4 threads |
 | 6× error rate | mapping accuracy 99.8 %, SNP precision 1.000 |
-| 1.3 % variant density | SNP F1 0.985, indel F1 0.966 |
+| 1.3 % variant density | SNP F1 0.985, indel F1 0.974 |
 | 50 % repeat content | recall falls to 0.82 (variants in near-identical copies are unmappable — honestly reported) |
-| 300 kb haploid assembly | 95 % genome fraction, 0 misassemblies, ≈ 2 mismatches / 100 kb |
+| 300 kb haploid assembly | 95 % genome fraction, 0 misassemblies, 1–11 mismatches / 100 kb depending on seed |
 
 ## Why I built this today
 
