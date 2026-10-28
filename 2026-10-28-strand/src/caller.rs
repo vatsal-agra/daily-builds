@@ -613,6 +613,80 @@ mod tests {
         assert!(call_variants(&wrong, &sam, &CallParams { ploidy: 3, ..CallParams::default() }).is_err());
     }
 
+    fn rec(name: &str, pos: usize, cigar: &str, seq: &[u8], flag: u16) -> crate::mapper::SamRecord {
+        crate::mapper::SamRecord {
+            name: name.into(),
+            flag,
+            rname: "c".into(),
+            pos,
+            mapq: 60,
+            cigar: crate::mapper::parse_cigar(cigar).unwrap(),
+            seq: seq.to_vec(),
+            qual: vec![b'I'; seq.len()],
+        }
+    }
+
+    #[test]
+    fn reads_clipped_at_an_indel_are_not_reference_evidence() {
+        // 200-bp random reference; every informative read carries a 2-bp insertion after position 100.
+        let mut rng = Rng::new(31);
+        let g = rand_dna(&mut rng, 200).into_bytes();
+        let mut records = vec![];
+        for i in 0..12 {
+            let st = 40 + i % 3;
+            let mut s = g[st..101].to_vec();
+            s.extend_from_slice(b"TG");
+            s.extend_from_slice(&g[101..141]);
+            let cig = format!("{}M2I40M", 101 - st);
+            records.push(rec(&format!("alt{}", i), st, &cig, &s, if i % 2 == 0 { 0 } else { 16 }));
+        }
+        for i in 0..14 {
+            // reads that stop exactly at the anchor: they cover base 100 but say nothing about the allele
+            let st = 60 + i % 3;
+            let s = g[st..101].to_vec();
+            records.push(rec(&format!("clip{}", i), st, &format!("{}M", 101 - st), &s, if i % 2 == 0 { 0 } else { 16 }));
+        }
+        let sam = SamFile { contigs: vec![("c".into(), 200)], records };
+        let refs = vec![("c".to_string(), g.clone())];
+        let r = call_variants(&refs, &sam, &CallParams::default()).unwrap();
+        let v = r.variants.iter().find(|v| v.kind() == crate::vcf::Kind::Ins).expect("insertion not called");
+        assert_eq!(v.ad.0, 0, "clipped reads must not count as reference support");
+        assert_eq!(v.gt, Some((1, 1)));
+    }
+
+    #[test]
+    fn homopolymer_indels_need_more_evidence_than_unique_ones() {
+        let mut rng = Rng::new(32);
+        let mut g = rand_dna(&mut rng, 200).into_bytes();
+        g[90] = b'C';
+        for b in g.iter_mut().take(103).skip(91) {
+            *b = b'A';
+        }
+        g[103] = b'G';
+        let build = |alt: usize, reference: usize, g: &Vec<u8>| {
+            let mut records = vec![];
+            for i in 0..alt {
+                let mut s = g[50..95].to_vec();
+                s.extend_from_slice(&g[96..150]);
+                records.push(rec(&format!("a{}", i), 50, "45M1D54M", &s, (i % 2) as u16 * 16));
+            }
+            for i in 0..reference {
+                records.push(rec(&format!("r{}", i), 50, "100M", &g[50..150], (i % 2) as u16 * 16));
+            }
+            SamFile { contigs: vec![("c".into(), 200)], records }
+        };
+        let refs = vec![("c".to_string(), g.clone())];
+        let r = call_variants(&refs, &build(5, 10, &g), &CallParams::default()).unwrap();
+        assert!(r.variants.is_empty(), "5/15 reads in a 12-A homopolymer is within slippage error: {:?}", r.variants);
+        // same counts in a unique context are a real heterozygous deletion
+        let mut u = rand_dna(&mut rng, 200).into_bytes();
+        u[95] = b'T';
+        u[96] = b'C';
+        let ru = vec![("c".to_string(), u.clone())];
+        let r = call_variants(&ru, &build(5, 10, &u), &CallParams::default()).unwrap();
+        assert!(r.variants.iter().any(|v| v.kind() == crate::vcf::Kind::Del && v.gt == Some((0, 1))), "{:?}", r.variants);
+    }
+
     #[test]
     fn empty_sam_gives_empty_calls() {
         let refs = vec![("c".to_string(), b"ACGTACGT".to_vec())];

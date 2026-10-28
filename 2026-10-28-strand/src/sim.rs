@@ -477,6 +477,21 @@ mod tests {
     }
 
     #[test]
+    fn het_fraction_is_respected() {
+        let genotypes = |het: f64| {
+            let p = SimParams { het_frac: het, snp_rate: 0.004, ..small() };
+            let o = simulate(&p).unwrap();
+            (o.truth.iter().filter(|v| v.is_het()).count(), o.truth.len())
+        };
+        let (h0, n0) = genotypes(0.0);
+        assert!(n0 > 30 && h0 == 0, "het_frac 0 must give only homozygous variants");
+        let (h1, n1) = genotypes(1.0);
+        assert_eq!(h1, n1, "het_frac 1 must give only heterozygous variants");
+        let (h5, n5) = genotypes(0.5);
+        assert!((h5 as f64 / n5 as f64 - 0.5).abs() < 0.2);
+    }
+
+    #[test]
     fn rejects_bad_params() {
         let mut p = small();
         p.ploidy = 3;
