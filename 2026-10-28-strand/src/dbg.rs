@@ -612,6 +612,15 @@ mod tests {
         let (cut, peak) = auto_cutoff(&h);
         assert!((3..=8).contains(&cut), "cutoff {}", cut);
         assert!((17..=23).contains(&peak), "peak {}", peak);
+        // a barely-there dip in an otherwise flat tail is noise, not an error valley
+        let mut noisy = vec![0u64; 256];
+        for (c, v) in [(1usize, 1000u64), (2, 500), (3, 320), (4, 300), (5, 306), (6, 312), (7, 310), (8, 309), (9, 311), (10, 310)] {
+            noisy[c] = v;
+        }
+        for c in 11..60 {
+            noisy[c] = 310;
+        }
+        assert_eq!(auto_cutoff(&noisy).0, 2);
         // flat/noisy spectrum -> safe default
         let flat = vec![10u64; 256];
         assert_eq!(auto_cutoff(&flat).0, 2);

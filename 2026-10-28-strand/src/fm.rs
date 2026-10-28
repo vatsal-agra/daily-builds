@@ -376,6 +376,25 @@ mod tests {
     }
 
     #[test]
+    fn out_of_range_sa_sample_with_valid_checksum_is_rejected() {
+        let fm = FmIndex::build(random_ref(6, 300), 4);
+        let dir = std::env::temp_dir().join(format!("strand_fm_oor_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.fm");
+        fm.save(path.to_str().unwrap()).unwrap();
+        let mut b = std::fs::read(&path).unwrap();
+        // first SA sample sits right after the BWT; poison it and re-seal the checksum
+        let body = b.len() - 8;
+        let first_sample = body - fm.sa_samples.len() * 4;
+        b[first_sample..first_sample + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        let sum = checksum(&b[..body]);
+        b[body..].copy_from_slice(&sum.to_le_bytes());
+        let e = FmIndex::from_bytes(&b).err().expect("must be rejected");
+        assert!(e.contains("out of range"), "{}", e);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn invalid_pattern_symbols() {
         let fm = FmIndex::build(random_ref(5, 100), 4);
         assert_eq!(fm.count(&[0]), 0);

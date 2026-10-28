@@ -688,6 +688,36 @@ mod tests {
     }
 
     #[test]
+    fn strand_biased_snp_is_filtered() {
+        let mut rng = Rng::new(33);
+        let g = rand_dna(&mut rng, 200).into_bytes();
+        let mut alt = g.clone();
+        alt[100] = if alt[100] == b'A' { b'C' } else { b'A' };
+        let mut records = vec![];
+        for i in 0..16 {
+            // alt-carrying reads are all forward-strand ...
+            records.push(rec(&format!("a{}", i), 60 + i % 5, "80M", &alt[60 + i % 5..140 + i % 5], 0));
+        }
+        for i in 0..32 {
+            // ... reference reads come from both strands
+            records.push(rec(&format!("r{}", i), 60 + i % 5, "80M", &g[60 + i % 5..140 + i % 5], (i % 2) as u16 * 16));
+        }
+        let refs = vec![("c".to_string(), g.clone())];
+        let sam = SamFile { contigs: vec![("c".into(), 200)], records };
+        let r = call_variants(&refs, &sam, &CallParams { keep_filtered: true, ..CallParams::default() }).unwrap();
+        let v = r.variants.iter().find(|v| v.pos == 100).expect("candidate site");
+        assert_eq!(v.filter, "StrandBias");
+        // the same evidence split over both strands passes
+        let mut records = vec![];
+        for i in 0..24 {
+            let src = if i < 12 { &alt } else { &g };
+            records.push(rec(&format!("x{}", i), 60 + i % 5, "80M", &src[60 + i % 5..140 + i % 5], (i % 2) as u16 * 16));
+        }
+        let r = call_variants(&refs, &SamFile { contigs: vec![("c".into(), 200)], records }, &CallParams::default()).unwrap();
+        assert!(r.variants.iter().any(|v| v.pos == 100 && v.filter == "PASS"));
+    }
+
+    #[test]
     fn empty_sam_gives_empty_calls() {
         let refs = vec![("c".to_string(), b"ACGTACGT".to_vec())];
         let sam = SamFile { contigs: vec![("c".into(), 8)], records: vec![] };

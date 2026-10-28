@@ -34,7 +34,7 @@ mut src/vcf.rs "if r.last() == a.last() && (r.len() > 1 || a.len() > 1)" "if fal
 mut src/mash.rs "(2.0 * j / (1.0 + j)).ln()" "(j).ln()"
 mut src/asmeval.rs "(p.diag - a.diag).abs() > DIAG_TOL" "false"
 mut src/sim.rs "if rng.chance(p.het_frac) {" "if true {"
-mut src/mapper.rs "c.exact |= exact;" ""
+EQUIV=1 mut src/mapper.rs "c.exact |= exact;" ""
 mut src/caller.rs "if alt_tot >= 6 && (af == 0 || ar == 0)" "if false && (af == 0 || ar == 0)"
 mut src/seq.rs "if r.names.contains(&f.name) {" "if false {"
 mut src/mapper.rs "if flag & 4 == 0 && !(seq.is_empty() && flag & (256 | 2048) != 0) {" "if flag & 4 == 0 {"
