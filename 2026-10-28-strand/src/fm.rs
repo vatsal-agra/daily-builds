@@ -168,30 +168,26 @@ impl FmIndex {
     }
 
     fn write_to<W: Write>(&self, w: &mut W) -> std::io::Result<()> {
-        w.write_all(MAGIC)?;
-        w.write_all(&VERSION.to_le_bytes())?;
-        w.write_all(&(self.sa_rate as u32).to_le_bytes())?;
-        w.write_all(&(self.reference.names.len() as u32).to_le_bytes())?;
+        let mut b: Vec<u8> = Vec::with_capacity(self.n + self.sa_samples.len() * 4 + 256);
+        b.extend_from_slice(MAGIC);
+        b.extend_from_slice(&VERSION.to_le_bytes());
+        b.extend_from_slice(&(self.sa_rate as u32).to_le_bytes());
+        b.extend_from_slice(&(self.reference.names.len() as u32).to_le_bytes());
         for i in 0..self.reference.names.len() {
             let nm = self.reference.names[i].as_bytes();
-            w.write_all(&(nm.len() as u32).to_le_bytes())?;
-            w.write_all(nm)?;
-            w.write_all(&(self.reference.lens[i] as u64).to_le_bytes())?;
+            b.extend_from_slice(&(nm.len() as u32).to_le_bytes());
+            b.extend_from_slice(nm);
+            b.extend_from_slice(&(self.reference.lens[i] as u64).to_le_bytes());
         }
-        w.write_all(&(self.reference.ambiguous as u64).to_le_bytes())?;
-        w.write_all(&(self.n as u64).to_le_bytes())?;
-        w.write_all(&self.bwt)?;
+        b.extend_from_slice(&(self.reference.ambiguous as u64).to_le_bytes());
+        b.extend_from_slice(&(self.n as u64).to_le_bytes());
+        b.extend_from_slice(&self.bwt);
         for &s in &self.sa_samples {
-            w.write_all(&s.to_le_bytes())?;
+            b.extend_from_slice(&s.to_le_bytes());
         }
-        let mut sum = checksum(&self.bwt);
-        for &s in &self.sa_samples {
-            sum = sum.rotate_left(5) ^ s as u64;
-        }
-        for nm in &self.reference.names {
-            sum = sum.rotate_left(5) ^ checksum(nm.as_bytes());
-        }
-        w.write_all(&sum.to_le_bytes())?;
+        let sum = checksum(&b);
+        b.extend_from_slice(&sum.to_le_bytes());
+        w.write_all(&b)?;
         w.flush()
     }
 
@@ -212,9 +208,18 @@ impl FmIndex {
             p += k;
             Ok(s)
         };
-        if take(8)? != MAGIC {
+        if buf.len() < 8 || &buf[..8] != MAGIC {
             return Err("not a Strand index (bad magic)".into());
         }
+        if buf.len() < 16 {
+            return Err("truncated index file".into());
+        }
+        // whole-file checksum first: any flipped bit, anywhere, is rejected before parsing
+        let body = buf.len() - 8;
+        if u64::from_le_bytes(buf[body..].try_into().unwrap()) != checksum(&buf[..body]) {
+            return Err("index checksum mismatch (file is corrupt or truncated)".into());
+        }
+        take(8)?;
         let u32le = |b: &[u8]| u32::from_le_bytes(b.try_into().unwrap());
         let u64le = |b: &[u8]| u64::from_le_bytes(b.try_into().unwrap());
         let ver = u32le(take(4)?);
@@ -247,17 +252,7 @@ impl FmIndex {
         for _ in 0..ns {
             sa_samples.push(u32le(take(4)?));
         }
-        let sum = u64le(take(8)?);
-        let mut want = checksum(&bwt);
-        for &s in &sa_samples {
-            want = want.rotate_left(5) ^ s as u64;
-        }
-        for nm in &names {
-            want = want.rotate_left(5) ^ checksum(nm.as_bytes());
-        }
-        if sum != want {
-            return Err("index checksum mismatch (file is corrupt)".into());
-        }
+        take(8)?; // checksum, already verified
         if p != buf.len() {
             return Err("trailing bytes after index data".into());
         }
@@ -362,6 +357,20 @@ mod tests {
         bytes[mid] = (bytes[mid] + 1) % 5;
         assert!(FmIndex::from_bytes(&bytes).is_err());
         assert!(FmIndex::from_bytes(&bytes[..20]).is_err());
+        // every single-byte corruption anywhere after the header must be caught (BWT, SA samples, names)
+        let orig = std::fs::read(&path).unwrap();
+        let mut undetected = 0;
+        for i in 8..orig.len() {
+            let mut b = orig.clone();
+            b[i] ^= 0x01;
+            if FmIndex::from_bytes(&b).is_ok() {
+                undetected += 1;
+            }
+        }
+        assert_eq!(undetected, 0, "bit flips that loaded successfully (see offsets above)");
+        let mut extra = orig.clone();
+        extra.push(0);
+        assert!(FmIndex::from_bytes(&extra).is_err());
         assert!(FmIndex::from_bytes(b"NOTANINDEXFILE__").is_err());
         std::fs::remove_dir_all(&dir).ok();
     }
