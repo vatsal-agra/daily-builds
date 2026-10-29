@@ -689,8 +689,11 @@ Model.param_env = param_env
 # ----------------------------------------------------------------------------------------
 # execution
 # ----------------------------------------------------------------------------------------
-def successors(m, s):
-    """All enabled transitions from s: [(pid, edge, next_state)].  May raise StepError."""
+def successors(m, s, errors=None):
+    """All enabled transitions from s: [(pid, edge, next_state)].
+
+    A transition that raises is a StepError.  By default the first one is raised; if `errors` is a
+    list, failures are appended to it instead and the remaining transitions are still returned."""
     out = []
     for p in m.procs:
         for e in p.out[s[p.pc_slot]]:
@@ -701,12 +704,13 @@ def successors(m, s):
                 t[p.pc_slot] = e.dst
                 if e.act is not None:
                     e.act(t)
-            except AssertFail as ex:
-                raise StepError(p.id, e, str(ex), "assert")
-            except ModelError as ex:
-                raise StepError(p.id, e, f"runtime error: {ex}", "error")
-            except (ValueError, OverflowError, MemoryError) as ex:
-                raise StepError(p.id, e, f"runtime error: {ex}", "error")
+            except (AssertFail, ModelError, ValueError, OverflowError, MemoryError) as ex:
+                kind = "assert" if isinstance(ex, AssertFail) else "error"
+                err = StepError(p.id, e, str(ex) if kind == "assert" else f"runtime error: {ex}", kind)
+                if errors is None:
+                    raise err
+                errors.append(err)
+                continue
             out.append((p.id, e, tuple(t)))
     return out
 

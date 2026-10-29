@@ -11,7 +11,7 @@ import time
 from .lang import ArgusError, parse_ltl_text
 from .live import check_ltl
 from .ltl import fmt_core, nnf, to_buchi
-from .model import StepError, build, state_str, successors, is_end
+from .model import StepError, build, diff_str, is_end, state_str, successors
 from .safety import check_safety
 from .trace import STUTTER, Trace, ValidationError, Violation, render, to_json, trace_from_json, validate
 
@@ -76,10 +76,10 @@ def cmd_check(args):
     if run_safety:
         sel = m.invariants
         if wanted and "safety" not in wanted:
-            m_inv = [i for i in m.invariants if i.name in wanted]
-            m.invariants = m_inv
+            sel = [i for i in m.invariants if i.name in wanted]
+        all_inv, m.invariants = m.invariants, sel
         res = check_safety(m, args.max_states, args.all, args.por)
-        m.invariants = sel
+        m.invariants = all_inv
         label = "safety (assertions, deadlock, runtime errors" + (", " + ", ".join(i.name for i in sel) if sel else "") + ")"
         stats = f"{n(res.states)} states, {n(res.transitions)} transitions, depth {res.depth}, {res.seconds:.2f}s"
         if args.por:
@@ -99,6 +99,8 @@ def cmd_check(args):
         elif res.limited:
             status = max(status, 3)
             say(f"? {label}: INCONCLUSIVE — state limit {n(args.max_states)} reached ({stats})")
+            say("  hint: the model may be unbounded — give counters a range (`var x: 0..7`) so overflow is caught,"
+                " bound loops, or raise --max-states")
         else:
             say(f"✓ {label}: holds — {stats}")
         report["properties"].append(entry)
@@ -154,7 +156,7 @@ def cmd_info(args):
         local = sum(e.local for node in p.out for e in node)
         total = sum(len(node) for node in p.out)
         labs = ", ".join(p.labels) or "-"
-        print(f"  process {p.name:<8} {len(p.out)} locations, {total} statements ({local} process-local), labels: {labs}")
+        print(f"  process {p.name:<{max(len(q.name) for q in m.procs)}} {len(p.out)} locations, {total} statements ({local} process-local), labels: {labs}")
     print(f"  invariants: " + (", ".join(f"{i.name}: {i.text}" for i in m.invariants) or "-"))
     print(f"  ltl       : " + (", ".join(i.name for i in m.ltls) or "-"))
     print(f"  initial   : {state_str(m, m.init)}")
@@ -193,17 +195,14 @@ def cmd_sim(args):
             pick = rng.choice(succ)
         pid, e, t = pick
         steps.append(pick)
-        from .model import diff_str
         ch = [c for c in diff_str(m, s, t) if not c.split(":")[0].endswith(".pc")]
         print(f"  {i:<2} {m.procs[pid].name:<6} {e.text}  (line {e.line})" + (f"   ↳ {'; '.join(ch)}" if ch else ""))
         s = t
     print(f"  final {state_str(m, s)}")
     if args.save:
-        v = Violation("simulation", "sim", "", Trace(m.init, steps))
-        d = {"kind": "simulation", "name": "sim", "message": "", "init": list(m.init) and to_json(m, Violation("invariant", "x", "", Trace(m.init, steps)))["init"],
-             "steps": to_json(m, Violation("invariant", "x", "", Trace(m.init, steps)))["steps"], "loop_to": None}
         with open(args.save, "w") as f:
-            json.dump(d, f, indent=1)
+            json.dump(to_json(m, Violation("simulation", "sim", "", Trace(m.init, steps))), f, indent=1)
+        print(f"saved {len(steps)}-step trace to {args.save}")
     return 0
 
 
@@ -213,13 +212,12 @@ def cmd_replay(args):
         d = json.load(f)
     v = trace_from_json(m, d)
     try:
-        if v.kind == "simulation":
-            v.kind = "none"
         facts = validate(m, v, args.fair, args.fair_by)
     except ValidationError as ex:
         print(f"✗ trace is NOT valid: {ex}")
         return 1
-    print(render(m, v, args.model) if v.kind != "none" else "")
+    if v.kind != "simulation":
+        print(render(m, v, args.model))
     for fct in facts:
         print("✓", fct)
     return 0
@@ -252,29 +250,35 @@ def cmd_buchi(args):
 def cmd_graph(args):
     m = load(args.model, args.D)
     ids, order, edges = {m.init: 0}, [m.init], []
+    kind = {}                      # state id -> "deadlock" | "end" | "frontier"
     i = 0
-    while i < len(order) and len(order) < args.max:
+    while i < len(order):
         s = order[i]
-        try:
-            succ = successors(m, s)
-        except StepError:
-            succ = []
+        errs = []
+        succ = successors(m, s, errs)
+        if not succ and not errs:
+            kind[i] = "end" if is_end(m, s) else "deadlock"
         for pid, e, t in succ:
             if t not in ids:
                 if len(order) >= args.max:
+                    kind[i] = "frontier"
                     continue
                 ids[t] = len(order)
                 order.append(t)
             edges.append((ids[s], ids[t], m.procs[pid].name, e.text))
         i += 1
     print("digraph states {\n  rankdir=TB; node [shape=box fontname=Helvetica fontsize=9];")
+    if len(order) >= args.max:
+        print(f'  label="truncated at {args.max} states (dashed = frontier)"; labelloc=t;')
     for s, k in ids.items():
-        succ_ok = True
-        label = state_str(m, s).replace('"', "'").replace("|", "\\n")
-        style = ' style=filled fillcolor="#ffd6d6"' if (not edges or all(e[0] != k for e in edges)) and not is_end(m, s) and k < len(order) else ""
+        label = state_str(m, s).replace('"', "'").replace("  |  ", "\\n")
+        style = {"deadlock": ' style=filled fillcolor="#ffd6d6"', "end": ' style=filled fillcolor="#d6f5d6"',
+                 "frontier": " style=dashed"}.get(kind.get(k), "")
+        if k == 0:
+            style += " penwidth=2"
         print(f'  s{k} [label="{label}"{style}];')
     for a, b, p, t in edges:
-        print(f'  s{a} -> s{b} [label="{p}: {t}" fontsize=8];')
+        print(f'  s{a} -> s{b} [label="{p}: {t.replace(chr(34), chr(39))}" fontsize=8];')
     print("}")
     return 0
 

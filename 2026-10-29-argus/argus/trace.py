@@ -35,11 +35,13 @@ class Violation:
 STUTTER = None   # edge placeholder for the terminal-state self-loop
 
 
-def step_label(m, pid, edge):
+def step_label(m, pid, edge, state=None):
+    pw = max(len(p.name) for p in m.procs)
     if edge is STUTTER:
-        return "(system halted — terminal state repeats forever)"
-    p = m.procs[pid]
-    return f"{p.name:<6} {edge.text}"
+        why = ("all processes finished" if state is not None and is_end(m, state)
+               else "DEADLOCKED: no process can move")
+        return f"{'-':<{pw}}  (system idle — {why}; this state repeats forever)"
+    return f"{m.procs[pid].name:<{pw}}  {edge.text}"
 
 
 def render(m, v, filename=None, color=False):
@@ -47,14 +49,17 @@ def render(m, v, filename=None, color=False):
     tr = v.trace
     fn = (filename or m.filename).split("/")[-1]
     n = len(tr.steps) + (1 if tr.fail else 0)
-    out = [f"✗ {v.title()}" + (f": {v.message}" if v.message and v.kind in ("assert", "error") else ""),
-           f"  counterexample: {n} step{'s' if n != 1 else ''}" +
+    msg = v.message[len("runtime error: "):] if v.message.startswith("runtime error: ") else v.message
+    how = ("violated in the initial state" if n == 0 else f"{n} step{'s' if n != 1 else ''}")
+    out = [f"✗ {v.title()}" + (f": {msg}" if msg and v.kind in ("assert", "error") else ""),
+           f"  counterexample: {how}" +
            (f" + loop of {len(tr.steps) - tr.loop_to}" if tr.loop_to is not None else ""), ""]
     if v.kind == "invariant" and v.prop is not None:
         out.insert(1, f"  condition: {v.prop.text}")
     width = len(str(len(tr.steps) + 1))
-    out.append(f"  {'#':>{width}}  {'process':<6} statement" + " " * 40 + "changes")
-    out.append(f"  {'0':>{width}}  init   " + state_str(m, tr.init))
+    pw = max(len(p.name) for p in m.procs)
+    out.append(f"  {'#':>{width}}  {'process':<{pw}}  statement")
+    out.append(f"  {'0':>{width}}  {'init':<{pw}}  " + state_str(m, tr.init))
     prev = tr.init
     for i, (pid, edge, st) in enumerate(tr.steps, 1):
         if tr.loop_to is not None and i == tr.loop_to + 1:
@@ -63,14 +68,14 @@ def render(m, v, filename=None, color=False):
         ch = diff_str(m, prev, st)
         if edge is not STUTTER:
             ch = [c for c in ch if not c.split(":")[0].endswith(".pc")] or ch[:0]
-        out.append(f"  {i:>{width}}  {step_label(m, pid, edge)}{loc}")
+        out.append(f"  {i:>{width}}  {step_label(m, pid, edge, st)}{loc}")
         if ch:
-            out.append(f"  {'':>{width}}       ↳ " + "; ".join(ch))
+            out.append(f"  {'':>{width}}  {'':<{pw}}  ↳ " + "; ".join(ch))
         prev = st
     if tr.fail:
         pid, edge, msg = tr.fail
         out.append(f"  {len(tr.steps) + 1:>{width}}  {step_label(m, pid, edge)}  ({fn}:{edge.line})")
-        out.append(f"  {'':>{width}}       ✗ {msg}")
+        out.append(f"  {'':>{width}}  {'':<{pw}}  ✗ {msg}")
     if tr.loop_to is not None:
         out.append(f"  {'':>{width}}  └── back to state after step {tr.loop_to}; this cycle repeats forever")
     out.append("")
@@ -146,10 +151,7 @@ def validate(m, v, fairness="weak", granularity="proc"):
     states = [s]
     enabled_masks = []
     for i, (pid, edge, claimed) in enumerate(tr.steps, 1):
-        try:
-            succ = successors(m, s)
-        except StepError as ex:
-            raise ValidationError(f"step {i}: source state already errors ({ex.msg})")
+        succ = successors(m, s, [])
         enabled_masks.append(succ)
         if edge is STUTTER:
             if succ:
@@ -176,26 +178,32 @@ def validate(m, v, fairness="weak", granularity="proc"):
             raise ValidationError("invariant actually holds in the final state")
         facts.append(f"invariant '{v.name}' ({inv.text}) is false in the final state")
     elif v.kind == "deadlock":
-        if successors(m, last):
+        errs = []
+        if successors(m, last, errs) or errs:
             raise ValidationError("final state has enabled transitions")
         if is_end(m, last):
             raise ValidationError("final state is a valid end state, not a deadlock")
         facts.append("final state has no enabled transition and some process is not at an end state")
     elif v.kind in ("assert", "error"):
         if tr.fail is None:
-            # failure raised while *computing* the step
-            raise ValidationError("safety violation trace without a failing step")
+            inv = next((x for x in m.invariants if x.name == v.name), None)
+            if v.kind != "error" or inv is None:
+                raise ValidationError("safety violation trace without a failing step")
+            try:
+                inv.fn(last)
+            except Exception as ex:
+                facts.append(f"evaluating invariant '{inv.name}' in the final state raises: {ex}")
+                return facts
+            raise ValidationError("invariant evaluates without error in the final state")
         pid, edge, msg = tr.fail
-        try:
-            successors(m, last)
-        except StepError as ex:
-            if ex.edge is not edge:
-                raise ValidationError(f"a different transition fails: {ex.edge.text}")
-            if (ex.kind == "assert") != (v.kind == "assert"):
-                raise ValidationError("failure kind mismatch")
-            facts.append(f"firing '{edge.text}' in the final state raises: {ex.msg}")
-        else:
+        errs = []
+        successors(m, last, errs)
+        ex = next((x for x in errs if x.edge is edge), None)
+        if ex is None:
             raise ValidationError("firing the final transition does not fail")
+        if (ex.kind == "assert") != (v.kind == "assert"):
+            raise ValidationError("failure kind mismatch")
+        facts.append(f"firing '{edge.text}' in the final state raises: {ex.msg}")
     elif v.kind == "ltl":
         facts.extend(_validate_lasso(m, v, states, enabled_masks, fairness, granularity))
     return facts

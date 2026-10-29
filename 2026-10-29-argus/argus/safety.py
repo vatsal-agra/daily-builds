@@ -100,16 +100,17 @@ def check_safety(m, max_states=1_500_000, find_all=False, por=False, deadlock=Tr
                         record(("inv", iv.name), "invariant", iv.name, "", s, prop=iv)
             if res.violations and not find_all and not step_err:
                 break
-            try:
-                succ = successors(m, s)
-            except StepError as ex:
+            errs = []
+            succ = successors(m, s, errs)
+            for ex in errs:
                 key = (ex.kind, ex.edge.id, ex.msg)
                 if key not in found:
                     if find_all:
                         record(key, ex.kind, ex.edge.text, ex.msg, s, fail=(ex.pid, ex.edge, ex.msg))
                     elif step_err is None:
                         step_err = (key, ex, s)
-                continue
+            if not succ and errs:
+                continue          # every enabled statement faulted; not a deadlock
             if not succ:
                 if is_end(m, s):
                     res.terminal += 1

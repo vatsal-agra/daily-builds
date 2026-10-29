@@ -3,7 +3,8 @@ import time
 from collections import deque
 
 from .ltl import _sccs, gpvw, nnf
-from .model import StepError, successors
+from .lang import ArgusError
+from .model import StepError, state_str, successors
 from .trace import STUTTER, Trace, Violation
 
 
@@ -39,9 +40,13 @@ def check_ltl(m, spec, fairness="weak", granularity="proc", max_states=1_500_000
         v = val_cache.get(s)
         if v is None:
             v = 0
-            for i, (_, fn) in enumerate(spec.atoms):
-                if fn(s):
-                    v |= 1 << i
+            for i, (text, fn) in enumerate(spec.atoms):
+                try:
+                    if fn(s):
+                        v |= 1 << i
+                except Exception as ex:
+                    raise ArgusError(f"ltl {spec.name}: cannot evaluate '{text}' in state "
+                                     f"[{state_str(m, s)}]: {ex}")
             val_cache[s] = v
         return v
 

@@ -220,6 +220,8 @@ class Parser:
             while self.accept(","):
                 params.append(self.ident())
         self.expect(")")
+        if len(set(params)) != len(params):
+            raise ArgusError(f"duplicate parameter name in process '{name}'", line, None, self.src)
         self.expect("{")
         locals_ = []
         while self.is_kw("var"):
