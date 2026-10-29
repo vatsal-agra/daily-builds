@@ -9,22 +9,23 @@ Pure Python 3 standard library. No dependencies. ~3k lines of checker, ~800 line
 
 ```
 $ python3 -m argus check models/philosophers.arg
-✗ safety (assertions, deadlock, runtime errors, forks_ok): VIOLATED — 20 states, 28 transitions, depth 3
+✗ safety (assertions, deadlock, runtime errors, forks_ok): VIOLATED — 20 states, 28 transitions, depth 3, 0.00s
 
 ✗ deadlock
   counterexample: 3 steps
 
   #  process  statement
-  0  init     fork=[0,0,0] eating=0  |  Phil0@L14(i=0 l=0 r=1) Phil1@L14(i=1 l=1 r=2) Phil2@L14(i=2 l=2 r=0)
-  1  Phil0    atomic { await fork[l] == 0; fork[l] = 1 }  (philosophers.arg:14)
-                 ↳ fork[0]: 0 → 1
-  2  Phil1    atomic { await fork[l] == 0; fork[l] = 1 }  (philosophers.arg:14)
-                 ↳ fork[1]: 0 → 1
-  3  Phil2    atomic { await fork[l] == 0; fork[l] = 1 }  (philosophers.arg:14)
-                 ↳ fork[2]: 0 → 1
+  0  init   fork=[0,0,0] eating=0  |  Phil0@L14(i=0 l=0 r=1) Phil1@L14(i=1 l=1 r=2) Phil2@L14(i=2 l=2 r=0)
+  1  Phil0  atomic { await fork[l] == 0; fork[l] = 1 }  (philosophers.arg:14)
+            ↳ fork[0]: 0 → 1
+  2  Phil1  atomic { await fork[l] == 0; fork[l] = 1 }  (philosophers.arg:14)
+            ↳ fork[1]: 0 → 1
+  3  Phil2  atomic { await fork[l] == 0; fork[l] = 1 }  (philosophers.arg:14)
+            ↳ fork[2]: 0 → 1
 
+  final state: fork=[1,1,1] eating=0  |  Phil0@L15(i=0 l=0 r=1) Phil1@L15(i=1 l=1 r=2) Phil2@L15(i=2 l=2 r=0)
   independent replay ✓ replayed 3 steps from the initial state; every step is enabled and deterministic
-                     ✓ final state has no enabled transition and some process is not at an end state
+                    ✓ final state has no enabled transition and some process is not at an end state
 ```
 
 ## Run it
