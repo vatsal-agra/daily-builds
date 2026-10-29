@@ -1,0 +1,41 @@
+// Chang-Roberts leader election on a unidirectional ring of N nodes.  Every node sends its id to
+// its successor; a node forwards ids larger than its own, swallows smaller ones, and declares
+// itself leader when its own id comes back.  Mailboxes hold one message (0 = empty).
+//   Safety   -- at most one leader, and it is the node with the largest id.
+//   Liveness -- some node is eventually elected (needs weak fairness).
+// expect: safety pass
+// expect: elected pass fair=weak
+
+
+const N = 4;
+var inbox[N] = 0;
+var leader[N] = 0;
+var nleaders = 0;
+
+proc Node(i, id) {
+    var next = (i + 1) % N;
+    var m = 0;
+    var done = 0;
+    atomic { await inbox[next] == 0; inbox[next] = id; }
+    while (done == 0) {
+        label end_wait:
+        atomic { await inbox[i] != 0; m = inbox[i]; inbox[i] = 0; }
+        if (m > id) {
+            atomic { await inbox[next] == 0; inbox[next] = m; }
+        } else if (m == id) {
+            atomic { leader[i] = 1; nleaders = nleaders + 1; }
+            done = 1;
+        }
+    }
+}
+
+// ids are a permutation of 1..N so the maximum is always N
+run Node(0, 2) as n0;
+run Node(1, 4) as n1;
+run Node(2, 1) as n2;
+run Node(3, 3) as n3;
+
+invariant one_leader: nleaders <= 1;
+invariant max_wins: !(leader[0] == 1 && n0.id != 4) && !(leader[1] == 1 && n1.id != 4)
+                 && !(leader[2] == 1 && n2.id != 4) && !(leader[3] == 1 && n3.id != 4);
+ltl elected: <> (nleaders == 1);

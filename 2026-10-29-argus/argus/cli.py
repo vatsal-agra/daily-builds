@@ -12,16 +12,19 @@ from .lang import ArgusError, parse_ltl_text
 from .live import check_ltl
 from .ltl import fmt_core, nnf, to_buchi
 from .model import StepError, build, diff_str, is_end, state_str, successors
+from .report import build_report, violation_data
 from .safety import check_safety
 from .trace import STUTTER, Trace, ValidationError, Violation, render, to_json, trace_from_json, validate
 
 
 def load(path, defines):
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             src = f.read()
     except OSError as ex:
         raise ArgusError(f"cannot read {path}: {ex.strerror}")
+    except UnicodeDecodeError:
+        raise ArgusError(f"{path} is not a UTF-8 text file")
     d = {}
     for item in defines or []:
         if "=" not in item:
@@ -45,12 +48,15 @@ def n(x):
 
 def run_validation(m, v, args, out):
     if args.no_validate:
+        v.facts = []
         return True
     try:
         facts = validate(m, v, getattr(v, "fairness", args.fair), getattr(v, "granularity", args.fair_by))
     except ValidationError as ex:
         out(f"  ✗ INTERNAL ERROR: counterexample failed independent replay: {ex}")
+        v.facts = []
         return False
+    v.facts = facts
     out("  independent replay ✓ " + facts[0])
     for f in facts[1:]:
         out("                    ✓ " + f)
@@ -59,10 +65,25 @@ def run_validation(m, v, args, out):
 
 def cmd_check(args):
     m = load(args.model, args.D)
-    say = print
-    if args.json:
-        say = lambda *a, **k: None
+    use_color = args.color == "always" or (args.color == "auto" and sys.stdout.isatty() and "NO_COLOR" not in os.environ)
+    paint = {"✓": "\033[32m", "✗": "\033[31m", "?": "\033[33m"}
+
+    def say(*a, **k):
+        if args.json:
+            return
+        text = " ".join(str(x) for x in a)
+        if use_color and text[:1] in paint:
+            text = paint[text[0]] + text[0] + "\033[0m" + text[1:]
+        print(text, **k)
+
     report = {"model": args.model, "properties": []}
+    hp, hv = [], []          # html report rows
+
+    def note(name, kind, status, detail):
+        hp.append({"name": name, "kind": kind, "status": status, "detail": detail})
+
+    def note_v(v):
+        hv.append(violation_data(m, v, getattr(v, "facts", [])))
     say(f"model {os.path.basename(args.model)}: {m.nproc} process(es), {len(m.edges)} statements, "
         f"{len(m.init)}-slot state vector, {len(m.invariants)} invariant(s), {len(m.ltls)} ltl propert{'y' if len(m.ltls) == 1 else 'ies'}")
     status = 0
@@ -89,20 +110,25 @@ def cmd_check(args):
         if res.violations:
             status = max(status, 1)
             say(f"✗ {label}: VIOLATED — {stats}")
+            note("safety", "safety", "bad", f"{len(res.violations)} violation(s) — {stats}")
             for v in res.violations:
                 say("")
                 say(render(m, v, args.model))
                 if not run_validation(m, v, args, say):
                     status = 2
                 entry["violations"].append(to_json(m, v))
+                note_v(v)
                 say("")
         elif res.limited:
             status = max(status, 3)
             say(f"? {label}: INCONCLUSIVE — state limit {n(args.max_states)} reached ({stats})")
             say("  hint: the model may be unbounded — give counters a range (`var x: 0..7`) so overflow is caught,"
                 " bound loops, or raise --max-states")
+            note("safety", "safety", "lim", f"state limit reached — {stats}")
         else:
             say(f"✓ {label}: holds — {stats}")
+            note("safety", "safety", "ok", f"assertions, deadlock-freedom, runtime errors"
+                 + (f", invariants {', '.join(i.name for i in sel)}" if sel else "") + f" — {stats}")
         report["properties"].append(entry)
 
     if not args.no_ltl:
@@ -121,6 +147,8 @@ def cmd_check(args):
                 say("")
                 say(render(m, res.error, args.model))
                 entry["violations"].append(to_json(m, res.error))
+                note(spec.name, "ltl", "bad", "a safety error is reachable, so the property cannot be checked")
+                note_v(res.error)
             elif res.violation is not None:
                 status = max(status, 1)
                 say(f"✗ ltl {spec.name}: VIOLATED — {stats}")
@@ -129,15 +157,25 @@ def cmd_check(args):
                 if not run_validation(m, res.violation, args, say):
                     status = 2
                 entry["violations"].append(to_json(m, res.violation))
+                note(spec.name, "ltl", "bad", f"violated — {stats}")
+                note_v(res.violation)
                 say("")
             elif res.limited:
                 status = max(status, 3)
                 say(f"? ltl {spec.name}: INCONCLUSIVE — state limit reached ({stats})")
+                note(spec.name, "ltl", "lim", f"state limit reached — {stats}")
             else:
                 say(f"✓ ltl {spec.name}: holds — {stats}")
+                note(spec.name, "ltl", "ok", f"holds — {stats}")
             report["properties"].append(entry)
     if args.json:
         print(json.dumps(report, indent=2))
+    if args.html:
+        summary = (f"{m.nproc} process(es), {len(m.edges)} statements — "
+                   f"{sum(p['status'] == 'ok' for p in hp)} of {len(hp)} checks hold")
+        with open(args.html, "w") as fh:
+            fh.write(build_report(m, os.path.basename(args.model), hp, hv, summary))
+        say(f"wrote interactive report to {args.html}")
     if args.save_trace and any(p["violations"] for p in report["properties"]):
         first = next(v for p in report["properties"] for v in p["violations"])
         with open(args.save_trace, "w") as f:
@@ -369,6 +407,8 @@ def main(argv=None):
     p.add_argument("--json", action="store_true")
     p.add_argument("--no-validate", action="store_true", help="skip the independent counterexample replay")
     p.add_argument("--save-trace", metavar="FILE")
+    p.add_argument("--html", metavar="FILE", help="write a self-contained interactive HTML report")
+    p.add_argument("--color", choices=["auto", "always", "never"], default="auto")
     p.set_defaults(fn=cmd_check)
 
     p = sub.add_parser("info", help="summarise a model")
@@ -412,6 +452,9 @@ def main(argv=None):
         return 2
     except BrokenPipeError:
         return 0
+    except KeyboardInterrupt:
+        print("interrupted", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":

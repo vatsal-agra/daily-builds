@@ -100,6 +100,22 @@ class CliRegressions(unittest.TestCase):
         code, out, err = run("check", "/nonexistent/file.arg")
         self.assertEqual(code, 2)
 
+    def test_html_report(self):
+        import re
+        path = tempfile.mktemp(suffix=".html")
+        code, out, _ = run("check", os.path.join(MODELS, "abp.arg"), "--html", path)
+        self.assertEqual(code, 1)
+        page = open(path).read()
+        self.assertIn("<title>Argus report", page)
+        blob = re.search(r'<script id="data" type="application/json">(.*?)</script>', page, re.S).group(1)
+        d = json.loads(blob)
+        self.assertEqual([p["status"] for p in d["properties"]], ["ok", "bad"])
+        v = d["violations"][0]
+        self.assertEqual(len(v["states"]), len(v["steps"]) + 1)
+        self.assertIsNotNone(v["loop_to"])
+        self.assertTrue(any("FALSE" in f for f in v["facts"]))
+        self.assertNotIn("</script><", blob)
+
     def test_verify_runner(self):
         code, out, _ = run("verify", MODELS)
         self.assertEqual(code, 0, out)
@@ -108,3 +124,13 @@ class CliRegressions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InputHandling(unittest.TestCase):
+    def test_binary_empty_and_directory_inputs(self):
+        binf = tempfile.mktemp(suffix=".arg")
+        open(binf, "wb").write(bytes(range(256)))
+        for target in (binf, model(""), MODELS):
+            code, out, err = run("check", target)
+            self.assertEqual(code, 2, target)
+            self.assertTrue(err.startswith("error:"), err)

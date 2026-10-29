@@ -1,0 +1,31 @@
+// The same ring election with a classic bug: nodes forward *every* id instead of swallowing the
+// smaller ones.  Every id circulates fully, so every node eventually sees its own id and
+// declares itself leader.
+// expect: safety fail kind=invariant
+
+const N = 3;
+var inbox[N] = 0;
+var nleaders = 0;
+
+proc Node(i, id) {
+    var next = (i + 1) % N;
+    var m = 0;
+    var done = 0;
+    atomic { await inbox[next] == 0; inbox[next] = id; }
+    while (done == 0) {
+        label end_wait:
+        atomic { await inbox[i] != 0; m = inbox[i]; inbox[i] = 0; }
+        if (m == id) {
+            atomic { nleaders = nleaders + 1; }
+            done = 1;
+        } else {
+            atomic { await inbox[next] == 0; inbox[next] = m; }
+        }
+    }
+}
+
+run Node(0, 2);
+run Node(1, 3);
+run Node(2, 1);
+
+invariant one_leader: nleaders <= 1;
