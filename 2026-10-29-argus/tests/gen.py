@@ -10,6 +10,8 @@ def rand_program(rng, nprocs=None, loops=False):
         body = []
         for _ in range(rng.randint(2, 5)):
             body.append(rand_stmt(rng, H, loops))
+        if rng.random() < 0.2:      # a purely local infinite loop: the "ignoring" problem of POR
+            body.append("loop { a = (a + 1) % 2; }")
         out.append(f"proc P{k}() {{ var a : 0..20 = 0; var b : 0..20 = 0;\n  " + "\n  ".join(body) + "\n}")
         out.append(f"run P{k}();")
     out.append(f"invariant inv: h <= {rng.randint(1, H + 1)};")

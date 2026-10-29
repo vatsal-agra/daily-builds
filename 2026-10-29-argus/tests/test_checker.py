@@ -94,6 +94,37 @@ class SafetyTests(unittest.TestCase):
         self.assertLess(reduced_total, full_total)   # POR actually reduces something
 
 
+class PorTests(unittest.TestCase):
+    def test_cycle_proviso_prevents_ignoring(self):
+        # A spins on local state forever; without the proviso POR would always pick A and never run B
+        src = """var g = 0;
+        proc A() { var a = 0; loop { a = 1 - a; } }
+        proc B() { g = 1; assert g == 0, "ignored"; }
+        run A(); run B();"""
+        m = build(src)
+        self.assertEqual(check_safety(m).violations[0].kind, "assert")
+        r = check_safety(m, por=True)
+        self.assertEqual(r.violations[0].kind, "assert")
+        validate(m, r.violations[0])
+
+    def test_processes_observed_by_properties_are_not_reduced(self):
+        src = """proc P() { var t = 0; t = 1; label here: t = 2; }
+        proc Q() { var u = 0; u = 1; label there: u = 2; }
+        run P(); run Q();
+        invariant both: !(at(P0, here) && at(Q0, there));"""
+        m = build(src)
+        self.assertEqual(check_safety(m).violations[0].kind, "invariant")
+        self.assertEqual(check_safety(m, por=True).violations[0].kind, "invariant")
+
+    def test_local_only_processes_collapse(self):
+        src = "proc P() { var a = 0; a = 1; a = 2; a = 3; } run P(); run P(); run P();"
+        m = build(src)
+        full, red = check_safety(m), check_safety(m, por=True)
+        self.assertEqual(full.states, 4 ** 3)
+        self.assertLess(red.states, 20)
+        self.assertTrue(red.ok)
+
+
 class CompileErrorTests(unittest.TestCase):
     def bad(self, src, frag):
         with self.assertRaises(ArgusError) as cm:
