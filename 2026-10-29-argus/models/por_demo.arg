@@ -1,0 +1,24 @@
+// Three workers do a lot of purely local computation and then publish into a shared total.
+// Interleaving the local steps is pointless -- partial-order reduction collapses them.
+// expect: safety pass
+// expect: safety pass por=1
+
+var total = 0;
+
+proc Worker(k) {
+    var a = 0;
+    var b = 0;
+    var i = 0;
+    while (i < 4) {
+        a = a + k;
+        b = b + a;
+        i = i + 1;
+    }
+    atomic { total = total + b; }
+}
+
+run Worker(1);
+run Worker(2);
+run Worker(3);
+
+invariant sane: total >= 0;

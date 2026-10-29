@@ -1,0 +1,31 @@
+// Dining philosophers with a global resource ordering (always take the lower-numbered fork
+// first): no deadlock.  Starvation, however, is only ruled out under *strong* fairness: a
+// neighbour can keep re-grabbing the fork in the instants it is free, and weak fairness (which
+// only protects processes that are enabled *continuously*) cannot stop that.
+// expect: safety pass
+// expect: eats0 fail fair=weak kind=ltl
+// expect: eats0 pass fair=strong
+
+const N = 3;
+var fork[N] = 0;
+var eating = 0;
+
+proc Phil(i) {
+    var a = i < (i + 1) % N ? i : (i + 1) % N;
+    var b = i < (i + 1) % N ? (i + 1) % N : i;
+    loop {
+        label hungry:
+        atomic { await fork[a] == 0; fork[a] = 1; }
+        atomic { await fork[b] == 0; fork[b] = 1; }
+        label eat:
+        eating = eating + 1;
+        eating = eating - 1;
+        fork[b] = 0;
+        fork[a] = 0;
+    }
+}
+
+for i in 0..N-1 { run Phil(i); }
+
+invariant forks_ok: eating <= N / 2;
+ltl eats0: [] (at(Phil0, hungry) -> <> at(Phil0, eat));

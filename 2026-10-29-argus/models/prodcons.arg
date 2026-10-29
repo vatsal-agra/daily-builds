@@ -1,0 +1,32 @@
+// Bounded producer/consumer over a FIFO channel.  The consumer checks FIFO order.
+// expect: safety pass
+// expect: delivered pass fair=weak
+
+const ITEMS = 4;
+chan q[2];
+var got = 0;
+
+proc Producer() {
+    var i = 0;
+    while (i < ITEMS) {
+        send(q, i);
+        i = i + 1;
+    }
+}
+
+proc Consumer() {
+    var x = 0;
+    var next = 0;
+    while (next < ITEMS) {
+        recv(q, x);
+        assert x == next, "out of order delivery";
+        next = next + 1;
+        got = got + 1;
+    }
+}
+
+run Producer();
+run Consumer();
+
+invariant bounded: len(q) <= 2;
+ltl delivered: <> (got == ITEMS);

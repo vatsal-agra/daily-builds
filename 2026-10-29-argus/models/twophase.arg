@@ -1,0 +1,45 @@
+// Two-phase commit: a coordinator and two participants that vote nondeterministically.
+//   Atomicity -- no participant commits while another aborts.
+//   Termination -- every participant eventually decides.
+// expect: safety pass
+// expect: terminates pass fair=weak
+
+chan to_c[2] of 2;        // (participant id, vote)  1 = yes, 0 = no
+chan to_p0[1];            // decision: 1 = commit, 2 = abort
+chan to_p1[1];
+var outcome[2] = 0;       // 0 = undecided, 1 = committed, 2 = aborted
+
+proc Participant(id) {
+    var vote = 0;
+    var d = 0;
+    nondet vote in 0..1;
+    send(to_c, id, vote);
+    if (id == 0) { recv(to_p0, d); } else { recv(to_p1, d); }
+    outcome[id] = d;
+}
+
+proc Coordinator() {
+    var who = 0;
+    var v = 0;
+    var yes = 0;
+    var got = 0;
+    while (got < 2) {
+        recv(to_c, who, v);
+        yes = yes + v;
+        got = got + 1;
+    }
+    if (yes == 2) {
+        send(to_p0, 1);
+        send(to_p1, 1);
+    } else {
+        send(to_p0, 2);
+        send(to_p1, 2);
+    }
+}
+
+run Participant(0);
+run Participant(1);
+run Coordinator();
+
+invariant atomic_commit: !(outcome[0] == 1 && outcome[1] == 2) && !(outcome[0] == 2 && outcome[1] == 1);
+ltl terminates: <> (outcome[0] != 0 && outcome[1] != 0);

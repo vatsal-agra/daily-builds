@@ -1,0 +1,38 @@
+// Lamport's bakery algorithm, each process enters its critical section once.
+// The ticket maximum is computed with a deliberately non-atomic loop, as in the original.
+// expect: safety pass
+// expect: safety pass D=N:3
+
+const N = 2;
+var choosing[N] = 0;
+var number[N] : 0..N+1 = 0;
+var in_cs = 0;
+
+proc P(me) {
+    var j = 0;
+    var m = 0;
+    choosing[me] = 1;
+    j = 0;
+    while (j < N) {
+        if (number[j] > m) { m = number[j]; }
+        j = j + 1;
+    }
+    number[me] = m + 1;
+    choosing[me] = 0;
+    j = 0;
+    while (j < N) {
+        if (j != me) {
+            await choosing[j] == 0;
+            await number[j] == 0 || number[j] > number[me] || (number[j] == number[me] && j > me);
+        }
+        j = j + 1;
+    }
+    in_cs = in_cs + 1;
+    label cs:
+    in_cs = in_cs - 1;
+    number[me] = 0;
+}
+
+for i in 0..N-1 { run P(i); }
+
+invariant mutex: in_cs <= 1;

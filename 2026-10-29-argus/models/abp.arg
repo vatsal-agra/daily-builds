@@ -1,0 +1,73 @@
+// Alternating-bit protocol over two lossy channels (the "medium" processes may drop any
+// message).  The sender retransmits on (nondeterministic) timeout.
+//   Safety   -- the receiver delivers messages exactly once, in order.
+//   Liveness -- every message is eventually delivered; false if the medium may drop forever,
+//               true once each *statement* is treated fairly (strong fairness per edge).
+// expect: safety pass
+// expect: all_delivered fail fair=weak kind=ltl
+// expect: all_delivered pass fair=strong by=edge
+
+const M = 2;
+chan dtx[1] of 2;     // sender   -> data medium   (bit, payload)
+chan drx[1] of 2;     // data medium -> receiver
+chan atx[1];          // receiver -> ack medium
+chan arx[1];          // ack medium -> sender
+var delivered = 0;
+
+proc Sender() {
+    var bit = 0;
+    var i = 0;
+    var a = 0;
+    while (i < M) {
+        send(dtx, bit, i);
+        either {
+            recv(arx, a);
+            if (a == bit) { bit = 1 - bit; i = i + 1; }
+        } or {
+            skip;                      // timeout: retransmit
+        }
+    }
+}
+
+proc DataMedium() {
+    var b = 0;
+    var v = 0;
+    loop {
+        label end_idle:
+        recv(dtx, b, v);
+        either { send(drx, b, v); } or { skip; }     // deliver or lose
+    }
+}
+
+proc AckMedium() {
+    var b = 0;
+    loop {
+        label end_idle:
+        recv(atx, b);
+        either { send(arx, b); } or { skip; }
+    }
+}
+
+proc Receiver() {
+    var exp = 0;
+    var b = 0;
+    var v = 0;
+    loop {
+        label end_idle:
+        recv(drx, b, v);
+        if (b == exp) {
+            assert v == delivered, "duplicate or out-of-order delivery";
+            delivered = delivered + 1;
+            exp = 1 - exp;
+        }
+        send(atx, b);
+    }
+}
+
+run Sender();
+run DataMedium();
+run AckMedium();
+run Receiver();
+
+invariant in_range: delivered <= M;
+ltl all_delivered: <> (delivered == M);

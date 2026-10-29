@@ -1,0 +1,26 @@
+// Dining philosophers, every philosopher grabs the left fork then the right fork.
+// All N grab their left fork at once -> circular wait -> deadlock.
+// expect: safety fail kind=deadlock
+// expect: safety fail kind=deadlock D=N:4
+
+const N = 3;
+var fork[N] = 0;      // 0 = free, 1 = taken
+var eating = 0;
+
+proc Phil(i) {
+    var l = i;
+    var r = (i + 1) % N;
+    loop {
+        atomic { await fork[l] == 0; fork[l] = 1; }
+        atomic { await fork[r] == 0; fork[r] = 1; }
+        label eat:
+        eating = eating + 1;
+        eating = eating - 1;
+        fork[r] = 0;
+        fork[l] = 0;
+    }
+}
+
+for i in 0..N-1 { run Phil(i); }
+
+invariant forks_ok: eating <= N / 2;

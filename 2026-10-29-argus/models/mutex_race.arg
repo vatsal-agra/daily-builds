@@ -1,0 +1,22 @@
+// A "mutex" that checks the other flag *before* raising its own: the classic check-then-act race.
+// Both processes can pass the test before either raises its flag.
+// expect: safety fail kind=invariant
+
+var flag[2] = 0;
+var crit = 0;
+
+proc P(me) {
+    var other = 1 - me;
+    loop {
+        await flag[other] == 0;
+        flag[me] = 1;
+        crit = crit + 1;
+        crit = crit - 1;
+        flag[me] = 0;
+    }
+}
+
+run P(0);
+run P(1);
+
+invariant mutex: crit <= 1;

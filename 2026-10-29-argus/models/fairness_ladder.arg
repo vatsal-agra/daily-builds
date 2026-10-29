@@ -1,0 +1,33 @@
+// Why fairness assumptions matter -- three properties, three different answers.
+//   done2  -- Eager is *always* enabled; without any fairness the scheduler may ignore it forever.
+//   done1  -- Waiter is enabled only *intermittently* (while `a` is 1): weak fairness does not
+//             protect it, strong fairness does.
+// expect: safety pass
+// expect: done2 fail fair=none kind=ltl
+// expect: done2 pass fair=weak
+// expect: done1 fail fair=weak kind=ltl
+// expect: done1 pass fair=strong
+
+var a = 0;
+var done1 = 0;
+var done2 = 0;
+
+proc Toggler() {
+    loop { a = 1 - a; }
+}
+
+proc Waiter() {
+    await a == 1;
+    done1 = 1;
+}
+
+proc Eager() {
+    done2 = 1;
+}
+
+run Toggler();
+run Waiter();
+run Eager();
+
+ltl done1: <> (done1 == 1);
+ltl done2: <> (done2 == 1);

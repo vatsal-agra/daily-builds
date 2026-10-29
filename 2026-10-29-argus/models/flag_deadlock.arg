@@ -1,0 +1,22 @@
+// Peterson without the tie-breaking `turn` variable: mutual exclusion holds, but if both raise
+// their flag at once, both wait forever.
+// expect: safety fail kind=deadlock
+
+var flag[2] = 0;
+var crit = 0;
+
+proc P(me) {
+    var other = 1 - me;
+    loop {
+        flag[me] = 1;
+        await flag[other] == 0;
+        crit = crit + 1;
+        crit = crit - 1;
+        flag[me] = 0;
+    }
+}
+
+run P(0);
+run P(1);
+
+invariant mutex: crit <= 1;

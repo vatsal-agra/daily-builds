@@ -1,0 +1,20 @@
+// The same counter, with the read-modify-write made atomic.
+// expect: safety pass
+
+var counter = 0;
+var done = 0;
+
+proc Worker() {
+    atomic { counter = counter + 1; }
+    atomic { done = done + 1; }
+}
+
+proc Watcher() {
+    await done == 3;
+    assert counter == 3, "lost update: counter != 3";
+}
+
+run Worker();
+run Worker();
+run Worker();
+run Watcher();

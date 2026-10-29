@@ -1,0 +1,31 @@
+// Peterson's mutual-exclusion algorithm for two processes.
+// Safety: never two processes in the critical section.
+// Liveness: a process that wants in eventually gets in -- but only if the scheduler is fair.
+// expect: safety pass
+// expect: live0 pass fair=weak
+// expect: live1 pass fair=weak
+
+var flag[2] = 0;
+var turn = 0;
+var crit = 0;
+
+proc P(me) {
+    var other = 1 - me;
+    loop {
+        flag[me] = 1;
+        turn = other;
+        label try:
+        await flag[other] == 0 || turn == me;
+        label cs:
+        crit = crit + 1;
+        crit = crit - 1;
+        flag[me] = 0;
+    }
+}
+
+run P(0);
+run P(1);
+
+invariant mutex: crit <= 1;
+ltl live0: [] (at(P0, try) -> <> at(P0, cs));
+ltl live1: [] (at(P1, try) -> <> at(P1, cs));

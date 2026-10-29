@@ -1,0 +1,14 @@
+// Runtime errors are reported like any other violation: here an off-by-one array write.
+// expect: safety fail kind=error
+
+var buf[3] = 0;
+
+proc Filler() {
+    var i = 0;
+    while (i <= 3) {
+        buf[i] = i;
+        i = i + 1;
+    }
+}
+
+run Filler();
