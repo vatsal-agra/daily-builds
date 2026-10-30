@@ -135,3 +135,44 @@ func TestProbeSubImageOffset(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+func TestStructuredAppendAcrossOneImage(t *testing.T) {
+	data := []byte("structured append scanned from a single photo. 0123456789 abcdefghijklmnopqrstuvwxyz ")
+	codes, err := qr.EncodeStructured(data, 3, qr.Options{ECC: qr.M})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var imgs []*image.Gray
+	w, h := 20, 0
+	for _, c := range codes {
+		im := c.Matrix.Image(5, 4)
+		imgs = append(imgs, im)
+		w += im.Bounds().Dx() + 10
+		h = max(h, im.Bounds().Dy())
+	}
+	canvas := image.NewGray(image.Rect(0, 0, w, h+20))
+	for i := range canvas.Pix {
+		canvas.Pix[i] = 255
+	}
+	x := 10
+	for _, im := range imgs {
+		for yy := 0; yy < im.Bounds().Dy(); yy++ {
+			for xx := 0; xx < im.Bounds().Dx(); xx++ {
+				canvas.SetGray(x+xx, 10+yy, im.GrayAt(xx, yy))
+			}
+		}
+		x += im.Bounds().Dx() + 10
+	}
+	ds, err := Scan(canvas, Options{})
+	if err != nil || len(ds) != 3 {
+		t.Fatalf("found %d symbols: %v", len(ds), err)
+	}
+	var rs []*qr.Result
+	for _, d := range ds {
+		rs = append(rs, d.Result)
+	}
+	got, err := qr.Reassemble(rs)
+	if err != nil || string(got) != string(data) {
+		t.Fatalf("reassembly: %v", err)
+	}
+}

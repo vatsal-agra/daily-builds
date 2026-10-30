@@ -94,6 +94,7 @@ func decodeOnce(m *Matrix, opt DecodeOptions) (*Result, error) {
 	version := (m.N - 17) / 4
 	l := NewLayout(version)
 	cands := formatCandidates(m)
+	var bestErr error
 	for i, c := range cands {
 		res, err := decodeWithFormat(m, l, opt, c.ecc, c.mask)
 		if err == nil {
@@ -101,11 +102,17 @@ func decodeOnce(m *Matrix, opt DecodeOptions) (*Result, error) {
 			res.FormatBruteForced = c.dist > 3
 			return res, nil
 		}
+		if i == 0 {
+			bestErr = err // the most plausible (level, mask): its failure is the informative one
+		}
 		// Within the BCH-correctable radius only the nearest candidates are credible,
 		// but a wrong guess is harmless: RS verification rejects it.
 		if i >= 40 {
 			break
 		}
+	}
+	if cands[0].dist <= 3 && bestErr != nil {
+		return nil, bestErr // format info was fine; the data area is what is beyond repair
 	}
 	return nil, ErrFormat
 }
@@ -330,6 +337,7 @@ func parseStream(data []byte, version int, res *Result) error {
 			}
 			idx, tot, par := r.get(4), r.get(4)+1, r.get(8)
 			res.SA = &StructuredAppend{Index: idx, Total: tot, Parity: byte(par)}
+			res.Segments = append(res.Segments, Segment{Mode: ModeStructured, Index: idx, Total: tot, Parity: byte(par)})
 		case 5, 9: // FNC1
 			res.FNC1 = true
 			if ind == 9 {

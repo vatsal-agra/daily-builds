@@ -15,13 +15,14 @@ const (
 	ModeAlnum
 	ModeByte
 	ModeECI
+	ModeStructured // structured-append header (sequence index, total, parity)
 )
 
 func (m Mode) String() string {
-	return [...]string{"numeric", "alphanumeric", "byte", "eci"}[m]
+	return [...]string{"numeric", "alphanumeric", "byte", "eci", "structured-append"}[m]
 }
 
-func (m Mode) indicator() int { return [...]int{0x1, 0x2, 0x4, 0x7}[m] }
+func (m Mode) indicator() int { return [...]int{0x1, 0x2, 0x4, 0x7, 0x3}[m] }
 
 const alnumChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"
 
@@ -31,6 +32,9 @@ type Segment struct {
 	Chars int    // character count (bytes for byte mode)
 	Data  []byte // numeric/alnum: the ASCII text; byte: raw bytes
 	ECI   int    // for ModeECI
+	// Structured append (ModeStructured): position Index of Total, and the parity byte.
+	Index, Total int
+	Parity       byte
 }
 
 func ccBits(m Mode, version int) int {
@@ -87,6 +91,9 @@ func (w *bitWriter) bytes() []byte {
 // segBits returns the exact bit length of seg at the given version, or -1 if the
 // count does not fit in the character-count field.
 func segBits(s Segment, version int) int {
+	if s.Mode == ModeStructured {
+		return 4 + 16
+	}
 	if s.Mode == ModeECI {
 		switch {
 		case s.ECI < 128:
@@ -114,6 +121,16 @@ func segBits(s Segment, version int) int {
 }
 
 func (w *bitWriter) writeSegment(s Segment, version int) error {
+	if s.Mode == ModeStructured {
+		if s.Total < 2 || s.Total > 16 || s.Index < 0 || s.Index >= s.Total {
+			return fmt.Errorf("structured append %d of %d is invalid (total must be 2..16)", s.Index+1, s.Total)
+		}
+		w.put(ModeStructured.indicator(), 4)
+		w.put(s.Index, 4)
+		w.put(s.Total-1, 4)
+		w.put(int(s.Parity), 8)
+		return nil
+	}
 	if s.Mode == ModeECI {
 		w.put(ModeECI.indicator(), 4)
 		switch {

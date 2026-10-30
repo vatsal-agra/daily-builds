@@ -34,8 +34,13 @@ func applyMask(m *Matrix, l *Layout, mask int) {
 
 // Penalty computes the ISO 18004 N1+N2+N3+N4 mask-evaluation score.
 func Penalty(m *Matrix) int {
+	p := PenaltyParts(m)
+	return p[0] + p[1] + p[2] + p[3]
+}
+
+// PenaltyParts returns the four rule scores N1..N4 separately.
+func PenaltyParts(m *Matrix) (parts [4]int) {
 	n := m.N
-	total := 0
 	// N1: runs of >=5 same-colour modules in rows and columns.
 	// N3: 1:1:3:1:1 finder-like pattern bounded by 4 light modules.
 	line := make([]bool, n)
@@ -55,13 +60,13 @@ func Penalty(m *Matrix) int {
 					continue
 				}
 				if run >= 5 {
-					total += 3 + run - 5
+					parts[0] += 3 + run - 5
 				}
 				run = 1
 			}
 			for i := 0; i+11 <= n; i++ {
 				if matchFinderLike(line[i:i+11], false) || matchFinderLike(line[i:i+11], true) {
-					total += 40
+					parts[2] += 40
 				}
 			}
 		}
@@ -71,7 +76,7 @@ func Penalty(m *Matrix) int {
 		for x := 0; x+1 < n; x++ {
 			c := m.Get(x, y)
 			if c == m.Get(x+1, y) && c == m.Get(x, y+1) && c == m.Get(x+1, y+1) {
-				total += 3
+				parts[1] += 3
 			}
 		}
 	}
@@ -84,8 +89,8 @@ func Penalty(m *Matrix) int {
 	}
 	all := n * n
 	k := (abs(dark*20-all*10)+all-1)/all - 1
-	total += k * 10
-	return total
+	parts[3] = k * 10
+	return parts
 }
 
 // 10111010000 or its mirror 00001011101 (dark = true).

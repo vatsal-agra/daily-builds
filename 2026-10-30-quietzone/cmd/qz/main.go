@@ -22,6 +22,7 @@ const usage = `qz — a QR code laboratory
   qz decode  IMAGE|-         decode a QR code from a PNG/JPEG/GIF (or ASCII art with -text)
   qz scan    IMAGE           like decode but lists every symbol, geometry and error-correction stats
   qz rs      ...             Reed–Solomon workbench (encode / corrupt / decode)
+  qz payload wifi|mailto|vcard  build a structured payload (pipe it into qz encode -)
   qz damage  ...             flip modules in a generated symbol and watch the error budget
   qz explain TEXT            anatomy of a symbol: version, blocks, codeword map
   qz html    TEXT -o f.html  interactive anatomy explorer
@@ -47,6 +48,8 @@ func main() {
 		err = cmdDecode(args, true)
 	case "rs":
 		err = cmdRS(args)
+	case "payload":
+		err = cmdPayload(args)
 	case "damage":
 		err = cmdDamage(args)
 	case "explain":
@@ -98,6 +101,7 @@ func cmdEncode(args []string) error {
 	boost := fs.Bool("boost", false, "raise the ECC level for free when the version allows")
 	info := fs.Bool("info", false, "print the encoding summary to stderr")
 	invert := fs.Bool("invert", false, "invert terminal art for dark backgrounds")
+	parts := fs.Int("parts", 1, "split the data over N linked symbols (structured append, 2-16); -o must be a file")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -121,6 +125,9 @@ func cmdEncode(args []string) error {
 	}
 	if *ver != 0 {
 		opt.MinVersion, opt.MaxVersion = *ver, *ver
+	}
+	if *parts > 1 {
+		return encodeParts(text, *parts, opt, *out, *scale, *border)
 	}
 	code, err := qr.EncodeText(text, opt)
 	if err != nil {
@@ -220,12 +227,21 @@ func cmdDecode(args []string, verbose bool) error {
 	if !*all && !verbose {
 		opt.MaxCodes = 1
 	}
+	if *all {
+		opt.MaxCodes = 0
+	}
 	if *debug {
 		opt.Debug = func(s string) { fmt.Fprintln(os.Stderr, "scan:", s) }
 	}
 	ds, err := scan.Scan(img, opt)
 	if err != nil {
 		return err
+	}
+	if sa := reassemble(ds); sa != nil && !*raw {
+		fmt.Printf("structured append: %d symbols reassembled (%d bytes)\n%s\n", len(ds), len(sa), string(sa))
+		if !verbose {
+			return nil
+		}
 	}
 	for i, d := range ds {
 		if verbose || *all {
@@ -236,6 +252,26 @@ func cmdDecode(args []string, verbose bool) error {
 		printOut(d.Result, verbose, *raw)
 	}
 	return nil
+}
+
+// reassemble joins structured-append symbols when every detection carries a header.
+func reassemble(ds []scan.Detection) []byte {
+	if len(ds) < 2 {
+		return nil
+	}
+	var rs []*qr.Result
+	for _, d := range ds {
+		if d.Result.SA == nil {
+			return nil
+		}
+		rs = append(rs, d.Result)
+	}
+	b, err := qr.Reassemble(rs)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "qz: structured append:", err)
+		return nil
+	}
+	return b
 }
 
 func printOut(r *qr.Result, verbose, raw bool) {
@@ -273,4 +309,33 @@ func printResult(r *qr.Result, verbose bool) {
 		fmt.Print(", mirrored capture fixed")
 	}
 	fmt.Printf("\n  text: %s\n", r.Text)
+}
+
+func encodeParts(text string, parts int, opt qr.Options, out string, scale, border int) error {
+	if out == "-" {
+		return fmt.Errorf("-parts needs -o FILE (it writes one file per symbol)")
+	}
+	codes, err := qr.EncodeStructured([]byte(text), parts, opt)
+	if err != nil {
+		return err
+	}
+	for i, c := range codes {
+		name := partName(out, i+1)
+		var data []byte
+		switch {
+		case strings.HasSuffix(out, ".svg"):
+			data = []byte(c.Matrix.SVG(border))
+		case strings.HasSuffix(out, ".png"):
+			if data, err = c.Matrix.PNG(scale, border); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("-parts supports .png and .svg outputs")
+		}
+		if err := os.WriteFile(name, data, 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("%s: symbol %d of %d, version %d\n", name, i+1, parts, c.Version)
+	}
+	return nil
 }
