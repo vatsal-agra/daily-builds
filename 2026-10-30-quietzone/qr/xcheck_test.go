@@ -3,6 +3,7 @@ package qr
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os/exec"
 	"strings"
 	"testing"
@@ -117,4 +118,15 @@ func randFrom(r interface{ Intn(int) int }, set string, n int) string {
 		sb.WriteByte(set[r.Intn(len(set))])
 	}
 	return sb.String()
+}
+
+func lookPython() (string, error) {
+	py, err := exec.LookPath("python3.13")
+	if err != nil {
+		return "", err
+	}
+	if exec.Command(py, "-c", "import segno").Run() != nil {
+		return "", errors.New("no segno")
+	}
+	return py, nil
 }

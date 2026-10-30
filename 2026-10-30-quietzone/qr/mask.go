@@ -44,6 +44,7 @@ func PenaltyParts(m *Matrix) (parts [4]int) {
 	// N1: runs of >=5 same-colour modules in rows and columns.
 	// N3: 1:1:3:1:1 finder-like pattern bounded by 4 light modules.
 	line := make([]bool, n)
+	padded := make([]bool, n+8) // the quiet zone counts as light modules around every row and column
 	for dir := 0; dir < 2; dir++ {
 		for a := 0; a < n; a++ {
 			for b := 0; b < n; b++ {
@@ -64,9 +65,22 @@ func PenaltyParts(m *Matrix) (parts [4]int) {
 				}
 				run = 1
 			}
-			for i := 0; i+11 <= n; i++ {
-				if matchFinderLike(line[i:i+11], false) || matchFinderLike(line[i:i+11], true) {
+			copy(padded[4:], line)
+			// ISO 18004 7.8.3: the 1:1:3:1:1 core "preceded or followed by" four light
+			// modules scores once, however many sides are light.
+			// Overlapping cores are resolved like the reference implementations: a
+			// scored core is consumed whole, an unscored one only up to its first
+			// four modules.
+			for i := 0; i+7 <= n; {
+				if !matchCore(padded[i+4 : i+11]) {
+					i++
+					continue
+				}
+				if allLight(padded[i:i+4]) || allLight(padded[i+11:i+15]) {
 					parts[2] += 40
+					i += 7
+				} else {
+					i += 4
 				}
 			}
 		}
@@ -93,15 +107,13 @@ func PenaltyParts(m *Matrix) (parts [4]int) {
 	return parts
 }
 
-// 10111010000 or its mirror 00001011101 (dark = true).
-func matchFinderLike(w []bool, mirror bool) bool {
-	pat := [11]bool{true, false, true, true, true, false, true, false, false, false, false}
-	for i := 0; i < 11; i++ {
-		p := pat[i]
-		if mirror {
-			p = pat[10-i]
-		}
-		if w[i] != p {
+func matchCore(w []bool) bool {
+	return w[0] && !w[1] && w[2] && w[3] && w[4] && !w[5] && w[6]
+}
+
+func allLight(w []bool) bool {
+	for _, v := range w {
+		if v {
 			return false
 		}
 	}

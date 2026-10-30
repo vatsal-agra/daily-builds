@@ -1,7 +1,7 @@
 # Quietzone
 A from-scratch QR code laboratory in Go (stdlib only). See [PLAN.md](PLAN.md).
 
-**Status: Phase 4 complete — stretch features shipped (damage lab, RS workbench, anatomy explorer HTML, multi-symbol scan, payload helpers, structured append, distortion tool). Earlier: Phase 3 complete — adversarial review done ([REVIEW.md](REVIEW.md)): 12 findings fixed, `qz bench` 13/13 scenarios at 100 %.**
+**Status: Phase 5 complete — `./verify.sh --mutate` ALL GREEN (tests, 13 bench scenarios × 36 trials at 100 %, 28-assertion CLI demo, OpenCV/segno cross-check 120/120, 19/20 mutants killed). Earlier: Phase 4 complete — stretch features shipped (damage lab, RS workbench, anatomy explorer HTML, multi-symbol scan, payload helpers, structured append, distortion tool). Earlier: Phase 3 complete — adversarial review done ([REVIEW.md](REVIEW.md)): 12 findings fixed, `qz bench` 13/13 scenarios at 100 %.**
 
 | Required feature | State |
 |---|---|
