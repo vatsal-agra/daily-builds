@@ -14,7 +14,7 @@ import (
 func (m *Matrix) Text(quiet int, invert bool) string {
 	get := func(x, y int) bool {
 		if x < 0 || y < 0 || x >= m.N || y >= m.N {
-			return false
+			return invert // the quiet zone is "light", i.e. drawn as blocks when inverted
 		}
 		return m.Get(x, y) != invert
 	}
@@ -91,6 +91,7 @@ func ParseText(s string) (*Matrix, error) {
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	var rows [][]bool
 	for _, ln := range lines {
+		ln = strings.TrimRight(ln, "\r")
 		var top, bot []bool
 		for _, r := range ln {
 			switch r {
@@ -106,6 +107,25 @@ func ParseText(s string) (*Matrix, error) {
 		}
 		rows = append(rows, top, bot)
 	}
+	// Inverted art (light modules drawn as blocks) has a dark quiet zone: detect
+	// it from the top-left cell and flip the polarity.
+	if len(rows) > 0 && len(rows[0]) > 0 && rows[0][0] {
+		for _, r := range rows {
+			for i := range r {
+				r[i] = !r[i]
+			}
+		}
+		w := 0
+		for _, r := range rows {
+			w = max(w, len(r))
+		}
+		for i, r := range rows { // ragged right edges were light-as-space; make them quiet zone
+			for len(r) < w {
+				r = append(r, false)
+			}
+			rows[i] = r
+		}
+	}
 	minX, minY, maxX, maxY := 1<<30, 1<<30, -1, -1
 	for y, r := range rows {
 		for x, v := range r {
@@ -116,11 +136,11 @@ func ParseText(s string) (*Matrix, error) {
 		}
 	}
 	if maxX < 0 {
-		return nil, fmt.Errorf("qr: no dark modules in text")
+		return nil, fmt.Errorf("no dark modules in text")
 	}
 	w, h := maxX-minX+1, maxY-minY+1
 	if w != h {
-		return nil, fmt.Errorf("qr: text bounding box %dx%d is not square", w, h)
+		return nil, fmt.Errorf("text bounding box %dx%d is not square", w, h)
 	}
 	m := NewMatrix(w)
 	for y := 0; y < h; y++ {

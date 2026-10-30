@@ -118,7 +118,7 @@ func (w *bitWriter) writeSegment(s Segment, version int) error {
 		w.put(ModeECI.indicator(), 4)
 		switch {
 		case s.ECI < 0 || s.ECI > 999999:
-			return fmt.Errorf("qr: ECI %d out of range", s.ECI)
+			return fmt.Errorf("ECI %d out of range", s.ECI)
 		case s.ECI < 128:
 			w.put(s.ECI, 8)
 		case s.ECI < 16384:
@@ -129,7 +129,7 @@ func (w *bitWriter) writeSegment(s Segment, version int) error {
 		return nil
 	}
 	if segBits(s, version) < 0 {
-		return errors.New("qr: segment too long for version")
+		return errors.New("segment too long for version")
 	}
 	w.put(s.Mode.indicator(), 4)
 	w.put(s.Chars, ccBits(s.Mode, version))
@@ -165,15 +165,15 @@ func MakeSegment(m Mode, data []byte) (Segment, error) {
 	switch m {
 	case ModeNumeric:
 		if !IsNumeric(data) {
-			return Segment{}, errors.New("qr: non-digit in numeric segment")
+			return Segment{}, errors.New("non-digit in numeric segment")
 		}
 	case ModeAlnum:
 		if !IsAlnum(data) {
-			return Segment{}, errors.New("qr: character outside alphanumeric set")
+			return Segment{}, errors.New("character outside alphanumeric set")
 		}
 	case ModeByte:
 	default:
-		return Segment{}, errors.New("qr: cannot make segment of this mode")
+		return Segment{}, errors.New("cannot make segment of this mode")
 	}
 	return Segment{Mode: m, Chars: len(data), Data: append([]byte(nil), data...)}, nil
 }

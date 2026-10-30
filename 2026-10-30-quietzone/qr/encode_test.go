@@ -9,7 +9,7 @@ func TestSpecExample01234567(t *testing.T) {
 	// ISO 18004 Annex I: "01234567", version 1-M, mask 2 forced by the example.
 	opt := DefaultOptions()
 	opt.BoostECC = false
-	opt.Mask = 2
+	opt.Mask = ForceMask(2)
 	c, err := EncodeText("01234567", opt)
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +118,7 @@ func TestCapacityBoundaries(t *testing.T) {
 		{"numeric H", H, '7', 3057}, {"byte H", H, 'x', 1273},
 	}
 	for _, c := range cases {
-		opt := Options{ECC: c.e, Mask: -1}
+		opt := Options{ECC: c.e}
 		ok, err := Encode([]byte(strings.Repeat(string(c.fill), c.n)), opt)
 		if err != nil || ok.Version != 40 {
 			t.Fatalf("%s: max payload failed: %v", c.name, err)
@@ -130,13 +130,13 @@ func TestCapacityBoundaries(t *testing.T) {
 }
 
 func TestEncodeErrors(t *testing.T) {
-	if _, err := Encode([]byte("x"), Options{Mask: 9}); err == nil {
+	if _, err := Encode([]byte("x"), Options{Mask: 10}); err == nil {
 		t.Fatal("bad mask accepted")
 	}
-	if _, err := Encode([]byte("x"), Options{Mask: -1, MinVersion: 5, MaxVersion: 3}); err == nil {
+	if _, err := Encode([]byte("x"), Options{MinVersion: 5, MaxVersion: 3}); err == nil {
 		t.Fatal("bad range accepted")
 	}
-	if _, err := Encode([]byte(strings.Repeat("a", 100)), Options{Mask: -1, MaxVersion: 2}); err != ErrTooLong {
+	if _, err := Encode([]byte(strings.Repeat("a", 100)), Options{MaxVersion: 2}); err != ErrTooLong {
 		t.Fatalf("expected ErrTooLong, got %v", err)
 	}
 }

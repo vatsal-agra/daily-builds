@@ -6,7 +6,7 @@ import (
 )
 
 // ErrTooManyErrors is returned when a codeword block is beyond repair.
-var ErrTooManyErrors = errors.New("qr: too many errors to correct")
+var ErrTooManyErrors = errors.New("too many errors to correct")
 
 var genCache = map[int][]byte{}
 
@@ -56,13 +56,13 @@ type RSDecodeResult struct {
 func RSDecode(msg []byte, ecc int, erasures []int) (RSDecodeResult, error) {
 	n := len(msg)
 	if ecc <= 0 || n <= ecc || n > 255 {
-		return RSDecodeResult{}, fmt.Errorf("qr: bad RS block (len %d, ecc %d)", n, ecc)
+		return RSDecodeResult{}, fmt.Errorf("bad RS block (len %d, ecc %d)", n, ecc)
 	}
 	seen := map[int]bool{}
 	var er []int
 	for _, e := range erasures {
 		if e < 0 || e >= n {
-			return RSDecodeResult{}, fmt.Errorf("qr: erasure index %d out of range", e)
+			return RSDecodeResult{}, fmt.Errorf("erasure index %d out of range", e)
 		}
 		if !seen[e] {
 			seen[e] = true

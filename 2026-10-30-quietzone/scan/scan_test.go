@@ -2,6 +2,7 @@ package scan
 
 import (
 	"math/rand"
+	"sort"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 
 func enc(t *testing.T, s string, e qr.ECC) *qr.Code {
 	t.Helper()
-	c, err := qr.EncodeText(s, qr.Options{ECC: e, Mask: -1})
+	c, err := qr.EncodeText(s, qr.Options{ECC: e})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,5 +67,28 @@ func TestNothingToFind(t *testing.T) {
 	blank := sim.Noise(sim.Warp(qr.NewMatrix(21).Image(4, 4), sim.Pose{}, 255), 30, 0.02, rng)
 	if _, err := Scan(blank, Options{}); err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestMedian3MatchesNaive(t *testing.T) {
+	rng := rand.New(rand.NewSource(4))
+	g := &Gray{W: 17, H: 13, Pix: make([]uint8, 17*13)}
+	for i := range g.Pix {
+		g.Pix[i] = uint8(rng.Intn(256))
+	}
+	m := g.median3()
+	for y := 0; y < g.H; y++ {
+		for x := 0; x < g.W; x++ {
+			var v []int
+			for dy := -1; dy <= 1; dy++ {
+				for dx := -1; dx <= 1; dx++ {
+					v = append(v, int(g.Pix[min(max(y+dy, 0), g.H-1)*g.W+min(max(x+dx, 0), g.W-1)]))
+				}
+			}
+			sort.Ints(v)
+			if int(m.Pix[y*g.W+x]) != v[4] {
+				t.Fatalf("median differs at %d,%d: %d vs %d", x, y, m.Pix[y*g.W+x], v[4])
+			}
+		}
 	}
 }

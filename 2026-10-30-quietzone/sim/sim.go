@@ -27,6 +27,12 @@ type pt struct{ x, y float64 }
 
 // Warp renders src through the pose onto a bg-coloured canvas.
 func Warp(src *image.Gray, p Pose, bg uint8) *image.Gray {
+	out, _ := WarpQuad(src, p, bg)
+	return out
+}
+
+// WarpQuad is Warp that also returns the bounding rectangle of the projected symbol.
+func WarpQuad(src *image.Gray, p Pose, bg uint8) (*image.Gray, image.Rectangle) {
 	w, h := float64(src.Bounds().Dx()), float64(src.Bounds().Dy())
 	if p.Scale == 0 {
 		p.Scale = 1
@@ -62,6 +68,11 @@ func Warp(src *image.Gray, p Pose, bg uint8) *image.Gray {
 		q[i].x += -minX + pad
 		q[i].y += -minY + pad
 	}
+	minX2, minY2, maxX2, maxY2 := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
+	for _, c := range q {
+		minX2, maxX2 = math.Min(minX2, c.x), math.Max(maxX2, c.x)
+		minY2, maxY2 = math.Min(minY2, c.y), math.Max(maxY2, c.y)
+	}
 	// Inverse homography from output quad back to the source rectangle.
 	hinv := quadToRect(q, w, h)
 	out := image.NewGray(image.Rect(0, 0, ow, oh))
@@ -78,7 +89,7 @@ func Warp(src *image.Gray, p Pose, bg uint8) *image.Gray {
 			out.Pix[y*out.Stride+x] = bilinear(src, u-0.5, v-0.5)
 		}
 	}
-	return out
+	return out, image.Rect(int(minX2), int(minY2), int(maxX2)+1, int(maxY2)+1)
 }
 
 func bilinear(g *image.Gray, x, y float64) uint8 {
@@ -277,7 +288,7 @@ func JPEG(g *image.Gray, quality int) (*image.Gray, error) {
 
 // Clutter fills the background with low-frequency texture and thin lines so the
 // finder-pattern detector has distractors to reject.
-func Clutter(g *image.Gray, rng *rand.Rand, lines int) *image.Gray {
+func Clutter(g *image.Gray, avoid image.Rectangle, rng *rand.Rand, lines int) *image.Gray {
 	out := image.NewGray(g.Bounds())
 	copy(out.Pix, g.Pix)
 	b := g.Bounds()
@@ -290,7 +301,7 @@ func Clutter(g *image.Gray, rng *rand.Rand, lines int) *image.Gray {
 			x := x0 + (x1-x0)*t/n
 			y := y0 + (y1-y0)*t/n
 			// only draw on near-background pixels so the symbol is not touched
-			if out.Pix[y*out.Stride+x] > 240 {
+			if !image.Pt(x, y).In(avoid) && out.Pix[y*out.Stride+x] > 240 {
 				out.Pix[y*out.Stride+x] = shade
 			}
 		}

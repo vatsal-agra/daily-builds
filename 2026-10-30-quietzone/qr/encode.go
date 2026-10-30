@@ -11,13 +11,16 @@ type Options struct {
 	ECC        ECC
 	MinVersion int  // 0 = 1
 	MaxVersion int  // 0 = 40
-	Mask       int  // -1 = choose lowest penalty; 0..7 forces
+	Mask       int  // 0 = choose the lowest-penalty mask; ForceMask(n) forces mask n (0..7)
 	BoostECC   bool // raise the level while the version does not grow
 	NoECI      bool // do not emit an ECI header for non-ASCII text
 }
 
 // DefaultOptions returns medium ECC with automatic version and mask.
-func DefaultOptions() Options { return Options{ECC: M, Mask: -1, BoostECC: true} }
+func DefaultOptions() Options { return Options{ECC: M, BoostECC: true} }
+
+// ForceMask is the Options.Mask value that forces data mask n (0..7).
+func ForceMask(n int) int { return n + 1 }
 
 // Code is an encoded symbol.
 type Code struct {
@@ -32,7 +35,7 @@ type Code struct {
 }
 
 // ErrTooLong is returned when the payload does not fit any allowed version.
-var ErrTooLong = errors.New("qr: data too long for the requested version/ECC range")
+var ErrTooLong = errors.New("data too long for the requested version/ECC range")
 
 // Encode encodes text/bytes choosing segmentation, version and mask automatically.
 func Encode(data []byte, opt Options) (*Code, error) {
@@ -44,10 +47,13 @@ func Encode(data []byte, opt Options) (*Code, error) {
 		hi = 40
 	}
 	if lo < 1 || hi > 40 || lo > hi {
-		return nil, fmt.Errorf("qr: bad version range %d..%d", lo, hi)
+		return nil, fmt.Errorf("version range %d..%d is invalid (versions are 1..40)", lo, hi)
 	}
-	if opt.Mask < -1 || opt.Mask > 7 {
-		return nil, fmt.Errorf("qr: mask %d out of range", opt.Mask)
+	if opt.Mask < 0 || opt.Mask > 8 {
+		return nil, fmt.Errorf("mask must be 0..7 (got %d)", opt.Mask-1)
+	}
+	if opt.ECC < L || opt.ECC > H {
+		return nil, fmt.Errorf("bad ECC level %d", int(opt.ECC))
 	}
 	var prefix []Segment
 	if !opt.NoECI && !isASCII(data) && utf8.Valid(data) {
@@ -79,11 +85,11 @@ func isASCII(b []byte) bool {
 // is set, the level is raised as far as the segments still fit.
 func EncodeSegments(segs []Segment, version int, opt Options) (*Code, error) {
 	if version < 1 || version > 40 {
-		return nil, fmt.Errorf("qr: version %d out of range", version)
+		return nil, fmt.Errorf("version %d out of range", version)
 	}
 	bits := totalBits(segs, version)
 	if bits < 0 {
-		return nil, errors.New("qr: segment too long for version")
+		return nil, errors.New("segment too long for version")
 	}
 	ecc := opt.ECC
 	if bits > DataCodewords(version, ecc)*8 {
@@ -122,9 +128,9 @@ func EncodeSegments(segs []Segment, version int, opt Options) (*Code, error) {
 		} // remainder bits stay light
 		base.Set(p[0], p[1], bit)
 	}
-	mask, best := opt.Mask, -1
+	mask, best := opt.Mask-1, -1
 	pen := 0
-	if mask < 0 {
+	if opt.Mask == 0 {
 		for mk := 0; mk < 8; mk++ {
 			t := base.Clone()
 			applyMask(t, l, mk)

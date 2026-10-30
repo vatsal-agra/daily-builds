@@ -90,7 +90,7 @@ func cmdEncode(args []string) error {
 	fs := flag.NewFlagSet("encode", flag.ContinueOnError)
 	eccS := fs.String("ecc", "M", "error correction level L|M|Q|H")
 	ver := fs.Int("v", 0, "force version 1-40 (0 = smallest that fits)")
-	mask := fs.Int("mask", -1, "force mask 0-7 (-1 = best by penalty)")
+	mask := fs.Int("mask", -1, "force data mask 0-7 (-1 = best by penalty)")
 	out := fs.String("o", "-", "output file (.png, .svg, .txt) or - for terminal art")
 	scale := fs.Int("scale", 8, "pixels per module for PNG")
 	border := fs.Int("border", 4, "quiet-zone width in modules")
@@ -112,7 +112,13 @@ func cmdEncode(args []string) error {
 	if *scale < 1 || *scale > 64 || *border < 0 || *border > 64 {
 		return fmt.Errorf("-scale must be 1..64 and -border 0..64")
 	}
-	opt := qr.Options{ECC: e, Mask: *mask, NoECI: *noeci, BoostECC: *boost}
+	if *mask < -1 || *mask > 7 {
+		return fmt.Errorf("-mask must be -1 (auto) or 0..7")
+	}
+	opt := qr.Options{ECC: e, NoECI: *noeci, BoostECC: *boost}
+	if *mask >= 0 {
+		opt.Mask = qr.ForceMask(*mask)
+	}
 	if *ver != 0 {
 		opt.MinVersion, opt.MaxVersion = *ver, *ver
 	}
@@ -177,6 +183,7 @@ func cmdDecode(args []string, verbose bool) error {
 	asText := fs.Bool("text", false, "input is ASCII/half-block art of the module grid, not an image")
 	all := fs.Bool("all", false, "print every symbol found (decode prints the first only)")
 	debug := fs.Bool("debug", false, "trace scanner strategies")
+	raw := fs.Bool("raw", false, "write the payload bytes verbatim (binary-safe, no newline)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -202,7 +209,7 @@ func cmdDecode(args []string, verbose bool) error {
 		if err != nil {
 			return err
 		}
-		printResult(r, verbose)
+		printOut(r, verbose, *raw)
 		return nil
 	}
 	img, err := loadImage(fs.Arg(0))
@@ -226,9 +233,17 @@ func cmdDecode(args []string, verbose bool) error {
 			fmt.Printf("symbol %d/%d  strategy=%s  module≈%.1fpx  alignment-refined=%d\n", i+1, len(ds), d.Strategy, d.Module, d.Aligns)
 			fmt.Printf("  corners TL(%.0f,%.0f) TR(%.0f,%.0f) BR(%.0f,%.0f) BL(%.0f,%.0f)\n", c[0].X, c[0].Y, c[1].X, c[1].Y, c[2].X, c[2].Y, c[3].X, c[3].Y)
 		}
-		printResult(d.Result, verbose)
+		printOut(d.Result, verbose, *raw)
 	}
 	return nil
+}
+
+func printOut(r *qr.Result, verbose, raw bool) {
+	if raw && !verbose {
+		os.Stdout.Write(r.Bytes)
+		return
+	}
+	printResult(r, verbose)
 }
 
 func printResult(r *qr.Result, verbose bool) {

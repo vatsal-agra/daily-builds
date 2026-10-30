@@ -81,6 +81,12 @@ func Scan(img image.Image, opt Options) ([]Detection, error) {
 			}
 			found = append(found, d)
 			used[tr.a], used[tr.b], used[tr.c] = true, true, true
+			// Finder-like patterns inside a decoded symbol are data, not codes.
+			for i, f := range fs {
+				if inQuad(d.Corners, f.C) {
+					used[i] = true
+				}
+			}
 			if opt.MaxCodes > 0 && len(found) >= opt.MaxCodes {
 				return found, nil
 			}
@@ -104,6 +110,24 @@ func Scan(img image.Image, opt Options) ([]Detection, error) {
 	return found, nil
 }
 
+// inQuad reports whether p lies inside the convex quadrilateral q.
+func inQuad(q [4]Pt, p Pt) bool {
+	sign := 0.0
+	for i := 0; i < 4; i++ {
+		a, b := q[i], q[(i+1)%4]
+		c := cross(b.Sub(a), p.Sub(a))
+		if c == 0 {
+			continue
+		}
+		if sign == 0 {
+			sign = c
+		} else if (c > 0) != (sign > 0) {
+			return false
+		}
+	}
+	return true
+}
+
 func centre(c [4]Pt) Pt { return c[0].Add(c[1]).Add(c[2]).Add(c[3]).Mul(0.25) }
 
 type triple struct {
@@ -120,7 +144,6 @@ func rankTriples(fs []Finder) []triple {
 		for j := i + 1; j < n; j++ {
 			for k := j + 1; k < n; k++ {
 				idx := [3]int{i, j, k}
-				best := triple{score: math.Inf(1)}
 				for v := 0; v < 3; v++ {
 					o := fs[idx[v]]
 					p, q := fs[idx[(v+1)%3]], fs[idx[(v+2)%3]]
@@ -134,21 +157,23 @@ func rankTriples(fs []Finder) []triple {
 					ms := (o.Module + p.Module + q.Module) / 3
 					msVar := math.Max(math.Max(o.Module, p.Module), q.Module) / math.Min(math.Min(o.Module, p.Module), q.Module)
 					dim := (la+lb)/2/ms + 7
-					if cos > 0.5 || ratio < 0.6 || msVar > 1.8 || dim < 19 || dim > 185 {
+					// Strong foreshortening bends right angles and skews side ratios, so the
+					// gates are wide; the score still ranks near-ideal triples first.
+					if cos > 0.8 || ratio < 0.3 || msVar > 3 || dim < 17 || dim > 230 {
 						continue
 					}
-					sc := cos*2 + (1 - ratio)*2 + (msVar - 1)
-					if sc < best.score {
-						best = triple{idx[v], idx[(v+1)%3], idx[(v+2)%3], sc}
-					}
-				}
-				if !math.IsInf(best.score, 1) {
-					out = append(out, best)
+					sc := cos*2 + (1-ratio)*2 + (msVar - 1)
+					// Under an affine skew the true corner is not always the vertex with
+					// the squarest angle, so every plausible vertex is offered.
+					out = append(out, triple{idx[v], idx[(v+1)%3], idx[(v+2)%3], sc})
 				}
 			}
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].score < out[j].score })
+	if len(out) > 45 {
+		out = out[:45]
+	}
 	return out
 }
 
@@ -159,19 +184,42 @@ func decodeTriple(b *Bin, f0, f1, f2 Finder) (Detection, error) {
 		tr, bl = bl, tr
 	}
 	ms := (tl.Module + tr.Module + bl.Module) / 3
-	side := (tr.C.Sub(tl.C).Len() + bl.C.Sub(tl.C).Len()) / 2
-	est := side/ms + 7
-	ver0 := int(math.Round((est - 17) / 4))
+	// The symbol size is not trusted from pixel distances (tilt skews them), so
+	// every version is scored against the timing pattern; the right one aligns
+	// nearly perfectly and the rest are discarded cheaply.
 	var versions []int
-	for _, d := range []int{0, -1, 1, -2, 2} {
-		v := ver0 + d
-		if v >= 1 && v <= 40 {
-			versions = append(versions, v)
+	for v := 1; v <= 40; v++ {
+		versions = append(versions, v)
+	}
+	// Finder ring corners are independent of the version: extract them once.
+	ux, uy := unit(tr.C.Sub(tl.C)), unit(bl.C.Sub(tl.C))
+	g := tripleGeom{ms: ms}
+	for i, f := range []Finder{tl, tr, bl} {
+		g.f[i] = f
+		g.corners[i], g.cornerOK[i] = FinderCorners(b, f, ux, uy)
+	}
+	// Rank candidate versions by how well the timing patterns alternate under the
+	// finder-only grid; this cheap test rejects false triples without paying for
+	// alignment search and sampling.
+	type cand struct {
+		v int
+		h Homography
+		t float64
+	}
+	var cands []cand
+	for _, v := range versions {
+		h, err := g.baseHomography(v)
+		if err != nil {
+			continue
+		}
+		if t := timingScore(b, &h, qr.Size(v)); t >= 0.7 {
+			cands = append(cands, cand{v, h, t})
 		}
 	}
-	var lastErr error = errors.New("scan: no candidate version")
-	for _, v := range versions {
-		d, err := tryVersion(b, tl, tr, bl, ms, v)
+	sort.SliceStable(cands, func(i, j int) bool { return cands[i].t > cands[j].t })
+	var lastErr error = errors.New("scan: no candidate version passes the timing-pattern test")
+	for _, c := range cands {
+		d, err := g.refineAndDecode(b, c.v, c.h)
 		if err == nil {
 			return d, nil
 		}
@@ -180,33 +228,92 @@ func decodeTriple(b *Bin, f0, f1, f2 Finder) (Detection, error) {
 	return Detection{}, lastErr
 }
 
-func tryVersion(b *Bin, tl, tr, bl Finder, ms float64, version int) (Detection, error) {
-	n := float64(qr.Size(version))
-	src := []Pt{{3.5, 3.5}, {n - 3.5, 3.5}, {3.5, n - 3.5}}
-	dst := []Pt{tl.C, tr.C, bl.C}
-	h, err := affine3(src, dst)
-	if err != nil {
-		return Detection{}, err
+type tripleGeom struct {
+	f        [3]Finder // TL, TR, BL
+	corners  [3][4]Pt
+	cornerOK [3]bool
+	ms       float64
+}
+
+// baseHomography maps module coordinates of the given version to the image
+// using only the finders: three centres, plus the 12 ring corners when found.
+func (g *tripleGeom) baseHomography(version int) (Homography, error) {
+	src, dst := g.basePoints(version)
+	if len(src) == 3 {
+		return affine3(src, dst)
 	}
+	return FitHomography(src, dst)
+}
+
+func (g *tripleGeom) basePoints(version int) (src, dst []Pt) {
+	n := float64(qr.Size(version))
+	centres := []Pt{{3.5, 3.5}, {n - 3.5, 3.5}, {3.5, n - 3.5}}
+	src = append(src, centres...)
+	for i := 0; i < 3; i++ {
+		dst = append(dst, g.f[i].C)
+	}
+	ok := 0
+	for _, o := range g.cornerOK {
+		if o {
+			ok++
+		}
+	}
+	if ok < 2 {
+		return
+	}
+	for i := 0; i < 3; i++ {
+		if !g.cornerOK[i] {
+			continue
+		}
+		for k, d := range [4][2]float64{{-3.5, -3.5}, {3.5, -3.5}, {3.5, 3.5}, {-3.5, 3.5}} {
+			src = append(src, Pt{centres[i].X + d[0], centres[i].Y + d[1]})
+			dst = append(dst, g.corners[i][k])
+		}
+	}
+	return
+}
+
+// timingScore is the fraction of timing-pattern modules (row 6 and column 6
+// between the finders) that alternate dark/light as the standard requires.
+func timingScore(b *Bin, h *Homography, n int) float64 {
+	match, total := 0, 0
+	for i := 8; i <= n-9; i++ {
+		want := i%2 == 0
+		if sampleModule(b, h, float64(i)+0.5, 6.5) == want {
+			match++
+		}
+		if sampleModule(b, h, 6.5, float64(i)+0.5) == want {
+			match++
+		}
+		total += 2
+	}
+	if total == 0 {
+		return 1
+	}
+	return float64(match) / float64(total)
+}
+
+func (g *tripleGeom) refineAndDecode(b *Bin, version int, h Homography) (Detection, error) {
+	base, baseImg := g.basePoints(version)
 	aligns := 0
 	if version >= 2 {
 		ap := alignCentres(version)
-		pts, imgs := append([]Pt(nil), src...), append([]Pt(nil), dst...)
 		cur := h
 		for iter := 0; iter < 3; iter++ {
 			radius := 2.4
 			if iter > 0 {
 				radius = 1.4
 			}
-			pts, imgs = append([]Pt(nil), src...), append([]Pt(nil), dst...)
-			// Process nearest-to-finder first on iteration 0 so the grid grows outward.
+			pts, imgs := append([]Pt(nil), base...), append([]Pt(nil), baseImg...)
+			found := 0
 			for _, a := range ap {
 				if p, ok := findAlign(b, &cur, a, radius); ok {
-					pts = append(pts, a)
-					imgs = append(imgs, p)
+					pts = append(pts, a, a)
+					imgs = append(imgs, p, p) // double weight: centres are the most precise points
+					found++
 				}
 			}
-			if len(pts) < 4 {
+			if found == 0 {
 				break
 			}
 			nh, err := FitHomography(pts, imgs)
@@ -214,7 +321,7 @@ func tryVersion(b *Bin, tl, tr, bl Finder, ms float64, version int) (Detection, 
 				break
 			}
 			cur = nh
-			aligns = len(pts) - 3
+			aligns = found
 		}
 		h = cur
 	}
@@ -224,7 +331,7 @@ func tryVersion(b *Bin, tl, tr, bl Finder, ms float64, version int) (Detection, 
 		return Detection{}, err
 	}
 	N := float64(qr.Size(version))
-	det := Detection{Result: res, Matrix: m, Module: ms, Aligns: aligns}
+	det := Detection{Result: res, Matrix: m, Module: g.ms, Aligns: aligns}
 	det.Corners = [4]Pt{h.Apply(0, 0), h.Apply(N, 0), h.Apply(N, N), h.Apply(0, N)}
 	return det, nil
 }
@@ -343,3 +450,5 @@ func abs(a int) int {
 	}
 	return a
 }
+
+func unit(p Pt) Pt { return p.Mul(1 / p.Len()) }

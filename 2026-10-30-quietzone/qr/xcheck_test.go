@@ -66,10 +66,12 @@ func TestMatchesSegnoByteForByte(t *testing.T) {
 		t.Fatal(err)
 	}
 	skipped := 0
-	defer func() { t.Logf("%d cases matched segno exactly, %d nibble-aligned cases verified by decoding", len(cases)-skipped, skipped) }()
+	defer func() {
+		t.Logf("%d cases matched segno exactly, %d nibble-aligned cases verified by decoding", len(cases)-skipped, skipped)
+	}()
 	for i, c := range cases {
 		e, _ := ParseECC(c.ECC)
-		code, err := EncodeText(c.Text, Options{ECC: e, MinVersion: c.Version, MaxVersion: c.Version, Mask: c.Mask})
+		code, err := EncodeText(c.Text, Options{ECC: e, MinVersion: c.Version, MaxVersion: c.Version, Mask: ForceMask(c.Mask)})
 		if err != nil {
 			t.Fatalf("case %d: %v", i, err)
 		}

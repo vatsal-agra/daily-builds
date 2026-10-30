@@ -26,11 +26,11 @@ func TestRoundTripAllVersionsAndLevels(t *testing.T) {
 				n = 1
 			}
 			payload := bytes.Repeat([]byte("quietzone-"), n/10+1)[:n]
-			c, err := EncodeSegments([]Segment{{Mode: ModeByte, Chars: len(payload), Data: payload}}, v, Options{ECC: e, Mask: -1})
+			c, err := EncodeSegments([]Segment{{Mode: ModeByte, Chars: len(payload), Data: payload}}, v, Options{ECC: e})
 			if err != nil {
 				// payload may overflow for tiny v; shrink
 				payload = payload[:max(1, len(payload)-6)]
-				c, err = EncodeSegments([]Segment{{Mode: ModeByte, Chars: len(payload), Data: payload}}, v, Options{ECC: e, Mask: -1})
+				c, err = EncodeSegments([]Segment{{Mode: ModeByte, Chars: len(payload), Data: payload}}, v, Options{ECC: e})
 				if err != nil {
 					t.Fatalf("v%d-%v: %v", v, e, err)
 				}
@@ -48,7 +48,7 @@ func TestRoundTripAllVersionsAndLevels(t *testing.T) {
 
 func TestEveryMaskDecodes(t *testing.T) {
 	for mk := 0; mk < 8; mk++ {
-		opt := Options{ECC: Q, Mask: mk}
+		opt := Options{ECC: Q, Mask: ForceMask(mk)}
 		c, _ := EncodeText("MASK TEST 12345 mixed Case", opt)
 		r, err := Decode(c.Matrix)
 		if err != nil || r.Mask != mk || r.Text != "MASK TEST 12345 mixed Case" {
@@ -70,7 +70,7 @@ func TestModesAndUnicode(t *testing.T) {
 	if c.Segments[0].Mode != ModeECI {
 		t.Fatal("expected ECI for non-ASCII")
 	}
-	c2, _ := EncodeText("日本", Options{ECC: L, Mask: -1, NoECI: true})
+	c2, _ := EncodeText("日本", Options{ECC: L, NoECI: true})
 	if c2.Segments[0].Mode == ModeECI {
 		t.Fatal("NoECI ignored")
 	}

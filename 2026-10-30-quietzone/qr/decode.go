@@ -48,13 +48,16 @@ type DecodeOptions struct {
 }
 
 // ErrFormat is returned when no valid format information can be found.
-var ErrFormat = errors.New("qr: format information unreadable")
+var ErrFormat = errors.New("format information unreadable")
 
 // Decode reads a module matrix.
 func Decode(m *Matrix) (*Result, error) { return DecodeWith(m, DecodeOptions{}) }
 
 // DecodeWith reads a module matrix with options.
 func DecodeWith(m *Matrix, opt DecodeOptions) (*Result, error) {
+	if opt.Erased != nil && opt.Erased.N != m.N {
+		return nil, fmt.Errorf("erasure map is %dx%d but the symbol is %dx%d", opt.Erased.N, opt.Erased.N, m.N, m.N)
+	}
 	r, err := decodeOnce(m, opt)
 	if err == nil || opt.NoTranspose {
 		return r, err
@@ -82,8 +85,11 @@ func DecodeWith(m *Matrix, opt DecodeOptions) (*Result, error) {
 }
 
 func decodeOnce(m *Matrix, opt DecodeOptions) (*Result, error) {
+	if opt.Erased != nil && opt.Erased.N != m.N {
+		return nil, fmt.Errorf("erasure map is %dx%d but the symbol is %dx%d", opt.Erased.N, opt.Erased.N, m.N, m.N)
+	}
 	if m.N < 21 || m.N > 177 || (m.N-17)%4 != 0 {
-		return nil, fmt.Errorf("qr: %dx%d is not a QR symbol size", m.N, m.N)
+		return nil, fmt.Errorf("%dx%d is not a QR symbol size", m.N, m.N)
 	}
 	version := (m.N - 17) / 4
 	l := NewLayout(version)
@@ -198,7 +204,7 @@ func decodeWithFormat(m *Matrix, l *Layout, opt DecodeOptions, ecc ECC, mask int
 			er = nil
 		}
 		if err != nil {
-			return nil, fmt.Errorf("qr: block %d: %w", b, err)
+			return nil, fmt.Errorf("block %d: %w", b, err)
 		}
 		res.ErasuresUsed += len(er)
 		for _, p := range rr.Positions {
@@ -243,7 +249,7 @@ func parseStream(data []byte, version int, res *Result) error {
 			mode := map[int]Mode{1: ModeNumeric, 2: ModeAlnum, 4: ModeByte}[ind]
 			cb := ccBits(mode, version)
 			if r.left() < cb {
-				return errors.New("qr: truncated count field")
+				return errors.New("truncated count field")
 			}
 			cnt := r.get(cb)
 			seg := Segment{Mode: mode, Chars: cnt}
@@ -253,11 +259,11 @@ func parseStream(data []byte, version int, res *Result) error {
 					k := min(cnt, 3)
 					nb := [4]int{0, 4, 7, 10}[k]
 					if r.left() < nb {
-						return errors.New("qr: truncated numeric data")
+						return errors.New("truncated numeric data")
 					}
 					v := r.get(nb)
 					if v >= [4]int{0, 10, 100, 1000}[k] {
-						return errors.New("qr: numeric group out of range")
+						return errors.New("numeric group out of range")
 					}
 					s := fmt.Sprintf("%0*d", k, v)
 					seg.Data = append(seg.Data, s...)
@@ -267,21 +273,21 @@ func parseStream(data []byte, version int, res *Result) error {
 				for cnt > 0 {
 					if cnt >= 2 {
 						if r.left() < 11 {
-							return errors.New("qr: truncated alphanumeric data")
+							return errors.New("truncated alphanumeric data")
 						}
 						v := r.get(11)
 						if v >= 45*45 {
-							return errors.New("qr: alphanumeric pair out of range")
+							return errors.New("alphanumeric pair out of range")
 						}
 						seg.Data = append(seg.Data, alnumChars[v/45], alnumChars[v%45])
 						cnt -= 2
 					} else {
 						if r.left() < 6 {
-							return errors.New("qr: truncated alphanumeric data")
+							return errors.New("truncated alphanumeric data")
 						}
 						v := r.get(6)
 						if v >= 45 {
-							return errors.New("qr: alphanumeric char out of range")
+							return errors.New("alphanumeric char out of range")
 						}
 						seg.Data = append(seg.Data, alnumChars[v])
 						cnt--
@@ -289,7 +295,7 @@ func parseStream(data []byte, version int, res *Result) error {
 				}
 			case ModeByte:
 				if r.left() < 8*cnt {
-					return errors.New("qr: truncated byte data")
+					return errors.New("truncated byte data")
 				}
 				for i := 0; i < cnt; i++ {
 					seg.Data = append(seg.Data, byte(r.get(8)))
@@ -299,7 +305,7 @@ func parseStream(data []byte, version int, res *Result) error {
 			res.Segments = append(res.Segments, seg)
 		case 7: // ECI
 			if r.left() < 8 {
-				return errors.New("qr: truncated ECI")
+				return errors.New("truncated ECI")
 			}
 			b := r.get(8)
 			switch {
@@ -307,12 +313,12 @@ func parseStream(data []byte, version int, res *Result) error {
 				eci = b
 			case b&0xC0 == 0x80:
 				if r.left() < 8 {
-					return errors.New("qr: truncated ECI")
+					return errors.New("truncated ECI")
 				}
 				eci = (b&0x3F)<<8 | r.get(8)
 			default:
 				if r.left() < 16 {
-					return errors.New("qr: truncated ECI")
+					return errors.New("truncated ECI")
 				}
 				eci = (b&0x1F)<<16 | r.get(16)
 			}
@@ -320,7 +326,7 @@ func parseStream(data []byte, version int, res *Result) error {
 			res.Segments = append(res.Segments, Segment{Mode: ModeECI, ECI: eci})
 		case 3: // structured append
 			if r.left() < 16 {
-				return errors.New("qr: truncated structured-append header")
+				return errors.New("truncated structured-append header")
 			}
 			idx, tot, par := r.get(4), r.get(4)+1, r.get(8)
 			res.SA = &StructuredAppend{Index: idx, Total: tot, Parity: byte(par)}
@@ -328,14 +334,14 @@ func parseStream(data []byte, version int, res *Result) error {
 			res.FNC1 = true
 			if ind == 9 {
 				if r.left() < 8 {
-					return errors.New("qr: truncated FNC1")
+					return errors.New("truncated FNC1")
 				}
 				r.get(8)
 			}
 		case 8:
-			return errors.New("qr: Kanji mode is not supported by this decoder")
+			return errors.New("Kanji mode is not supported by this decoder")
 		default:
-			return fmt.Errorf("qr: unknown mode indicator %04b", ind)
+			return fmt.Errorf("unknown mode indicator %04b", ind)
 		}
 	}
 done:

@@ -126,14 +126,19 @@ func crossCheck(b *Bin, cx, cy, approx float64) (Finder, bool) {
 	}
 	cx += offH
 	tv, th := sum5(rv), sum5(rh)
-	if math.Abs(float64(tv-th)) > 0.6*float64(max(tv, th)) {
+	if math.Abs(float64(tv-th)) > 0.8*float64(max(tv, th)) { // tilted views squash one axis
 		return Finder{}, false
 	}
 	// diagonal checks make the test rotation-robust against text/clutter
+	// At least one diagonal must agree (both would be fragile under impulse noise).
+	diag := 0
 	for _, d := range [][2]float64{{0.7071, 0.7071}, {0.7071, -0.7071}} {
-		if _, _, ok := crossLine(b, cx, cy, d[0], d[1], approx*1.5); !ok {
-			return Finder{}, false
+		if _, _, ok := crossLine(b, cx, cy, d[0], d[1], approx*1.5); ok {
+			diag++
 		}
+	}
+	if diag == 0 {
+		return Finder{}, false
 	}
 	return Finder{C: Pt{cx + 0.5, cy + 0.5}, Module: float64(tv+th) / 14, Hits: 1}, true
 }
@@ -202,4 +207,85 @@ func CoreModule(b *Bin, c Pt, guess float64) float64 {
 		return guess
 	}
 	return ms
+}
+
+// FinderCorners returns the four outer corners of the finder's 7x7 dark ring in
+// the order (-,-), (+,-), (+,+), (-,+) along the symbol's x and y axes (ux, uy
+// are unit vectors of the module x and y directions in the image). ok is false
+// when the ring cannot be isolated.
+func FinderCorners(b *Bin, f Finder, ux, uy Pt) (c [4]Pt, ok bool) {
+	// Walk along +x from the centre through core and light ring to the ring.
+	var sx, sy int
+	found := false
+	phase := 0 // 0 in core, 1 in light ring
+	for t := 0.5; t < f.Module*4.5; t += 0.5 {
+		p := f.C.Add(ux.Mul(t))
+		xi, yi := int(math.Floor(p.X)), int(math.Floor(p.Y))
+		dark := b.At(xi, yi)
+		if phase == 0 && !dark {
+			phase = 1
+		} else if phase == 1 && dark {
+			sx, sy, found = xi, yi, true
+			break
+		}
+	}
+	if !found {
+		return c, false
+	}
+	limit := int(60 * f.Module * f.Module)
+	seen := map[int]bool{sy*b.W + sx: true}
+	stack := [][2]int{{sx, sy}}
+	pts := make([][2]int, 0, 256)
+	for len(stack) > 0 {
+		p := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		pts = append(pts, p)
+		if len(pts) > limit {
+			return c, false
+		}
+		for _, d := range [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+			x, y := p[0]+d[0], p[1]+d[1]
+			k := y*b.W + x
+			if x < 0 || y < 0 || x >= b.W || y >= b.H || seen[k] || !b.Pix[k] {
+				continue
+			}
+			seen[k] = true
+			stack = append(stack, [2]int{x, y})
+		}
+	}
+	if float64(len(pts)) < 16*f.Module*f.Module*0.5 {
+		return c, false
+	}
+	// Corners of an affinely skewed square are the extremes of the affine
+	// coordinates (a,b) of each pixel with respect to the axes (ux,uy), so
+	// project onto the dual basis rather than onto the axes themselves.
+	det := cross(ux, uy)
+	if math.Abs(det) < 0.05 {
+		return c, false
+	}
+	coords := func(q Pt) (float64, float64) {
+		d := q.Sub(f.C)
+		return cross(d, uy) / det, cross(ux, d) / det
+	}
+	signs := [4][2]float64{{-1, -1}, {1, -1}, {1, 1}, {-1, 1}}
+	for i, sg := range signs {
+		bestV, best := math.Inf(-1), Pt{}
+		for _, p := range pts {
+			q := Pt{float64(p[0]) + 0.5, float64(p[1]) + 0.5}
+			a, bb := coords(q)
+			if v := sg[0]*a + sg[1]*bb; v > bestV {
+				bestV, best = v, q
+			}
+		}
+		out := ux.Mul(sg[0]).Add(uy.Mul(sg[1]))
+		c[i] = best.Add(out.Mul(0.5 / out.Len()))
+	}
+	// Sanity: corners must sit well outside the core and not absurdly far away.
+	for _, p := range c {
+		d := p.Sub(f.C).Len() / f.Module
+		if d < 1.8 || d > 8 {
+			return c, false
+		}
+	}
+	return c, true
 }
