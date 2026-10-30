@@ -1,7 +1,7 @@
 # Quietzone
 A from-scratch QR code laboratory in Go (stdlib only). See [PLAN.md](PLAN.md).
 
-**Status: Phase 2 complete — the four required features work end to end.**
+**Status: Phase 3 complete — adversarial review done ([REVIEW.md](REVIEW.md)): 12 findings fixed, `qz bench` 13/13 scenarios at 100 %.**
 
 | Required feature | State |
 |---|---|
@@ -16,3 +16,5 @@ go build -o qz ./cmd/qz
 ./qz scan hello.png                   # read it back with full stats
 ```
 Remaining phases add the adversarial review, stretch features (distortion bench, damage tool, HTML explorer, multi-code), verification and final docs.
+
+Phase 3 added: timing-pattern version search, finder-ring-corner homography, denoise tier, 10× faster scanning, `qz bench`.
