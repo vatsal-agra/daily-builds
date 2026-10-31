@@ -850,30 +850,56 @@ func (in *integrator) parts(f E, x string, d int) (E, bool) {
 
 // ---------- definite integrals and certification ----------
 
-// DefiniteIntegral computes the integral of f over [a, b]. When both limits are numeric it cross-checks
-// the symbolic result against adaptive numeric quadrature (checked == true) and refuses answers that
-// disagree, such as an integrand with a pole inside the interval. Improper integrals are not supported.
+// DefiniteIntegral computes the integral of f over [a, b] (a and b may be oo / -oo). Endpoints where the
+// antiderivative is singular are handled with one-sided limits (improper integrals). With finite numeric
+// limits the symbolic result is cross-checked against adaptive numeric quadrature (checked == true); an
+// integrand with a pole inside the interval is refused instead of returning a wrong number.
 func DefiniteIntegral(f E, x string, a, b E) (res E, checked bool, err error) {
 	err = Guard(func() {
 		F, e := Integrate(f, x)
 		if e != nil {
 			fail("%s", e.Error())
 		}
-		improper := func() {
-			fail("improper integral: the integrand or its antiderivative is singular on [%s, %s] (limits are not implemented)", a.String(), b.String())
+		endpoint := func(at E, dir int) E {
+			if !isInfinite(at) {
+				if v, ok := tryVal(func() E { return Sub1(F, x, at) }); ok && !Contains(v, "oo") {
+					return v
+				}
+			}
+			v, ok := tryVal(func() E { return Limit(F, x, at, dir) })
+			if !ok {
+				fail("improper integral: could not evaluate the antiderivative's limit at %s", at.String())
+			}
+			if isInfinite(v) {
+				fail("the integral diverges (the antiderivative tends to infinity at %s)", at.String())
+			}
+			return v
 		}
-		var hi, lo E
-		if err := Guard(func() { hi, lo = Sub1(F, x, b), Sub1(F, x, a) }); err != nil {
-			improper()
-		}
+		hi, lo := endpoint(b, -1), endpoint(a, 1)
 		res = Sub(hi, lo)
 		av, e1 := EvalNum(a, nil)
 		bv, e2 := EvalNum(b, nil)
 		if e1 == nil && e2 == nil && imag(av) == 0 && imag(bv) == 0 {
-			num, ok := Quadrature(f, x, real(av), real(bv))
-			sym, e3 := EvalNum(res, nil)
+			lo2, hi2 := real(av), real(bv)
+			improper := false
+			if _, ok := tryVal(func() E { return Sub1(f, x, a) }); !ok {
+				improper = true
+			}
+			if _, ok := tryVal(func() E { return Sub1(f, x, b) }); !ok {
+				improper = true
+			}
+			check := res
+			if improper {
+				// the endpoint values came from limits, so verify the antiderivative on the regular
+				// part of the interval, trimmed by 0.1% at each end
+				d := (hi2 - lo2) * 1e-3
+				lo2, hi2 = lo2+d, hi2-d
+				check = Sub(Sub1(F, x, Num(new(big.Rat).SetFloat64(hi2))), Sub1(F, x, Num(new(big.Rat).SetFloat64(lo2))))
+			}
+			num, ok := Quadrature(f, x, lo2, hi2)
+			sym, e3 := EvalNum(check, nil)
 			if !ok || e3 != nil || cmplx.Abs(sym-complex(num, 0)) > 1e-6*(1+math.Abs(num)) {
-				improper()
+				fail("the integrand is singular inside [%s, %s]; the integral diverges or needs a principal value", a.String(), b.String())
 			}
 			checked = true
 		}

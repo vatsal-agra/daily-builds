@@ -81,7 +81,9 @@ var (
 	I        = Sym("i")
 )
 
-func isConstSym(e E) bool { return e.K == KSym && (e.S == "pi" || e.S == "e" || e.S == "i") }
+func isConstSym(e E) bool {
+	return e.K == KSym && (e.S == "pi" || e.S == "e" || e.S == "i" || e.S == "oo")
+}
 
 // Key returns a canonical full-precision serialisation used for equality and ordering.
 func (e E) Key() string {

@@ -45,6 +45,7 @@ var commands = map[string]command{
 	"charpoly":  {"charpoly(M [, x])", "characteristic polynomial"},
 	"eigen":     {"eigen(M)", "eigenvalues with multiplicity, eigenvectors for rational ones"},
 	"linsolve":  {"linsolve(A, b)", "solve A x = b exactly"},
+	"limit":     {"limit(expr, x, a [, dir])", "limit; a may be oo or -oo; dir = -1 / 1 for one-sided"},
 	"eq":        {"", ""},
 }
 
@@ -68,7 +69,7 @@ func Help() string {
 		sb.WriteString(fmt.Sprintf("  %-34s %s\n", c.usage, c.doc))
 	}
 	sb.WriteString("\nFunctions: sin cos tan sec csc cot asin acos atan sinh cosh tanh exp ln log sqrt abs\n")
-	sb.WriteString("Constants: pi e i.  Assign with  name = expr ;  use ans for the last result.\n")
+	sb.WriteString("Constants: pi e i oo (infinity).  Assign with  name = expr ;  use ans for the last result.\n")
 	sb.WriteString("Matrices: [[1,2],[3,4]] with + - * ^ operators.  Implicit multiplication: 2x, 3(x+1).\n")
 	return sb.String()
 }
@@ -305,6 +306,17 @@ func (s *Session) command(c E) []string {
 			fail("order must be an integer")
 		}
 		return result(Taylor(ex(0), symName(args[1]), ex(2), int(n)))
+	case "limit":
+		argc(3, 4)
+		dir := 0
+		if len(args) == 4 {
+			k, ok := intExp(args[3])
+			if !ok || k < -1 || k > 1 {
+				fail("direction must be -1, 0 or 1")
+			}
+			dir = int(k)
+		}
+		return result(Limit(ex(0), symName(args[1]), ex(2), dir))
 	case "N":
 		argc(1, 1)
 		v, err := EvalNum(ex(0), nil)

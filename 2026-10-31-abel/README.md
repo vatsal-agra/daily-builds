@@ -15,3 +15,9 @@ Plan: see PLAN.md. Full README arrives in the final phase.
 **Phase 3 (adversarial review) complete** — see REVIEW.md: 22 reproduced problems fixed (Zassenhaus
 factoring replaced a Kronecker search that took 10 s on `x^30-1`; several integration gaps closed; four
 silent-lie bugs removed), plus a short list of loud, documented limitations.
+
+**Phase 4 (stretch + polish) complete** — added stretch features on top of Taylor series and exact matrices:
+a **limits engine** (direct substitution, L'Hôpital incl. inverted-quotient retry, product→quotient, exp–log
+for powers, pole sign analysis, limits at ±oo) which in turn powers **improper definite integrals**
+(`integrate(ln(x), x, 0, 1)` = -1, `integrate(1/(1+x^2), x, -oo, oo)` = pi); input-error handling hardened
+(positioned parse errors, depth cap, panic recovery, honest refusals).
