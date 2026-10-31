@@ -1,3 +1,13 @@
 # Abel — a computer algebra system in Go
 
-*Status: Phase 1 (plan) complete. See PLAN.md. Build in progress.*
+Exact symbolic mathematics from scratch (Go stdlib only, `math/big`).
+
+**Status: Phase 2 (core build) complete.** The four required features work end-to-end:
+
+1. Parser + canonical exact simplifier (rationals, surds, `i`, `pi`, `e`)
+2. Symbolic differentiation
+3. Polynomial toolkit: expand, gcd, factor over Q, solve, partial fractions
+4. Symbolic integration with self-certification (+ definite integrals)
+
+Run: `go run ./cmd/abel` (REPL), `go run ./cmd/abel -e 'integrate(x*sin(x), x)'`.
+Plan: see PLAN.md. Full README arrives in the final phase.
