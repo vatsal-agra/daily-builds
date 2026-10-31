@@ -54,3 +54,14 @@ listed input now behaves as described in the "After" column).
 
 Every integral printed by the battery carries Abel's own certificate (derivative re-check at up to 60
 random points, or exact symbolic cancellation). Nothing in the "After" column is a hardcoded output.
+
+## Addendum (Phase 5): bugs the property tests found in my "fixed" build
+
+Writing the randomised tests exposed two more genuine defects that the hand-written battery had missed.
+Both are fixed and covered by `TestPrintParseRoundTrip` / `TestSimplifierTable`.
+
+| # | Found by | Defect | Fix |
+|---|----------|--------|-----|
+| 23 | print→parse round trip on 3000 random expressions | The canonical form was *association-dependent*: `Mul` distributed a numeric coefficient over a lone sum only when the product had exactly two factors, so `4225*(x-24)/(…)` parsed to a different tree than the one that printed it. | `Mul` never distributes. `Add` distributes a bare `c*(a+b)` term (so `x - (x+1)` still cancels), and a presentational `Tidy` pass cleans up results. |
+| 24 | same test | Numeric content under a power was not normalised: `(2x+2)^-1` and `(1/2)(x+1)^-1` were different trees for the same value. | `Pow` pulls the rational content (and, for integer powers, the sign) out of a sum; a first version looped forever on sign-flipping — caught by the same test, termination rule added. |
+| 25 | finite-difference test | (test bug, not engine) huge-magnitude samples gave spurious mismatches | tests skip samples whose function value / slope is outside a sane range |
