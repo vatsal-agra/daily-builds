@@ -9,7 +9,7 @@ import (
 )
 
 const maxIntDepth = 30
-const intBudget = 40000
+const intBudget = 6000
 
 type integrator struct {
 	x      string
@@ -385,13 +385,13 @@ func integratePartial(N, q Poly, j int, x string) E {
 		}
 	}
 	if rest.Sign() != 0 {
-		out = append(out, Mul(Num(rest), quadI(s, kappa, j)))
+		out = append(out, Mul(Num(rest), quadI(s, kappa, j, qm)))
 	}
 	return Add(out...)
 }
 
 // quadI is the integral of ds/(s^2+kappa)^k.
-func quadI(s E, kappa *big.Rat, k int) E {
+func quadI(s E, kappa *big.Rat, k int, qm E) E {
 	kap := Num(kappa)
 	if k == 1 {
 		if kappa.Sign() > 0 {
@@ -401,9 +401,9 @@ func quadI(s E, kappa *big.Rat, k int) E {
 		r := Sqrt(Num(new(big.Rat).Neg(kappa)))
 		return Mul(Pow(Mul(Int(2), r), MinusOne), Ln(Div(Sub(s, r), Add(s, r))))
 	}
-	qk := Pow(Add(Pow(s, Int(2)), kap), Int(int64(1-k)))
+	qk := Pow(qm, Int(int64(1-k)))
 	t1 := Div(Mul(s, qk), Mul(Int(int64(2*(k-1))), kap))
-	t2 := Mul(Div(Int(int64(2*k-3)), Mul(Int(int64(2*(k-1))), kap)), quadI(s, kappa, k-1))
+	t2 := Mul(Div(Int(int64(2*k-3)), Mul(Int(int64(2*(k-1))), kap)), quadI(s, kappa, k-1, qm))
 	return Add(t1, t2)
 }
 

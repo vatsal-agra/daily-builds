@@ -1,0 +1,92 @@
+# ===== 1. parser + exact simplifier =====
+sqrt(8) + sqrt(18)
+1/(1+sqrt(2))
+sin(pi/6) + cos(pi/3)
+e^(i*pi)
+sin(x)^2 + cos(x)^2
+expand((x+y)^3)
+x - (x+1)
+2x(x+3) - 2x^2
+equal(sin(x)^2 + cos(x)^2, 1)
+equal((x+1)^2, x^2+2x+1)
+
+# ===== 2. differentiation =====
+diff(x^2*sin(x), x)
+diff(ln(x)/x, x)
+diff(x^x, x)
+diff(atan(x)^2, x)
+diff(e^(x^2), x, 2)
+diff(x^3*y^2, y)
+
+# ===== 3. polynomial toolkit =====
+factor(x^4+4)
+factor(x^30-1)
+factor(2x^3-3x^2-11x+6)
+gcd(x^3-1, x^2-1)
+apart((x^3+2x)/(x^2+1)^2, x)
+together(1/x + 1/(x+1) + 1/(x+2), x)
+solve(x^2-2x-1=0, x)
+solve(x^2+2x+5=0, x)
+solve(x^4+1=0, x)
+solve(x^4-5x^2+4=0, x)
+solve(x^3-x-1=0, x)
+solve(a*x^2+b*x+c=0, x)
+solve([2x+y=5, x-y=1], [x,y])
+
+# ===== 4. integration (every answer certified) =====
+integrate(x^2+3x+1, x)
+integrate(1/(x^2+2x+5), x)
+integrate((x^2+1)/(x^3+x), x)
+integrate(1/(x*(x+1)^2), x)
+integrate(1/(x^2+x+1)^2, x)
+integrate(x^2*e^x, x)
+integrate(x*ln(x), x)
+integrate(atan(x), x)
+integrate(sin(x)^3*cos(x)^2, x)
+integrate(sin(2x)*cos(3x), x)
+integrate(e^x*sin(x), x)
+integrate(tan(x)^2, x)
+integrate(x*e^(x^2), x)
+integrate(1/(1+e^x), x)
+integrate(sqrt(1-x^2), x)
+integrate(1/sqrt(x^2+4), x)
+integrate(e^(x^2), x)
+integrate(1/(x^4+1), x)
+
+# ===== 4b. definite and improper integrals =====
+integrate(sin(x), x, 0, pi)
+integrate(ln(x), x, 0, 1)
+integrate(e^(-x), x, 0, oo)
+integrate(1/(1+x^2), x, -oo, oo)
+integrate(1/x^2, x, -1, 1)
+integrate(1/x, x, 0, 1)
+
+# ===== 5. limits =====
+limit(sin(x)/x, x, 0)
+limit((1+1/x)^x, x, oo)
+limit(x*ln(x), x, 0, 1)
+limit(1/x, x, 0, -1)
+limit(1/x, x, 0)
+
+# ===== 6. Taylor series =====
+taylor(sin(x), x, 0, 7)
+taylor(ln(x), x, 1, 4)
+taylor(e^x/(1-x), x, 0, 4)
+
+# ===== 7. exact matrices =====
+det([[2,1,0],[1,3,1],[0,1,4]])
+inv([[2,1],[5,3]])
+rref([[1,2,3],[4,5,6],[7,8,9]])
+nullspace([[1,2,3],[4,5,6],[7,8,9]])
+charpoly([[2,1],[1,2]], t)
+eigen([[2,1],[1,2]])
+eigen([[0,1],[-1,0]])
+linsolve([[2,1],[1,3]],[[5],[10]])
+[[1,2],[3,4]]^5
+
+# ===== 8. REPL variables and numerics =====
+a = 3
+b = a^2 + 1
+diff(x^2*a, x)
+N(pi*e)
+N(e^i)

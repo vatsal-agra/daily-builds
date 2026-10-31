@@ -1,0 +1,288 @@
+>>> sqrt(8) + sqrt(18)
+5*sqrt(2)
+
+>>> 1/(1+sqrt(2))
+sqrt(2) - 1
+
+>>> sin(pi/6) + cos(pi/3)
+1
+
+>>> e^(i*pi)
+-1
+
+>>> sin(x)^2 + cos(x)^2
+1
+
+>>> expand((x+y)^3)
+3*x^2*y + 3*x*y^2 + x^3 + y^3
+
+>>> x - (x+1)
+-1
+
+>>> 2x(x+3) - 2x^2
+2*x*(x + 3) - 2*x^2
+
+>>> equal(sin(x)^2 + cos(x)^2, 1)
+true (exactly equal after expansion)
+
+>>> equal((x+1)^2, x^2+2x+1)
+true (exactly equal after expansion)
+
+>>> diff(x^2*sin(x), x)
+x^2*cos(x) + 2*x*sin(x)
+
+>>> diff(ln(x)/x, x)
+-ln(x)/x^2 + 1/x^2
+
+>>> diff(x^x, x)
+x^x*(ln(x) + 1)
+
+>>> diff(atan(x)^2, x)
+2*atan(x)/(x^2 + 1)
+
+>>> diff(e^(x^2), x, 2)
+4*x^2*e^(x^2) + 2*e^(x^2)
+
+>>> diff(x^3*y^2, y)
+2*x^3*y
+
+>>> factor(x^4+4)
+(x^2 - 2*x + 2)*(x^2 + 2*x + 2)
+  ✓ certified: expanding the factors reproduces the input
+
+>>> factor(x^30-1)
+(x^2 - x + 1)*(x^2 + x + 1)*(x^4 - x^3 + x^2 - x + 1)*(x^4 + x^3 + x^2 + x + 1)*(x^8 - x^7 + x^5 - x^4 + x^3 - x + 1)*(x^8 + x^7 - x^5 - x^4 - x^3 + x + 1)*(x - 1)*(x + 1)
+  ✓ certified: expanding the factors reproduces the input
+
+>>> factor(2x^3-3x^2-11x+6)
+(2*x - 1)*(x - 3)*(x + 2)
+  ✓ certified: expanding the factors reproduces the input
+
+>>> gcd(x^3-1, x^2-1)
+x - 1
+
+>>> apart((x^3+2x)/(x^2+1)^2, x)
+x/(x^2 + 1) + x/(x^2 + 1)^2
+
+>>> together(1/x + 1/(x+1) + 1/(x+2), x)
+(3*x^2 + 6*x + 2)/(x^3 + 3*x^2 + 2*x)
+
+>>> solve(x^2-2x-1=0, x)
+x = -sqrt(2) + 1   ≈ -0.4142135624
+x = sqrt(2) + 1   ≈ 2.414213562
+
+>>> solve(x^2+2x+5=0, x)
+x = -2*i - 1   ≈ -1 - 2*i
+x = 2*i - 1   ≈ -1 + 2*i
+
+>>> solve(x^4+1=0, x)
+x = -(-1)^(1/4)   ≈ -0.7071067812 - 0.7071067812*i
+x = i*(-1)^(1/4)   ≈ -0.7071067812 + 0.7071067812*i
+x = -i*(-1)^(1/4)   ≈ 0.7071067812 - 0.7071067812*i
+x = (-1)^(1/4)   ≈ 0.7071067812 + 0.7071067812*i
+
+>>> solve(x^4-5x^2+4=0, x)
+x = -2
+x = -1
+x = 1
+x = 2
+
+>>> solve(x^3-x-1=0, x)
+x = -0.6623589786 - 0.5622795121*i  (root of x^3 - x - 1)
+x = -0.6623589786 + 0.5622795121*i  (root of x^3 - x - 1)
+x = 1.324717957  (root of x^3 - x - 1)
+
+>>> solve(a*x^2+b*x+c=0, x)
+x = (-b + sqrt(-4*a*c + b^2))/(2*a)
+x = (-b - sqrt(-4*a*c + b^2))/(2*a)
+
+>>> solve([2x+y=5, x-y=1], [x,y])
+x = 2
+y = 1
+
+>>> integrate(x^2+3x+1, x)
+x^3/3 + 3*x^2/2 + x
+  ✓ certified: d/dx F - f simplifies to 0 exactly
+  (+ C)
+
+>>> integrate(1/(x^2+2x+5), x)
+atan(x/2 + 1/2)/2
+  ✓ certified: d/dx F - f simplifies to 0 exactly
+  (+ C)
+
+>>> integrate((x^2+1)/(x^3+x), x)
+ln(x)
+  ✓ certified: d/dx F matches the integrand at 60 random points (max rel. error 1.8e-16)
+  (+ C)
+
+>>> integrate(1/(x*(x+1)^2), x)
+-ln(x + 1) + 1/(x + 1) + ln(x)
+  ✓ certified: d/dx F matches the integrand at 60 random points (max rel. error 2.5e-16)
+  (+ C)
+
+>>> integrate(1/(x^2+x+1)^2, x)
+2*(x + 1/2)/(3*(x^2 + x + 1)) + 4*atan(2*(x + 1/2)*sqrt(3)/3)*sqrt(3)/9
+  ✓ certified: d/dx F matches the integrand at 60 random points (max rel. error 2.2e-16)
+  (+ C)
+
+>>> integrate(x^2*e^x, x)
+x^2*e^x - 2*x*e^x + 2*e^x
+  ✓ certified: d/dx F - f simplifies to 0 exactly
+  (+ C)
+
+>>> integrate(x*ln(x), x)
+x^2*ln(x)/2 - x^2/4
+  ✓ certified: d/dx F - f simplifies to 0 exactly
+  (+ C)
+
+>>> integrate(atan(x), x)
+x*atan(x) - ln(x^2 + 1)/2
+  ✓ certified: d/dx F - f simplifies to 0 exactly
+  (+ C)
+
+>>> integrate(sin(x)^3*cos(x)^2, x)
+-cos(x)^3/3 + cos(x)^5/5
+  ✓ certified: d/dx F matches the integrand at 60 random points (max rel. error 1.1e-16)
+  (+ C)
+
+>>> integrate(sin(2x)*cos(3x), x)
+-cos(5*x)/10 + cos(x)/2
+  ✓ certified: d/dx F matches the integrand at 60 random points (max rel. error 6.5e-16)
+  (+ C)
+
+>>> integrate(e^x*sin(x), x)
+e^x*(-cos(x) + sin(x))/2
+  ✓ certified: d/dx F - f simplifies to 0 exactly
+  (+ C)
+
+>>> integrate(tan(x)^2, x)
+-x + tan(x)
+  ✓ certified: d/dx F matches the integrand at 60 random points (max rel. error 5.4e-16)
+  (+ C)
+
+>>> integrate(x*e^(x^2), x)
+e^(x^2)/2
+  ✓ certified: d/dx F - f simplifies to 0 exactly
+  (+ C)
+
+>>> integrate(1/(1+e^x), x)
+x - ln(e^x + 1)
+  ✓ certified: d/dx F matches the integrand at 60 random points (max rel. error 1.2e-16)
+  (+ C)
+
+>>> integrate(sqrt(1-x^2), x)
+x*sqrt(-x^2 + 1)/2 + asin(x)/2
+  ✓ certified: d/dx F matches the integrand at 19 random points (max rel. error 7.2e-17)
+  (+ C)
+
+>>> integrate(1/sqrt(x^2+4), x)
+ln(x + sqrt(x^2 + 4))
+  ✓ certified: d/dx F matches the integrand at 60 random points (max rel. error 1.3e-16)
+  (+ C)
+
+>>> integrate(e^(x^2), x)
+error: no closed form found for the integral of e^(x^2) (not elementary, or beyond the implemented methods)
+
+>>> integrate(1/(x^4+1), x)
+error: no closed form found for the integral of 1/(x^4 + 1) (not elementary, or beyond the implemented methods; a rational integrand whose denominator has an irreducible factor of degree > 2 over Q, such as x^4+1, would need algebraic-number partial fractions)
+
+>>> integrate(sin(x), x, 0, pi)
+2
+  ✓ cross-checked against numeric quadrature
+
+>>> integrate(ln(x), x, 0, 1)
+-1
+  ✓ cross-checked against numeric quadrature
+
+>>> integrate(e^(-x), x, 0, oo)
+1
+  (improper integral, evaluated with limits at infinity)
+
+>>> integrate(1/(1+x^2), x, -oo, oo)
+pi
+  ≈ 3.14159265359
+  (improper integral, evaluated with limits at infinity)
+
+>>> integrate(1/x^2, x, -1, 1)
+error: the integrand is singular inside [-1, 1]; the integral diverges or needs a principal value
+
+>>> integrate(1/x, x, 0, 1)
+error: the integral diverges (the antiderivative tends to infinity at 0)
+
+>>> limit(sin(x)/x, x, 0)
+1
+
+>>> limit((1+1/x)^x, x, oo)
+e
+
+>>> limit(x*ln(x), x, 0, 1)
+0
+
+>>> limit(1/x, x, 0, -1)
+-oo
+
+>>> limit(1/x, x, 0)
+error: limit does not exist (the one-sided limits differ)
+
+>>> taylor(sin(x), x, 0, 7)
+-x^7/5040 + x^5/120 - x^3/6 + x
+
+>>> taylor(ln(x), x, 1, 4)
+-x^4/4 + 4*x^3/3 - 3*x^2 + 4*x - 25/12
+
+>>> taylor(e^x/(1-x), x, 0, 4)
+65*x^4/24 + 8*x^3/3 + 5*x^2/2 + 2*x + 1
+
+>>> det([[2,1,0],[1,3,1],[0,1,4]])
+18
+
+>>> inv([[2,1],[5,3]])
+|  3  -1 |
+| -5   2 |
+
+>>> rref([[1,2,3],[4,5,6],[7,8,9]])
+| 1  0  -1 |
+| 0  1   2 |
+| 0  0   0 |
+
+>>> nullspace([[1,2,3],[4,5,6],[7,8,9]])
+[[1], [-2], [1]]
+
+>>> charpoly([[2,1],[1,2]], t)
+t^2 - 4*t + 3
+
+>>> eigen([[2,1],[1,2]])
+characteristic polynomial: lambda^2 - 4*lambda + 3
+lambda = 1
+    eigenvector: (-1, 1)^T
+lambda = 3
+    eigenvector: (1, 1)^T
+
+>>> eigen([[0,1],[-1,0]])
+characteristic polynomial: lambda^2 + 1
+lambda = -i
+lambda = i
+note: eigenvectors are only computed for rational eigenvalues
+
+>>> linsolve([[2,1],[1,3]],[[5],[10]])
+| 1 |
+| 3 |
+
+>>> [[1,2],[3,4]]^5
+[[1069, 1558], [2337, 3406]]
+
+>>> a = 3
+a = 3
+
+>>> b = a^2 + 1
+b = 10
+
+>>> diff(x^2*a, x)
+6*x
+
+>>> N(pi*e)
+8.539734223
+
+>>> N(e^i)
+0.5403023059 + 0.8414709848*i
+

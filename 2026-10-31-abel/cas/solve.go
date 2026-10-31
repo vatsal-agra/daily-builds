@@ -161,8 +161,8 @@ func rootsOfIrreducible(p Poly, mult int, x string) []Root {
 		sq := Sqrt(disc)
 		twoA := Mul(Int(2), a)
 		return []Root{
-			{Exact: Div(Add(Neg(b), sq), twoA), Mult: mult},
-			{Exact: Div(Sub(Neg(b), sq), twoA), Mult: mult},
+			{Exact: Expand(Div(Add(Neg(b), sq), twoA)), Mult: mult},
+			{Exact: Expand(Div(Sub(Neg(b), sq), twoA)), Mult: mult},
 		}
 	}
 	if r := powerSubstRoots(p, mult); r != nil {

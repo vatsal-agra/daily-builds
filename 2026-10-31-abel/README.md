@@ -21,3 +21,10 @@ a **limits engine** (direct substitution, L'Hôpital incl. inverted-quotient ret
 for powers, pole sign analysis, limits at ±oo) which in turn powers **improper definite integrals**
 (`integrate(ln(x), x, 0, 1)` = -1, `integrate(1/(1+x^2), x, -oo, oo)` = pi); input-error handling hardened
 (positioned parse errors, depth cap, panic recovery, honest refusals).
+
+**Phase 5 (verification) complete** — `./demo.sh` is green: `go vet`, 30+ Go tests (property-based round-trip /
+finite-difference / Cayley–Hamilton / Kronecker-oracle / cyclotomic tests, 75 certified integrals, limits,
+improper integrals, matrices, REPL session and never-panic fuzz inputs), a golden-file run of
+`testdata/demo.abel` covering every feature, and the 163-input hostile battery with zero internal errors.
+Property tests also caught two real canonical-form bugs (association-dependent distribution of numeric
+coefficients; un-normalised content inside `(2x+2)^-1`), both fixed.

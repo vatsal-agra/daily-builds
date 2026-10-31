@@ -177,6 +177,7 @@ func (s *Session) command(c E) []string {
 		return ""
 	}
 	result := func(r E) []string { s.Ans = r; return []string{r.String()} }
+	tidy := func(r E) []string { return result(Tidy(r)) }
 	switch c.S {
 	case "simplify":
 		argc(1, 1)
@@ -227,6 +228,8 @@ func (s *Session) command(c E) []string {
 			}
 			if checked {
 				out = append(out, "  ✓ cross-checked against numeric quadrature")
+			} else if isInfinite(ex(2)) || isInfinite(ex(3)) {
+				out = append(out, "  (improper integral, evaluated with limits at infinity)")
 			}
 			return out
 		}
@@ -234,7 +237,7 @@ func (s *Session) command(c E) []string {
 		if err != nil {
 			fail("%s", err.Error())
 		}
-		out := result(F)
+		out := tidy(F)
 		if ok, detail := Verify(e, F, v); ok {
 			out = append(out, "  ✓ certified: "+detail)
 		} else {
@@ -305,7 +308,7 @@ func (s *Session) command(c E) []string {
 		if !ok {
 			fail("order must be an integer")
 		}
-		return result(Taylor(ex(0), symName(args[1]), ex(2), int(n)))
+		return tidy(Taylor(ex(0), symName(args[1]), ex(2), int(n)))
 	case "limit":
 		argc(3, 4)
 		dir := 0

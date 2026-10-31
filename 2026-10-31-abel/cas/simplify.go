@@ -66,6 +66,20 @@ func Add(ts ...E) E {
 	if anyMat(ts) {
 		return matAddAll(ts)
 	}
+	if len(ts) == 1 {
+		return ts[0]
+	}
+	nz := 0
+	var only E
+	for _, t := range ts {
+		if !isNumVal(t, 0) {
+			nz++
+			only = t
+		}
+	}
+	if nz == 1 {
+		return only
+	}
 	c := new(big.Rat)
 	type acc struct {
 		coef *big.Rat
@@ -82,6 +96,22 @@ func Add(ts ...E) E {
 			}
 		case KNum:
 			c.Add(c, t.N)
+		case KMul:
+			if len(t.A) == 2 && t.A[0].K == KNum && t.A[1].K == KAdd {
+				// c*(a+b) inside a sum is distributed so that like terms can cancel
+				for _, u := range t.A[1].A {
+					visit(Mul(t.A[0], u))
+				}
+				return
+			}
+			coef, rest := splitCoeff(t)
+			k := rest.Key()
+			if a, ok := m[k]; ok {
+				a.coef.Add(a.coef, coef)
+			} else {
+				m[k] = &acc{new(big.Rat).Set(coef), rest}
+				order = append(order, k)
+			}
 		default:
 			coef, rest := splitCoeff(t)
 			k := rest.Key()
@@ -372,13 +402,6 @@ func Mul(fs ...E) E {
 	if again {
 		return Mul(append(pieces, Num(c))...)
 	}
-	if c.Cmp(big.NewRat(1, 1)) != 0 && len(pieces) == 1 && pieces[0].K == KAdd {
-		sum := make([]E, len(pieces[0].A))
-		for i, t := range pieces[0].A {
-			sum[i] = Mul(Num(c), t)
-		}
-		return Add(sum...)
-	}
 	sort.SliceStable(pieces, func(i, j int) bool { return cmpFactor(pieces[i], pieces[j]) })
 	if c.Cmp(big.NewRat(1, 1)) != 0 {
 		pieces = append([]E{Num(c)}, pieces...)
@@ -459,6 +482,13 @@ func Pow(b, e E) E {
 		}
 		return Neg(I)
 	}
+	if b.K == KAdd && e.K == KNum {
+		// normalise the numeric content of a sum under a numeric power: (2x+2)^-1 = (1/2)(x+1)^-1,
+		// (-x-1)^-1 = -(x+1)^-1 (sign only for integer exponents)
+		if c, inner := addContent(b, e.N.IsInt()); c != nil {
+			return Mul(Pow(Num(c), e), Pow(inner, e))
+		}
+	}
 	if e.K == KNum && e.N.IsInt() {
 		switch b.K {
 		case KPow:
@@ -484,10 +514,50 @@ func Pow(b, e E) E {
 		s1, s2 := Pow(b.A[0], Int(2)), Pow(b.A[1], Int(2))
 		if s1.K == KNum && s2.K == KNum && s1.N.Cmp(s2.N) != 0 {
 			d := Num(new(big.Rat).Sub(s1.N, s2.N))
-			return Mul(Sub(b.A[0], b.A[1]), Pow(d, MinusOne))
+			return Expand(Mul(Sub(b.A[0], b.A[1]), Pow(d, MinusOne)))
 		}
 	}
 	return &Expr{K: KPow, A: []E{b, e}}
+}
+
+// addContent splits a rational content c out of a sum (all coefficients divisible by c, c positive unless
+// withSign and the leading coefficient is negative). It returns nil when the content is already 1.
+func addContent(b E, withSign bool) (*big.Rat, E) {
+	g, l := new(big.Int), big.NewInt(1)
+	var first *big.Rat
+	for i, t := range b.A {
+		c, _ := splitCoeff(t)
+		if i == 0 {
+			first = c
+		}
+		g.GCD(nil, nil, g, new(big.Int).Abs(c.Num()))
+		d := c.Denom()
+		l.Mul(l, new(big.Int).Quo(d, new(big.Int).GCD(nil, nil, l, d)))
+	}
+	if g.Sign() == 0 {
+		return nil, nil
+	}
+	c := new(big.Rat).SetFrac(g, l)
+	scaled := func(c *big.Rat) E {
+		inv := new(big.Rat).Inv(c)
+		terms := make([]E, len(b.A))
+		for i, t := range b.A {
+			terms[i] = Mul(Num(inv), t)
+		}
+		return Add(terms...)
+	}
+	if withSign && first.Sign() < 0 {
+		neg := new(big.Rat).Neg(c)
+		if inner := scaled(neg); inner.K == KAdd {
+			if lead, _ := splitCoeff(inner.A[0]); lead.Sign() > 0 {
+				return neg, inner
+			}
+		}
+	}
+	if c.Cmp(big.NewRat(1, 1)) == 0 {
+		return nil, nil
+	}
+	return c, scaled(c)
 }
 
 // ---------- functions ----------
@@ -747,4 +817,17 @@ func Expand(e E) E {
 		return Map(e, Expand)
 	}
 	return e
+}
+
+// Tidy is presentational: it distributes a bare numeric coefficient over a sum, bottom-up, so results print
+// as "-x + 2" rather than "-(x - 2)". Products with other factors are left alone.
+func Tidy(e E) E {
+	if len(e.A) == 0 {
+		return e
+	}
+	r := Map(e, Tidy)
+	if r.K == KMul && len(r.A) == 2 && r.A[0].K == KNum && r.A[1].K == KAdd {
+		return Expand(r)
+	}
+	return r
 }
