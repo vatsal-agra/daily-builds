@@ -98,6 +98,8 @@ func evalC(e E, env map[string]complex128) complex128 {
 			return cmplx.Cosh(a)
 		case "tanh":
 			return cmplx.Tanh(a)
+		case "abs":
+			return complex(cmplx.Abs(a), 0)
 		}
 		fail("cannot evaluate unknown function %q", e.S)
 	case KMat:

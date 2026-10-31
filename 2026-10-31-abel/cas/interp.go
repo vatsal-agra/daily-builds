@@ -75,6 +75,11 @@ func Help() string {
 
 // Eval evaluates one input line and returns the lines to print.
 func (s *Session) Eval(line string) (out []string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			out, err = nil, fmt.Errorf("internal error: %v (this is a bug in Abel; the session is still usable)", r)
+		}
+	}()
 	line = strings.TrimSpace(line)
 	if line == "" {
 		return nil, nil
@@ -211,7 +216,7 @@ func (s *Session) command(c E) []string {
 		}
 		e, v := ex(0), symName(args[1])
 		if len(args) == 4 {
-			r, err := DefiniteIntegral(e, v, ex(2), ex(3))
+			r, checked, err := DefiniteIntegral(e, v, ex(2), ex(3))
 			if err != nil {
 				fail("%s", err.Error())
 			}
@@ -219,7 +224,10 @@ func (s *Session) command(c E) []string {
 			if val, err := EvalNum(r, nil); err == nil && imag(val) == 0 && !isConstNum(r) {
 				out = append(out, fmt.Sprintf("  ≈ %.12g", real(val)))
 			}
-			return append(out, "  ✓ cross-checked against numeric quadrature")
+			if checked {
+				out = append(out, "  ✓ cross-checked against numeric quadrature")
+			}
+			return out
 		}
 		F, err := Integrate(e, v)
 		if err != nil {
@@ -250,7 +258,7 @@ func (s *Session) command(c E) []string {
 				line += fmt.Sprintf("   (multiplicity %d)", r.Mult)
 			}
 			if r.Exact != nil {
-				if r.Exact.K != KNum {
+				if r.Exact.K != KNum && len(FreeSyms(r.Exact)) == 0 {
 					line += fmt.Sprintf("   ≈ %s", fmtComplex(r.Approx))
 				}
 				exact = append(exact, r.Exact)
@@ -509,6 +517,12 @@ func eigenLines(m E) []string {
 			for _, v := range Nullspace(shifted) {
 				out = append(out, "    eigenvector: "+colString(v))
 			}
+		}
+	}
+	for _, r := range roots {
+		if r.Exact != nil && r.Exact.K != KNum {
+			out = append(out, "note: eigenvectors are only computed for rational eigenvalues")
+			break
 		}
 	}
 	if total != m.R {

@@ -56,7 +56,7 @@ func lex(src string) ([]token, error) {
 					j++
 				}
 			}
-			if j < len(rs) && (rs[j] == 'E') { // scientific: 1E3
+			if j < len(rs) && (rs[j] == 'E' || rs[j] == 'e') { // scientific: 1E3, 1.5e2
 				k := j + 1
 				if k < len(rs) && (rs[k] == '+' || rs[k] == '-') {
 					k++
@@ -92,9 +92,10 @@ func lex(src string) ([]token, error) {
 }
 
 type parser struct {
-	toks []token
-	p    int
-	src  string
+	toks  []token
+	p     int
+	src   string
+	depth int
 }
 
 func (ps *parser) peek() token { return ps.toks[ps.p] }
@@ -195,6 +196,11 @@ func (ps *parser) term() E {
 }
 
 func (ps *parser) unary() E {
+	ps.depth++
+	defer func() { ps.depth-- }()
+	if ps.depth > 300 {
+		panic(ps.errf(ps.peek().pos, "expression is nested too deeply"))
+	}
 	if ps.isOp("-") {
 		ps.next()
 		return Neg(ps.unary())
@@ -248,6 +254,9 @@ func (ps *parser) primary() E {
 			}
 			ps.next()
 			return buildCall(ps, t, args)
+		}
+		if ps.isOp("(") && len([]rune(t.s)) > 1 && t.s != "pi" && ps.peek().pos == t.pos+len([]rune(t.s)) {
+			panic(ps.errf(t.pos, "unknown function %q (write %s*(...) to multiply)", t.s, t.s))
 		}
 		return Sym(t.s)
 	case tOp:

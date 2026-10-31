@@ -1,6 +1,9 @@
 package cas
 
-import "math/big"
+import (
+	"fmt"
+	"math/big"
+)
 
 // Diff differentiates e with respect to the symbol x.
 func Diff(e E, x string) E {
@@ -103,6 +106,14 @@ func Taylor(e E, x string, a E, n int) E {
 	var out []E
 	cur := e
 	fact := big.NewInt(1)
+	defer func() {
+		if r := recover(); r != nil {
+			if m, ok := r.(MathError); ok {
+				panic(MathError(fmt.Sprintf("series about %s = %s failed (%s): the function is probably singular there", x, a.String(), string(m))))
+			}
+			panic(r)
+		}
+	}()
 	for k := 0; k <= n; k++ {
 		if k > 0 {
 			cur = Diff(cur, x)
@@ -118,5 +129,9 @@ func Taylor(e E, x string, a E, n int) E {
 		coef := Mul(val, Num(new(big.Rat).SetFrac(big.NewInt(1), fact)))
 		out = append(out, Mul(coef, Pow(Sub(Sym(x), a), Int(int64(k)))))
 	}
-	return Add(out...)
+	res := Add(out...)
+	if a.K == KNum {
+		return Expand(res)
+	}
+	return res
 }

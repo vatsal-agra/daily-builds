@@ -11,3 +11,7 @@ Exact symbolic mathematics from scratch (Go stdlib only, `math/big`).
 
 Run: `go run ./cmd/abel` (REPL), `go run ./cmd/abel -e 'integrate(x*sin(x), x)'`.
 Plan: see PLAN.md. Full README arrives in the final phase.
+
+**Phase 3 (adversarial review) complete** — see REVIEW.md: 22 reproduced problems fixed (Zassenhaus
+factoring replaced a Kronecker search that took 10 s on `x^30-1`; several integration gaps closed; four
+silent-lie bugs removed), plus a short list of loud, documented limitations.

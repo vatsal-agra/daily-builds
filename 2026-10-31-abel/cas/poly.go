@@ -459,14 +459,9 @@ func factorSquarefreePrimitive(f Poly) []Poly {
 			out = append(out, g)
 			continue
 		}
-		h := kronecker(g)
-		if h == nil {
-			out = append(out, g)
-			continue
+		for _, irr := range zassenhaus(g) {
+			out = append(out, irr)
 		}
-		q, _ := pDivMod(g, h)
-		_, q = primitiveInt(q)
-		work = append(work, h, q)
 	}
 	return out
 }
@@ -538,7 +533,7 @@ func Factor(e E, x string) E {
 		if !isNumVal(d, 1) {
 			return Div(Factor(n, x), Factor(d, x))
 		}
-		fail("%s is not a polynomial in %s with rational coefficients", e.String(), x)
+		fail("cannot factor %s: it is not a polynomial in %s with rational coefficients (multivariate factoring is not implemented)", e.String(), x)
 	}
 	if len(p) == 0 {
 		return Zero

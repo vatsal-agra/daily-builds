@@ -1,0 +1,18 @@
+factor(x^24-1)
+factor(x^30-1)
+factor(x^12+x^6+1)
+factor(x^16-1)
+expand((x+1)^60)
+2^(2^(2^10))
+x^99999999
+9999999^9999999
+100000^100000
+diff(sin(x)^50, x)
+integrate(sin(x)^10, x)
+integrate(x^8*e^x, x)
+integrate(1/(x^12-1), x)
+integrate(1/((x-1)*(x-2)*(x-3)*(x-4)*(x-5)), x)
+solve(x^12-1=0, x)
+factor(x^6-9x^4+24x^2-16)
+factor(1000000007*x^2-1)
+factor(x^2-1000000016000000063)

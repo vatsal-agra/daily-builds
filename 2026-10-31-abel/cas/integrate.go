@@ -8,12 +8,13 @@ import (
 	"sort"
 )
 
-const maxIntDepth = 7
+const maxIntDepth = 30
 const intBudget = 40000
 
 type integrator struct {
 	x      string
 	budget int
+	reason string
 }
 
 // Integrate returns an antiderivative of f with respect to x (without the constant of integration).
@@ -25,7 +26,11 @@ func Integrate(f E, x string) (res E, err error) {
 		in := &integrator{x: x, budget: intBudget}
 		r, ok := in.integ(f, x, 0)
 		if !ok {
-			fail("no closed form found for the integral of %s (not elementary, or beyond the implemented methods)", f.String())
+			msg := ""
+			if in.reason != "" {
+				msg = "; " + in.reason
+			}
+			fail("no closed form found for the integral of %s (not elementary, or beyond the implemented methods%s)", f.String(), msg)
 		}
 		res = r
 	})
@@ -109,6 +114,12 @@ func (in *integrator) integ(f E, x string, d int) (E, bool) {
 	if r, ok := in.try(func() (E, bool) { return in.rational(f, x) }); ok {
 		return r, true
 	}
+	if r, ok := in.try(func() (E, bool) { return in.polyTimesElem(f, x) }); ok {
+		return r, true
+	}
+	if r, ok := in.try(func() (E, bool) { return in.sqrtQuad(f, x) }); ok {
+		return r, true
+	}
 	if r, ok := in.try(func() (E, bool) { return in.trigProduct(f, x, d) }); ok {
 		return r, true
 	}
@@ -166,6 +177,8 @@ func (in *integrator) table(f E, x string) (E, bool) {
 			g = Fn("sinh", u)
 		case "tanh":
 			g = Ln(Fn("cosh", u))
+		case "abs":
+			g = Mul(Frac(1, 2), u, f)
 		default:
 			return nil, false
 		}
@@ -202,7 +215,11 @@ func (in *integrator) rational(f E, x string) (E, bool) {
 	if !ok1 || !ok2 || len(pd) == 0 || len(pn) == 0 {
 		return nil, false
 	}
-	return integrateRational(pn, pd, x)
+	r, ok := integrateRational(pn, pd, x)
+	if !ok && pd.Deg() > 2 {
+		in.reason = "a rational integrand whose denominator has an irreducible factor of degree > 2 over Q, such as x^4+1, would need algebraic-number partial fractions"
+	}
+	return r, ok
 }
 
 // pfItem is one partial-fraction term N / Q^J with Q irreducible and deg N < deg Q.
@@ -347,7 +364,7 @@ func integratePartial(N, q Poly, j int, x string) E {
 	c0 := new(big.Rat).Quo(q[0], alpha)
 	kappa := new(big.Rat).Sub(c0, new(big.Rat).Quo(new(big.Rat).Mul(b, b), big.NewRat(4, 1)))
 	s := Add(xs, Num(new(big.Rat).Quo(b, big.NewRat(2, 1))))
-	qm := Add(Pow(s, Int(2)), Num(kappa)) // monic form
+	qm := Add(Pow(xs, Int(2)), Mul(Num(b), xs), Num(c0)) // monic form, expanded
 	aj := new(big.Rat).SetInt64(1)
 	for i := 0; i < j; i++ {
 		aj.Mul(aj, alpha)
@@ -405,6 +422,27 @@ func trigBaseExp(f E) (name string, arg E, n int64, ok bool) {
 }
 
 func (in *integrator) trigProduct(f E, x string, d int) (E, bool) {
+	if fs := factors(f); len(fs) == 2 && fs[0].K == KFn && fs[1].K == KFn && len(fs[0].A) == 1 && len(fs[1].A) == 1 &&
+		(fs[0].S == "sin" || fs[0].S == "cos") && (fs[1].S == "sin" || fs[1].S == "cos") && !Equal(fs[0].A[0], fs[1].A[0]) {
+		A, B := fs[0].A[0], fs[1].A[0]
+		if _, _, ok1 := linearIn(A, x); ok1 {
+			if _, _, ok2 := linearIn(B, x); ok2 {
+				var rw E
+				sum, dif := Add(A, B), Sub(A, B)
+				switch {
+				case fs[0].S == "sin" && fs[1].S == "cos":
+					rw = Mul(Frac(1, 2), Add(Fn("sin", sum), Fn("sin", dif)))
+				case fs[0].S == "cos" && fs[1].S == "sin":
+					rw = Mul(Frac(1, 2), Add(Fn("sin", sum), Neg(Fn("sin", dif))))
+				case fs[0].S == "cos":
+					rw = Mul(Frac(1, 2), Add(Fn("cos", dif), Fn("cos", sum)))
+				default:
+					rw = Mul(Frac(1, 2), Sub(Fn("cos", dif), Fn("cos", sum)))
+				}
+				return in.integ(Expand(rw), x, d+1)
+			}
+		}
+	}
 	var m, n int64
 	var u E
 	for _, fa := range factors(f) {
@@ -621,7 +659,7 @@ func (in *integrator) usub(f E, x string, d int) (E, bool) {
 		}
 		r1 := Mul(f, Pow(du, MinusOne))
 		for _, r := range []E{r1, Expand(r1)} {
-			rt := SubstExpr(r, u, Sym(t))
+			rt := substLike(r, u, Sym(t), x)
 			if Contains(rt, x) || !Contains(rt, t) {
 				continue
 			}
@@ -633,6 +671,120 @@ func (in *integrator) usub(f E, x string, d int) (E, bool) {
 		}
 	}
 	return nil, false
+}
+
+// substLike replaces u by t in r, also recognising rescaled copies: x^m for u = x^k, and
+// e^(q*w) for u = e^w (q rational), which become t^(m/k) and t^q.
+func substLike(r, u, t E, x string) E {
+	if Equal(r, u) {
+		return t
+	}
+	if u.K == KPow && u.A[0].K == KSym && u.A[0].S == x && u.A[1].K == KNum && r.K == KPow && Equal(r.A[0], u.A[0]) && r.A[1].K == KNum {
+		q := new(big.Rat).Quo(r.A[1].N, u.A[1].N)
+		return Pow(t, Num(q))
+	}
+	if u.K == KFn && u.S == "exp" && r.K == KFn && r.S == "exp" {
+		q := Div(r.A[0], u.A[0])
+		if q.K == KNum {
+			return Pow(t, q)
+		}
+	}
+	return Map(r, func(c E) E { return substLike(c, u, t, x) })
+}
+
+// ---------- polynomial * exp / sin / cos of a linear argument (tabular integration by parts) ----------
+
+// polyTimesElem integrates P(x) * g(a x + b) for g in {exp, sin, cos} by the tabular method:
+// sum over k of (-1)^k P^(k)(x) * G_{k+1}(u) / a^(k+1), where G_j is the j-th antiderivative of g.
+func (in *integrator) polyTimesElem(f E, x string) (E, bool) {
+	var g E
+	var rest []E
+	for _, fa := range factors(f) {
+		if fa.K == KFn && len(fa.A) == 1 && (fa.S == "exp" || fa.S == "sin" || fa.S == "cos") && g == nil {
+			g = fa
+		} else {
+			rest = append(rest, fa)
+		}
+	}
+	if g == nil || len(rest) == 0 {
+		return nil, false
+	}
+	P := Expand(Mul(rest...))
+	cs, ok := coeffsOf(P, x)
+	if !ok || len(cs) < 2 || len(cs) > 61 {
+		return nil, false
+	}
+	a, _, ok := linearIn(g.A[0], x)
+	if !ok {
+		return nil, false
+	}
+	u := g.A[0]
+	anti := func(j int) E { // j-th antiderivative of g w.r.t. u (j >= 1)
+		switch g.S {
+		case "exp":
+			return g
+		case "sin":
+			return [4]E{Neg(Fn("cos", u)), Neg(Fn("sin", u)), Fn("cos", u), Fn("sin", u)}[(j-1)%4]
+		}
+		return [4]E{Fn("sin", u), Neg(Fn("cos", u)), Neg(Fn("sin", u)), Fn("cos", u)}[(j-1)%4]
+	}
+	var terms []E
+	cur := P
+	for k := 0; !isNumVal(cur, 0); k++ {
+		sign := Int(1)
+		if k%2 == 1 {
+			sign = Int(-1)
+		}
+		terms = append(terms, Mul(sign, cur, anti(k+1), Pow(a, Int(int64(-(k+1))))))
+		cur = Diff(cur, x)
+	}
+	return Add(terms...), true
+}
+
+// ---------- sqrt / reciprocal sqrt of a quadratic ----------
+
+// sqrtQuad integrates Q^(1/2) and Q^(-1/2) for a rational quadratic Q by completing the square.
+func (in *integrator) sqrtQuad(f E, x string) (E, bool) {
+	if f.K != KPow || f.A[1].K != KNum {
+		return nil, false
+	}
+	half := new(big.Rat).Abs(f.A[1].N).Cmp(big.NewRat(1, 2)) == 0
+	if !half {
+		return nil, false
+	}
+	p, ok := ToPoly(f.A[0], x)
+	if !ok || p.Deg() != 2 {
+		return nil, false
+	}
+	alpha, beta, gamma := p[2], p[1], p[0]
+	// Q = alpha (s^2 + kappa), s = x + beta/(2 alpha)
+	sh := new(big.Rat).Quo(beta, new(big.Rat).Mul(alpha, big.NewRat(2, 1)))
+	kappa := new(big.Rat).Sub(new(big.Rat).Quo(gamma, alpha), new(big.Rat).Mul(sh, sh))
+	if kappa.Sign() == 0 {
+		return nil, false
+	}
+	s := Add(Sym(x), Num(sh))
+	inv := f.A[1].N.Sign() < 0
+	if alpha.Sign() > 0 {
+		root := Sqrt(Add(Pow(s, Int(2)), Num(kappa)))
+		lg := Ln(Add(s, root))
+		sa := Sqrt(Num(alpha))
+		if inv {
+			return Div(lg, sa), true
+		}
+		return Mul(sa, Frac(1, 2), Add(Mul(s, root), Mul(Num(kappa), lg))), true
+	}
+	if kappa.Sign() > 0 {
+		return nil, false // Q <= 0 everywhere
+	}
+	R := Sqrt(Num(new(big.Rat).Neg(kappa)))
+	sa := Sqrt(Num(new(big.Rat).Neg(alpha)))
+	as := Fn("asin", Div(s, R))
+	if inv {
+		return Div(as, sa), true
+	}
+	root := Sqrt(Sub(Pow(R, Int(2)), Pow(s, Int(2))))
+	return Mul(sa, Frac(1, 2), Add(Mul(s, root), Mul(Pow(R, Int(2)), as))), true
 }
 
 // ---------- integration by parts ----------
@@ -699,23 +851,31 @@ func (in *integrator) parts(f E, x string, d int) (E, bool) {
 // ---------- definite integrals and certification ----------
 
 // DefiniteIntegral computes the integral of f over [a, b]. When both limits are numeric it cross-checks
-// the symbolic result against adaptive numeric quadrature and refuses answers that disagree
-// (e.g. an integrand with a pole inside the interval).
-func DefiniteIntegral(f E, x string, a, b E) (res E, err error) {
+// the symbolic result against adaptive numeric quadrature (checked == true) and refuses answers that
+// disagree, such as an integrand with a pole inside the interval. Improper integrals are not supported.
+func DefiniteIntegral(f E, x string, a, b E) (res E, checked bool, err error) {
 	err = Guard(func() {
 		F, e := Integrate(f, x)
 		if e != nil {
 			fail("%s", e.Error())
 		}
-		res = Sub(Sub1(F, x, b), Sub1(F, x, a))
+		improper := func() {
+			fail("improper integral: the integrand or its antiderivative is singular on [%s, %s] (limits are not implemented)", a.String(), b.String())
+		}
+		var hi, lo E
+		if err := Guard(func() { hi, lo = Sub1(F, x, b), Sub1(F, x, a) }); err != nil {
+			improper()
+		}
+		res = Sub(hi, lo)
 		av, e1 := EvalNum(a, nil)
 		bv, e2 := EvalNum(b, nil)
 		if e1 == nil && e2 == nil && imag(av) == 0 && imag(bv) == 0 {
 			num, ok := Quadrature(f, x, real(av), real(bv))
 			sym, e3 := EvalNum(res, nil)
 			if !ok || e3 != nil || cmplx.Abs(sym-complex(num, 0)) > 1e-6*(1+math.Abs(num)) {
-				fail("the integrand is singular or discontinuous on [%s, %s]; the integral diverges or needs a principal value", a.String(), b.String())
+				improper()
 			}
+			checked = true
 		}
 	})
 	return

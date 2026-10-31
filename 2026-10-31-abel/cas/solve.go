@@ -25,7 +25,10 @@ func (r Root) String() string {
 }
 
 func fmtComplex(c complex128) string {
-	re, im := real(c), imag(c)
+	re, im := real(c)+0, imag(c)+0
+	if re == 0 {
+		re = 0 // normalise -0
+	}
 	if math.Abs(im) < 1e-12*(1+math.Abs(re)) {
 		return fmt.Sprintf("%.10g", re)
 	}
@@ -47,6 +50,9 @@ func Solve(eq E, x string) []Root {
 	if !Contains(e, x) {
 		if isNumVal(e, 0) {
 			fail("every value of %s is a solution (the equation is an identity)", x)
+		}
+		if e.K != KNum {
+			fail("the equation does not involve %s", x)
 		}
 		return nil
 	}
@@ -159,6 +165,9 @@ func rootsOfIrreducible(p Poly, mult int, x string) []Root {
 			{Exact: Div(Sub(Neg(b), sq), twoA), Mult: mult},
 		}
 	}
+	if r := powerSubstRoots(p, mult); r != nil {
+		return r
+	}
 	var out []Root
 	pe := p.ToExpr(Sym(x))
 	for _, z := range NumericRoots(p) {
@@ -235,4 +244,44 @@ func NumericRoots(p Poly) []complex128 {
 		return imag(z[i]) < imag(z[j])
 	})
 	return z
+}
+
+// powerSubstRoots solves p(x) = q(x^k) with deg q <= 2 exactly: x = y^(1/k) * (k-th roots of unity),
+// where y runs over the roots of q. It returns nil when the pattern or the exact unity roots are unavailable.
+func powerSubstRoots(p Poly, mult int) []Root {
+	g := 0
+	for i, c := range p {
+		if c.Sign() != 0 && i > 0 {
+			g = gcdInt(g, i)
+		}
+	}
+	if g < 2 || p.Deg()/g > 2 {
+		return nil
+	}
+	q := make(Poly, p.Deg()/g+1)
+	for i := range q {
+		q[i] = new(big.Rat).Set(p[i*g])
+	}
+	var out []Root
+	for _, yr := range rootsOfIrreducible(q, mult, "y") {
+		if yr.Exact == nil {
+			return nil
+		}
+		base := Pow(yr.Exact, Frac(1, int64(g)))
+		for j := 0; j < g; j++ {
+			w := Exp(Mul(Frac(2*int64(j), int64(g)), I, Pi))
+			if w.K == KFn { // unity root not expressible exactly
+				return nil
+			}
+			out = append(out, Root{Exact: Mul(base, w), Mult: yr.Mult})
+		}
+	}
+	return out
+}
+
+func gcdInt(a, b int) int {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
 }

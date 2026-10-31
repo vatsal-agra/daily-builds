@@ -103,6 +103,7 @@ func Add(ts ...E) E {
 			out = append(out, scale(a.coef, a.rest))
 		}
 	}
+	out = pythagoras(out, c)
 	sortTerms(out)
 	if c.Sign() != 0 {
 		out = append(out, Num(c))
@@ -114,6 +115,72 @@ func Add(ts ...E) E {
 		return out[0]
 	}
 	return &Expr{K: KAdd, A: out}
+}
+
+// pythagoras applies sin^2 + cos^2 = 1 to a collected sum: k*sin(u)^2 + k*cos(u)^2 -> k and
+// k - k*sin(u)^2 -> k*cos(u)^2 (and symmetrically). It mutates the constant c in place.
+func pythagoras(out []E, c *big.Rat) []E {
+	type slot struct {
+		idx  int
+		coef *big.Rat
+	}
+	sins, coss := map[string]slot{}, map[string]slot{}
+	for i, t := range out {
+		coef, rest := splitCoeff(t)
+		if rest.K == KPow && rest.A[0].K == KFn && len(rest.A[0].A) == 1 && isNumVal(rest.A[1], 2) {
+			switch rest.A[0].S {
+			case "sin":
+				sins[rest.A[0].A[0].Key()] = slot{i, coef}
+			case "cos":
+				coss[rest.A[0].A[0].Key()] = slot{i, coef}
+			}
+		}
+	}
+	if len(sins) == 0 && len(coss) == 0 {
+		return out
+	}
+	drop := map[int]bool{}
+	var add []E
+	for k, s := range sins {
+		if cs, ok := coss[k]; ok && !drop[s.idx] && !drop[cs.idx] && s.coef.Cmp(cs.coef) == 0 {
+			drop[s.idx], drop[cs.idx] = true, true
+			c.Add(c, s.coef)
+		}
+	}
+	for k, s := range sins {
+		if drop[s.idx] {
+			continue
+		}
+		if _, ok := coss[k]; !ok && c.Sign() != 0 && new(big.Rat).Neg(s.coef).Cmp(c) == 0 {
+			_, rest := splitCoeff(out[s.idx])
+			arg := rest.A[0].A[0]
+			drop[s.idx] = true
+			add = append(add, scale(new(big.Rat).Set(c), Pow(Fn("cos", arg), Int(2))))
+			c.SetInt64(0)
+		}
+	}
+	for k, s := range coss {
+		if drop[s.idx] || c.Sign() == 0 {
+			continue
+		}
+		if _, ok := sins[k]; !ok && new(big.Rat).Neg(s.coef).Cmp(c) == 0 {
+			_, rest := splitCoeff(out[s.idx])
+			arg := rest.A[0].A[0]
+			drop[s.idx] = true
+			add = append(add, scale(new(big.Rat).Set(c), Pow(Fn("sin", arg), Int(2))))
+			c.SetInt64(0)
+		}
+	}
+	if len(drop) == 0 {
+		return out
+	}
+	var res []E
+	for i, t := range out {
+		if !drop[i] {
+			res = append(res, t)
+		}
+	}
+	return append(res, add...)
 }
 
 // ---------- prime factoring helpers for exact surds ----------
@@ -412,6 +479,14 @@ func Pow(b, e E) E {
 			return Mul(Pow(b.A[0], e), Pow(Mul(b.A[1:]...), e))
 		}
 	}
+	if b.K == KAdd && len(b.A) == 2 && isNumVal(e, -1) {
+		// 1/(t1+t2) = (t1-t2)/(t1^2-t2^2) when both squares are rational (surds, i)
+		s1, s2 := Pow(b.A[0], Int(2)), Pow(b.A[1], Int(2))
+		if s1.K == KNum && s2.K == KNum && s1.N.Cmp(s2.N) != 0 {
+			d := Num(new(big.Rat).Sub(s1.N, s2.N))
+			return Mul(Sub(b.A[0], b.A[1]), Pow(d, MinusOne))
+		}
+	}
 	return &Expr{K: KPow, A: []E{b, e}}
 }
 
@@ -445,6 +520,28 @@ func piMultiple(a E) (*big.Rat, bool) {
 		return a.A[0].N, true
 	}
 	return nil, false
+}
+
+// iPiMultiple returns c if a == c*i*pi.
+func iPiMultiple(a E) (*big.Rat, bool) {
+	if a.K != KMul {
+		return nil, false
+	}
+	c := big.NewRat(1, 1)
+	haveI, havePi := false, false
+	for _, f := range a.A {
+		switch {
+		case f.K == KNum:
+			c = f.N
+		case f.K == KSym && f.S == "i" && !haveI:
+			haveI = true
+		case f.K == KSym && f.S == "pi" && !havePi:
+			havePi = true
+		default:
+			return nil, false
+		}
+	}
+	return c, haveI && havePi
 }
 
 // exactTrig returns sin and cos of c*pi when they are exact surds from the 30/45-degree table.
@@ -521,6 +618,11 @@ func Fn(name string, args ...E) E {
 			}
 		}
 	case "exp":
+		if c, ok := iPiMultiple(a); ok {
+			if s, co, ok := exactTrig(c); ok {
+				return Add(co, Mul(I, s))
+			}
+		}
 		if a.K == KNum {
 			if a.N.Sign() == 0 {
 				return One
