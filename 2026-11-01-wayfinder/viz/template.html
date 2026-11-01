@@ -111,7 +111,7 @@ function stats(){const m=mode[cur],el=$('stats'),tb=$('table');
  } else {const E=D.explore;let evIdx=-1;E.events.forEach((e,k)=>{if(e.step<=t)evIdx=k});
   const ds=E.events.slice(0,evIdx+1).reduce((s,e)=>s+e.dstar,0),as=E.events.slice(0,evIdx+1).reduce((s,e)=>s+e.astar,0);
   const e=evIdx>=0?E.events[evIdx]:null;
-  el.innerHTML=`<h2>D* Lite vs replanning from scratch</h2><div class="big">${as?(as/Math.max(ds,1)).toFixed(1)+'× less work':'—'}</div>
+  el.innerHTML=`<h2>D* Lite vs replanning from scratch</h2><div class="big">${!as?'—':as>=ds?(as/Math.max(ds,1)).toFixed(1)+'× less work':(ds/as).toFixed(1)+'× more work'}</div>
   <div class="kv"><div>sensor radius</div><div>${E.radius}</div><div>step</div><div>${t} / ${E.trail.length-1}</div><div>replans so far</div><div>${evIdx+1}</div><div>D* Lite expansions</div><div>${ds}</div><div>A* (from scratch) expansions</div><div>${as}</div><div>outcome</div><div>${E.reached?'reached goal':E.stuck?'goal unreachable':'incomplete'}</div><div>distance travelled</div><div>${E.travelled.toFixed(2)}</div></div>
   <div class="bar"><i style="width:${as?100*ds/Math.max(as,1):0}%;background:var(--acc)"></i></div><div class="bar"><i style="width:100%;background:var(--acc2)"></i></div>`;
   tb.innerHTML=`<h2>Replans</h2><table><tr><th>step</th><th>new</th><th>D*</th><th>A*</th></tr>${E.events.map((x,k)=>`<tr class="${k===evIdx?'on':''}"><td>${x.step}</td><td>${x.changed}</td><td>${x.dstar}</td><td>${x.astar}</td></tr>`).join('')}</table>`;

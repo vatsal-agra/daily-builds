@@ -237,8 +237,12 @@ func cmdExplore(args []string) error {
 	if ex.DStarTotal > 0 {
 		ratio = float64(ex.AStarTotal) / float64(ex.DStarTotal)
 	}
-	fmt.Printf("D* Lite expansions: %d   from-scratch A* expansions at the same replans: %d   (%.1fx less work)\n",
-		ex.DStarTotal, ex.AStarTotal, ratio)
+	verdict := fmt.Sprintf("%.1fx less work", ratio)
+	if ratio < 1 && ratio > 0 {
+		verdict = fmt.Sprintf("%.1fx MORE work — on this map from-scratch A* is already cheap", 1/ratio)
+	}
+	fmt.Printf("D* Lite expansions: %d   from-scratch A* expansions at the same replans: %d   (%s)\n",
+		ex.DStarTotal, ex.AStarTotal, verdict)
 	fmt.Println("every replan cross-checked against A*: costs identical")
 	if *draw {
 		fmt.Print(drawPath(g, nil, ex.Trail))

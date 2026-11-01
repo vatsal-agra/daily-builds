@@ -24,5 +24,11 @@ by a test that fails without the fix.
 * The D* Lite initial plan is a full backward search (no heuristic advantage), so the *first* replan of every run costs more than A*; the saving is in the repairs. The viewer shows this honestly.
 * Heap key comparison uses an absolute 1e-9 tolerance; fine for map costs ≤ 9 × 4096² but not for arbitrary float weights.
 
+## Phase-5 notes (claims corrected by measurement)
+* I first asserted "D* Lite is cheaper than replanning" per run; measurement showed that only holds in mazes / room maps
+  (2–9× less work) and is roughly even on sparse random terrain (0.9–1.7×). Tests and the viewer/CLI wording now state this
+  honestly (the CLI says "MORE work" when D* Lite loses).
+* HPA* worst-case suboptimality is ~1.8× on tiny maps with short paths (mean 1.06–1.12×); test thresholds reflect this.
+
 ## Re-run gate
 `go test ./...` green after fixes; CLI sweep above reproduced with all errors clean.
