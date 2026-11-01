@@ -2,7 +2,9 @@
 
 Pathfinding laboratory in Go (A*, JPS, Theta*, D* Lite, HPA*) with an HTML replay viewer. Stdlib only.
 
-## Status: Phase 3 (adversarial review) complete — see [REVIEW.md](REVIEW.md): 10 findings, all fixed with regression tests
+## Status: Phase 4 (stretch + polish) complete — adds Theta* (any-angle), HPA* (hierarchical, stretch), `fuzz` and `bench` commands, Bresenham path drawing
+
+### Earlier: Phase 3 (adversarial review) complete — see [REVIEW.md](REVIEW.md): 10 findings, all fixed with regression tests
 
 ### Phase 2 deliverables
 Working end-to-end now:

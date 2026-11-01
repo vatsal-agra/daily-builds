@@ -159,23 +159,17 @@ func drawPath(g *grid.Grid, path []grid.Point, trail []grid.Point) string {
 		b[i] = []byte(rows[i])
 	}
 	mark := func(ps []grid.Point, ch byte) {
-		for _, p := range plan.Densify(ps) {
+		for _, p := range ps {
 			if b[p.Y][p.X] != 'S' && b[p.Y][p.X] != 'G' {
 				b[p.Y][p.X] = ch
 			}
 		}
 	}
 	if trail != nil {
-		mark(trail, 'o')
+		mark(plan.Densify(trail), 'o')
 	}
-	if path != nil && !isStraightSegments(path) {
-		for _, p := range path {
-			if b[p.Y][p.X] != 'S' && b[p.Y][p.X] != 'G' {
-				b[p.Y][p.X] = '*'
-			}
-		}
-	} else if path != nil {
-		mark(path, '*')
+	if path != nil {
+		mark(rasterize(path), '*')
 	}
 	var sb strings.Builder
 	for _, r := range b {
@@ -183,24 +177,6 @@ func drawPath(g *grid.Grid, path []grid.Point, trail []grid.Point) string {
 		sb.WriteByte('\n')
 	}
 	return sb.String()
-}
-
-// isStraightSegments reports whether consecutive waypoints are joined by
-// horizontal, vertical or exact-diagonal runs (so they can be drawn as such).
-func isStraightSegments(p []grid.Point) bool {
-	for i := 1; i < len(p); i++ {
-		dx, dy := p[i].X-p[i-1].X, p[i].Y-p[i-1].Y
-		if dx < 0 {
-			dx = -dx
-		}
-		if dy < 0 {
-			dy = -dy
-		}
-		if dx != 0 && dy != 0 && dx != dy {
-			return false
-		}
-	}
-	return true
 }
 
 func cmdCompare(args []string) error {
@@ -301,4 +277,45 @@ func cmdHTML(args []string) error {
 	}
 	fmt.Printf("wrote %s (%d KB)\n", *out, len(page)/1024)
 	return nil
+}
+
+// rasterize turns waypoints (grid steps, JPS runs or any-angle segments) into
+// the cells to draw, using Bresenham between consecutive waypoints.
+func rasterize(p []grid.Point) []grid.Point {
+	if len(p) == 0 {
+		return nil
+	}
+	out := []grid.Point{p[0]}
+	for i := 1; i < len(p); i++ {
+		a, b := p[i-1], p[i]
+		dx, dy := abs(b.X-a.X), abs(b.Y-a.Y)
+		sx, sy := 1, 1
+		if a.X > b.X {
+			sx = -1
+		}
+		if a.Y > b.Y {
+			sy = -1
+		}
+		err := dx - dy
+		for a != b {
+			e2 := 2 * err
+			if e2 > -dy {
+				err -= dy
+				a.X += sx
+			}
+			if e2 < dx {
+				err += dx
+				a.Y += sy
+			}
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func abs(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }

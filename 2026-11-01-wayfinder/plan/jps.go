@@ -33,7 +33,7 @@ func JPS(g *grid.Grid, s, t grid.Point) (*Result, error) {
 	res := &Result{Algo: "jps"}
 	si, ti := g.Idx(s.X, s.Y), g.Idx(t.X, t.Y)
 	gs[si], parent[si] = 0, -1
-	hp.Update(si, Key{Heuristic(g, s, t), 0})
+	hp.Update(si, Key{grid.Octile(s, t) * unit, 0})
 
 	// forced reports whether a straight-moving arrival at (x,y) has a forced neighbour.
 	forced := func(x, y, dx, dy int) bool {
@@ -134,7 +134,7 @@ func JPS(g *grid.Grid, s, t grid.Point) (*Result, error) {
 			if ng < gs[v] {
 				gs[v], parent[v] = ng, int32(u)
 				res.Generated++
-				hp.Update(v, Key{ng + Heuristic(g, grid.Point{X: jx, Y: jy}, t), -ng})
+				hp.Update(v, Key{ng + grid.Octile(grid.Point{X: jx, Y: jy}, t)*unit, -ng})
 			}
 		}
 	}

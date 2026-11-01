@@ -59,6 +59,7 @@ func search(g *grid.Grid, s, t grid.Point, useH bool, name string) (*Result, err
 		return nil, err
 	}
 	t0 := time.Now()
+	hs := g.MinCost() // computed once: MinCost scans the whole grid
 	n := g.W * g.H
 	gs := make([]float64, n)
 	for i := range gs {
@@ -71,7 +72,7 @@ func search(g *grid.Grid, s, t grid.Point, useH bool, name string) (*Result, err
 	si, ti := g.Idx(s.X, s.Y), g.Idx(t.X, t.Y)
 	hf := func(p grid.Point) float64 {
 		if useH {
-			return Heuristic(g, p, t)
+			return grid.Octile(p, t) * hs
 		}
 		return 0
 	}

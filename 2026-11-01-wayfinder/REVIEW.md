@@ -17,6 +17,7 @@ by a test that fails without the fix.
 | 8 | Line-of-sight was untested and hand-rolled — the riskiest geometry code. | Hostile review | Cross-checked against an independent exact-rational reference (Liang–Barsky + lattice-vertex rule) on 24,000 random segment queries, incl. symmetry. Passed first time; test kept. |
 | 9 | Unknown command / missing flags / bad files / invalid generator params / unreachable goals / start==goal / wall start | CLI + unit tests | All exit non-zero with a one-line message (exit 3 for "no path"); start==goal returns cost 0. |
 | 10 | Leaked ghost walls: the explore view faintly drew undiscovered walls, contradicting the "unknown" legend. | Visual review | Legend now says so honestly (ghost shading = ground truth not yet perceived). |
+| 11 | **A\* was ~40× slower than Dijkstra** on big maps despite 5× fewer expansions: the heuristic called `Grid.MinCost()` (a full-grid scan) on every evaluation. Found when the Phase-4 benchmark printed A\* at 298 ms vs Dijkstra at 7 ms. | `wayfinder bench` | Heuristic scale computed once per search (all planners, HPA graph stores it). A\* now 1.9 ms on the same maps. |
 
 ## Known limitations (documented, not bugs)
 * JPS only runs on uniform-cost maps (pruning relies on path symmetry) — it refuses mixed terrain with a clear error.
