@@ -46,6 +46,7 @@ func Explore(truth *grid.Grid, radius int) (*Exploration, error) {
 	if err := checkEndpoints(truth, truth.Start, truth.Goal); err != nil {
 		return nil, err
 	}
+	radius = min(radius, truth.W+truth.H) // anything larger already sees the whole map
 	known := grid.New(truth.W, truth.H)
 	known.Start, known.Goal = truth.Start, truth.Goal
 	seen := make([]bool, len(truth.Cost))

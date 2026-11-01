@@ -233,5 +233,9 @@ func (g *Grid) PlaceEndpoints(rng *rand.Rand) error {
 		return fmt.Errorf("could not place distinct start and goal")
 	}
 	g.Start, g.Goal = s, gl
+	// S/G carry no terrain in the map format, so they are always plain cost-1
+	// cells (keeps Format/Parse a faithful round trip).
+	g.Set(s.X, s.Y, 1)
+	g.Set(gl.X, gl.Y, 1)
 	return nil
 }

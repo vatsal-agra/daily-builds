@@ -61,11 +61,13 @@ const TERR=['#05070a','#1b2230','#222c3b','#2a3a4a','#2c4650','#334f5a','#3b5a5f
 const mode=[];D.algos.forEach((a,i)=>mode.push({kind:'algo',i,label:a.name}));
 if(D.explore)mode.push({kind:'explore',label:'d* lite explore'});
 let cur=0,t=0,playing=false,last=0;
+const layer=document.createElement('canvas');layer.width=W*S;layer.height=H*S;const lx=layer.getContext('2d');let painted=0,paintedFor=-1;
 $('sub').textContent=`${W}×${H} map · ${[...D.cost].filter(c=>c==='0').length} wall cells · start (${D.start}) → goal (${D.goal})`;
 function tabs(){const el=$('tabs');el.innerHTML='';mode.forEach((m,i)=>{const b=document.createElement('button');b.className='tab'+(i===cur?' on':'');b.textContent=m.label;b.onclick=()=>{cur=i;t=0;playing=false;setup()};el.appendChild(b)})}
 function total(){const m=mode[cur];if(!m)return 0;if(m.kind==='algo')return D.algos[m.i].order.length;return D.explore.trail.length-1}
-function setup(){tabs();const n=total();$('scrub').max=n;$('scrub').value=t;$('play').textContent='Play';draw();stats()}
-function base(){for(let y=0;y<H;y++)for(let x=0;x<W;x++){cx.fillStyle=TERR[+D.cost[y*W+x]];cx.fillRect(x*S,y*S,S,S)}}
+function setup(){painted=0;paintedFor=-1;tabs();const n=total();$('scrub').max=n;$('scrub').value=t;$('play').textContent='Play';draw();stats()}
+const bl=document.createElement('canvas');bl.width=W*S;bl.height=H*S;{const b=bl.getContext('2d');for(let y=0;y<H;y++)for(let x=0;x<W;x++){b.fillStyle=TERR[+D.cost[y*W+x]];b.fillRect(x*S,y*S,S,S)}}
+function base(){cx.drawImage(bl,0,0)}
 function cell(i,col){cx.fillStyle=col;cx.fillRect((i%W)*S,Math.floor(i/W)*S,S,S)}
 function path(p,col,wd){if(!p||p.length<1)return;cx.strokeStyle=col;cx.lineWidth=wd;cx.lineJoin='round';cx.lineCap='round';cx.beginPath();p.forEach((q,k)=>{const X=q[0]*S+S/2,Y=q[1]*S+S/2;k?cx.lineTo(X,Y):cx.moveTo(X,Y)});cx.stroke()}
 function marker(p,col,lab){const X=p[0]*S+S/2,Y=p[1]*S+S/2,r=Math.max(S*.9,5);cx.fillStyle=col;cx.beginPath();cx.arc(X,Y,r,0,7);cx.fill();cx.strokeStyle='#0008';cx.lineWidth=1.5;cx.stroke()}
@@ -74,7 +76,10 @@ function draw(){
  cx.clearRect(0,0,cv.width,cv.height);base();const m=mode[cur];
  if(!m){cx.fillStyle='#889';cx.fillText('nothing to show',10,20);return}
  if(m.kind==='algo'){const a=D.algos[m.i],n=a.order.length;
-  for(let k=0;k<Math.min(t,n);k++)cell(a.order[k],heat(k,n));
+  // expansions are painted incrementally onto an offscreen layer (O(new cells) per frame)
+  if(paintedFor!==cur||t<painted){lx.clearRect(0,0,layer.width,layer.height);painted=0;paintedFor=cur}
+  for(;painted<Math.min(t,n);painted++){const i=a.order[painted];lx.fillStyle=heat(painted,n);lx.fillRect((i%W)*S,Math.floor(i/W)*S,S,S)}
+  cx.drawImage(layer,0,0);
   if(t>=n&&a.found){path(a.path,'#0008',S*.9+2);path(a.path,'#fbbf24',Math.max(2,S*.55))}
   else if(t>0&&t<n){const q=a.order[t-1];cell(q,'#fff')}
  } else {const E=D.explore,ev=E.events;
@@ -110,7 +115,7 @@ function stats(){const m=mode[cur],el=$('stats'),tb=$('table');
   <div class="kv"><div>sensor radius</div><div>${E.radius}</div><div>step</div><div>${t} / ${E.trail.length-1}</div><div>replans so far</div><div>${evIdx+1}</div><div>D* Lite expansions</div><div>${ds}</div><div>A* (from scratch) expansions</div><div>${as}</div><div>outcome</div><div>${E.reached?'reached goal':E.stuck?'goal unreachable':'incomplete'}</div><div>distance travelled</div><div>${E.travelled.toFixed(2)}</div></div>
   <div class="bar"><i style="width:${as?100*ds/Math.max(as,1):0}%;background:var(--acc)"></i></div><div class="bar"><i style="width:100%;background:var(--acc2)"></i></div>`;
   tb.innerHTML=`<h2>Replans</h2><table><tr><th>step</th><th>new</th><th>D*</th><th>A*</th></tr>${E.events.map((x,k)=>`<tr class="${k===evIdx?'on':''}"><td>${x.step}</td><td>${x.changed}</td><td>${x.dstar}</td><td>${x.astar}</td></tr>`).join('')}</table>`;
-  lg.innerHTML='<span><i style="background:#38bdf8"></i>agent trail</span><span><i style="background:#fbbf24"></i>current plan</span><span><i style="background:rgba(94,234,212,.5)"></i>cells D* Lite re-expanded</span><span><i style="background:#141a23"></i>unknown (assumed open)</span>';
+  lg.innerHTML='<span><i style="background:#38bdf8"></i>agent trail</span><span><i style="background:#fbbf24"></i>current plan</span><span><i style="background:rgba(94,234,212,.5)"></i>cells D* Lite re-expanded</span><span><i style="background:#141a23"></i>not yet perceived (assumed open; faint shading = hidden ground truth)</span>';
  }}
 function tick(ts){if(playing){const sp=+$('speed').value;const n=total();
   if(ts-last>16){const m=mode[cur];const step=m&&m.kind==='explore'?Math.max(1,sp/8):Math.max(1,Math.ceil(n/600))*sp/4;t=Math.min(n,t+Math.max(1,Math.round(step)));last=ts;$('scrub').value=t;draw();stats();if(t>=n){playing=false;$('play').textContent='Play'}}}

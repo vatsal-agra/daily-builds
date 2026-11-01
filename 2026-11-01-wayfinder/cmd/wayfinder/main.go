@@ -282,6 +282,10 @@ func cmdHTML(args []string) error {
 	if err != nil {
 		return err
 	}
+	const maxCells = 640_000 // ~800x800; beyond this the embedded traces make the page unusably heavy
+	if g.W*g.H > maxCells {
+		return fmt.Errorf("map is %dx%d (%d cells); the HTML viewer supports at most %d cells — use solve/compare/bench for larger maps", g.W, g.H, g.W*g.H, maxCells)
+	}
 	var ex *plan.Exploration
 	if *radius > 0 {
 		if ex, err = plan.Explore(g, *radius); err != nil {
