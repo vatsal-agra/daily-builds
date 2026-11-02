@@ -3,6 +3,7 @@ package tracker
 
 import (
 	"fmt"
+	"math"
 
 	"kestrel/assoc"
 	"kestrel/filter"
@@ -40,6 +41,8 @@ type Config struct {
 	VMax           float64 // used to size the initial velocity uncertainty (σv = VMax/3)
 	MergeGate      float64 // Mahalanobis² below which two confirmed tracks are duplicates (0 = off)
 	Assoc          string  // "gnn" (default) or "jpda"
+	ScoreConfirm   float64 // confirm only when the track score also exceeds this
+	DeleteDrop     float64 // delete a confirmed track once its score falls this far below its peak (0 = off)
 }
 
 func (c *Config) validate() error {
@@ -74,17 +77,20 @@ type Point struct {
 
 // Track is one hypothesised target.
 type Track struct {
-	ID          int
-	Status      Status
-	F           filter.Filter
-	Born        float64
-	Hits        int
-	Age         int    // scans since birth
-	Misses      int    // consecutive misses
-	hist        []bool // hit/miss history for M-of-N
-	History     []Point
-	Died        float64
-	DeathReason string
+	ID           int
+	Status       Status
+	F            filter.Filter
+	Born         float64
+	Hits         int
+	Age          int     // scans since birth
+	Misses       int     // consecutive misses
+	Score        float64 // cumulative log-likelihood ratio: real target vs clutter
+	ConfirmScore float64 // score at the moment of confirmation
+	MaxScore     float64 // peak score since confirmation
+	hist         []bool  // hit/miss history for M-of-N
+	History      []Point
+	Died         float64
+	DeathReason  string
 }
 
 // Tracker holds all live and finished tracks.
@@ -97,7 +103,8 @@ type Tracker struct {
 	Tracks []*Track // live tracks (tentative + confirmed)
 	Dead   []*Track
 	// NISLog collects the innovation NIS of every confirmed-track update (consistency checking).
-	NISLog []float64
+	NISLog     []float64
+	pendingErr error
 }
 
 func New(cfg Config) (*Tracker, error) {
@@ -172,6 +179,11 @@ func (t *Tracker) Step(tm float64, dets []*mat.M) error {
 		if err := t.updateJPDA(tm, dets, cand, preds, par, used); err != nil {
 			return err
 		}
+		if t.pendingErr != nil {
+			err := t.pendingErr
+			t.pendingErr = nil
+			return err
+		}
 	} else {
 		pick, err := assoc.GNN(cand, par)
 		if err != nil {
@@ -179,6 +191,7 @@ func (t *Tracker) Step(tm float64, dets []*mat.M) error {
 		}
 		for i, tr := range t.Tracks {
 			if pick[i] < 0 {
+				tr.Score += math.Log(1 - t.cfg.Pd)
 				t.miss(tr)
 				continue
 			}
@@ -187,6 +200,7 @@ func (t *Tracker) Step(tm float64, dets []*mat.M) error {
 				t.kill(tr, tm, "update failed: "+err.Error())
 				continue
 			}
+			tr.Score += math.Log(t.cfg.Pd) + res.LogLik - math.Log(t.cfg.ClutterDensity)
 			used[pick[i]] = true
 			t.hit(tr, res)
 		}
@@ -198,13 +212,17 @@ func (t *Tracker) Step(tm float64, dets []*mat.M) error {
 		tr.Age++
 		switch tr.Status {
 		case Tentative:
-			if tr.Hits >= t.cfg.ConfirmM {
+			if tr.Hits >= t.cfg.ConfirmM && tr.Score >= t.cfg.ScoreConfirm {
 				tr.Status = Confirmed
+				tr.ConfirmScore, tr.MaxScore = tr.Score, tr.Score
 			} else if tr.Age >= t.cfg.ConfirmN || t.cfg.ConfirmN-tr.Age < t.cfg.ConfirmM-tr.Hits {
 				t.kill(tr, tm, "never confirmed")
 			}
 		case Confirmed:
-			if tr.Misses > t.cfg.MaxMiss {
+			tr.MaxScore = math.Max(tr.MaxScore, tr.Score)
+			if t.cfg.DeleteDrop > 0 && tr.MaxScore-tr.Score > t.cfg.DeleteDrop {
+				t.kill(tr, tm, fmt.Sprintf("score fell %.1f below peak", tr.MaxScore-tr.Score))
+			} else if tr.Misses > t.cfg.MaxMiss {
 				t.kill(tr, tm, fmt.Sprintf("%d consecutive misses", tr.Misses))
 			}
 		}

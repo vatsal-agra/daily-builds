@@ -21,8 +21,22 @@ const jpdaClaim = 0.25
 // are enumerated exactly per cluster of tracks that share detections.
 func (t *Tracker) updateJPDA(tm float64, dets []*mat.M, cand [][]*assoc.Candidate, preds []filter.Pred, par assoc.Params, used []bool) error {
 	rad := t.cfg.Radar
-	n := len(t.Tracks)
-	for _, tr := range t.Tracks {
+	// JPDA runs over CONFIRMED tracks only. Tentative tracks have enormous, mostly-clutter gates;
+	// letting them into the joint events steals probability mass from real tracks.
+	var trs []*Track
+	var sc [][]*assoc.Candidate
+	var sp []filter.Pred
+	var rest []int
+	for i, tr := range t.Tracks {
+		if tr.Status == Confirmed {
+			trs, sc, sp = append(trs, tr), append(sc, cand[i]), append(sp, preds[i])
+		} else {
+			rest = append(rest, i)
+		}
+	}
+	cand, preds = sc, sp
+	n := len(trs)
+	for _, tr := range trs {
 		if _, ok := tr.F.(*filter.IMM); ok {
 			return fmt.Errorf("tracker: JPDA does not support IMM filters")
 		}
@@ -163,7 +177,7 @@ func (t *Tracker) updateJPDA(tm float64, dets []*mat.M, cand [][]*assoc.Candidat
 	}
 
 	// ---- per-track probabilistic update
-	for i, tr := range t.Tracks {
+	for i, tr := range trs {
 		var js []int
 		for j := range dets {
 			if beta[i][j] > 1e-9 {
@@ -171,6 +185,7 @@ func (t *Tracker) updateJPDA(tm float64, dets []*mat.M, cand [][]*assoc.Candidat
 			}
 		}
 		if len(js) == 0 || beta0[i] > 0.999999 {
+			tr.Score += math.Log(1 - par.Pd)
 			t.miss(tr)
 			continue
 		}
@@ -197,16 +212,73 @@ func (t *Tracker) updateJPDA(tm float64, dets []*mat.M, cand [][]*assoc.Candidat
 		pc := tr.F.P().Sub(k.Mul(p.S).Mul(k.T()))
 		pnew := tr.F.P().Scale(beta0[i]).Add(pc.Scale(1 - beta0[i])).Add(k.Mul(spread).Mul(k.T()))
 		tr.F.SetState(x, pnew.Sym())
+		// data likelihood ratio of this scan for the track: (1-Pd) + Pd·Σ_j N_j/λ
+		sum := 1 - par.Pd
+		for _, j := range js {
+			sum += par.Pd * math.Exp(cand[i][j].LogLik) / par.ClutterDensity
+		}
 		if 1-beta0[i] >= 0.5 {
 			t.hit(tr, filter.Result{})
 		} else {
 			t.miss(tr)
 		}
-		for _, j := range js {
-			if beta[i][j] >= jpdaClaim {
-				used[j] = true
+		tr.Score += math.Log(sum)
+		// A detection gated by a confirmed track is never a birth candidate: with soft
+		// association it is already (partly) explained, and seeding a new track from it
+		// is what makes JPDA breed duplicate "coalesced" tracks.
+		if tr.Status == Confirmed {
+			for _, j := range js {
+				if beta[i][j] >= jpdaClaim {
+					used[j] = true
+				}
 			}
 		}
 	}
+	t.updateTentativeGNN(tm, dets, rest, used, par)
 	return nil
+}
+
+// updateTentativeGNN associates tentative tracks to the detections JPDA left unclaimed, by hard GNN.
+func (t *Tracker) updateTentativeGNN(tm float64, dets []*mat.M, idx []int, used []bool, par assoc.Params) {
+	if len(idx) == 0 {
+		return
+	}
+	rad := t.cfg.Radar
+	fs := make([]filter.Filter, len(idx))
+	for a, i := range idx {
+		fs[a] = t.Tracks[i].F
+	}
+	free := make([]*mat.M, 0, len(dets))
+	freeIdx := make([]int, 0, len(dets))
+	for j, z := range dets {
+		if !used[j] {
+			free, freeIdx = append(free, z), append(freeIdx, j)
+		}
+	}
+	cand, preds, err := assoc.Matrix(fs, rad, free, t.gate)
+	if err != nil {
+		t.pendingErr = err
+		return
+	}
+	pick, err := assoc.GNN(cand, par)
+	if err != nil {
+		t.pendingErr = err
+		return
+	}
+	for a, i := range idx {
+		tr := t.Tracks[i]
+		if pick[a] < 0 {
+			tr.Score += math.Log(1 - par.Pd)
+			t.miss(tr)
+			continue
+		}
+		res, err := tr.F.Correct(rad, preds[a], free[pick[a]])
+		if err != nil {
+			t.kill(tr, tm, "update failed: "+err.Error())
+			continue
+		}
+		tr.Score += math.Log(par.Pd) + res.LogLik - math.Log(par.ClutterDensity)
+		used[freeIdx[pick[a]]] = true
+		t.hit(tr, res)
+	}
 }

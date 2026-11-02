@@ -11,22 +11,24 @@ import (
 
 // Options select a filter configuration for the stock tracker.
 type Options struct {
-	Filter   string  // ekf | ukf | imm-ekf | imm-ukf
-	Assoc    string  // gnn | jpda
-	QCV      float64 // process noise (acceleration spectral density) for CV
-	QTurn    float64 // process noise inside the CT mode
-	QW       float64 // turn-rate random walk
-	GateProb float64
-	ConfirmM int
-	ConfirmN int
-	MaxMiss  int
-	VMax     float64
+	Filter       string  // ekf | ukf | imm-ekf | imm-ukf
+	Assoc        string  // gnn | jpda
+	QCV          float64 // process noise (acceleration spectral density) for CV
+	QTurn        float64 // process noise inside the CT mode
+	QW           float64 // turn-rate random walk
+	GateProb     float64
+	ConfirmM     int
+	ConfirmN     int
+	MaxMiss      int
+	VMax         float64
+	ScoreConfirm float64
+	DeleteDrop   float64
 }
 
 // DefaultOptions are sensible for the built-in scenarios.
 func DefaultOptions() Options {
 	return Options{Filter: "ekf", Assoc: "gnn", QCV: 0.5, QTurn: 1.0, QW: 2e-5, GateProb: 0.999,
-		ConfirmM: 3, ConfirmN: 5, MaxMiss: 5, VMax: 350}
+		ConfirmM: 3, ConfirmN: 5, MaxMiss: 5, VMax: 350, ScoreConfirm: 4, DeleteDrop: 9}
 }
 
 // ForScenario builds a tracker config matched to a scenario's radar.
@@ -36,7 +38,7 @@ func ForScenario(sc sim.Scenario, o Options) (Config, error) {
 		Name: o.Filter + "/" + o.Assoc, Radar: rad, Pd: sc.Radar.Pd,
 		ClutterDensity: sc.Radar.ClutterDensity(), GateProb: o.GateProb,
 		ConfirmM: o.ConfirmM, ConfirmN: o.ConfirmN, MaxMiss: o.MaxMiss, VMax: o.VMax,
-		MergeGate: 9.5, Assoc: o.Assoc,
+		MergeGate: 9.5, Assoc: o.Assoc, ScoreConfirm: o.ScoreConfirm, DeleteDrop: o.DeleteDrop,
 	}
 	if sc.Radar.ClutterMean == 0 { // density 0 would make every pairing infinitely likely
 		cfg.ClutterDensity = 1e-12

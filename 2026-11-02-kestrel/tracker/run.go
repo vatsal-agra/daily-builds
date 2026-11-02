@@ -41,6 +41,9 @@ func RunFrames(sc sim.Scenario, frames []sim.Frame, cfg Config) (*Run, error) {
 		}
 		var truth, est []metrics.Pt
 		for _, g := range fr.Truth {
+			if !g.InCoverage {
+				continue // a target the radar cannot see is not the tracker's fault
+			}
 			truth = append(truth, metrics.Pt{ID: g.ID, X: g.X, Y: g.Y})
 		}
 		for _, c := range tr.Confirmed() {

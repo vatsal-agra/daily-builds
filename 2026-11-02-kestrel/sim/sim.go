@@ -56,6 +56,7 @@ type Truth struct {
 	ID           int
 	X, Y, VX, VY float64
 	Omega        float64
+	InCoverage   bool // inside the radar window: only these can be detected
 }
 
 // Detection is one radar return. Source is the generating target ID (0 = clutter);
@@ -162,11 +163,12 @@ func (s *Scenario) Run(seed int64) ([]Frame, error) {
 				continue
 			}
 			tr := t.truthAt(tm)
-			fr.Truth = append(fr.Truth, tr)
 			rho := math.Hypot(tr.X-r.X, tr.Y-r.Y)
 			b := math.Atan2(tr.Y-r.Y, tr.X-r.X)
-			if rho < r.RMin || rho > r.RMax || b < r.BMin || b > r.BMax {
-				continue // outside radar coverage
+			tr.InCoverage = rho >= r.RMin && rho <= r.RMax && b >= r.BMin && b <= r.BMax
+			fr.Truth = append(fr.Truth, tr)
+			if !tr.InCoverage {
+				continue
 			}
 			if rng.Float() > r.Pd {
 				continue

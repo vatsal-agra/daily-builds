@@ -17,7 +17,7 @@ type UKF struct {
 
 func NewUKF(mot model.Motion, x0, p0 *mat.M) *UKF {
 	checkInit(x0, p0, mot)
-	return &UKF{base{x0.Clone(), p0.Clone(), mot}, 0.5, 2, 0}
+	return &UKF{base{x0.Clone(), p0.Clone(), mot}, 1, 2, 0}
 }
 func (f *UKF) Name() string { return "UKF" }
 func (f *UKF) Clone() Filter {
