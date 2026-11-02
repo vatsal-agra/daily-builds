@@ -63,8 +63,11 @@ type base struct {
 	mot  model.Motion
 }
 
-func (b *base) X() *mat.M            { return b.x }
-func (b *base) P() *mat.M            { return b.p }
+func (b *base) X() *mat.M { return b.x }
+func (b *base) P() *mat.M { return b.p }
+
+// Motion exposes the process model (needed to build RTS transition Jacobians).
+func (b *base) Motion() model.Motion { return b.mot }
 func (b *base) SetState(x, p *mat.M) { b.x, b.p = x.Clone(), p.Clone() }
 
 func checkInit(x, p *mat.M, mot model.Motion) {

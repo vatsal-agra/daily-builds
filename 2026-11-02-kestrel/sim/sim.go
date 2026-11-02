@@ -250,6 +250,14 @@ func Scenarios() []Scenario {
 				polar(2, 12000, 120, -30, 190, 20, 120),
 				polar(3, 8000, -100, 10, 160, 50, 100),
 			}},
+		{Name: "knot", Desc: "Four targets in a tight 250 m-spaced formation, Pd 0.85, 8 false alarms/scan: association stress test.",
+			Dt: 2, Duration: 100, Radar: func() Radar { r := baseRadar(); r.Pd = 0.85; r.ClutterMean = 8; return r }(),
+			Targets: []Target{
+				{ID: 1, Born: 0, Dies: 1e9, X: 7000, Y: 5000, VX: 100, VY: 190},
+				{ID: 2, Born: 0, Dies: 1e9, X: 7250, Y: 5000, VX: 100, VY: 190},
+				{ID: 3, Born: 0, Dies: 1e9, X: 7500, Y: 5000, VX: 100, VY: 190},
+				{ID: 4, Born: 0, Dies: 1e9, X: 7125, Y: 5250, VX: 100, VY: 190},
+			}},
 		{Name: "dropouts", Desc: "Pd = 0.7 with 4 false alarms/scan: tracks must coast through missed detections.",
 			Dt: 2, Duration: 120, Radar: func() Radar { r := baseRadar(); r.Pd = 0.7; r.ClutterMean = 4; return r }(),
 			Targets: []Target{

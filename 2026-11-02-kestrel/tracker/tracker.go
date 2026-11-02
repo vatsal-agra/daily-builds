@@ -9,6 +9,7 @@ import (
 	"kestrel/filter"
 	"kestrel/mat"
 	"kestrel/model"
+	"kestrel/smooth"
 	"kestrel/stat"
 )
 
@@ -42,6 +43,7 @@ type Config struct {
 	MergeGate      float64 // Mahalanobis² below which two confirmed tracks are duplicates (0 = off)
 	Assoc          string  // "gnn" (default) or "jpda"
 	ScoreConfirm   float64 // confirm only when the track score also exceeds this
+	Trace          bool    // record per-scan filter internals so tracks can be RTS-smoothed
 	DeleteDrop     float64 // delete a confirmed track once its score falls this far below its peak (0 = off)
 }
 
@@ -67,12 +69,13 @@ func (c *Config) validate() error {
 
 // Point is one historical estimate of a track.
 type Point struct {
-	T         float64
-	X, Y      float64
-	VX, VY    float64
-	PosVar    float64 // trace of the position covariance block
-	Updated   bool    // false = coasted (no detection)
-	ModeProbs []float64
+	T             float64
+	X, Y          float64
+	VX, VY        float64
+	PosVar        float64 // trace of the position covariance block
+	PXX, PXY, PYY float64 // position covariance block, for uncertainty ellipses
+	Updated       bool    // false = coasted (no detection)
+	ModeProbs     []float64
 }
 
 // Track is one hypothesised target.
@@ -87,7 +90,9 @@ type Track struct {
 	Score        float64 // cumulative log-likelihood ratio: real target vs clutter
 	ConfirmScore float64 // score at the moment of confirmation
 	MaxScore     float64 // peak score since confirmation
-	hist         []bool  // hit/miss history for M-of-N
+	trace        []smooth.Step
+	pend         smooth.Step // step being assembled during the current scan
+	hist         []bool      // hit/miss history for M-of-N
 	History      []Point
 	Died         float64
 	DeathReason  string
@@ -157,8 +162,19 @@ func (t *Tracker) Step(tm float64, dets []*mat.M) error {
 	// 1. predict
 	if dt > 0 {
 		for _, tr := range t.Tracks {
+			var prevX *mat.M
+			if t.cfg.Trace {
+				prevX = tr.F.X().Clone()
+			}
 			if err := tr.F.Predict(dt); err != nil {
 				t.kill(tr, tm, "predict failed: "+err.Error())
+				continue
+			}
+			if t.cfg.Trace {
+				tr.pend = smooth.Step{XP: tr.F.X().Clone(), PP: tr.F.P().Clone()}
+				if mf, ok := tr.F.(interface{ Motion() model.Motion }); ok {
+					tr.pend.F = mf.Motion().Jac(prevX, dt)
+				}
 			}
 		}
 		t.sweep()
@@ -228,6 +244,11 @@ func (t *Tracker) Step(tm float64, dets []*mat.M) error {
 		}
 		if tr.Status != Deleted {
 			tr.History = append(tr.History, snapshot(tr, tm, tr.Misses == 0))
+			if t.cfg.Trace {
+				tr.pend.XF, tr.pend.PF = tr.F.X().Clone(), tr.F.P().Clone()
+				tr.trace = append(tr.trace, tr.pend)
+				tr.pend = smooth.Step{}
+			}
 		}
 	}
 	t.sweep()
@@ -249,6 +270,7 @@ func snapshot(tr *Track, tm float64, upd bool) Point {
 	x, p := tr.F.X(), tr.F.P()
 	pt := Point{T: tm, X: x.D[0], VX: x.D[1], Y: x.D[2], VY: x.D[3], Updated: upd}
 	pt.PosVar = p.At(0, 0) + p.At(2, 2)
+	pt.PXX, pt.PXY, pt.PYY = p.At(0, 0), p.At(0, 2), p.At(2, 2)
 	if im, ok := tr.F.(*filter.IMM); ok {
 		pt.ModeProbs = im.Probs()
 	}
@@ -319,6 +341,9 @@ func (t *Tracker) birth(tm float64, z *mat.M) error {
 	tr := &Track{ID: t.nextID, Status: Tentative, F: f, Born: tm, Hits: 1, Age: 1, hist: []bool{true}}
 	t.nextID++
 	tr.History = append(tr.History, snapshot(tr, tm, true))
+	if t.cfg.Trace {
+		tr.trace = append(tr.trace, smooth.Step{XF: f.X().Clone(), PF: f.P().Clone()})
+	}
 	t.Tracks = append(t.Tracks, tr)
 	return nil
 }
@@ -357,4 +382,30 @@ func (t *Tracker) mergeDuplicates(tm float64) {
 		}
 	}
 	t.sweep()
+}
+
+// Smoothed returns the track's history re-estimated with the RTS smoother using every scan
+// (past AND future). It needs Config.Trace and a non-IMM filter.
+func (tr *Track) Smoothed() ([]Point, error) {
+	if len(tr.trace) == 0 {
+		return nil, fmt.Errorf("track %d has no trace (enable Config.Trace; IMM tracks are not smoothable)", tr.ID)
+	}
+	if len(tr.trace) != len(tr.History) {
+		return nil, fmt.Errorf("track %d trace/history length mismatch (%d vs %d)", tr.ID, len(tr.trace), len(tr.History))
+	}
+	for i := 1; i < len(tr.trace); i++ {
+		if tr.trace[i].F == nil {
+			return nil, fmt.Errorf("track %d filter does not expose its motion model", tr.ID)
+		}
+	}
+	r, err := smooth.RTS(tr.trace)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Point, len(r.X))
+	for i, x := range r.X {
+		h := tr.History[i]
+		out[i] = Point{T: h.T, X: x.D[0], VX: x.D[1], Y: x.D[2], VY: x.D[3], PosVar: r.P[i].At(0, 0) + r.P[i].At(2, 2), Updated: h.Updated}
+	}
+	return out, nil
 }

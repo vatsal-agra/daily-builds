@@ -9,6 +9,7 @@ import (
 	"kestrel/mat"
 	"kestrel/metrics"
 	"kestrel/model"
+	"kestrel/smooth"
 	"kestrel/stat"
 )
 
@@ -185,6 +186,89 @@ func Consistency(c Config) (*Report, error) {
 		return nil, err
 	}
 	if rep.NIS, err = metrics.ConsistencyTest(allI, 2, c.Alpha); err != nil {
+		return nil, err
+	}
+	return rep, nil
+}
+
+// SmoothReport compares filtered and RTS-smoothed estimates.
+type SmoothReport struct {
+	Runs, Steps  int
+	FilteredRMSE float64
+	SmoothedRMSE float64
+	SmoothedNEES metrics.Consistency // smoothed estimates must be *consistent*, not merely smaller
+}
+
+// Smoothing runs the linear-KF + RTS experiment on Cartesian measurements.
+func Smoothing(c Config) (*SmoothReport, error) {
+	c.Filter, c.Sensor = "kf", "cartesian"
+	if err := c.defaults(); err != nil {
+		return nil, err
+	}
+	mot := model.NewCV(c.Q, 4)
+	mm := model.NewCartesian(0, 2, c.SigCart)
+	rng := stat.NewRNG(c.Seed)
+	mean0 := mat.Vec(5000, 150, 6000, -120)
+	p0 := mat.Diag(200*200, 20*20, 200*200, 20*20)
+	var seF, seS float64
+	var nn int
+	var nees []float64
+	for r := 0; r < c.Runs; r++ {
+		truth, err := rng.MVN(mean0, p0)
+		if err != nil {
+			return nil, err
+		}
+		est0, err := rng.MVN(truth, p0)
+		if err != nil {
+			return nil, err
+		}
+		f := filter.NewKF(mot, est0, p0)
+		steps := []smooth.Step{{XF: f.X().Clone(), PF: f.P().Clone()}}
+		truths := []*mat.M{truth}
+		for k := 0; k < c.Steps; k++ {
+			w, err := rng.MVN(mat.New(4, 1), mot.Q(truth, c.Dt))
+			if err != nil {
+				return nil, err
+			}
+			truth = mot.F(c.Dt).Mul(truth).Add(w)
+			if err := f.Predict(c.Dt); err != nil {
+				return nil, err
+			}
+			st := smooth.Step{F: mot.F(c.Dt), XP: f.X().Clone(), PP: f.P().Clone()}
+			v, err := rng.MVN(mat.New(2, 1), mm.R())
+			if err != nil {
+				return nil, err
+			}
+			pred, err := f.Measure(mm)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := f.Correct(mm, pred, mm.H(truth).Add(v)); err != nil {
+				return nil, err
+			}
+			st.XF, st.PF = f.X().Clone(), f.P().Clone()
+			steps = append(steps, st)
+			truths = append(truths, truth)
+		}
+		sm, err := smooth.RTS(steps)
+		if err != nil {
+			return nil, err
+		}
+		for k := range steps {
+			ef, es := steps[k].XF.Sub(truths[k]), sm.X[k].Sub(truths[k])
+			seF += ef.D[0]*ef.D[0] + ef.D[2]*ef.D[2]
+			seS += es.D[0]*es.D[0] + es.D[2]*es.D[2]
+			nn++
+			d2, _, err := filter.Mahalanobis(es, sm.P[k])
+			if err != nil {
+				return nil, err
+			}
+			nees = append(nees, d2)
+		}
+	}
+	rep := &SmoothReport{Runs: c.Runs, Steps: c.Steps, FilteredRMSE: math.Sqrt(seF / float64(nn)), SmoothedRMSE: math.Sqrt(seS / float64(nn))}
+	var err error
+	if rep.SmoothedNEES, err = metrics.ConsistencyTest(nees, 4, c.Alpha); err != nil {
 		return nil, err
 	}
 	return rep, nil

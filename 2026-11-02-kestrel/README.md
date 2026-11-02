@@ -1,7 +1,7 @@
 # Kestrel
 Multi-target radar tracking laboratory (Go, stdlib only).
 
-**Status: Phase 3 — adversarial review done (see REVIEW.md).** The four required features work end to end:
+**Status: Phase 4 — stretch features (IMM, RTS smoother, JPDA, HTML report) added and polished.** The four required features work end to end:
 
 1. Linear Kalman filter (Joseph form) with NEES/NIS chi-square consistency testing — `kestrel consistency -filter kf`
 2. EKF and UKF on nonlinear radar range/bearing — `kestrel consistency -filter ukf -sensor radar`

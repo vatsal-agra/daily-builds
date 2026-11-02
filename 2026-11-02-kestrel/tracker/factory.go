@@ -23,6 +23,7 @@ type Options struct {
 	VMax         float64
 	ScoreConfirm float64
 	DeleteDrop   float64
+	Trace        bool // record filter internals for RTS smoothing
 }
 
 // DefaultOptions are sensible for the built-in scenarios.
@@ -38,7 +39,7 @@ func ForScenario(sc sim.Scenario, o Options) (Config, error) {
 		Name: o.Filter + "/" + o.Assoc, Radar: rad, Pd: sc.Radar.Pd,
 		ClutterDensity: sc.Radar.ClutterDensity(), GateProb: o.GateProb,
 		ConfirmM: o.ConfirmM, ConfirmN: o.ConfirmN, MaxMiss: o.MaxMiss, VMax: o.VMax,
-		MergeGate: 9.5, Assoc: o.Assoc, ScoreConfirm: o.ScoreConfirm, DeleteDrop: o.DeleteDrop,
+		Trace: o.Trace, MergeGate: 9.5, Assoc: o.Assoc, ScoreConfirm: o.ScoreConfirm, DeleteDrop: o.DeleteDrop,
 	}
 	if sc.Radar.ClutterMean == 0 { // density 0 would make every pairing infinitely likely
 		cfg.ClutterDensity = 1e-12
