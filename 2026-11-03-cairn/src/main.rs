@@ -111,6 +111,128 @@ fn cmd_run(args: &Args) -> Result<(), String> {
     res.map_err(|e| format!("{path}: runtime error: {e}"))
 }
 
+fn collectors_from(args: &Args) -> Result<Vec<String>, String> {
+    let list: Vec<String> = match args.flags.get("--gcs") {
+        Some(s) => s.split(',').map(|x| x.trim().to_string()).collect(),
+        None => ALL_GCS.iter().map(|s| s.to_string()).collect(),
+    };
+    if list.is_empty() || list.iter().any(|s| s.is_empty()) {
+        return Err("--gcs needs a comma-separated list of collector names".into());
+    }
+    Ok(list)
+}
+
+fn load(args: &Args, what: &str) -> Result<(String, String, lang::Program), String> {
+    let path = args.pos.first().ok_or(format!("{what} needs a FILE"))?.clone();
+    let src = read_file(&path)?;
+    let prog = lang::compile(&src).map_err(|e| format!("{path}: {e}"))?;
+    Ok((path, src, prog))
+}
+
+fn cmd_bench(args: &Args) -> Result<(), String> {
+    let (path, _src, prog) = load(args, "bench")?;
+    let cfg = config(args)?;
+    let mut rows = Vec::new();
+    let mut outputs: Vec<(String, String)> = Vec::new();
+    for g in collectors_from(args)? {
+        let r = bench::run_one(&prog, &g, &cfg, vm::VmOptions::default())?;
+        if let Ok(o) = &r.outcome {
+            outputs.push((g.clone(), o.clone()));
+        }
+        rows.push(bench::row_of(&r));
+    }
+    println!("{path}  (heap {} words, nursery {})", cfg.words, cfg.nursery);
+    print!("{}", bench::table(&rows));
+    if let Some((first, out0)) = outputs.first() {
+        if let Some((g, _)) = outputs.iter().find(|(_, o)| o != out0) {
+            return Err(format!("OUTPUT MISMATCH: {g} differs from {first}"));
+        }
+        println!("outputs identical across {} collector(s)", outputs.len());
+    }
+    Ok(())
+}
+
+fn cmd_compare(args: &Args) -> Result<(), String> {
+    let (path, _src, prog) = load(args, "compare")?;
+    let cfg = config(args)?;
+    let mut base: Option<(String, String, snapshot_t)> = None;
+    let mut bad = false;
+    for g in collectors_from(args)? {
+        let opts = vm::VmOptions { verify: args.flags.contains_key("--verify"), torture: args.flags.contains_key("--torture"), ..Default::default() };
+        let r = bench::run_one(&prog, &g, &cfg, opts)?;
+        match &r.outcome {
+            Err(e) => {
+                println!("{g:<13} FAILED: {e}");
+                bad = true;
+            }
+            Ok(out) => {
+                let snap = verify::snapshot(r.vm.gc.as_ref(), &r.vm.roots);
+                let errs = verify::check_heap(r.vm.gc.as_ref(), &r.vm.roots);
+                let same = match &base {
+                    None => {
+                        base = Some((g.clone(), out.clone(), snap.clone()));
+                        true
+                    }
+                    Some((_, o, s)) => o == out && *s == snap,
+                };
+                println!(
+                    "{g:<13} {}  {} objects reachable, digest {:016x}, {} oracle checks{}",
+                    if same && errs.is_empty() { "OK  " } else { "DIFF" },
+                    snap.nodes.len(),
+                    snap.digest(),
+                    r.vm.verify_checks,
+                    if errs.is_empty() { String::new() } else { format!(", heap errors: {}", errs[0]) }
+                );
+                bad |= !same || !errs.is_empty();
+            }
+        }
+    }
+    if bad {
+        Err(format!("{path}: collectors disagree or failed"))
+    } else {
+        println!("all collectors agree on output and final reachable graph");
+        Ok(())
+    }
+}
+
+#[allow(non_camel_case_types)]
+type snapshot_t = verify::Snapshot;
+
+fn cmd_report(args: &Args) -> Result<(), String> {
+    let (path, src, prog) = load(args, "report")?;
+    let cfg = config(args)?;
+    let out = args.flags.get("-o").or(args.flags.get("--out")).ok_or("report needs -o OUT.html")?;
+    let mut results = Vec::new();
+    for g in collectors_from(args)? {
+        results.push(bench::run_one(&prog, &g, &cfg, vm::VmOptions::default())?);
+    }
+    let html = report::html_report(&path, &src, &results, &cfg);
+    std::fs::write(out, html).map_err(|e| format!("cannot write {out}: {e}"))?;
+    println!("wrote {out}");
+    Ok(())
+}
+
+fn cmd_barrier_demo() -> Result<(), String> {
+    for h in [demo::satb_hazard(true), demo::satb_hazard(false), demo::old_to_young_hazard(true), demo::old_to_young_hazard(false)] {
+        println!("== {} — barrier {}", h.title, if h.barrier { "ON" } else { "OFF" });
+        for s in &h.steps {
+            println!("   {s}");
+        }
+        if h.violations.is_empty() {
+            println!("   oracle: heap consistent, nothing lost");
+        } else {
+            println!("   oracle: CORRUPTION — {}", h.violations[0]);
+        }
+        println!();
+        if h.barrier == h.violations.is_empty() {
+            continue;
+        }
+        return Err(format!("unexpected outcome for '{}' (barrier {})", h.title, h.barrier));
+    }
+    println!("barriers on => safe; barriers off => the oracle catches the lost object.");
+    Ok(())
+}
+
 fn cmd_fuzz(args: &Args) -> Result<(), String> {
     let iters = num(args, "--iters", 200)? as u64;
     let seed = num(args, "--seed", 1)? as u64;
@@ -159,6 +281,10 @@ fn main() -> ExitCode {
             match cmd.as_str() {
                 "run" => cmd_run(&args),
                 "fuzz" => cmd_fuzz(&args),
+                "bench" => cmd_bench(&args),
+                "compare" => cmd_compare(&args),
+                "report" => cmd_report(&args),
+                "barrier-demo" => cmd_barrier_demo(),
                 "list" => {
                     for g in ALL_GCS {
                         println!("{g}");

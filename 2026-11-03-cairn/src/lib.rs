@@ -1,5 +1,7 @@
 //! Cairn: a garbage-collector laboratory.
+pub mod bench;
 pub mod compact;
+pub mod demo;
 pub mod fuzz;
 pub mod generational;
 pub mod heap;
