@@ -11,7 +11,9 @@ fn without_the_barrier_the_oracle_catches_the_lost_object() {
     let h = satb_hazard(false);
     assert!(!h.violations.is_empty(), "the hazard should have lost X");
     assert!(
-        h.violations.iter().any(|e| e.contains("lost object") || e.contains("freed") || e.contains("changed")),
+        h.violations
+            .iter()
+            .any(|e| e.contains("lost object") || e.contains("freed") || e.contains("changed")),
         "{:?}",
         h.violations
     );

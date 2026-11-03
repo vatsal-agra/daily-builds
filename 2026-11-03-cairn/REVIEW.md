@@ -19,6 +19,7 @@ insensitive oracle is worse than none. Every finding below was reproduced before
 | R10 | medium | Incremental trigger was a fixed fraction of the heap: with >50 % live data a new cycle started immediately after the previous one (GC thrash). | Adaptive trigger: never closer to the last live size than half the remaining headroom. (9 cycles for 87k allocated words on a 67 %-live heap.) |
 | R11 | low | `(print 99999999999999999999)` reported `unknown variable '9999…'`. | Reader says "integer … does not fit in 63 bits". |
 | R12 | low (UX) | `+`, `-`, `*` were strictly binary — the reviewer tripped over it three times writing examples. | Variadic `+ - *`, unary `-`. |
+| R14 | medium | **Found during Phase 5:** `cairn run big.cairn \| head -1` died with `failed printing to stdout: Broken pipe` and an "internal error (panic)" exit 101 — `println!` panics on a closed pipe. | All CLI output goes through macros that exit quietly on EPIPE. |
 | R13 | process | `target/` was committed in the first local commit (400 files, ~100 MB). Caught before pushing. | `.gitignore`, history rewritten before the first push. |
 
 ## Known limits (deliberate, documented — not defects)
@@ -28,9 +29,10 @@ insensitive oracle is worse than none. Every finding below was reproduced before
   visible in `cache`/`queue` stats. A minor GC needs old-generation headroom (see R7).
 - No closures / first-class functions in Cairn: kept out to keep the root-stack discipline obvious.
 - `collect(full=false)` is a full collection for every non-generational collector.
-- Mark-sweep can fail with free words > request (fragmentation) — shown on purpose by `examples/` +
-  `cairn bench` (compact and incremental succeed where mark-sweep reports `largest block 518`).
+- Non-moving collectors can fail with free words > request (fragmentation) — shown on purpose by
+  `cairn bench examples/bigvecs.cairn --heap 12000 --nursery 1000`: semispace (half the heap), generational and
+  incremental report out-of-memory (`4157 free words, largest block 555`) while mark-compact finishes with 0 % fragmentation.
 
 ## Re-run gate
-`./review_check.sh` → every row R3–R12 re-probed; R1/R2/R7/R8 covered by `tests/barrier.rs` and `tests/model.rs`
+`./review_check.sh` → every row R3–R12 and R14 re-probed; R1/R2/R7/R8 covered by `tests/barrier.rs` and `tests/model.rs`
 (model-based test: random op streams checked against a plain-Rust shadow graph after *every* operation).

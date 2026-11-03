@@ -95,7 +95,11 @@ pub fn snapshot(gc: &dyn Gc, roots: &[Value]) -> Snapshot {
             Kind::Str => bytes = gc.str_bytes(v),
             Kind::Free => bytes = b"<FREE>".to_vec(),
         }
-        nodes.push(Node { kind: k as u8, fields, bytes });
+        nodes.push(Node {
+            kind: k as u8,
+            fields,
+            bytes,
+        });
         i += 1;
     }
     Snapshot { roots: rcells, nodes }

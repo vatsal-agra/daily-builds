@@ -35,7 +35,13 @@ pub struct GcConfig {
 
 impl Default for GcConfig {
     fn default() -> Self {
-        GcConfig { words: 1 << 20, nursery: 1 << 15, barrier: true, trigger: 0.5, pace: 6 }
+        GcConfig {
+            words: 1 << 20,
+            nursery: 1 << 15,
+            barrier: true,
+            trigger: 0.5,
+            pace: 6,
+        }
     }
 }
 

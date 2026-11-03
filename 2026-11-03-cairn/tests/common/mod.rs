@@ -41,7 +41,13 @@ pub fn run_with(src: &str, gc: &str, cfg: GcConfig, opts: VmOptions) -> Result<S
 }
 
 pub fn small_cfg() -> GcConfig {
-    GcConfig { words: 6000, nursery: 600, barrier: true, trigger: 0.4, pace: 4 }
+    GcConfig {
+        words: 6000,
+        nursery: 600,
+        barrier: true,
+        trigger: 0.4,
+        pace: 4,
+    }
 }
 
 pub fn run(src: &str, gc: &str) -> Result<Summary, String> {
@@ -49,9 +55,26 @@ pub fn run(src: &str, gc: &str) -> Result<Summary, String> {
 }
 
 pub fn run_verified(src: &str, gc: &str) -> Result<Summary, String> {
-    run_with(src, gc, small_cfg(), VmOptions { verify: true, ..Default::default() })
+    run_with(
+        src,
+        gc,
+        small_cfg(),
+        VmOptions {
+            verify: true,
+            ..Default::default()
+        },
+    )
 }
 
 pub fn run_torture(src: &str, gc: &str) -> Result<Summary, String> {
-    run_with(src, gc, small_cfg(), VmOptions { verify: true, torture: true, ..Default::default() })
+    run_with(
+        src,
+        gc,
+        small_cfg(),
+        VmOptions {
+            verify: true,
+            torture: true,
+            ..Default::default()
+        },
+    )
 }

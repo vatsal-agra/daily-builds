@@ -17,7 +17,14 @@ impl Compact {
     pub fn new(words: usize) -> Compact {
         let words = words.max(16);
         assert!(words < u32::MAX as usize, "compact heap limited to 4G words");
-        Compact { mem: vec![0u64; words + 1], top: 1, stats: Stats::new(), stack: Vec::new(), fwd: Vec::new(), torture: false }
+        Compact {
+            mem: vec![0u64; words + 1],
+            top: 1,
+            stats: Stats::new(),
+            stack: Vec::new(),
+            fwd: Vec::new(),
+            torture: false,
+        }
     }
 
     fn cycle(&mut self, roots: &mut [Value]) {

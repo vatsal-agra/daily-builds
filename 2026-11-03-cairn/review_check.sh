@@ -30,6 +30,8 @@ out=$($C fuzz --iters 300 --seed 1 --gcs incremental --no-barrier 2>&1); [[ $? -
 out=$($C run examples/cache.cairn --gc generational --heap 20000 --nursery 800 --verify --no-barrier 2>&1); [[ $? -ne 0 && $out == *"not remembered"* ]] && ok "R3b oracle catches missing remembered set" || bad "R3b: $out"
 # R9 incremental pause log stays bounded and populated
 out=$($C run examples/bintrees.cairn --gc incremental --heap 400000 --stats 2>&1 | tail -3 | head -1); [[ $out == incremental* ]] && ok "R9 pause accounting" || bad "R9: $out"
+# R14 closed stdout pipe is not a panic
+$C run examples/bintrees.cairn | head -1 >/dev/null; rc=${PIPESTATUS[0]}; [[ $rc -eq 0 ]] && ok "R14 broken pipe exits quietly" || bad "R14 rc=$rc"
 # the cargo-level regression tests for the rest
 cargo test --release -q --test barrier --test model 2>&1 | grep -E "test result" | grep -q "failed; 0" && ok "R1/R2/R7/R8 barrier + model tests" || bad "tests"
 [[ $fail -eq 0 ]] && echo "review re-check: ALL CLEAN" || { echo "review re-check: FAILURES"; exit 1; }

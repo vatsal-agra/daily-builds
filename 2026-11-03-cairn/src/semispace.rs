@@ -17,7 +17,14 @@ impl Semispace {
     /// `words` is the total budget; each semispace gets half of it.
     pub fn new(words: usize) -> Semispace {
         let half = (words / 2).max(8);
-        Semispace { mem: vec![0u64; 1 + 2 * half], half, base: 1, top: 1, stats: Stats::new(), torture: false }
+        Semispace {
+            mem: vec![0u64; 1 + 2 * half],
+            half,
+            base: 1,
+            top: 1,
+            stats: Stats::new(),
+            torture: false,
+        }
     }
 
     fn limit(&self) -> Addr {

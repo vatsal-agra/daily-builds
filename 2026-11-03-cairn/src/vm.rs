@@ -46,6 +46,8 @@ type R<T> = Result<T, VmError>;
 pub struct VmOptions {
     /// after every allocation/collect: snapshot-compare + structural heap check (slow)
     pub verify: bool,
+    /// with `verify`: run the oracle on every Nth allocation (1 = every one)
+    pub verify_every: u64,
     /// collect at every allocation
     pub torture: bool,
     pub max_depth: usize,
@@ -58,7 +60,16 @@ pub struct VmOptions {
 }
 impl Default for VmOptions {
     fn default() -> Self {
-        VmOptions { verify: false, torture: false, max_depth: 2000, step_limit: u64::MAX, seed: 0x9E3779B97F4A7C15, stream: false, max_output: 1 << 26 }
+        VmOptions {
+            verify: false,
+            verify_every: 1,
+            torture: false,
+            max_depth: 2000,
+            step_limit: u64::MAX,
+            seed: 0x9E3779B97F4A7C15,
+            stream: false,
+            max_output: 1 << 26,
+        }
     }
 }
 
@@ -70,6 +81,7 @@ pub struct Vm {
     rng: u64,
     depth: usize,
     steps: u64,
+    alloc_n: u64,
     pub verify_checks: u64,
 }
 
@@ -77,7 +89,17 @@ impl Vm {
     pub fn new(mut gc: Box<dyn Gc>, opts: VmOptions) -> Vm {
         gc.set_torture(opts.torture);
         let rng = opts.seed | 1;
-        Vm { gc, roots: Vec::new(), out: Vec::new(), opts, rng, depth: 0, steps: 0, verify_checks: 0 }
+        Vm {
+            gc,
+            roots: Vec::new(),
+            out: Vec::new(),
+            opts,
+            rng,
+            depth: 0,
+            steps: 0,
+            alloc_n: 0,
+            verify_checks: 0,
+        }
     }
 
     pub fn steps(&self) -> u64 {
@@ -116,13 +138,18 @@ impl Vm {
     fn verify_now(&mut self, when: &str) -> R<()> {
         let errs = verify::check_heap(self.gc.as_ref(), &self.roots);
         if let Some(e) = errs.first() {
-            return Err(VmError::Corrupt(format!("{when}: {e} ({} violations, collector {})", errs.len(), self.gc.name())));
+            return Err(VmError::Corrupt(format!(
+                "{when}: {e} ({} violations, collector {})",
+                errs.len(),
+                self.gc.name()
+            )));
         }
         Ok(())
     }
 
     fn alloc(&mut self, kind: Kind, len: usize) -> R<Value> {
-        if self.opts.verify {
+        self.alloc_n += 1;
+        if self.opts.verify && self.alloc_n % self.opts.verify_every.max(1) == 0 {
             let before = verify::snapshot(self.gc.as_ref(), &self.roots);
             let v = self.gc.alloc(kind, len, &mut self.roots)?;
             let after = verify::snapshot(self.gc.as_ref(), &self.roots);
@@ -143,7 +170,11 @@ impl Vm {
     }
 
     fn collect(&mut self, full: bool) -> R<()> {
-        let before = if self.opts.verify { Some(verify::snapshot(self.gc.as_ref(), &self.roots)) } else { None };
+        let before = if self.opts.verify {
+            Some(verify::snapshot(self.gc.as_ref(), &self.roots))
+        } else {
+            None
+        };
         let mut roots = std::mem::take(&mut self.roots);
         let r = self.gc.collect(&mut roots, full);
         self.roots = roots;
@@ -152,7 +183,10 @@ impl Vm {
             let after = verify::snapshot(self.gc.as_ref(), &self.roots);
             self.verify_checks += 1;
             if b != after {
-                return Err(VmError::Corrupt(format!("reachable graph changed across collect() under {}", self.gc.name())));
+                return Err(VmError::Corrupt(format!(
+                    "reachable graph changed across collect() under {}",
+                    self.gc.name()
+                )));
             }
             self.verify_now("after collect")?;
         }

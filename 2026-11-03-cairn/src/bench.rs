@@ -24,7 +24,12 @@ pub fn run_one(prog: &Program, name: &str, cfg: &GcConfig, opts: VmOptions) -> R
         Ok(()) => Ok(String::from_utf8_lossy(&vm.out).into_owned()),
         Err(e) => Err(e.to_string()),
     };
-    Ok(RunResult { name: name.to_string(), outcome, wall_ns, vm })
+    Ok(RunResult {
+        name: name.to_string(),
+        outcome,
+        wall_ns,
+        vm,
+    })
 }
 
 /// Minimum mutator utilisation for windows of `w` ns: the worst fraction of any window of that
@@ -87,7 +92,11 @@ pub fn row_of(r: &RunResult) -> Row {
     let st = r.vm.gc.stats();
     let mut durs: Vec<u64> = st.pauses.iter().map(|p| p.dur_ns).collect();
     durs.sort_unstable();
-    let p99 = if durs.is_empty() { 0 } else { durs[((durs.len() - 1) as f64 * 0.99) as usize] };
+    let p99 = if durs.is_empty() {
+        0
+    } else {
+        durs[((durs.len() - 1) as f64 * 0.99) as usize]
+    };
     let cap = r.vm.gc.capacity_words();
     let used = r.vm.gc.used_words();
     let secs = (r.wall_ns as f64 / 1e9).max(1e-9);
@@ -125,7 +134,11 @@ pub fn table(rows: &[Row]) -> String {
             s.push_str(&format!("{:<13} FAILED: {}\n", r.name, r.note));
             continue;
         }
-        let frag = if r.free_words == 0 { 0.0 } else { 1.0 - r.largest_free as f64 / r.free_words as f64 };
+        let frag = if r.free_words == 0 {
+            0.0
+        } else {
+            1.0 - r.largest_free as f64 / r.free_words as f64
+        };
         s.push_str(&format!(
             "{:<13} {:>8} {:>6.1}% {:>8} {:>10} {:>10} {:>10} {:>7.3} {:>7.3} {:>8} {:>10.1} {:>7.0}%\n",
             r.name,

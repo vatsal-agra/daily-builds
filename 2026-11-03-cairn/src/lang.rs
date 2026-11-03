@@ -321,8 +321,12 @@ fn expr(x: &Sx, sc: &mut Scope) -> Result<Expr, LangError> {
         }
         Sx::List(items, line) => {
             let line = *line;
-            let Some(head) = items.first() else { return err(line, "empty list is not an expression (use nil)") };
-            let Sx::Sym(h, _) = head else { return err(line, "the head of a form must be a name") };
+            let Some(head) = items.first() else {
+                return err(line, "empty list is not an expression (use nil)");
+            };
+            let Sx::Sym(h, _) = head else {
+                return err(line, "the head of a form must be a name");
+            };
             let args = &items[1..];
             match h.as_str() {
                 "if" => {
@@ -368,12 +372,16 @@ fn expr(x: &Sx, sc: &mut Scope) -> Result<Expr, LangError> {
                     }
                 }
                 "let" => {
-                    let Some(Sx::List(binds, bl)) = args.first() else { return err(line, "let needs a binding list") };
+                    let Some(Sx::List(binds, bl)) = args.first() else {
+                        return err(line, "let needs a binding list");
+                    };
                     let saved_vars = sc.vars.len();
                     let saved_next = sc.next;
                     let mut out = Vec::new();
                     for b in binds {
-                        let Sx::List(p, pl) = b else { return err(*bl, "let binding must be (name value)") };
+                        let Sx::List(p, pl) = b else {
+                            return err(*bl, "let binding must be (name value)");
+                        };
                         if p.len() != 2 {
                             return err(*pl, "let binding must be (name value)");
                         }
@@ -421,8 +429,13 @@ pub fn compile(src: &str) -> Result<Program, LangError> {
         if let Sx::List(items, line) = f {
             match items.first() {
                 Some(Sx::Sym(h, _)) if h == "fn" => {
-                    let Some(Sx::List(sig, _)) = items.get(1) else { return err(*line, "fn needs (fn (name params...) body...)") };
-                    let name = sig.first().map(sym).transpose()?.ok_or(LangError { line: *line, msg: "fn needs a name".into() })?;
+                    let Some(Sx::List(sig, _)) = items.get(1) else {
+                        return err(*line, "fn needs (fn (name params...) body...)");
+                    };
+                    let name = sig.first().map(sym).transpose()?.ok_or(LangError {
+                        line: *line,
+                        msg: "fn needs a name".into(),
+                    })?;
                     if funcs_idx.contains_key(name) || prim_of(name).is_some() {
                         return err(*line, format!("function '{name}' is already defined or is a builtin"));
                     }
@@ -447,7 +460,13 @@ pub fn compile(src: &str) -> Result<Program, LangError> {
     for (items, line) in fn_forms {
         let Sx::List(sig, _) = &items[1] else { unreachable!() };
         let name = sym(&sig[0])?.to_string();
-        let mut sc = Scope { funcs: &funcs_idx, globals: &globals_idx, vars: Vec::new(), next: 0, max: 0 };
+        let mut sc = Scope {
+            funcs: &funcs_idx,
+            globals: &globals_idx,
+            vars: Vec::new(),
+            next: 0,
+            max: 0,
+        };
         for p in &sig[1..] {
             let pn = sym(p)?;
             if sc.vars.iter().any(|(n, _)| n == pn) {
@@ -456,9 +475,20 @@ pub fn compile(src: &str) -> Result<Program, LangError> {
             sc.declare(pn);
         }
         let b = body(&items[2..], &mut sc, line)?;
-        funcs.push(Func { name, nparams: sig.len() - 1, nslots: sc.max, body: b });
+        funcs.push(Func {
+            name,
+            nparams: sig.len() - 1,
+            nslots: sc.max,
+            body: b,
+        });
     }
-    let mut sc = Scope { funcs: &funcs_idx, globals: &globals_idx, vars: Vec::new(), next: 0, max: 0 };
+    let mut sc = Scope {
+        funcs: &funcs_idx,
+        globals: &globals_idx,
+        vars: Vec::new(),
+        next: 0,
+        max: 0,
+    };
     let mut main_body = Vec::new();
     for f in &forms {
         if let Sx::List(items, _) = f {
@@ -474,11 +504,20 @@ pub fn compile(src: &str) -> Result<Program, LangError> {
         }
         main_body.push(expr(f, &mut sc)?);
     }
-    let main = Func { name: "<main>".into(), nparams: 0, nslots: sc.max, body: main_body };
+    let main = Func {
+        name: "<main>".into(),
+        nparams: 0,
+        nslots: sc.max,
+        body: main_body,
+    };
     // keep funcs ordered by index
     let mut ordered = funcs;
     let mut order: Vec<(usize, String)> = funcs_idx.iter().map(|(n, (i, _))| (*i, n.clone())).collect();
     order.sort();
     ordered.sort_by_key(|f| order.iter().position(|(_, n)| *n == f.name).unwrap());
-    Ok(Program { funcs: ordered, globals: global_names, main })
+    Ok(Program {
+        funcs: ordered,
+        globals: global_names,
+        main,
+    })
 }

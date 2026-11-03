@@ -75,19 +75,13 @@ fn stmt(r: &mut Rng) -> String {
         17 => format!("(when (< (rand 100) 30) (set! {g} {}))", expr(r, 2)),
         18 => format!("(print (digest {g}))"),
         // hoist: load a child, delete the heap reference, keep only a root — the SATB hazard
-        19..=21 => format!(
-            "(let ((t (scar {g}))) (ssetcar {g} nil) (set! g{} t))",
-            r.below(NG)
-        ),
+        19..=21 => format!("(let ((t (scar {g}))) (ssetcar {g} nil) (set! g{} t))", r.below(NG)),
         23 | 24 => "(gc-begin)".to_string(),
         25 => format!(
             "(begin (gc-begin) (let ((t (scar {g}))) (ssetcar {g} nil) (set! g{} t)))",
             r.below(NG)
         ),
-        22 => format!(
-            "(let ((t (scdr {g}))) (ssetcdr {g} nil) (set! g{} t))",
-            r.below(NG)
-        ),
+        22 => format!("(let ((t (scdr {g}))) (ssetcdr {g} nil) (set! g{} t))", r.below(NG)),
         _ => format!("(let ((junk {})) (set! junk (cons junk junk)))", expr(r, 3)),
     }
 }
@@ -134,7 +128,11 @@ pub struct Failure {
 
 /// The reference run: the program on a heap so large it never collects.
 fn reference(prog: &str) -> Result<String, String> {
-    let cfg = GcConfig { words: 4_000_000, nursery: 1 << 20, ..Default::default() };
+    let cfg = GcConfig {
+        words: 4_000_000,
+        nursery: 1 << 20,
+        ..Default::default()
+    };
     run_source(prog, "marksweep", &cfg, VmOptions::default()).map(|(o, _)| o)
 }
 
@@ -156,7 +154,11 @@ pub fn check_seed(seed: u64, cfg: &GcConfig, collectors: &[&str], torture: bool)
             modes.push(("verify+torture", true));
         }
         for (mode, tort) in modes {
-            let opts = VmOptions { verify: true, torture: tort, ..Default::default() };
+            let opts = VmOptions {
+                verify: true,
+                torture: tort,
+                ..Default::default()
+            };
             let got = run_source(&prog, g, cfg, opts);
             let bad = match &got {
                 Ok((o, _)) if *o == want => None,
@@ -164,7 +166,13 @@ pub fn check_seed(seed: u64, cfg: &GcConfig, collectors: &[&str], torture: bool)
                 Err(e) => Some(e.clone()),
             };
             if let Some(detail) = bad {
-                return Err(Box::new(Failure { seed, collector: g.to_string(), mode, detail, program: prog }));
+                return Err(Box::new(Failure {
+                    seed,
+                    collector: g.to_string(),
+                    mode,
+                    detail,
+                    program: prog,
+                }));
             }
         }
     }
@@ -183,5 +191,11 @@ pub fn default_collectors() -> Vec<&'static str> {
 }
 
 pub fn fuzz_cfg() -> GcConfig {
-    GcConfig { words: 12000, nursery: 900, barrier: true, trigger: 0.35, pace: 3 }
+    GcConfig {
+        words: 12000,
+        nursery: 900,
+        barrier: true,
+        trigger: 0.35,
+        pace: 3,
+    }
 }

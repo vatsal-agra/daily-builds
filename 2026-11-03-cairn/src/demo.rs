@@ -34,13 +34,20 @@ pub fn satb_hazard(barrier: bool) -> Hazard {
     }
     gc.begin_cycle(&mut roots);
     assert_eq!(gc.phase(), Phase::Marking);
-    steps.push(format!("collector starts a cycle: roots are scanned now (phase = {:?}); H and the chain are grey", gc.phase()));
+    steps.push(format!(
+        "collector starts a cycle: roots are scanned now (phase = {:?}); H and the chain are grey",
+        gc.phase()
+    ));
     roots[2] = gc.load(roots[0], 0);
     steps.push("mutator: root2 = H.0   (X is now held by a root that the collector will never rescan)".into());
     gc.store(roots[0], 0, Value::NIL);
     steps.push(format!(
         "mutator: H.0 = nil   (deletion barrier {})",
-        if barrier { "shades X grey" } else { "is OFF: nobody tells the collector" }
+        if barrier {
+            "shades X grey"
+        } else {
+            "is OFF: nobody tells the collector"
+        }
     ));
     gc.trigger = 2.0;
     let want = snapshot(&gc, &roots);
@@ -54,8 +61,15 @@ pub fn satb_hazard(barrier: bool) -> Hazard {
             violations.push("reachable graph changed: a live object was freed and its memory reused".into());
         }
     }
-    steps.push(format!("mutator keeps allocating while the collector finishes ({allocs} allocations)"));
-    Hazard { title: "incremental SATB: hoist a child into a root, then delete the heap edge", barrier, steps, violations }
+    steps.push(format!(
+        "mutator keeps allocating while the collector finishes ({allocs} allocations)"
+    ));
+    Hazard {
+        title: "incremental SATB: hoist a child into a root, then delete the heap edge",
+        barrier,
+        steps,
+        violations,
+    }
 }
 
 /// Generational hazard: an old object is made to point at a nursery object. Without the
@@ -72,7 +86,10 @@ pub fn old_to_young_hazard(barrier: bool) -> Hazard {
     let young = gc.alloc(Kind::Pair, 2, &mut roots).unwrap();
     gc.store(young, 0, Value::int(7));
     gc.store(roots[0], 0, young); // old -> young
-    steps.push(format!("mutator stores a fresh nursery pair into the old vector (remembered-set barrier {})", if barrier { "ON" } else { "OFF" }));
+    steps.push(format!(
+        "mutator stores a fresh nursery pair into the old vector (remembered-set barrier {})",
+        if barrier { "ON" } else { "OFF" }
+    ));
     let want = snapshot(&gc, &roots);
     let mut violations = check_heap(&gc, &roots);
     gc.collect(&mut roots, false).unwrap();
@@ -86,5 +103,10 @@ pub fn old_to_young_hazard(barrier: bool) -> Hazard {
         Ok(_) => violations.push("reachable graph changed across the minor GC".into()),
         Err(_) => violations.push("walking the heap after the minor GC hit garbage".into()),
     }
-    Hazard { title: "generational: old object points at a nursery object", barrier, steps, violations }
+    Hazard {
+        title: "generational: old object points at a nursery object",
+        barrier,
+        steps,
+        violations,
+    }
 }

@@ -16,7 +16,13 @@ impl MarkSweep {
         let mut mem = vec![0u64; words + 1];
         let mut free = FreeList::new();
         free.add(&mut mem, 1, words);
-        MarkSweep { mem, free, stats: Stats::new(), stack: Vec::new(), torture: false }
+        MarkSweep {
+            mem,
+            free,
+            stats: Stats::new(),
+            stack: Vec::new(),
+            torture: false,
+        }
     }
 
     fn cycle(&mut self, roots: &[Value]) {

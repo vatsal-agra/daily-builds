@@ -201,7 +201,12 @@ impl Stats {
         let end = self.now_ns();
         let dur = end.saturating_sub(start_ns);
         if self.pauses.len() < PAUSE_LOG_CAP {
-            self.pauses.push(Pause { start_ns, dur_ns: dur, kind, work });
+            self.pauses.push(Pause {
+                start_ns,
+                dur_ns: dur,
+                kind,
+                work,
+            });
             self.timeline.push(Sample { t_ns: end, used });
         } else {
             let o = &mut self.overflow;
@@ -358,7 +363,11 @@ pub struct FreeList {
 
 impl FreeList {
     pub fn new() -> FreeList {
-        FreeList { bins: vec![Vec::new(); BINS], large: Vec::new(), words: 0 }
+        FreeList {
+            bins: vec![Vec::new(); BINS],
+            large: Vec::new(),
+            words: 0,
+        }
     }
     pub fn clear(&mut self) {
         for b in &mut self.bins {
@@ -418,13 +427,7 @@ impl FreeList {
 
 /// Sweep `[from, to)` rebuilding `free`: unmarked and FREE blocks coalesce into runs; MARK is
 /// cleared on survivors. `on_live` sees each survivor. Returns (live_words, freed_words).
-pub fn sweep_range(
-    mem: &mut [u64],
-    from: Addr,
-    to: Addr,
-    free: &mut FreeList,
-    mut on_live: impl FnMut(&mut [u64], Addr),
-) -> (u64, u64) {
+pub fn sweep_range(mem: &mut [u64], from: Addr, to: Addr, free: &mut FreeList, mut on_live: impl FnMut(&mut [u64], Addr)) -> (u64, u64) {
     let (mut live, mut freed) = (0u64, 0u64);
     let mut a = from;
     let mut run: Option<(Addr, usize)> = None;

@@ -86,9 +86,8 @@ impl Generational {
         let used_young = self.ntop - self.nbase;
         let mut work: Vec<Addr> = Vec::new();
         let mut words = 0u64;
-        for i in 0..roots.len() {
-            let nv = self.evacuate(roots[i], &mut work)?;
-            roots[i] = nv;
+        for r in roots.iter_mut() {
+            *r = self.evacuate(*r, &mut work)?;
         }
         let rem = std::mem::take(&mut self.remset);
         for a in rem {
@@ -157,7 +156,7 @@ impl Generational {
         self.stats.record("major", t, live + freed, used);
     }
 
-    fn minor_with_headroom(&mut self, roots: &mut Vec<Value>) -> Result<(), OutOfMemory> {
+    fn minor_with_headroom(&mut self, roots: &mut [Value]) -> Result<(), OutOfMemory> {
         let young = self.ntop - self.nbase;
         // A minor GC can promote everything in the nursery, so the old generation needs that many
         // free words *and* a block big enough for the largest nursery object.
@@ -212,7 +211,11 @@ impl Gc for Generational {
             }
             got.ok_or_else(|| OutOfMemory {
                 requested: total,
-                detail: format!("{} free words in old generation, largest block {}", self.free.words, self.largest_free()),
+                detail: format!(
+                    "{} free words in old generation, largest block {}",
+                    self.free.words,
+                    self.largest_free()
+                ),
             })?
         } else {
             if self.ntop + total > self.nend {
@@ -267,7 +270,10 @@ impl Gc for Generational {
                 for i in 0..hdr_len(h) {
                     let v = Value(self.mem[a + 1 + i]);
                     if v.is_ptr() && self.is_young(v.addr()) && (h & REM == 0 || !remembered.contains(&a)) {
-                        errs.push(format!("old object {a} slot {i} points to young {} but is not remembered", v.addr()));
+                        errs.push(format!(
+                            "old object {a} slot {i} points to young {} but is not remembered",
+                            v.addr()
+                        ));
                     }
                 }
             }

@@ -44,7 +44,12 @@ fn live_data_that_does_not_fit_is_a_clean_oom_not_a_crash() {
 fn semispace_moves_objects_and_marksweep_does_not() {
     // `eq` compares raw addresses at one instant; observe movement via the heap directly
     use cairn::heap::*;
-    for (name, moves) in [("semispace", true), ("marksweep", false), ("compact", false), ("generational", true)] {
+    for (name, moves) in [
+        ("semispace", true),
+        ("marksweep", false),
+        ("compact", false),
+        ("generational", true),
+    ] {
         let mut gc = make_gc(name, &small_cfg()).unwrap();
         let mut roots = vec![Value::NIL];
         // allocate garbage first so compaction has something to slide over

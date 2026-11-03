@@ -43,7 +43,7 @@ impl Model {
     fn snapshot(&self) -> Snapshot {
         let mut ids: std::collections::HashMap<usize, usize> = Default::default();
         let mut order: Vec<usize> = Vec::new();
-        let mut cell = |m: &M, ids: &mut std::collections::HashMap<usize, usize>, order: &mut Vec<usize>| match m {
+        let cell = |m: &M, ids: &mut std::collections::HashMap<usize, usize>, order: &mut Vec<usize>| match m {
             M::Nil => Cell::Nil,
             M::Int(i) => Cell::Int(*i),
             M::Obj(o) => {
@@ -60,7 +60,11 @@ impl Model {
         while i < order.len() {
             let n = &self.nodes[order[i]];
             let fields = n.fields.iter().map(|m| cell(m, &mut ids, &mut order)).collect();
-            nodes.push(Node { kind: n.kind as u8, fields, bytes: n.bytes.clone() });
+            nodes.push(Node {
+                kind: n.kind as u8,
+                fields,
+                bytes: n.bytes.clone(),
+            });
             i += 1;
         }
         Snapshot { roots, nodes }
@@ -70,12 +74,21 @@ impl Model {
 /// Run one randomized session. Every heap object is addressed through a root slot so the model
 /// can name it; "fields" always hold values copied from root slots.
 fn session(gc_name: &str, seed: u64, ops: usize, check_every_op: bool) {
-    let cfg = GcConfig { words: 5000, nursery: 500, barrier: true, trigger: 0.3, pace: 2 };
+    let cfg = GcConfig {
+        words: 5000,
+        nursery: 500,
+        barrier: true,
+        trigger: 0.3,
+        pace: 2,
+    };
     let mut gc = make_gc(gc_name, &cfg).unwrap();
     const SLOTS: usize = 12;
     let mut roots: Vec<Value> = vec![Value::NIL; SLOTS];
     // model: roots[i] <-> model.roots[i]
-    let mut model = Model { nodes: Vec::new(), roots: vec![M::Nil; SLOTS] };
+    let mut model = Model {
+        nodes: Vec::new(),
+        roots: vec![M::Nil; SLOTS],
+    };
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
 
     for step in 0..ops {
@@ -94,7 +107,11 @@ fn session(gc_name: &str, seed: u64, ops: usize, check_every_op: bool) {
                 gc.store(p, 1, vc);
                 roots.truncate(tmp);
                 roots[a] = p;
-                let node = ModelNode { kind: Kind::Pair, fields: vec![model.roots[b].clone(), model.roots[c].clone()], bytes: vec![] };
+                let node = ModelNode {
+                    kind: Kind::Pair,
+                    fields: vec![model.roots[b].clone(), model.roots[c].clone()],
+                    bytes: vec![],
+                };
                 model.nodes.push(node);
                 model.roots[a] = M::Obj(model.nodes.len() - 1);
             }
@@ -102,7 +119,11 @@ fn session(gc_name: &str, seed: u64, ops: usize, check_every_op: bool) {
                 let n = rng.below(40);
                 let p = gc.alloc(Kind::Vec, n, &mut roots).unwrap();
                 roots[a] = p;
-                model.nodes.push(ModelNode { kind: Kind::Vec, fields: vec![M::Nil; n], bytes: vec![] });
+                model.nodes.push(ModelNode {
+                    kind: Kind::Vec,
+                    fields: vec![M::Nil; n],
+                    bytes: vec![],
+                });
                 model.roots[a] = M::Obj(model.nodes.len() - 1);
             }
             3 => {
@@ -110,7 +131,11 @@ fn session(gc_name: &str, seed: u64, ops: usize, check_every_op: bool) {
                 let bytes: Vec<u8> = (0..len).map(|_| rng.below(256) as u8).collect();
                 let p = gc.alloc_str(&bytes, &mut roots).unwrap();
                 roots[a] = p;
-                model.nodes.push(ModelNode { kind: Kind::Str, fields: vec![], bytes });
+                model.nodes.push(ModelNode {
+                    kind: Kind::Str,
+                    fields: vec![],
+                    bytes,
+                });
                 model.roots[a] = M::Obj(model.nodes.len() - 1);
             }
             4 | 5 => {
@@ -157,7 +182,10 @@ fn session(gc_name: &str, seed: u64, ops: usize, check_every_op: bool) {
         if check_every_op || step % 50 == 49 {
             let errs = check_heap(gc.as_ref(), &roots);
             assert!(errs.is_empty(), "{gc_name} seed {seed} step {step}: {errs:?}");
-            assert!(snapshot(gc.as_ref(), &roots) == model.snapshot(), "{gc_name} seed {seed} step {step}: heap diverged from model");
+            assert!(
+                snapshot(gc.as_ref(), &roots) == model.snapshot(),
+                "{gc_name} seed {seed} step {step}: heap diverged from model"
+            );
         }
         // keep the model from growing without bound: forget unreachable nodes occasionally
         if model.nodes.len() > 20_000 {
@@ -166,7 +194,10 @@ fn session(gc_name: &str, seed: u64, ops: usize, check_every_op: bool) {
     }
     gc.finish(&mut roots).unwrap();
     gc.collect(&mut roots, true).unwrap();
-    assert!(snapshot(gc.as_ref(), &roots) == model.snapshot(), "{gc_name} seed {seed}: final heap diverged from model");
+    assert!(
+        snapshot(gc.as_ref(), &roots) == model.snapshot(),
+        "{gc_name} seed {seed}: final heap diverged from model"
+    );
     let errs = check_heap(gc.as_ref(), &roots);
     assert!(errs.is_empty(), "{gc_name} seed {seed}: {errs:?}");
 }

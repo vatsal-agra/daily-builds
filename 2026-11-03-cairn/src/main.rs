@@ -1,12 +1,31 @@
 use cairn::*;
+use std::io::Write;
 use std::process::ExitCode;
+
+/// `println!` panics when stdout is a closed pipe (`cairn run x | head`); a CLI should just stop.
+macro_rules! say {
+    ($($arg:tt)*) => {{
+        let mut o = std::io::stdout().lock();
+        if writeln!(o, $($arg)*).is_err() {
+            std::process::exit(0);
+        }
+    }};
+}
+macro_rules! sayn {
+    ($($arg:tt)*) => {{
+        let mut o = std::io::stdout().lock();
+        if write!(o, $($arg)*).is_err() {
+            std::process::exit(0);
+        }
+    }};
+}
 
 fn usage() -> ! {
     eprintln!(
         "cairn — garbage-collector laboratory
 
 USAGE
-  cairn run FILE [--gc NAME] [--heap WORDS] [--nursery WORDS] [--verify] [--torture]
+  cairn run FILE [--gc NAME] [--heap WORDS] [--nursery WORDS] [--verify [--verify-every N]] [--torture]
                  [--stats] [--no-barrier] [--seed N] [--steps N]
   cairn bench FILE [--heap WORDS] [--nursery WORDS] [--gcs a,b,c]
   cairn compare FILE [--heap WORDS] [--nursery WORDS]       (differential: same output & graph everywhere)
@@ -26,8 +45,20 @@ pub struct Args {
     pub flags: std::collections::HashMap<String, String>,
 }
 
-const VALUE_FLAGS: [&str; 11] =
-    ["--gc", "--heap", "--nursery", "--seed", "--steps", "--iters", "--gcs", "--save", "--out", "-o", "--pace"];
+const VALUE_FLAGS: [&str; 12] = [
+    "--verify-every",
+    "--gc",
+    "--heap",
+    "--nursery",
+    "--seed",
+    "--steps",
+    "--iters",
+    "--gcs",
+    "--save",
+    "--out",
+    "-o",
+    "--pace",
+];
 const BOOL_FLAGS: [&str; 5] = ["--verify", "--torture", "--stats", "--no-barrier", "--quiet"];
 /// Largest heap the CLI will try to allocate (2^28 words = 2 GiB of address space).
 const MAX_HEAP_WORDS: usize = 1 << 28;
@@ -60,7 +91,9 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
 fn num(args: &Args, key: &str, default: usize) -> Result<usize, String> {
     match args.flags.get(key) {
         None => Ok(default),
-        Some(s) => s.parse::<usize>().map_err(|_| format!("{key}: '{s}' is not a non-negative integer")),
+        Some(s) => s
+            .parse::<usize>()
+            .map_err(|_| format!("{key}: '{s}' is not a non-negative integer")),
     }
 }
 
@@ -75,7 +108,10 @@ fn config(args: &Args) -> Result<GcConfig, String> {
         return Err(format!("--heap/--nursery are limited to {MAX_HEAP_WORDS} words"));
     }
     if let Some(p) = args.flags.get("--pace") {
-        c.pace = p.parse::<usize>().map_err(|_| format!("--pace: '{p}' is not a positive integer"))?.max(1);
+        c.pace = p
+            .parse::<usize>()
+            .map_err(|_| format!("--pace: '{p}' is not a positive integer"))?
+            .max(1);
     }
     c.barrier = !args.flags.contains_key("--no-barrier");
     Ok(c)
@@ -94,6 +130,7 @@ fn cmd_run(args: &Args) -> Result<(), String> {
     let gc = make_gc(gcname, &cfg)?;
     let opts = vm::VmOptions {
         verify: args.flags.contains_key("--verify"),
+        verify_every: num(args, "--verify-every", 1)? as u64,
         torture: args.flags.contains_key("--torture"),
         stream: true,
         seed: num(args, "--seed", 0x9E3779B9)? as u64,
@@ -141,13 +178,13 @@ fn cmd_bench(args: &Args) -> Result<(), String> {
         }
         rows.push(bench::row_of(&r));
     }
-    println!("{path}  (heap {} words, nursery {})", cfg.words, cfg.nursery);
-    print!("{}", bench::table(&rows));
+    say!("{path}  (heap {} words, nursery {})", cfg.words, cfg.nursery);
+    sayn!("{}", bench::table(&rows));
     if let Some((first, out0)) = outputs.first() {
         if let Some((g, _)) = outputs.iter().find(|(_, o)| o != out0) {
             return Err(format!("OUTPUT MISMATCH: {g} differs from {first}"));
         }
-        println!("outputs identical across {} collector(s)", outputs.len());
+        say!("outputs identical across {} collector(s)", outputs.len());
     }
     Ok(())
 }
@@ -158,11 +195,16 @@ fn cmd_compare(args: &Args) -> Result<(), String> {
     let mut base: Option<(String, String, snapshot_t)> = None;
     let mut bad = false;
     for g in collectors_from(args)? {
-        let opts = vm::VmOptions { verify: args.flags.contains_key("--verify"), torture: args.flags.contains_key("--torture"), ..Default::default() };
+        let opts = vm::VmOptions {
+            verify: args.flags.contains_key("--verify"),
+            verify_every: num(args, "--verify-every", 1)? as u64,
+            torture: args.flags.contains_key("--torture"),
+            ..Default::default()
+        };
         let r = bench::run_one(&prog, &g, &cfg, opts)?;
         match &r.outcome {
             Err(e) => {
-                println!("{g:<13} FAILED: {e}");
+                say!("{g:<13} FAILED: {e}");
                 bad = true;
             }
             Ok(out) => {
@@ -175,13 +217,17 @@ fn cmd_compare(args: &Args) -> Result<(), String> {
                     }
                     Some((_, o, s)) => o == out && *s == snap,
                 };
-                println!(
+                say!(
                     "{g:<13} {}  {} objects reachable, digest {:016x}, {} oracle checks{}",
                     if same && errs.is_empty() { "OK  " } else { "DIFF" },
                     snap.nodes.len(),
                     snap.digest(),
                     r.vm.verify_checks,
-                    if errs.is_empty() { String::new() } else { format!(", heap errors: {}", errs[0]) }
+                    if errs.is_empty() {
+                        String::new()
+                    } else {
+                        format!(", heap errors: {}", errs[0])
+                    }
                 );
                 bad |= !same || !errs.is_empty();
             }
@@ -190,7 +236,7 @@ fn cmd_compare(args: &Args) -> Result<(), String> {
     if bad {
         Err(format!("{path}: collectors disagree or failed"))
     } else {
-        println!("all collectors agree on output and final reachable graph");
+        say!("all collectors agree on output and final reachable graph");
         Ok(())
     }
 }
@@ -208,28 +254,33 @@ fn cmd_report(args: &Args) -> Result<(), String> {
     }
     let html = report::html_report(&path, &src, &results, &cfg);
     std::fs::write(out, html).map_err(|e| format!("cannot write {out}: {e}"))?;
-    println!("wrote {out}");
+    say!("wrote {out}");
     Ok(())
 }
 
 fn cmd_barrier_demo() -> Result<(), String> {
-    for h in [demo::satb_hazard(true), demo::satb_hazard(false), demo::old_to_young_hazard(true), demo::old_to_young_hazard(false)] {
-        println!("== {} — barrier {}", h.title, if h.barrier { "ON" } else { "OFF" });
+    for h in [
+        demo::satb_hazard(true),
+        demo::satb_hazard(false),
+        demo::old_to_young_hazard(true),
+        demo::old_to_young_hazard(false),
+    ] {
+        say!("== {} — barrier {}", h.title, if h.barrier { "ON" } else { "OFF" });
         for s in &h.steps {
-            println!("   {s}");
+            say!("   {s}");
         }
         if h.violations.is_empty() {
-            println!("   oracle: heap consistent, nothing lost");
+            say!("   oracle: heap consistent, nothing lost");
         } else {
-            println!("   oracle: CORRUPTION — {}", h.violations[0]);
+            say!("   oracle: CORRUPTION — {}", h.violations[0]);
         }
-        println!();
+        say!();
         if h.barrier == h.violations.is_empty() {
             continue;
         }
         return Err(format!("unexpected outcome for '{}' (barrier {})", h.title, h.barrier));
     }
-    println!("barriers on => safe; barriers off => the oracle catches the lost object.");
+    say!("barriers on => safe; barriers off => the oracle catches the lost object.");
     Ok(())
 }
 
@@ -251,10 +302,17 @@ fn cmd_fuzz(args: &Args) -> Result<(), String> {
     for g in &refs {
         make_gc(g, &cfg)?;
     }
-    eprintln!("fuzzing {iters} programs from seed {seed} under {} (oracle on{})", refs.join(","), if torture { ", torture on" } else { "" });
+    eprintln!(
+        "fuzzing {iters} programs from seed {seed} under {} (oracle on{})",
+        refs.join(","),
+        if torture { ", torture on" } else { "" }
+    );
     match fuzz::fuzz(iters, seed, &cfg, &refs, torture) {
         Ok(n) => {
-            println!("fuzz: {n} programs x {} collectors agreed with the collector-free reference", refs.len());
+            say!(
+                "fuzz: {n} programs x {} collectors agreed with the collector-free reference",
+                refs.len()
+            );
             Ok(())
         }
         Err(f) => {
@@ -287,7 +345,7 @@ fn main() -> ExitCode {
                 "barrier-demo" => cmd_barrier_demo(),
                 "list" => {
                     for g in ALL_GCS {
-                        println!("{g}");
+                        say!("{g}");
                     }
                     Ok(())
                 }

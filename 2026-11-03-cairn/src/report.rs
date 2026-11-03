@@ -49,7 +49,10 @@ const COLORS: [(&str, &str); 5] = [
 ];
 
 fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn color_idx(name: &str) -> usize {
@@ -100,7 +103,11 @@ fn pause_svg(r: &RunResult, idx: usize) -> String {
         }
         let bh = (*m as f64 / top) * (h - 26.0);
         let x = 8.0 + i as f64 * (w - 16.0) / B as f64;
-        bars.push_str(&format!(r#"<rect x="{x:.1}" y="{:.1}" width="{:.1}" height="{bh:.1}" class="f{idx}"/>"#, h - 10.0 - bh, ((w - 16.0) / B as f64 - 0.6).max(1.0)));
+        bars.push_str(&format!(
+            r#"<rect x="{x:.1}" y="{:.1}" width="{:.1}" height="{bh:.1}" class="f{idx}"/>"#,
+            h - 10.0 - bh,
+            ((w - 16.0) / B as f64 - 0.6).max(1.0)
+        ));
     }
     format!(
         r#"<svg viewBox="0 0 {w} {h}" role="img" aria-label="longest pause per time slice"><line class="grid" x1="8" y1="{yb}" x2="{x2}" y2="{yb}"/><text x="10" y="10" class="lbl">longest pause per slice (peak {})</text>{bars}</svg>"#,
@@ -137,7 +144,11 @@ fn heapmap_html(r: &RunResult) -> String {
         let u = (used[c] as f64 / per).min(1.0);
         let f = (free[c] as f64 / per).min(1.0);
         let cls = if u + f < 0.05 { "unmapped" } else { "" };
-        out.push_str(&format!(r#"<i class="{cls}" style="--u:{u:.2}" title="cells {c}: {:.0}% used, {:.0}% free"></i>"#, u * 100.0, f * 100.0));
+        out.push_str(&format!(
+            r#"<i class="{cls}" style="--u:{u:.2}" title="cells {c}: {:.0}% used, {:.0}% free"></i>"#,
+            u * 100.0,
+            f * 100.0
+        ));
     }
     out.push_str("</div>");
     out
@@ -155,7 +166,11 @@ pub fn html_report(title: &str, source: &str, results: &[RunResult], cfg: &crate
     for r in results {
         let idx = color_idx(&r.name);
         let row = row_of(r);
-        let verdict = if row.ok { String::from(r#"<span class="ok">completed</span>"#) } else { format!(r#"<span class="bad">failed: {}</span>"#, esc(&row.note)) };
+        let verdict = if row.ok {
+            String::from(r#"<span class="ok">completed</span>"#)
+        } else {
+            format!(r#"<span class="bad">failed: {}</span>"#, esc(&row.note))
+        };
         cards.push_str(&format!(
             r#"<section class="card"><h3><span class="dot f{idx}"></span>{}</h3><p class="sub">{verdict} · {} collections · {} pauses · max pause {} · peak {} words</p><div class="charts"><figure>{}<figcaption>heap occupancy, sampled after each collection step</figcaption></figure><figure>{}<figcaption>pause lengths over the run</figcaption></figure></div><div class="maplabel">final heap layout — blue = allocated (live or not yet collected), grey = free, hatched = outside the managed region</div>{}</section>"#,
             r.name,
@@ -189,12 +204,24 @@ pub fn html_report(title: &str, source: &str, results: &[RunResult], cfg: &crate
     let mut ticks = String::new();
     for (k, lab) in ["10µs", "100µs", "1ms", "10ms", "100ms", "1s"].iter().enumerate() {
         let x = 40.0 + (k as f64 / 5.0) * (w - 60.0);
-        ticks.push_str(&format!(r#"<line class="grid" x1="{x}" y1="20" x2="{x}" y2="{}"/><text x="{x}" y="{}" class="lbl" text-anchor="middle">{lab}</text>"#, h - 30.0, h - 12.0));
+        ticks.push_str(&format!(
+            r#"<line class="grid" x1="{x}" y1="20" x2="{x}" y2="{}"/><text x="{x}" y="{}" class="lbl" text-anchor="middle">{lab}</text>"#,
+            h - 30.0,
+            h - 12.0
+        ));
     }
     for (v, y) in [(0.0, h - 30.0), (0.5, h - 30.0 - 0.5 * (h - 50.0)), (1.0, 20.0)] {
-        ticks.push_str(&format!(r#"<line class="grid" x1="40" y1="{y}" x2="{}" y2="{y}"/><text x="34" y="{}" class="lbl" text-anchor="end">{v}</text>"#, w - 20.0, y + 3.0));
+        ticks.push_str(&format!(
+            r#"<line class="grid" x1="40" y1="{y}" x2="{}" y2="{y}"/><text x="34" y="{}" class="lbl" text-anchor="end">{v}</text>"#,
+            w - 20.0,
+            y + 3.0
+        ));
     }
-    let out_text: String = results.iter().find_map(|r| r.outcome.as_ref().ok()).map(|s| s.chars().take(3000).collect()).unwrap_or_default();
+    let out_text: String = results
+        .iter()
+        .find_map(|r| r.outcome.as_ref().ok())
+        .map(|s| s.chars().take(3000).collect())
+        .unwrap_or_default();
     let table = crate::bench::table(&rows);
     format!(
         r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cairn report — {t}</title>
@@ -225,7 +252,10 @@ pre{{background:var(--card);border:1px solid var(--line);border-radius:10px;padd
         t = esc(title),
         heap = cfg.words,
         nursery = cfg.nursery,
-        svg_classes = (0..5).map(|i| format!("svg .c{i}{{stroke:var(--c{i})}}svg .f{i}{{fill:var(--c{i})}}.dot.f{i}{{background:var(--c{i})}}")).collect::<Vec<_>>().join(""),
+        svg_classes = (0..5)
+            .map(|i| format!("svg .c{i}{{stroke:var(--c{i})}}svg .f{i}{{fill:var(--c{i})}}.dot.f{i}{{background:var(--c{i})}}"))
+            .collect::<Vec<_>>()
+            .join(""),
         out = esc(&out_text),
         src = esc(source),
     )
