@@ -9,7 +9,7 @@ fragmentation and throughput differ. An independent **oracle** (canonical graph 
 walks, invariant checks) watches every allocation, and a **differential fuzzer** hunts for
 collector bugs against a collector-free reference run.
 
-Rust 2021, zero dependencies (~4.5 k lines of library + ~1.2 k lines of tests).
+Rust 2021, zero dependencies (~4.1 k lines of library + ~1.0 k lines of tests, 38 test functions).
 
 ```
 $ cairn bench examples/bintrees.cairn --heap 400000 --nursery 20000
