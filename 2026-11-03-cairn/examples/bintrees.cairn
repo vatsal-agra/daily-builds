@@ -1,0 +1,13 @@
+; Binary-trees benchmark: a long-lived tree plus many short-lived ones.
+(fn (make d) (if (= d 0) (cons nil nil) (cons (make (- d 1)) (make (- d 1)))))
+(fn (check t) (if (nil? (car t)) 1 (+ 1 (+ (check (car t)) (check (cdr t))))))
+(def long-lived (make 12))
+(let ((d 4))
+  (while (<= d 12)
+    (let ((iters (/ 4096 (* d d))) (total 0) (i 0))
+      (while (< i iters)
+        (set! total (+ total (check (make d))))
+        (set! i (+ i 1)))
+      (print "depth" d "trees" iters "nodes" total))
+    (set! d (+ d 2))))
+(print "long-lived nodes" (check long-lived))

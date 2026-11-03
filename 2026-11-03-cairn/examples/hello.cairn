@@ -1,0 +1,10 @@
+; lists, vectors, strings and a bit of recursion
+(fn (range a b) (if (>= a b) nil (cons a (range (+ a 1) b))))
+(fn (sum xs) (if (nil? xs) 0 (+ (car xs) (sum (cdr xs)))))
+(fn (map1 f xs) nil)
+(print "sum 0..100 =" (sum (range 0 100)))
+(def v (vector 5 0))
+(let ((i 0)) (while (< i 5) (vset! v i (* i i)) (set! i (+ i 1))))
+(print "squares:" v)
+(print "greeting:" (strcat "hello, " "cairn") (strlen "cairn"))
+(print (cons 1 (cons 2 3)) (range 0 5) nil)

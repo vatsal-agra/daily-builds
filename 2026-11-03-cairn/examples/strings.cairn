@@ -1,0 +1,10 @@
+; String churn: raw (unscanned) objects of many sizes.
+(def acc "")
+(def n 0)
+(def total 0)
+(while (< n 3000)
+  (let ((piece (strcat (str n) (strcat "-" (str (* n n))))))
+    (set! total (+ total (strlen piece)))
+    (when (= (% n 100) 0) (set! acc (strcat acc (substr piece 0 2)))))
+  (set! n (+ n 1)))
+(print "total" total "acc" acc (strlen acc))

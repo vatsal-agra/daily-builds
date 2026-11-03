@@ -1,0 +1,19 @@
+[package]
+name = "cairn"
+version = "0.1.0"
+edition = "2021"
+description = "A garbage-collector laboratory: five precise collectors, a mutator language, an oracle."
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "cairn"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+debug = false
+
+[profile.test]
+opt-level = 2
