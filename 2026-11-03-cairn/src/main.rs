@@ -26,8 +26,14 @@ pub struct Args {
     pub flags: std::collections::HashMap<String, String>,
 }
 
+const VALUE_FLAGS: [&str; 11] =
+    ["--gc", "--heap", "--nursery", "--seed", "--steps", "--iters", "--gcs", "--save", "--out", "-o", "--pace"];
+const BOOL_FLAGS: [&str; 5] = ["--verify", "--torture", "--stats", "--no-barrier", "--quiet"];
+/// Largest heap the CLI will try to allocate (2^28 words = 2 GiB of address space).
+const MAX_HEAP_WORDS: usize = 1 << 28;
+
 fn parse_args(raw: &[String]) -> Result<Args, String> {
-    let bool_flags = ["--verify", "--torture", "--stats", "--no-barrier", "--quiet"];
+    let bool_flags = BOOL_FLAGS;
     let mut pos = Vec::new();
     let mut flags = std::collections::HashMap::new();
     let mut i = 0;
@@ -36,6 +42,8 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
         if a.starts_with("--") || a == "-o" {
             if bool_flags.contains(&a.as_str()) {
                 flags.insert(a.clone(), "1".into());
+            } else if !VALUE_FLAGS.contains(&a.as_str()) {
+                return Err(format!("unknown option '{a}' (see `cairn help`)"));
             } else {
                 i += 1;
                 let v = raw.get(i).ok_or_else(|| format!("{a} needs a value"))?;
@@ -62,6 +70,12 @@ fn config(args: &Args) -> Result<GcConfig, String> {
     c.nursery = num(args, "--nursery", c.nursery)?;
     if c.words < 64 {
         return Err("--heap must be at least 64 words".into());
+    }
+    if c.words > MAX_HEAP_WORDS || c.nursery > MAX_HEAP_WORDS {
+        return Err(format!("--heap/--nursery are limited to {MAX_HEAP_WORDS} words"));
+    }
+    if let Some(p) = args.flags.get("--pace") {
+        c.pace = p.parse::<usize>().map_err(|_| format!("--pace: '{p}' is not a positive integer"))?.max(1);
     }
     c.barrier = !args.flags.contains_key("--no-barrier");
     Ok(c)
@@ -97,6 +111,39 @@ fn cmd_run(args: &Args) -> Result<(), String> {
     res.map_err(|e| format!("{path}: runtime error: {e}"))
 }
 
+fn cmd_fuzz(args: &Args) -> Result<(), String> {
+    let iters = num(args, "--iters", 200)? as u64;
+    let seed = num(args, "--seed", 1)? as u64;
+    let mut cfg = fuzz::fuzz_cfg();
+    if args.flags.contains_key("--heap") {
+        cfg.words = num(args, "--heap", cfg.words)?;
+    }
+    cfg.barrier = !args.flags.contains_key("--no-barrier");
+    let torture = args.flags.contains_key("--torture");
+    let only = args.flags.get("--gcs").cloned();
+    let list: Vec<String> = match only {
+        Some(s) => s.split(',').map(|x| x.trim().to_string()).collect(),
+        None => fuzz::default_collectors().iter().map(|s| s.to_string()).collect(),
+    };
+    let refs: Vec<&str> = list.iter().map(|s| s.as_str()).collect();
+    for g in &refs {
+        make_gc(g, &cfg)?;
+    }
+    eprintln!("fuzzing {iters} programs from seed {seed} under {} (oracle on{})", refs.join(","), if torture { ", torture on" } else { "" });
+    match fuzz::fuzz(iters, seed, &cfg, &refs, torture) {
+        Ok(n) => {
+            println!("fuzz: {n} programs x {} collectors agreed with the collector-free reference", refs.len());
+            Ok(())
+        }
+        Err(f) => {
+            if let Some(dir) = args.flags.get("--save") {
+                let _ = std::fs::write(format!("{dir}/fuzz-fail-{}.cairn", f.seed), &f.program);
+            }
+            Err(format!("seed {} FAILED under {} ({}): {}", f.seed, f.collector, f.mode, f.detail))
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let raw: Vec<String> = std::env::args().skip(1).collect();
     if raw.is_empty() {
@@ -111,6 +158,7 @@ fn main() -> ExitCode {
             let args = parse_args(&rest)?;
             match cmd.as_str() {
                 "run" => cmd_run(&args),
+                "fuzz" => cmd_fuzz(&args),
                 "list" => {
                     for g in ALL_GCS {
                         println!("{g}");

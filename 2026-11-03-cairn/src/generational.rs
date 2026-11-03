@@ -22,12 +22,14 @@ pub struct Generational {
     stack: Vec<Addr>,
     stats: Stats,
     torture: bool,
+    /// remembered-set write barrier on/off (off = the classic old-to-young bug, for demos)
+    pub barrier: bool,
 }
 
 impl Generational {
     /// `words` total budget, `nursery` words reserved for the young generation.
     pub fn new(words: usize, nursery: usize) -> Generational {
-        let nursery = nursery.clamp(16, words.saturating_sub(64).max(16));
+        let nursery = nursery.min(words / 4).clamp(16, words.saturating_sub(64).max(16));
         let old = words.saturating_sub(nursery).max(32);
         let mut mem = vec![0u64; 1 + nursery + old];
         let obase = 1 + nursery;
@@ -45,6 +47,7 @@ impl Generational {
             stack: Vec::new(),
             stats: Stats::new(),
             torture: false,
+            barrier: true,
         }
     }
 
@@ -156,14 +159,18 @@ impl Generational {
 
     fn minor_with_headroom(&mut self, roots: &mut Vec<Value>) -> Result<(), OutOfMemory> {
         let young = self.ntop - self.nbase;
-        if self.free.words < young {
+        // A minor GC can promote everything in the nursery, so the old generation needs that many
+        // free words *and* a block big enough for the largest nursery object.
+        let biggest = young.min((self.nend - self.nbase) / 2);
+        let fits = |g: &Self| g.free.words >= young && g.free.largest(&g.mem) >= biggest;
+        if !fits(self) {
             self.major(roots);
-            if self.free.words < young {
+            if !fits(self) {
                 return Err(OutOfMemory {
                     requested: young,
                     detail: format!(
-                        "old generation has {} free words but a minor GC may promote up to {}",
-                        self.free.words, young
+                        "old generation has {} free words (largest block {}) but a minor GC may promote up to {} (fragmentation or exhaustion)",
+                        self.free.words, self.free.largest(&self.mem), young
                     ),
                 });
             }
@@ -231,7 +238,7 @@ impl Gc for Generational {
     }
     fn write_barrier(&mut self, obj: Addr, _slot: usize, _old: Value, new: Value) {
         self.stats.barrier_calls += 1;
-        if obj >= self.obase && new.is_ptr() && new.addr() < self.obase && self.mem[obj] & REM == 0 {
+        if self.barrier && obj >= self.obase && new.is_ptr() && new.addr() < self.obase && self.mem[obj] & REM == 0 {
             self.mem[obj] |= REM;
             self.remset.push(obj);
             self.stats.barrier_hits += 1;
@@ -252,13 +259,14 @@ impl Gc for Generational {
     fn check_invariants(&self, _roots: &[Value]) -> Vec<String> {
         // every old object holding a young pointer must be in the remembered set
         let mut errs = Vec::new();
+        let remembered: std::collections::HashSet<Addr> = self.remset.iter().copied().collect();
         let mut a = self.obase;
         while a < self.oend {
             let h = self.mem[a];
             if has_fields(hdr_kind(h)) {
                 for i in 0..hdr_len(h) {
                     let v = Value(self.mem[a + 1 + i]);
-                    if v.is_ptr() && self.is_young(v.addr()) && (h & REM == 0 || !self.remset.contains(&a)) {
+                    if v.is_ptr() && self.is_young(v.addr()) && (h & REM == 0 || !remembered.contains(&a)) {
                         errs.push(format!("old object {a} slot {i} points to young {} but is not remembered", v.addr()));
                     }
                 }

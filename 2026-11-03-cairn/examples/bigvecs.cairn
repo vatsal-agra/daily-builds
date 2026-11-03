@@ -1,0 +1,10 @@
+; Big vectors in a tight heap: try --heap 12000 --nursery 1000 with every collector.
+; Mark-sweep dies of fragmentation (free words > request, no block big enough); compact survives.
+(def keep (vector 20 nil))
+(def i 0)
+(while (< i 400)
+  (let ((v (vector (+ 100 (rand 500)) i)))
+    (vset! v 0 (cons i i))
+    (when (= (% i 7) 0) (vset! keep (% i 20) v)))
+  (set! i (+ i 1)))
+(let ((j 0) (s 0)) (while (< j 20) (let ((e (vref keep j))) (when (vector? e) (set! s (+ s (+ (vlen e) (car (vref e 0))))))) (set! j (+ j 1))) (print s))

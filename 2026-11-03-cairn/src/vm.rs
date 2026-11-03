@@ -465,6 +465,27 @@ impl Vm {
         let sp = self.push_args(prog, args, base)?;
         let a = |vm: &Vm, i: usize| vm.roots[sp + i];
         let result = match p {
+            Add | Sub | Mul if args.len() != 2 => {
+                // variadic fold (and unary minus)
+                let name = match p {
+                    Add => "+",
+                    Sub => "-",
+                    _ => "*",
+                };
+                let mut acc = self.int_of(a(self, 0), name)?;
+                if args.len() == 1 {
+                    acc = acc.wrapping_neg();
+                }
+                for i in 1..args.len() {
+                    let y = self.int_of(a(self, i), name)?;
+                    acc = match p {
+                        Add => acc.wrapping_add(y),
+                        Sub => acc.wrapping_sub(y),
+                        _ => acc.wrapping_mul(y),
+                    };
+                }
+                Value::int(acc)
+            }
             Add | Sub | Mul | Div | Rem | Lt | Gt | Le | Ge | NumEq | Ne => {
                 let name = match p {
                     Add => "+",
@@ -630,6 +651,12 @@ impl Vm {
             }
             GcMinor => {
                 self.collect(false)?;
+                Value::NIL
+            }
+            GcBegin => {
+                let mut roots = std::mem::take(&mut self.roots);
+                self.gc.begin_cycle(&mut roots);
+                self.roots = roots;
                 Value::NIL
             }
             Digest => {

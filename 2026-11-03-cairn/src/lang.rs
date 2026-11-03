@@ -124,7 +124,13 @@ pub fn read(src: &str) -> Result<Vec<Sx>, LangError> {
                         }
                         Sx::Int(n, line)
                     }
-                    Err(_) => Sx::Sym(tok, line),
+                    Err(_) => {
+                        let digits = tok.trim_start_matches(['-', '+']);
+                        if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
+                            return err(line, format!("integer {tok} does not fit in 63 bits"));
+                        }
+                        Sx::Sym(tok, line)
+                    }
                 };
                 stack.last_mut().unwrap().0.push(atom);
             }
@@ -173,6 +179,7 @@ pub enum Prim {
     Rand,
     Gc,
     GcMinor,
+    GcBegin,
     Digest,
     Not,
     Int2Str,
@@ -182,9 +189,9 @@ fn prim_of(name: &str) -> Option<(Prim, usize, usize)> {
     use Prim::*;
     // (prim, min args, max args)
     Some(match name {
-        "+" => (Add, 2, 2),
-        "-" => (Sub, 2, 2),
-        "*" => (Mul, 2, 2),
+        "+" => (Add, 2, 32),
+        "-" => (Sub, 1, 32),
+        "*" => (Mul, 2, 32),
         "/" => (Div, 2, 2),
         "%" => (Rem, 2, 2),
         "<" => (Lt, 2, 2),
@@ -217,6 +224,7 @@ fn prim_of(name: &str) -> Option<(Prim, usize, usize)> {
         "rand" => (Rand, 1, 1),
         "gc" => (Gc, 0, 0),
         "gc-minor" => (GcMinor, 0, 0),
+        "gc-begin" => (GcBegin, 0, 0),
         "digest" => (Digest, 1, 1),
         "not" => (Not, 1, 1),
         "str" => (Int2Str, 1, 1),

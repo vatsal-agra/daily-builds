@@ -4,16 +4,17 @@ use crate::heap::Gc;
 pub fn stats_table(rows: &[(String, &dyn Gc)]) -> String {
     let mut s = String::new();
     s.push_str(&format!(
-        "{:<13} {:>7} {:>7} {:>10} {:>10} {:>10} {:>10} {:>9} {:>9}\n",
-        "collector", "gcs", "minor", "alloc objs", "alloc wds", "max pause", "tot pause", "peak wds", "promoted"
+        "{:<13} {:>7} {:>7} {:>8} {:>10} {:>10} {:>10} {:>10} {:>9} {:>9}\n",
+        "collector", "gcs", "minor", "pauses", "alloc objs", "alloc wds", "max pause", "tot pause", "peak wds", "promoted"
     ));
     for (n, g) in rows {
         let st = g.stats();
         s.push_str(&format!(
-            "{:<13} {:>7} {:>7} {:>10} {:>10} {:>10} {:>10} {:>9} {:>9}\n",
+            "{:<13} {:>7} {:>7} {:>8} {:>10} {:>10} {:>10} {:>10} {:>9} {:>9}\n",
             n,
             st.collections,
             st.minor_collections,
+            st.pause_count(),
             st.alloc_objects,
             st.alloc_words,
             fmt_ns(st.max_pause_ns()),

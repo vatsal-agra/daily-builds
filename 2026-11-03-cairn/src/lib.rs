@@ -1,5 +1,6 @@
 //! Cairn: a garbage-collector laboratory.
 pub mod compact;
+pub mod fuzz;
 pub mod generational;
 pub mod heap;
 pub mod incremental;
@@ -22,7 +23,7 @@ pub struct GcConfig {
     pub words: usize,
     /// generational: nursery size in words
     pub nursery: usize,
-    /// incremental: deletion barrier on/off
+    /// write barrier on/off (generational remembered set / incremental deletion barrier)
     pub barrier: bool,
     /// incremental: start-cycle occupancy fraction
     pub trigger: f64,
@@ -40,7 +41,11 @@ pub fn make_gc(name: &str, cfg: &GcConfig) -> Result<Box<dyn Gc>, String> {
     Ok(match name {
         "marksweep" | "ms" => Box::new(marksweep::MarkSweep::new(cfg.words)),
         "semispace" | "semi" => Box::new(semispace::Semispace::new(cfg.words)),
-        "generational" | "gen" => Box::new(generational::Generational::new(cfg.words, cfg.nursery)),
+        "generational" | "gen" => {
+            let mut g = generational::Generational::new(cfg.words, cfg.nursery);
+            g.barrier = cfg.barrier;
+            Box::new(g)
+        }
         "incremental" | "inc" => {
             let mut g = incremental::Incremental::new(cfg.words);
             g.barrier = cfg.barrier;

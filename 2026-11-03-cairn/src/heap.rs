@@ -145,7 +145,22 @@ pub struct Stats {
     pub barrier_hits: u64,
     pub peak_used: usize,
     pub timeline: Vec<Sample>,
+    /// pauses beyond `PAUSE_LOG_CAP` are only aggregated
+    pub overflow: Overflow,
 }
+
+/// Aggregate of pauses that no longer fit in the detailed log.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Overflow {
+    pub count: u64,
+    pub total_ns: u64,
+    pub max_ns: u64,
+    pub total_work: u64,
+    pub max_work: u64,
+}
+
+/// Detailed pauses kept per heap (incremental collectors produce one per allocation).
+pub const PAUSE_LOG_CAP: usize = 200_000;
 
 /// Heap occupancy sample taken at the end of every pause (for the HTML report).
 #[derive(Debug, Clone, Copy)]
@@ -176,6 +191,7 @@ impl Stats {
             barrier_hits: 0,
             peak_used: 0,
             timeline: Vec::new(),
+            overflow: Overflow::default(),
         }
     }
     pub fn now_ns(&self) -> u64 {
@@ -183,20 +199,33 @@ impl Stats {
     }
     pub fn record(&mut self, kind: &'static str, start_ns: u64, work: u64, used: usize) {
         let end = self.now_ns();
-        self.pauses.push(Pause { start_ns, dur_ns: end.saturating_sub(start_ns), kind, work });
-        self.timeline.push(Sample { t_ns: end, used });
+        let dur = end.saturating_sub(start_ns);
+        if self.pauses.len() < PAUSE_LOG_CAP {
+            self.pauses.push(Pause { start_ns, dur_ns: dur, kind, work });
+            self.timeline.push(Sample { t_ns: end, used });
+        } else {
+            let o = &mut self.overflow;
+            o.count += 1;
+            o.total_ns += dur;
+            o.max_ns = o.max_ns.max(dur);
+            o.total_work += work;
+            o.max_work = o.max_work.max(work);
+        }
+    }
+    pub fn pause_count(&self) -> u64 {
+        self.pauses.len() as u64 + self.overflow.count
     }
     pub fn total_pause_ns(&self) -> u64 {
-        self.pauses.iter().map(|p| p.dur_ns).sum()
+        self.pauses.iter().map(|p| p.dur_ns).sum::<u64>() + self.overflow.total_ns
     }
     pub fn max_pause_ns(&self) -> u64 {
-        self.pauses.iter().map(|p| p.dur_ns).max().unwrap_or(0)
+        self.pauses.iter().map(|p| p.dur_ns).max().unwrap_or(0).max(self.overflow.max_ns)
     }
     pub fn max_pause_work(&self) -> u64 {
-        self.pauses.iter().map(|p| p.work).max().unwrap_or(0)
+        self.pauses.iter().map(|p| p.work).max().unwrap_or(0).max(self.overflow.max_work)
     }
     pub fn total_work(&self) -> u64 {
-        self.pauses.iter().map(|p| p.work).sum()
+        self.pauses.iter().map(|p| p.work).sum::<u64>() + self.overflow.total_work
     }
 }
 
@@ -218,6 +247,8 @@ pub trait Gc {
     fn capacity_words(&self) -> usize;
     /// Every block in address order: (addr, total words, is_free).
     fn walk(&self) -> Vec<(Addr, usize, bool)>;
+    /// Begin a collection cycle without finishing it (only meaningful for incremental collectors).
+    fn begin_cycle(&mut self, _roots: &mut Vec<Value>) {}
     /// Complete any in-progress incremental work so the heap is quiescent.
     fn finish(&mut self, _roots: &mut Vec<Value>) -> Result<(), OutOfMemory> {
         Ok(())

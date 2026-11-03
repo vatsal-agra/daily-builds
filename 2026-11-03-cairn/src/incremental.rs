@@ -38,6 +38,7 @@ pub struct Incremental {
     cycle_work: u64,
     cycle_freed: u64,
     cycles: u64,
+    live_after: usize,
     /// words allocated while marking (floating garbage upper bound)
     pub black_alloc: u64,
 }
@@ -63,7 +64,22 @@ impl Incremental {
             cycle_work: 0,
             cycle_freed: 0,
             cycles: 0,
+            live_after: 0,
             black_alloc: 0,
+        }
+    }
+
+    /// Occupancy at which the next cycle starts: the configured fraction of the heap, but never
+    /// closer to the last cycle's live size than half the remaining headroom (so a heap that is
+    /// mostly live doesn't collect back-to-back).
+    pub fn next_trigger(&self) -> usize {
+        let cap = self.capacity_words();
+        let fixed = (self.trigger * cap as f64) as usize;
+        let adaptive = self.live_after + (cap.saturating_sub(self.live_after)) / 2;
+        if self.trigger >= 1.0 {
+            fixed
+        } else {
+            fixed.max(adaptive.min(cap))
         }
     }
 
@@ -151,6 +167,7 @@ impl Incremental {
             }
             self.phase = Phase::Idle;
             self.cycles += 1;
+            self.live_after = self.used_words();
             self.stats.collections += 1;
             self.stats.freed_words += self.cycle_freed;
         }
@@ -211,7 +228,7 @@ impl Gc for Incremental {
             self.start_cycle(roots);
             self.drive_to_idle();
         }
-        if self.phase == Phase::Idle && self.used_words() as f64 >= self.trigger * self.capacity_words() as f64 {
+        if self.phase == Phase::Idle && self.used_words() >= self.next_trigger() {
             self.start_cycle(roots);
         }
         if self.phase != Phase::Idle {
@@ -253,6 +270,11 @@ impl Gc for Incremental {
         self.start_cycle(roots);
         self.drive_to_idle();
         Ok(())
+    }
+    fn begin_cycle(&mut self, roots: &mut Vec<Value>) {
+        if self.phase == Phase::Idle {
+            self.start_cycle(roots);
+        }
     }
     fn finish(&mut self, _roots: &mut Vec<Value>) -> Result<(), OutOfMemory> {
         self.drive_to_idle();
