@@ -323,6 +323,9 @@ func cellAt(n *Node, x, y int) bool {
 // LoadMacrocell reads an MC file into a fresh Sim. The rule is taken from the
 // file unless it has none, in which case def is used.
 func LoadMacrocell(text string, def Rule) (*Sim, error) {
+	if !strings.HasPrefix(strings.TrimSpace(text), "[M2]") {
+		return nil, fmt.Errorf("macrocell: missing [M2] header")
+	}
 	rule := def
 	var gen uint64
 	var lines []string
@@ -350,8 +353,10 @@ func LoadMacrocell(text string, def Rule) (*Sim, error) {
 		}
 		lines = append(lines, ln)
 	}
-	if len(lines) == 0 {
-		return nil, fmt.Errorf("macrocell: no nodes")
+	if len(lines) == 0 { // an empty universe is written with no node lines
+		s := NewSim(rule)
+		s.Gen = gen
+		return s, nil
 	}
 	s := NewSim(rule)
 	u := s.U
