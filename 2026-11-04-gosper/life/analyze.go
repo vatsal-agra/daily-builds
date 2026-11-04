@@ -129,7 +129,9 @@ const maxShapeCells = 400_000
 // the first generation whose shape equals the initial one up to translation.
 func FindPeriod(rule Rule, pts []Point, maxPeriod int) (PeriodResult, error) {
 	s := NewSim(rule)
-	s.SetCells(append([]Point(nil), pts...), true)
+	if err := s.SetCells(append([]Point(nil), pts...), true); err != nil {
+		return PeriodResult{}, err
+	}
 	res := PeriodResult{Kind: KindAperiodic, Population: s.Population()}
 	if s.Population() == 0 {
 		res.Kind = KindEmpty
@@ -195,7 +197,9 @@ type GrowthClass struct {
 // records the population at each one.
 func GrowthReport(rule Rule, pts []Point, maxJ int) ([]Checkpoint, GrowthClass, error) {
 	s := NewSim(rule)
-	s.SetCells(append([]Point(nil), pts...), true)
+	if err := s.SetCells(append([]Point(nil), pts...), true); err != nil {
+		return nil, GrowthClass{}, err
+	}
 	var cps []Checkpoint
 	for j := 0; j <= maxJ; j++ {
 		var err error
@@ -259,6 +263,9 @@ func ClassifyGrowth(cps []Checkpoint) GrowthClass {
 	default:
 		label = "quadratic growth"
 	}
+	if math.Abs(alpha) < 0.005 {
+		alpha = 0 // avoid printing "-0.00"
+	}
 	return GrowthClass{label, alpha}
 }
 
@@ -287,8 +294,10 @@ type Settle struct {
 // Hashlife and checks that the population matches the periodic prediction.
 func FindSettle(rule Rule, pts []Point, maxGens int, horizonJ int) (*Settle, error) {
 	s := NewSim(rule)
-	s.SetCells(append([]Point(nil), pts...), true)
 	st := &Settle{}
+	if err := s.SetCells(append([]Point(nil), pts...), true); err != nil {
+		return st, err
+	}
 	series := []uint64{s.Population()}
 	st.PeakPop = s.Population()
 	for g := 1; g <= maxGens; g++ {

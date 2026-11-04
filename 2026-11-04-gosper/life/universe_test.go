@@ -19,7 +19,7 @@ func soup(rng *rand.Rand, w, h int, density float64) []Point {
 
 func TestGliderMoves(t *testing.T) {
 	s := NewSim(Life)
-	s.SetCells([]Point{{1, 0}, {2, 1}, {0, 2}, {1, 2}, {2, 2}}, false)
+	_ = s.SetCells([]Point{{1, 0}, {2, 1}, {0, 2}, {1, 2}, {2, 2}}, false)
 	if err := s.Step(400); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestMatchesNaive(t *testing.T) {
 		for trial := 0; trial < 6; trial++ {
 			pts := soup(rng, 5+rng.Intn(20), 5+rng.Intn(20), 0.2+rng.Float64()*0.4)
 			s := NewSim(r)
-			s.SetCells(append([]Point(nil), pts...), false)
+			_ = s.SetCells(append([]Point(nil), pts...), false)
 			nv := NewNaive(r, pts)
 			for _, steps := range []uint64{1, 2, 3, 7, 16, 33} {
 				if err := s.Step(steps); err != nil {

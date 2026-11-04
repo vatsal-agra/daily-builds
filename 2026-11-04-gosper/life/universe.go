@@ -123,12 +123,21 @@ type Universe struct {
 	empty []*Node
 	slow  map[*Node]*Node // results for the current slow step exponent
 	slowJ int
+	// Budget is the hard cap on interned nodes during one hop; exceeding it
+	// aborts the hop with ErrBudget instead of exhausting memory.
+	Budget int
 	// Stats
 	Hits, Misses uint64
 }
 
+// ErrBudget is returned when a hop would need more nodes than Universe.Budget:
+// the pattern is too irregular for Hashlife at that step size.
+var ErrBudget = fmt.Errorf("node budget exceeded: the pattern is too irregular for Hashlife at this step size (try smaller steps)")
+
+type budgetPanic struct{}
+
 func NewUniverse(r Rule) *Universe {
-	u := &Universe{Rule: r, table: make(map[key]*Node, 1<<12), slow: map[*Node]*Node{}, slowJ: -1}
+	u := &Universe{Rule: r, table: make(map[key]*Node, 1<<12), slow: map[*Node]*Node{}, slowJ: -1, Budget: 6_000_000}
 	u.dead = &Node{level: 0}
 	u.alive = &Node{level: 0, pop: 1}
 	u.empty = []*Node{u.dead}
@@ -150,6 +159,9 @@ func (u *Universe) join(nw, ne, sw, se *Node) *Node {
 	k := key{nw, ne, sw, se}
 	if n, ok := u.table[k]; ok {
 		return n
+	}
+	if u.Budget > 0 && len(u.table) >= u.Budget {
+		panic(budgetPanic{})
 	}
 	n := &Node{nw: nw, ne: ne, sw: sw, se: se, level: nw.level + 1}
 	n.pop = satAdd(satAdd(nw.pop, ne.pop), satAdd(sw.pop, se.pop))
@@ -283,7 +295,15 @@ func (u *Universe) shrink(n *Node) *Node {
 }
 
 // Advance returns root after exactly 2^j generations.
-func (u *Universe) Advance(root *Node, j int) (*Node, error) {
+func (u *Universe) Advance(root *Node, j int) (out *Node, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(budgetPanic); !ok {
+				panic(r)
+			}
+			out, err = nil, ErrBudget
+		}
+	}()
 	if j < 0 || j > MaxLevel-5 {
 		return nil, fmt.Errorf("step exponent %d out of range [0,%d]", j, MaxLevel-5)
 	}
@@ -298,8 +318,7 @@ func (u *Universe) Advance(root *Node, j int) (*Node, error) {
 		u.slow = map[*Node]*Node{}
 		u.slowJ = j
 	}
-	out := u.result(root, j)
-	return u.shrink(out), nil
+	return u.shrink(u.result(root, j)), nil
 }
 
 // Compact discards the whole node table and memo caches, re-interning only the
@@ -401,7 +420,7 @@ func (u *Universe) build(pts []Point, level int, x0, y0 int64) *Node {
 
 // SetCells replaces the universe contents (generation resets to 0). With
 // centre the pattern's bounding box is moved to straddle the origin.
-func (s *Sim) SetCells(pts []Point, centre bool) {
+func (s *Sim) SetCells(pts []Point, centre bool) error {
 	pts = dedupe(pts)
 	if centre && len(pts) > 0 {
 		x0, y0, x1, y1 := boundsOf(pts)
@@ -411,9 +430,16 @@ func (s *Sim) SetCells(pts []Point, centre bool) {
 			pts[i].Y -= dy
 		}
 	}
+	const lim = int64(1) << 50
+	for _, p := range pts {
+		if p.X < -lim || p.X >= lim || p.Y < -lim || p.Y >= lim {
+			return fmt.Errorf("cell (%d,%d) is outside the supported range ±2^50", p.X, p.Y)
+		}
+	}
 	k := levelFor(pts)
 	s.Root = s.U.build(pts, k, -(int64(1) << uint(k-1)), -(int64(1) << uint(k-1)))
 	s.Gen = 0
+	return nil
 }
 
 func dedupe(pts []Point) []Point {
@@ -545,14 +571,8 @@ func (s *Sim) Step(n uint64) error {
 		if n&1 == 0 {
 			continue
 		}
-		r, err := s.U.Advance(s.Root, j)
-		if err != nil {
+		if err := s.StepPow(j); err != nil {
 			return err
-		}
-		s.Root = r
-		s.Gen += 1 << uint(j)
-		if s.MaxNodes > 0 && s.U.Size() > s.MaxNodes {
-			s.U.Compact(s.Root)
 		}
 	}
 	return nil
@@ -562,6 +582,9 @@ func (s *Sim) Step(n uint64) error {
 func (s *Sim) StepPow(j int) error {
 	r, err := s.U.Advance(s.Root, j)
 	if err != nil {
+		if err == ErrBudget {
+			s.U.Compact(s.Root) // drop the half-built garbage; Root is untouched
+		}
 		return err
 	}
 	s.Root = r

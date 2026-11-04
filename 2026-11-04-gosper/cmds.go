@@ -116,6 +116,9 @@ func cmdAnalyze(args []string) error {
 	if err != nil {
 		return err
 	}
+	if *maxPeriod < 1 || *maxGens < 1 || *horizon < 0 || *horizon > 56 || *growth < 0 || *growth > 56 {
+		return fmt.Errorf("analyze: need -max-period>=1, -max-gens>=1, -horizon in [0,56], -growth in [0,56]")
+	}
 	l, err := loadPattern(arg, *rule)
 	if err != nil {
 		return err
@@ -208,6 +211,9 @@ func cmdVerify(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if *trials < 0 || *size < 1 || *maxGens < 1 {
+		return fmt.Errorf("verify: need -n >= 0, -size >= 1, -gens >= 1")
+	}
 	rng := rand.New(rand.NewSource(*seed))
 	named := []string{"B3/S23", "B36/S23", "B2/S", "B3678/S34678", "B34/S34", "B1357/S1357", "B368/S245", "B35678/S5678"}
 	var cmp, bad int
@@ -230,7 +236,9 @@ func cmdVerify(args []string) error {
 			}
 		}
 		s := life.NewSim(rule)
-		s.SetCells(append([]life.Point(nil), pts...), false)
+		if err := s.SetCells(append([]life.Point(nil), pts...), false); err != nil {
+			return err
+		}
 		if t%7 == 3 {
 			s.MaxNodes = 500 // force frequent compaction
 		}

@@ -115,7 +115,7 @@ loop:
 			run = -1
 		case c == 'o' || c == 'O':
 			n := max(run, 1)
-			if n > 50_000_000 || int64(len(p.Cells))+n > 100_000_000 {
+			if n > 20_000_000 || int64(len(p.Cells))+n > 20_000_000 {
 				return nil, fmt.Errorf("rle: pattern has too many cells")
 			}
 			for k := int64(0); k < n; k++ {

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -52,6 +54,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "gosper: unknown command %q\n\n%s", cmd, usage)
 		os.Exit(2)
 	}
+	if errors.Is(err, flag.ErrHelp) {
+		return
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "gosper:", err)
 		os.Exit(1)
@@ -89,7 +94,7 @@ func loadPattern(arg, ruleOverride string) (*loaded, error) {
 	var data []byte
 	var err error
 	if arg == "-" {
-		data, err = readAll(os.Stdin)
+		data, err = io.ReadAll(io.LimitReader(os.Stdin, 1<<28))
 	} else {
 		data, err = os.ReadFile(arg)
 	}
@@ -119,6 +124,9 @@ func loadPattern(arg, ruleOverride string) (*loaded, error) {
 	l := &loaded{name: p.Name, rule: life.Life, cells: p.Cells}
 	if l.name == "" {
 		l.name = arg
+		if arg == "-" {
+			l.name = "stdin"
+		}
 	}
 	if p.HasRule {
 		l.rule = p.Rule
@@ -129,27 +137,15 @@ func loadPattern(arg, ruleOverride string) (*loaded, error) {
 	return l, nil
 }
 
-func readAll(f *os.File) ([]byte, error) {
-	var out []byte
-	buf := make([]byte, 1<<16)
-	for {
-		n, err := f.Read(buf)
-		out = append(out, buf[:n]...)
-		if err != nil {
-			if err.Error() == "EOF" {
-				return out, nil
-			}
-			return out, err
-		}
-	}
-}
-
 func (l *loaded) newSim() *life.Sim {
 	if l.sim != nil {
 		return l.sim
 	}
 	s := life.NewSim(l.rule)
-	s.SetCells(append([]life.Point(nil), l.cells...), true)
+	if err := s.SetCells(append([]life.Point(nil), l.cells...), true); err != nil {
+		fmt.Fprintln(os.Stderr, "gosper:", err)
+		os.Exit(1)
+	}
 	return s
 }
 
