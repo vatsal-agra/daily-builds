@@ -1,2 +1,15 @@
 # Gosper
-Hashlife cellular-automaton laboratory (Go). **Phase 1: plan written — see PLAN.md.**
+Hashlife cellular-automaton laboratory (Go, stdlib only). See PLAN.md.
+
+**Status (phase 2): the four required features work end to end.**
+
+```
+go build -o gosper .
+./gosper patterns
+./gosper run gosper-gun -gens 2^40 -o gun.mc     # a trillion generations in ~10 ms
+./gosper analyze rpentomino                       # settles at gen 1103, pop 116
+./gosper analyze acorn                            # settles at gen 5206, pop 633
+./gosper verify -n 300                            # Hashlife vs naive simulator
+```
+Done so far: Hashlife engine for any B/S rule, RLE/cells/Macrocell I/O, naive oracle + differential verifier, period / spaceship / settling / growth analyzer.
+Still to come: census, PNG render, HTML report, tests, full docs.
