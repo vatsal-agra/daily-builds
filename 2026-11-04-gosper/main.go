@@ -48,6 +48,12 @@ func main() {
 		err = cmdAnalyze(args)
 	case "verify":
 		err = cmdVerify(args)
+	case "census":
+		err = cmdCensus(args)
+	case "render":
+		err = cmdRender(args)
+	case "report":
+		err = cmdReport(args)
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:
@@ -230,5 +236,7 @@ func human(n uint64) string {
 	}
 	return string(out)
 }
+
+func nowFn() time.Time { return time.Now() }
 
 func since(t time.Time) string { return time.Since(t).Round(time.Millisecond).String() }
