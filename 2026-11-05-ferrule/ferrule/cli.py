@@ -1,0 +1,188 @@
+"""Command-line front end:  ferrule as | ld | build | ar | dump | nm | map | report"""
+import argparse
+import os
+import sys
+from . import __version__
+from .errors import FerruleError
+from .elf import ElfObject
+from .ar import Archive, Member, read_archive, is_archive
+from .asm import assemble
+from .link import Linker, Options, link
+from . import dump as dumpmod
+
+
+def _read(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except OSError as ex:
+        raise FerruleError(f"cannot read {path}: {ex.strerror}")
+
+
+def _write(path, data, exe=False):
+    try:
+        with open(path, "wb") as f:
+            f.write(data)
+        if exe:
+            os.chmod(path, 0o755)
+    except OSError as ex:
+        raise FerruleError(f"cannot write {path}: {ex.strerror}")
+
+
+def asm_file(path):
+    try:
+        text = _read(path).decode("utf-8")
+    except UnicodeDecodeError:
+        raise FerruleError(f"{path}: source is not valid UTF-8")
+    return assemble(text, path)
+
+
+def cmd_as(a):
+    out = a.output or os.path.splitext(os.path.basename(a.input))[0] + ".o"
+    _write(out, asm_file(a.input).to_bytes())
+    return 0
+
+
+def _linker_opts(a):
+    return Options(entry=a.entry, gc_sections=a.gc_sections, base=int(a.base, 0), undefined=a.undefined or [],
+                   lib_dirs=a.L or [], allow_undefined=a.allow_undefined)
+
+
+def _gather(a, assemble_sources):
+    items = []
+    for i in a.inputs:
+        if i.startswith("-l") and len(i) > 2:
+            items.append(("lib", i[2:]))
+        elif i.endswith((".s", ".S", ".asm")) and assemble_sources:
+            items.append(asm_file(i))
+        else:
+            items.append(i)
+    return items
+
+
+def cmd_ld(a, build=False):
+    if not a.inputs:
+        raise FerruleError("no input files")
+    opts = _linker_opts(a)
+    opts.whole_archive = a.whole_archive
+    res = link(_gather(a, build), opts)
+    out = a.output or "a.out"
+    _write(out, res.data, exe=True)
+    if a.map:
+        with open(a.map, "w") as f:
+            f.write(dumpmod.link_map(res, out))
+    if a.report:
+        from .report import render_html
+        with open(a.report, "w") as f:
+            f.write(render_html(res, out))
+    if a.verbose:
+        print(f"{out}: {len(res.data)} bytes, entry {res.entry:#x}, {len(res.sections)} sections, "
+              f"{len(res.pulled)} archive member(s) pulled, {len(res.discarded)} section(s) discarded")
+    return 0
+
+
+def cmd_ar(a):
+    op = a.ops.lstrip("-")
+    if "t" in op:
+        for m in read_archive(a.archive).members:
+            print(m.name)
+        return 0
+    if "x" in op:
+        ar = read_archive(a.archive)
+        wanted = set(a.files)
+        for m in ar.members:
+            if not wanted or m.name in wanted:
+                _write(m.name, m.data)
+        return 0
+    if "c" in op or "r" in op:
+        ar = read_archive(a.archive) if os.path.exists(a.archive) and "c" not in op else Archive(a.archive)
+        if not a.files:
+            raise FerruleError("ar: no members given")
+        for f in a.files:
+            name = os.path.basename(f)
+            data = _read(f)
+            ElfObject.parse(data, f)           # members must be valid objects
+            for m in ar.members:
+                if m.name == name:
+                    m.data = data
+                    break
+            else:
+                ar.members.append(Member(name, data))
+        _write(a.archive, ar.to_bytes())
+        return 0
+    raise FerruleError(f"ar: unsupported operation '{a.ops}' (use c/r to create, t to list, x to extract)")
+
+
+def _load_any(path):
+    data = _read(path)
+    if is_archive(data):
+        return "archive", Archive.parse(data, path), data
+    if data[16:18] == b"\x02\x00" and data[:4] == b"\x7fELF":
+        return "exe", None, data
+    return "object", ElfObject.parse(data, path), data
+
+
+def cmd_dump(a):
+    kind, obj, data = _load_any(a.file)
+    if kind == "archive":
+        print(dumpmod.dump_archive(obj))
+    elif kind == "exe":
+        print(dumpmod.dump_exe(data, a.file))
+    else:
+        print(dumpmod.dump_object(obj))
+    return 0
+
+
+def cmd_nm(a):
+    kind, obj, data = _load_any(a.file)
+    if kind == "archive":
+        for m in obj.members:
+            print(f"\n{m.name}:")
+            print("\n".join(dumpmod.nm(ElfObject.parse(m.data, m.name))))
+    else:
+        print("\n".join(dumpmod.nm(obj if kind == "object" else data)))
+    return 0
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="ferrule", description="x86-64 assembler + static linker + archiver")
+    p.add_argument("--version", action="version", version=f"ferrule {__version__}")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("as", help="assemble a .s file into an ELF object")
+    s.add_argument("input")
+    s.add_argument("-o", "--output")
+    s.set_defaults(fn=cmd_as)
+    for name, build in (("ld", False), ("build", True)):
+        s = sub.add_parser(name, help="link objects/archives" + (" (assembling .s inputs first)" if build else ""))
+        s.add_argument("inputs", nargs="*")
+        s.add_argument("-o", "--output")
+        s.add_argument("-e", "--entry", default="_start")
+        s.add_argument("--gc-sections", action="store_true")
+        s.add_argument("--base", default="0x400000")
+        s.add_argument("-L", action="append")
+        s.add_argument("-u", "--undefined", action="append")
+        s.add_argument("--whole-archive", action="store_true")
+        s.add_argument("--allow-undefined", action="store_true")
+        s.add_argument("-Map", "--map")
+        s.add_argument("--report", help="write a self-contained HTML layout report")
+        s.add_argument("-v", "--verbose", action="store_true")
+        s.set_defaults(fn=(lambda a: cmd_ld(a, True)) if build else cmd_ld)
+    s = sub.add_parser("ar", help="create/list/extract archives (ar crs lib.a a.o b.o | ar t lib.a)")
+    s.add_argument("ops")
+    s.add_argument("archive")
+    s.add_argument("files", nargs="*")
+    s.set_defaults(fn=cmd_ar)
+    s = sub.add_parser("dump", help="readelf-style dump of an object, archive or executable")
+    s.add_argument("file")
+    s.set_defaults(fn=cmd_dump)
+    s = sub.add_parser("nm", help="list symbols")
+    s.add_argument("file")
+    s.set_defaults(fn=cmd_nm)
+    a = p.parse_args(argv)
+    try:
+        return a.fn(a)
+    except FerruleError as ex:
+        print(f"ferrule: error: {ex}", file=sys.stderr)
+        return 1
+    except BrokenPipeError:
+        return 0
