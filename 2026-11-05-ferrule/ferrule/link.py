@@ -75,6 +75,7 @@ class Linker:
         self.dropped = {}           # id(section) -> reason (comdat dup etc.)
         self.comdat_seen = {}
         self.errors = []
+        self._got_locals = {}
 
     # ------------------------------------------------------------------ input
     def add_object(self, obj):
@@ -262,12 +263,15 @@ class Linker:
             if id(s) in live:
                 out.append((o, s))
             else:
-                self.result.discarded.append((o.name, s.name, s.size, "unreferenced (--gc-sections)"))
+                if s.size:
+                    self.result.discarded.append((o.name, s.name, s.size, "unreferenced (--gc-sections)"))
                 self.dropped[id(s)] = "gc"
         return out
 
     def link(self):
         res = self.result
+        if self.opt.base % PAGE or self.opt.base < 0:
+            raise LinkError(f"base address {self.opt.base:#x} must be a non-negative multiple of {PAGE:#x}")
         if self.errors:
             raise LinkError("\n".join(self.errors))
         for u in self.opt.undefined:
@@ -350,6 +354,9 @@ class Linker:
                 off += d.sym.size
                 b["align"] = max(b["align"], al)
             b["size"] = off
+        for o in outs.values():
+            if o["size"] > (1 << 31):
+                raise LinkError(f"output section {o['name']} would be {o['size']} bytes (limit 2 GiB)")
         # ---- segments & addresses
         segs = []
         for cls, flags in ((0, PF_R | PF_X), (1, PF_R), (2, PF_R | PF_W)):
@@ -429,7 +436,9 @@ class Linker:
                 kind, ref = k
                 addr = self._key_addr(k)
                 got_out["buf"][8 * i:8 * i + 8] = struct.pack("<Q", addr & 0xFFFFFFFFFFFFFFFF)
-                res.got[k[1] if isinstance(k[1], str) else f"{k[1][0]}:{k[1][1]}"] = got_out["addr"] + 8 * i
+                sym = self._got_locals.get(k)
+                label = k[1] if k[0] == "g" else (f"<local {sym.name or sym.section.name}>" if sym else "<null>")
+                res.got[label] = got_out["addr"] + 8 * i
         # ---- entry
         if entry_name in self.table:
             entry = self.sym_addr(None, self.table[entry_name])
@@ -449,6 +458,8 @@ class Linker:
                                  "inputs": [(obj.name, sec.name, placed[id(sec)][1] + o["addr"], sec.size)
                                             for obj, sec in o["inputs"]]})
         for name, d in self.table.items():
+            if d.sym.section is not None and id(d.sym.section) not in self._placed:
+                continue                    # defined in a section that was garbage-collected
             res.symbols[name] = self.sym_addr(None, d)
         res.pulled = self.pulled
         res.objects = [o.name for o in self.objects]
@@ -490,8 +501,8 @@ class Linker:
         kind, ref = key
         if kind == "g":
             return self.sym_addr(None, self.table[ref]) if ref in self.table else 0
-        obj, sym = ref
-        return self._local_addr(sym)
+        sym = self._got_locals[key]
+        return 0 if sym is None else self._local_addr(sym)
 
     def _local_addr(self, sym):
         if sym.shndx == SHN_ABS:
@@ -514,17 +525,12 @@ class Linker:
         return d.addr
 
     def _got_key(self, obj, sym):
-        if sym is None:
-            return ("l", (obj.name, 0))
-        if sym.bind == STB_LOCAL:
-            return ("l", (obj, sym)) if False else ("g", self._local_label(obj, sym))
+        """One GOT slot per distinct symbol: globals by name, locals by identity."""
+        if sym is None or sym.bind == STB_LOCAL:
+            key = ("l", id(sym))
+            self._got_locals[key] = sym
+            return key
         return ("g", sym.name)
-
-    def _local_label(self, obj, sym):
-        # locals get a private pseudo-name so they can share the "g" key space safely
-        name = f"\0{obj.name}\0{id(sym)}"
-        self.table.setdefault(name, Def(obj, sym, "strong"))
-        return name
 
     def _resolve(self, obj, sym):
         """Address of a symbol as referenced from `obj` (S in the relocation formulas)."""

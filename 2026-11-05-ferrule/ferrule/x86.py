@@ -70,6 +70,16 @@ def fits_s(v, bits):
     return -(1 << (bits - 1)) <= v < (1 << (bits - 1))
 
 
+def norm_imm(v, size, mnem="instruction"):
+    """Validate `v` against the operand width and return its signed interpretation."""
+    bits = 32 if size == 64 else size
+    lo = -(1 << (bits - 1))
+    hi = (1 << bits) - 1 if size != 64 else (1 << 31) - 1
+    if not lo <= v <= hi:
+        raise FerruleError(f"immediate {v:#x} out of range for a {size}-bit operand in '{mnem}'")
+    return v - (1 << bits) if v > (1 << (bits - 1)) - 1 else v
+
+
 def imm_pack(v, nbytes):
     bits = nbytes * 8
     if not (-(1 << (bits - 1)) <= v < (1 << bits)):
@@ -165,9 +175,10 @@ def build(opcode, reg, rm, opsize, *, w=None, p66=None, prefix=b"", imm=b"", imm
             body += b"\0\0\0\0"
     elif rm is not None:
         raise FerruleError("internal: bad rm operand")
-    out = bytearray(prefix)
+    out = bytearray()
     if p66:
         out.append(0x66)
+    out += prefix
     use_rex = rex != 0x40 or need_rex_byte or force_rex
     if use_rex and high8:
         raise FerruleError("ah/ch/dh/bh cannot be encoded together with a REX prefix or r8-r15/64-bit operands")
@@ -313,7 +324,9 @@ def encode(mnem, ops):
         if is_mem(a):
             a, b = b, a
         need(is_reg(a) and (is_reg(b) or is_mem(b)), mnem, ops)
-        if is_reg(b) and a.size > 8 and (a.num == 0 or b.num == 0) and a.size == b.size and a.size != 16:
+        if is_reg(b):
+            need(a.size == b.size, mnem, ops)
+        if is_reg(b) and a.size > 8 and (a.num == 0 or b.num == 0) and a.size == b.size:
             other = b if a.num == 0 else a
             if not (a.size == 32 and other.num == 0):
                 return build_oplus([0x90], other, a.size)
@@ -322,7 +335,10 @@ def encode(mnem, ops):
         return build([0x86 if a.size == 8 else 0x87], a, b, a.size)
     if mnem.startswith("cmov"):
         cc = CC.get(mnem[4:])
-        need(cc is not None and n == 2 and is_reg(ops[0]) and (is_reg(ops[1]) or is_mem(ops[1])), mnem, ops)
+        need(cc is not None and n == 2 and is_reg(ops[0]) and ops[0].size > 8
+             and (is_reg(ops[1]) or is_mem(ops[1])), mnem, ops)
+        if is_reg(ops[1]):
+            need(ops[1].size == ops[0].size, mnem, ops)
         return build([0x0F, 0x40 | cc], ops[0], ops[1], ops[0].size)
     if mnem.startswith("set") and mnem[3:] in CC:
         need(n == 1 and (is_reg(ops[0]) or is_mem(ops[0])), mnem, ops)
@@ -337,7 +353,9 @@ def encode(mnem, ops):
     if mnem in ("bt", "bts", "btr", "btc"):
         return _bt(mnem, ops)
     if mnem in ("bsf", "bsr", "popcnt", "lzcnt", "tzcnt"):
-        need(n == 2 and is_reg(ops[0]) and (is_reg(ops[1]) or is_mem(ops[1])), mnem, ops)
+        need(n == 2 and is_reg(ops[0]) and ops[0].size > 8 and (is_reg(ops[1]) or is_mem(ops[1])), mnem, ops)
+        if is_reg(ops[1]):
+            need(ops[1].size == ops[0].size, mnem, ops)
         op = {"bsf": [0x0F, 0xBC], "bsr": [0x0F, 0xBD], "popcnt": [0x0F, 0xB8],
               "lzcnt": [0x0F, 0xBD], "tzcnt": [0x0F, 0xBC]}[mnem]
         pre = b"\xf3" if mnem in ("popcnt", "lzcnt", "tzcnt") else b""
@@ -370,17 +388,17 @@ def _alu(mnem, ops):
         sz = opsize_of([d], mnem)
         e = s.expr
         if sz == 8:
+            if e.is_const:
+                norm_imm(e.const, 8, mnem)
             b, ex, _ = imm_bytes(s, 1, mnem)
-            if is_reg(d) and d.num == 0 and not d.high8 or (is_reg(d) and d.high8 is False and d.num == 0):
+            if is_reg(d) and d.num == 0 and not d.high8:
                 return build_acc(base | 4, b, ex, 8)
             return build([0x80], k, d, 8, imm=b, imm_expr=ex)
         if e.is_const:
-            v = e.const
+            v = norm_imm(e.const, sz, mnem)
             if fits_s(v, 8):
                 return build([0x83], k, d, sz, imm=imm_pack(v, 1))
             isz = 2 if sz == 16 else 4
-            if sz == 64 and not fits_s(v, 32):
-                raise FerruleError(f"immediate {v:#x} does not fit in 32 bits (sign-extended)")
             b = imm_pack(v, isz)
             if is_reg(d) and d.num == 0:
                 return build_acc(base | 5, b, None, sz)
@@ -419,6 +437,8 @@ def _mov(ops):
     if is_reg(d) and is_imm(s):
         e = s.expr
         sz = d.size
+        if e.is_const and sz < 64:
+            norm_imm(e.const, sz, mnem)
         if sz == 8:
             b, ex, _ = imm_bytes(s, 1, mnem)
             return build_oplus([0xB0], d, 8, imm=b, imm_expr=ex)
@@ -435,14 +455,14 @@ def _mov(ops):
         return build([0xC7], 0, d, 64, imm=b"\0\0\0\0", imm_expr=e, imm_signed=True)
     if is_mem(d) and is_imm(s):
         sz = opsize_of([d], mnem)
+        if s.expr.is_const:
+            norm_imm(s.expr.const, sz, mnem)
         if sz == 8:
             b, ex, _ = imm_bytes(s, 1, mnem)
             return build([0xC6], 0, d, 8, imm=b, imm_expr=ex)
         isz = 2 if sz == 16 else 4
         e = s.expr
-        if e.is_const and sz == 64 and not fits_s(e.const, 32):
-            raise FerruleError(f"immediate {e.const:#x} does not fit in 32 bits (sign-extended)")
-        b = imm_pack(e.const, isz) if e.is_const else b"\0" * isz
+        b = imm_pack(norm_imm(e.const, sz, mnem), isz) if e.is_const else b"\0" * isz
         return build([0xC7], 0, d, sz, imm=b, imm_expr=None if e.is_const else e,
                      imm_signed=(sz == 64))
     raise FerruleError("invalid operands for 'mov'")
@@ -459,6 +479,8 @@ def _test(ops):
     if (is_reg(d) or is_mem(d)) and is_imm(s):
         sz = opsize_of([d], mnem)
         isz = 1 if sz == 8 else (2 if sz == 16 else 4)
+        if s.expr.is_const:
+            norm_imm(s.expr.const, sz, mnem)
         b, ex, _ = imm_bytes(s, isz, mnem)
         if is_reg(d) and d.num == 0 and not d.high8:
             return build_acc(0xA8 if sz == 8 else 0xA9, b, ex, sz)
@@ -498,10 +520,17 @@ def _imul(ops):
         if is_imm(ops[1]):
             return _imul([ops[0], ops[0], ops[1]])
         need(is_reg(ops[1]) or is_mem(ops[1]), mnem, ops)
+        if is_reg(ops[1]):
+            need(ops[1].size == ops[0].size, mnem, ops)
         return build([0x0F, 0xAF], ops[0], ops[1], ops[0].size)
     need(n == 3 and is_reg(ops[0]) and (is_reg(ops[1]) or is_mem(ops[1])) and is_imm(ops[2]), mnem, ops)
     d, s, im = ops
     e = im.expr
+    if is_reg(s):
+        need(s.size == d.size, mnem, ops)
+    if e.is_const:
+        e = Expr(norm_imm(e.const, d.size, mnem))
+        im = Imm(e)
     if e.is_const and fits_s(e.const, 8):
         return build([0x6B], d, s, d.size, imm=imm_pack(e.const, 1))
     isz = 2 if d.size == 16 else 4

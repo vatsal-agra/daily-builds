@@ -65,7 +65,7 @@ def parse_exe(data):
     syms = []
     for name, r in secs:
         if name == ".symtab":
-            st = data[raw[r[6]][4]:raw[raw[r[6]] and r[6]][4] + raw[r[6]][5]]
+            st = data[raw[r[6]][4]:raw[r[6]][4] + raw[r[6]][5]]
             sd = data[r[4]:r[4] + r[5]]
             for i in range(1, len(sd) // 24):
                 n, info, other, shndx, val, size = elf.SYM.unpack_from(sd, i * 24)

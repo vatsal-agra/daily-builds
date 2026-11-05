@@ -306,15 +306,27 @@ class Assembler:
             ps = split_top(arg)
             n = self.const(ps[0], d)
             if d == ".fill":
-                raise self.err(".fill is not supported; use .zero/.skip")
+                cnt = n
+                width = self.const(ps[1], d) if len(ps) > 1 else 1
+                val = self.const(ps[2], d) if len(ps) > 2 else 0
+                if cnt < 0 or not 1 <= width <= 8:
+                    raise self.err(".fill needs a non-negative count and a size of 1..8")
+                self.check_size(cnt * width)
+                self.emit(Raw(Chunk((val & ((1 << (8 * width)) - 1)).to_bytes(width, "little") * cnt), self.line))
+                return
             fill = self.const(ps[1], d) if len(ps) > 1 else 0
             if n < 0:
                 raise self.err(f"negative size in {d}")
+            self.check_size(n)
             self.emit(Space(n, fill & 255))
         elif d in (".align", ".balign", ".p2align"):
             ps = split_top(arg)
             v = self.const(ps[0], d)
+            if d == ".p2align" and not 0 <= v <= 24:
+                raise self.err(f".p2align {v} out of range (0..24)")
             b = (1 << v) if d == ".p2align" else v
+            if b > (1 << 24):
+                raise self.err(f"alignment {b} is too large")
             if b <= 0 or b & (b - 1):
                 raise self.err(f"alignment {b} is not a power of two")
             fill = self.const(ps[1], d) if len(ps) > 1 and ps[1] else None
@@ -347,6 +359,12 @@ class Assembler:
                 raise self.err("AT&T syntax is not supported")
         else:
             raise self.err(f"unknown directive '{d}'")
+
+    MAX_BLOCK = 1 << 28
+
+    def check_size(self, n):
+        if n > self.MAX_BLOCK:
+            raise self.err(f"block of {n} bytes exceeds the assembler limit of {self.MAX_BLOCK}")
 
     def const(self, text, what):
         e = self.expr(text)
@@ -459,8 +477,8 @@ class Assembler:
                 index, scale = rr, sc
             else:
                 disp_text.append(("-" if sign < 0 else "+") + "(" + p + ")")
-        if index is not None and base is None and scale == 1:
-            base, index = index, None      # [rax*1] is just a base
+        if index is not None and base is None and scale == 1 and index.num == 4:
+            base, index = index, None      # [rsp*1] can only be a base
         disp = self.expr("".join(disp_text) or "0")
         return Mem(base, index, scale, disp, size)
 
@@ -497,8 +515,7 @@ class Assembler:
                     if prefix:
                         raise self.err("prefix not allowed on branches")
                     return
-            self.emit(Raw(Chunk(prefix + ch.data, [Fix(f.offset + len(prefix), f.size, f.kind, f.expr, f.signed, f.trail)
-                                                     for f in ch.fixes]), self.line))
+            self.emit(Raw(self.with_prefix(prefix, ch) if prefix else ch, self.line))
             return
         ops = [self.operand(o) for o in split_top(rest)] if rest else []
         if any(o == "" for o in split_top(rest)) and rest:
@@ -510,15 +527,51 @@ class Assembler:
         except FerruleError as ex:
             raise self.err(str(ex))
         if prefix:
-            # legacy prefixes go before REX; chunk is already [66][REX]op - insert in front
-            ch = Chunk(prefix + ch.data, [Fix(f.offset + len(prefix), f.size, f.kind, f.expr, f.signed, f.trail)
-                                         for f in ch.fixes])
+            ch = self.with_prefix(prefix, ch)
         self.emit(Raw(ch, self.line))
+
+    @staticmethod
+    def with_prefix(prefix, ch):
+        """Insert lock/rep prefixes after an operand-size (0x66) prefix, before REX/opcode."""
+        at = 1 if ch.data[:1] == b"\x66" else 0
+        data = ch.data[:at] + prefix + ch.data[at:]
+        return Chunk(data, [Fix(f.offset + len(prefix), f.size, f.kind, f.expr, f.signed, f.trail)
+                            for f in ch.fixes])
 
     # ----------------------------------------------------------- layout / output
     def sym_section_local(self, name):
         s = self.syms.get(name)
         return s if s is not None and s.section is not None else None
+
+    def expand(self, e, seen=()):
+        """Substitute symbols defined by `.equ name, <relocatable expr>` (aliases of labels)."""
+        if not any(self.syms[t].expr is not None for t in e.terms if t in self.syms):
+            return e
+        out = Expr(e.const, {}, e.mod)
+        for t, c in e.terms.items():
+            s = self.syms.get(t)
+            if s is not None and s.expr is not None and s.const is None:
+                if t in seen:
+                    raise AsmError(f"circular .equ definition involving '{t}'", None, self.filename)
+                out = out.add(self.expand(s.expr, seen + (t,)).scale(c))
+            else:
+                out = out.add(Expr(0, {t: c}))
+        return out
+
+    def expand_all(self):
+        for sec in self.order:
+            for it in sec.items:
+                if isinstance(it, Raw):
+                    for f in it.chunk.fixes:
+                        try:
+                            f.expr = self.expand(f.expr)
+                        except AsmError as ex:
+                            raise AsmError(ex.bare, it.line, self.filename)
+                elif isinstance(it, Branch):
+                    try:
+                        it.target = self.expand(it.target)
+                    except AsmError as ex:
+                        raise AsmError(ex.bare, it.line, self.filename)
 
     def layout(self):
         # which branches can ever be short: target is a label in the same section and not global/weak
@@ -556,10 +609,19 @@ class Assembler:
         raise FerruleError("branch relaxation did not converge")
 
     def finish(self):
+        for _ in range(len(self.syms) + 1):   # deferred .equ chains of constants
+            progress = False
+            for s in self.syms.values():
+                if s.expr is not None and s.const is None and self.try_fold(s):
+                    progress = True
+            if not progress:
+                break
+        for s in self.syms.values():
+            if s.expr is not None and s.const is None and s.bind != elf.STB_LOCAL:
+                raise AsmError(f"'.equ {s.name}' aliases a relocatable expression and cannot be global",
+                               None, self.filename)
+        self.expand_all()
         self.layout()
-        for s in self.syms.values():          # deferred .equ chains
-            if s.expr is not None and s.const is None:
-                self.try_fold(s)
         obj = ElfObject(self.filename)
         out_secs = {}
         for sec in self.order:
@@ -607,6 +669,8 @@ class Assembler:
                 pass
             if name.startswith(".L") and s.bind == elf.STB_LOCAL:
                 continue
+            if s.expr is not None and s.const is None and s.section is None:
+                continue                      # label alias: only meaningful inside this file
             if s.section is None and s.const is None and s.common is None and s.bind == elf.STB_LOCAL \
                     and not s.referenced:
                 continue
@@ -658,10 +722,11 @@ class Assembler:
         total = e.const
         for t, c in e.terms.items():
             ts = self.syms.get(t)
-            if ts is None or ts.const is None:
-                return
+            if ts is None or ts.const is None or ts.section is not None:
+                return False
             total += c * ts.const
         s.const, s.expr = total, None
+        return True
 
     def pad_bytes(self, it):
         n = it.size

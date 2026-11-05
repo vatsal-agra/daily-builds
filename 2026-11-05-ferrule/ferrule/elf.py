@@ -93,6 +93,15 @@ class ElfObject:
     # ------------------------------------------------------------------ parsing
     @classmethod
     def parse(cls, data, name="<obj>"):
+        try:
+            return cls._parse(data, name)
+        except FerruleError:
+            raise
+        except (IndexError, KeyError, ValueError, struct.error, OverflowError, MemoryError) as ex:
+            raise FerruleError(f"{name}: malformed ELF object ({type(ex).__name__}: {ex})")
+
+    @classmethod
+    def _parse(cls, data, name="<obj>"):
         def bad(msg):
             raise FerruleError(f"{name}: {msg}")
         if len(data) < 64 or data[:4] != b"\x7fELF":
@@ -147,6 +156,10 @@ class ElfObject:
                 gd = blob(h)
                 by_index[i] = ("group", h, gd)
                 continue
+            if typ == SHT_NOBITS and size > (1 << 32):
+                bad(f"NOBITS section of {size} bytes is unreasonably large")
+            if align > (1 << 24) or (align & (align - 1)):
+                bad(f"section alignment {align} is not a sane power of two")
             sec = Section(cstr(shstr, nm), typ, flags, blob(h), align,
                           size=size if typ == SHT_NOBITS else None, entsize=entsize)
             sec.index = i
@@ -156,12 +169,18 @@ class ElfObject:
             symtab_h = None
         syms = [None]
         if symtab_h is not None:
+            if symtab_h[6] >= shnum:
+                bad("symbol table refers to a missing string table")
             strtab = blob(raw[symtab_h[6]])
             sd = blob(symtab_h)
             n = len(sd) // SYM.size
             for k in range(1, n):
                 (stn, sinfo, sother, shndx, value, size) = SYM.unpack_from(sd, k * SYM.size)
                 s = Symbol(cstr(strtab, stn), value, size, sinfo >> 4, sinfo & 15, sother, shndx)
+                if 0xFF00 <= shndx and shndx not in (SHN_ABS, SHN_COMMON):
+                    bad(f"symbol '{s.name}' has unsupported special section index {shndx:#x}")
+                if shndx >= shnum and shndx < 0xFF00:
+                    bad(f"symbol '{s.name}' refers to section {shndx}, but the file has only {shnum}")
                 if 0 < shndx < 0xFF00:
                     sec = by_index.get(shndx)
                     if not isinstance(sec, Section):

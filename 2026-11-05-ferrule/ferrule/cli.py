@@ -44,15 +44,19 @@ def cmd_as(a):
 
 
 def _linker_opts(a):
-    return Options(entry=a.entry, gc_sections=a.gc_sections, base=int(a.base, 0), undefined=a.undefined or [],
+    try:
+        base = int(a.base, 0)
+    except ValueError:
+        raise FerruleError(f"invalid --base value {a.base!r} (expected a number such as 0x400000)")
+    return Options(entry=a.entry, gc_sections=a.gc_sections, base=base, undefined=a.undefined or [],
                    lib_dirs=a.L or [], allow_undefined=a.allow_undefined)
 
 
 def _gather(a, assemble_sources):
     items = []
     for i in a.inputs:
-        if i.startswith("-l") and len(i) > 2:
-            items.append(("lib", i[2:]))
+        if i.startswith("@lib:"):
+            items.append(("lib", i[5:]))
         elif i.endswith((".s", ".S", ".asm")) and assemble_sources:
             items.append(asm_file(i))
         else:
@@ -95,7 +99,7 @@ def cmd_ar(a):
                 _write(m.name, m.data)
         return 0
     if "c" in op or "r" in op:
-        ar = read_archive(a.archive) if os.path.exists(a.archive) and "c" not in op else Archive(a.archive)
+        ar = read_archive(a.archive) if os.path.exists(a.archive) else Archive(a.archive)
         if not a.files:
             raise FerruleError("ar: no members given")
         for f in a.files:
@@ -144,7 +148,82 @@ def cmd_nm(a):
     return 0
 
 
+def _protect_libs(argv):
+    """argparse would swallow `-lNAME` as an unknown option and lose its position; keep it positional."""
+    out, skip = [], False
+    for tok in argv:
+        if skip:
+            out.append(tok)
+            skip = False
+        elif tok in ("-o", "-e", "--entry", "--base", "-L", "-u", "--undefined", "-Map", "--map", "--report"):
+            out.append(tok)
+            skip = True
+        elif tok.startswith("-l") and len(tok) > 2 and not tok.startswith("--"):
+            out.append("@lib:" + tok[2:])
+        else:
+            out.append(tok)
+    return out
+
+
+LD_HELP = """usage: ferrule ld|build [options] INPUT...
+  INPUT            object (.o), archive (.a), -lNAME (with -L DIR); `build` also takes .s sources
+  -o FILE          output (default a.out)        -e SYM / --entry SYM   entry point (default _start)
+  --gc-sections    drop unreachable sections     -u SYM                 force SYM to be linked in
+  -L DIR           library search directory      --base ADDR            load address (default 0x400000)
+  -Map FILE        write a link map              --report FILE.html     write an HTML layout report
+  --whole-archive  pull in every archive member  --allow-undefined      resolve missing symbols to 0
+  -v               print a summary
+Archives are searched where they appear on the command line, like GNU ld."""
+
+
+def _parse_ld(args, build):
+    import types
+    ns = types.SimpleNamespace(inputs=[], output=None, entry="_start", gc_sections=False, base="0x400000",
+                               L=[], undefined=[], whole_archive=False, allow_undefined=False, map=None,
+                               report=None, verbose=False)
+    valued = {"-o": "output", "--output": "output", "-e": "entry", "--entry": "entry", "--base": "base",
+              "-L": "L", "-u": "undefined", "--undefined": "undefined", "-Map": "map", "--map": "map",
+              "--report": "report"}
+    flags = {"--gc-sections": "gc_sections", "--whole-archive": "whole_archive",
+             "--allow-undefined": "allow_undefined", "-v": "verbose", "--verbose": "verbose"}
+    i = 0
+    while i < len(args):
+        t = args[i]
+        i += 1
+        if t in ("-h", "--help"):
+            print(LD_HELP)
+            return None
+        if t in flags:
+            setattr(ns, flags[t], True)
+        elif t.split("=", 1)[0] in valued:
+            key, eq, val = t.partition("=")
+            if not eq:
+                if i >= len(args):
+                    raise FerruleError(f"option {key} needs a value")
+                val, i = args[i], i + 1
+            dest = valued[key]
+            if isinstance(getattr(ns, dest), list):
+                getattr(ns, dest).append(val)
+            else:
+                setattr(ns, dest, val)
+        elif t.startswith(("-L", "-u", "-e", "-o")) and len(t) > 2 and not t.startswith("--"):
+            dest = valued[t[:2]]
+            if isinstance(getattr(ns, dest), list):
+                getattr(ns, dest).append(t[2:])
+            else:
+                setattr(ns, dest, t[2:])
+        elif t.startswith("-l") and len(t) > 2:
+            ns.inputs.append("@lib:" + t[2:])
+        elif t.startswith("-") and t != "-":
+            raise FerruleError(f"unknown option {t!r} (see: ferrule ld --help)")
+        else:
+            ns.inputs.append(t)
+    ns.fn = (lambda a: cmd_ld(a, True)) if build else cmd_ld
+    return ns
+
+
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
     p = argparse.ArgumentParser(prog="ferrule", description="x86-64 assembler + static linker + archiver")
     p.add_argument("--version", action="version", version=f"ferrule {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -178,11 +257,23 @@ def main(argv=None):
     s = sub.add_parser("nm", help="list symbols")
     s.add_argument("file")
     s.set_defaults(fn=cmd_nm)
-    a = p.parse_args(argv)
+    if argv and argv[0] in ("ld", "build"):
+        try:
+            a = _parse_ld(argv[1:], argv[0] == "build")
+        except FerruleError as ex:
+            print(f"ferrule: error: {ex}", file=sys.stderr)
+            return 2
+        if a is None:
+            return 0
+    else:
+        a = p.parse_args(argv)
     try:
         return a.fn(a)
     except FerruleError as ex:
         print(f"ferrule: error: {ex}", file=sys.stderr)
+        return 1
+    except OSError as ex:
+        print(f"ferrule: error: {ex.filename or ''}: {ex.strerror}", file=sys.stderr)
         return 1
     except BrokenPipeError:
         return 0
