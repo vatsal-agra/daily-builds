@@ -18,7 +18,18 @@ class Archive:
     def __init__(self, name="<archive>"):
         self.name = name
         self.members = []
-        self.index = {}        # symbol name -> member position (lazy-link index)
+        self._index = None     # symbol name -> member position; built on first use
+
+    @property
+    def index(self):
+        """Symbol -> member index. Rebuilt on demand so hand-assembled archives work too."""
+        if self._index is None or any(i >= len(self.members) for i in self._index.values()):
+            self.rebuild_index()
+        return self._index
+
+    @index.setter
+    def index(self, v):
+        self._index = v
 
     # ------------------------------------------------------------------ reading
     @classmethod
@@ -77,16 +88,17 @@ class Archive:
                         break
                     tmp.setdefault(names[i].decode("latin-1"), offset_to_member[off])
                 if ok:
-                    ar.index = tmp
+                    ar._index = tmp
                     return ar
         ar.rebuild_index()
         return ar
 
     def rebuild_index(self):
-        self.index = {}
+        idx = {}
         for i, m in enumerate(self.members):
             for s in defined_globals(m):
-                self.index.setdefault(s, i)
+                idx.setdefault(s, i)
+        self._index = idx
 
     # ------------------------------------------------------------------ writing
     def to_bytes(self):

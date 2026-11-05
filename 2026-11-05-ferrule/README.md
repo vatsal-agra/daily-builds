@@ -2,7 +2,7 @@
 
 An x86-64 **assembler + static linker + archiver** in pure Python. Takes real ELF objects (from `gcc -c`, GNU `as`, or Ferrule's own assembler) and produces executables the Linux kernel runs directly.
 
-**Status: Phase 4 (stretch + polish) complete** — gc-sections, map file, nm/dump, HTML report, GNU-ld crosscheck. See [PLAN.md](PLAN.md), [REVIEW.md](REVIEW.md).
+**Status: Phase 5 (verification) complete** — `./verify.sh` is green: 69 tests, hostile-input battery, 1 500-case differential fuzz, demo. See [PLAN.md](PLAN.md), [REVIEW.md](REVIEW.md).
 
 ## Working so far (the 4 required features)
 1. **ELF64 object reader/writer** (`ferrule/elf.py`) — parses gcc output; round-trips; `readelf` accepts what it writes.

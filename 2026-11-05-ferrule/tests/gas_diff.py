@@ -8,12 +8,14 @@ HDR = ".intel_syntax noprefix\n.text\n"
 
 def gas_bytes(src, d):
     s, o, b = (os.path.join(d, n) for n in ("x.s", "x.o", "x.bin"))
-    open(s, "w").write(HDR + src + "\n")
+    with open(s, "w") as f:
+        f.write(HDR + src + "\n")
     r = subprocess.run(["as", "--64", "-msyntax=intel", "-mnaked-reg", "-o", o, s], capture_output=True, text=True)
     if r.returncode:
         return None
     subprocess.run(["objcopy", "-O", "binary", "-j", ".text", o, b], check=True)
-    return open(b, "rb").read()
+    with open(b, "rb") as f:
+        return f.read()
 
 
 def ferrule_bytes(src):

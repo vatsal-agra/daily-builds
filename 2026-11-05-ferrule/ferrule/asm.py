@@ -203,9 +203,17 @@ class Assembler:
             raise
         except FerruleError as ex:
             raise AsmError(str(ex), self.line, self.filename)
+        if "." in e.terms:
+            # `.` is the location *of this directive/instruction*: pin it with a hidden label now,
+            # so later growth of the section cannot change its meaning.
+            self.dot_n = getattr(self, "dot_n", 0) + 1
+            name = f".Ldot{self.dot_n}"
+            self.define_label(name)
+            terms = dict(e.terms)
+            terms[name] = terms.pop(".")
+            e = Expr(e.const, terms, e.mod)
         for t in e.terms:
-            if t != ".":
-                self.sym(t).referenced = True
+            self.sym(t).referenced = True
         return e
 
     def err(self, msg):
@@ -717,13 +725,11 @@ class Assembler:
         sec, e = s.size_expr
         cur = 0
         for t, c in e.terms.items():
-            if t == ".":
-                cur += c * sec.size
-            else:
-                ts = self.syms.get(t)
-                if ts is None or ts.section is not sec:
-                    raise self.err(f".size of '{s.name}' must be constant or in-section")
-                cur += c * ts.offset
+            ts = self.syms.get(t)
+            if ts is None or ts.section is not sec or ts.const is not None:
+                raise AsmError(f".size of '{s.name}' must be a constant or label differences within one section",
+                               None, self.filename)
+            cur += c * ts.offset
         return cur + e.const
 
     def try_fold(self, s):
@@ -761,12 +767,18 @@ class Assembler:
         e = f.expr
         field = base + f.offset
         const, pos, sub_off = e.const, [], None
-        for t, c in e.terms.items():
-            if t == ".":
-                if c != -1 or sub_off is not None:
-                    raise fail("'.' may only appear once, as 'symbol - .'")
-                sub_off = field
-                continue
+        terms = dict(e.terms)
+        labels = {t: self.syms[t] for t in terms if self.syms[t].section is not None
+                  and self.syms[t].const is None and self.syms[t].common is None}
+        for pn in [t for t, c in terms.items() if c > 0 and t in labels]:       # (A - B) inside one section
+            for nn in [t for t, c in terms.items() if c < 0 and t in labels]:
+                if terms.get(pn, 0) > 0 and terms.get(nn, 0) < 0 and labels[pn].section is labels[nn].section:
+                    k = min(terms[pn], -terms[nn])
+                    const += k * (labels[pn].offset - labels[nn].offset)
+                    terms[pn] -= k
+                    terms[nn] += k
+        terms = {t: c for t, c in terms.items() if c}
+        for t, c in terms.items():
             s = self.syms[t]
             if s.const is not None and s.section is None and s.expr is None:
                 const += c * s.const

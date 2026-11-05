@@ -40,3 +40,12 @@ GNU `ld` and compared at run time (`tests/c/`, 11 gcc flag sets × with/without 
 * `tests/attack_battery.py` → 0 crashes (every failure is a one-line `FerruleError` with file/line).
 * gcc matrix (`-O0/-O1/-O2/-O3/-Os/-fPIE/-fpic/-g/-ffunction-sections/-fno-common/-fcf-protection=none`) → Ferrule and GNU `ld` executables produce identical stdout and exit codes; `--gc-sections` build runs correctly.
 * C++ COMDAT groups (templates / inline functions in two TUs) dedupe correctly (28 = 28 vs GNU ld).
+
+## Phase 5 findings (found *by the test-suite and demo*, all fixed)
+
+| # | Sev | Finding | Found by | Fix |
+|---|-----|---------|----------|-----|
+| 18 | **High** | `.` (location counter) was evaluated lazily at *use* time: `.equ msg_len, . - msg` failed outright, and `.size f, .-f` recorded the distance to the **end of the section** — wrong whenever more code followed (exactly the pattern gcc emits after every function). | `demo.sh` | `.` is pinned to a hidden local label at the directive; same-section label differences fold to constants wherever they are used |
+| 19 | **High** | `-u SYM` was applied *after* archives had already been scanned, so it could never pull a member (GNU ld applies it first). | `test_whole_archive_and_undefined_flag` | `-u` seeds the undefined set at construction |
+| 20 | Med | An in-memory `Archive` built by assigning `.members` had an empty symbol index, so nothing was ever pulled from it. | `test_only_needed_members_are_pulled_transitively` | `Archive.index` is now a lazily (re)built property |
+| 21 | Low | Demo text claimed a weak reference pulls `hook.o`; actually (correctly, as in GNU ld) it doesn't. The demo now shows both behaviours (`-u optional_hook` to force it). | reading demo output | demo rewritten |

@@ -76,6 +76,8 @@ class Linker:
         self.comdat_seen = {}
         self.errors = []
         self._got_locals = {}
+        for u in self.opt.undefined:             # -u SYM acts before any input, like GNU ld
+            self.undef[u] = (None, True)
 
     # ------------------------------------------------------------------ input
     def add_object(self, obj):
@@ -274,9 +276,6 @@ class Linker:
             raise LinkError(f"base address {self.opt.base:#x} must be a non-negative multiple of {PAGE:#x}")
         if self.errors:
             raise LinkError("\n".join(self.errors))
-        for u in self.opt.undefined:
-            if u not in self.table:
-                self.undef.setdefault(u, (None, True))
         entry_name = self.opt.entry
         if entry_name not in self.table and not entry_name.isdigit() and not entry_name.startswith("0x"):
             raise LinkError(f"entry symbol `{entry_name}' is not defined")

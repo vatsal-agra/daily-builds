@@ -91,12 +91,14 @@ def gen(rng):
 
 def gas(lines, d):
     s, o, b = (os.path.join(d, n) for n in ("f.s", "f.o", "f.bin"))
-    open(s, "w").write(".intel_syntax noprefix\n.text\n" + "\n".join(lines) + "\n")
+    with open(s, "w") as f:
+        f.write(".intel_syntax noprefix\n.text\n" + "\n".join(lines) + "\n")
     r = subprocess.run(["as", "--64", "-msyntax=intel", "-mnaked-reg", "-o", o, s], capture_output=True, text=True)
     if r.returncode:
         return None
     subprocess.run(["objcopy", "-O", "binary", "-j", ".text", o, b], check=True)
-    return open(b, "rb").read()
+    with open(b, "rb") as f:
+        return f.read()
 
 
 def fer(lines):
