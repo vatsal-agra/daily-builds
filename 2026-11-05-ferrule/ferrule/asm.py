@@ -233,7 +233,16 @@ class Assembler:
 
     # ----------------------------------------------------------- driver
     def assemble(self, text):
-        for n, raw in enumerate(text.splitlines(), 1):
+        lines = text.splitlines()
+        try:
+            return self._assemble(lines)
+        except AsmError as ex:
+            if ex.line is not None and ex.source is None and 1 <= ex.line <= len(lines):
+                raise AsmError(ex.bare, ex.line, ex.file, lines[ex.line - 1]) from None
+            raise
+
+    def _assemble(self, lines):
+        for n, raw in enumerate(lines, 1):
             self.line = n
             line = strip_comment(raw)
             while True:

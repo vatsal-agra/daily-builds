@@ -126,6 +126,44 @@ def _load_any(path):
     return "object", ElfObject.parse(data, path), data
 
 
+def cmd_crosscheck(a):
+    """Link with Ferrule and with GNU ld, run both, compare stdout + exit status."""
+    import shutil
+    import subprocess
+    import tempfile
+    ld = shutil.which("ld")
+    if ld is None:
+        raise FerruleError("crosscheck needs GNU ld on PATH")
+    with tempfile.TemporaryDirectory() as d:
+        fo, go = os.path.join(d, "ferrule.out"), os.path.join(d, "gnu.out")
+        res = link(_gather(a, True), _linker_opts(a))
+        _write(fo, res.data, exe=True)
+        objs = []
+        for i in a.inputs:
+            if i.endswith((".s", ".S", ".asm")):
+                o = os.path.join(d, os.path.basename(i) + ".o")
+                _write(o, asm_file(i).to_bytes())
+                objs.append(o)
+            else:
+                objs.append(i)
+        extra = ["--gc-sections"] if a.gc_sections else []
+        r = subprocess.run([ld, "-e", a.entry, *extra, "-o", go, *objs], capture_output=True, text=True)
+        if r.returncode:
+            raise FerruleError("GNU ld rejected the link:\n" + r.stderr.strip())
+        outs = []
+        for exe in (fo, go):
+            try:
+                p = subprocess.run([exe], capture_output=True, timeout=a.timeout)
+                outs.append((p.returncode, p.stdout))
+            except subprocess.TimeoutExpired:
+                outs.append(("timeout", b""))
+        same = outs[0] == outs[1]
+        print(f"ferrule: exit={outs[0][0]} stdout={len(outs[0][1])}B | gnu ld: exit={outs[1][0]} stdout={len(outs[1][1])}B"
+              f" -> {'IDENTICAL' if same else 'DIFFERENT'}")
+        print(f"sizes: ferrule {os.path.getsize(fo)} B, gnu ld {os.path.getsize(go)} B")
+        return 0 if same else 1
+
+
 def cmd_dump(a):
     kind, obj, data = _load_any(a.file)
     if kind == "archive":
@@ -246,6 +284,12 @@ def main(argv=None):
         s.add_argument("--report", help="write a self-contained HTML layout report")
         s.add_argument("-v", "--verbose", action="store_true")
         s.set_defaults(fn=(lambda a: cmd_ld(a, True)) if build else cmd_ld)
+    s = sub.add_parser("crosscheck", help="link with ferrule AND GNU ld, run both, compare behaviour")
+    s.add_argument("inputs", nargs="+")
+    s.add_argument("-e", "--entry", default="_start")
+    s.add_argument("--gc-sections", action="store_true")
+    s.add_argument("--timeout", type=float, default=10)
+    s.set_defaults(fn=cmd_crosscheck, base="0x400000", L=[], undefined=[], allow_undefined=False)
     s = sub.add_parser("ar", help="create/list/extract archives (ar crs lib.a a.o b.o | ar t lib.a)")
     s.add_argument("ops")
     s.add_argument("archive")
