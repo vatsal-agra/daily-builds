@@ -475,6 +475,8 @@ class Linker:
         prov = {"etext": ends["text"], "_etext": ends["text"], "edata": ends["data_end"],
                 "_edata": ends["data_end"], "__bss_start": ends["bss_start"],
                 "end": ends["end"], "_end": ends["end"], "__ehdr_start": self.opt.base}
+        got = outs.get((2, ".got"))
+        prov["_GLOBAL_OFFSET_TABLE_"] = got["addr"] if got else ends["data_end"]
         for name, addr in prov.items():
             want = name in self.undef or any(
                 s.shndx == SHN_UNDEF and s.name == name for o in self.objects for s in o.symbols)
