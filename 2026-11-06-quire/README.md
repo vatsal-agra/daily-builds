@@ -1,5 +1,5 @@
 # Quire
-*Work in progress — Phase 4 (stretch + polish) complete. See [PLAN.md](PLAN.md) and [REVIEW.md](REVIEW.md).*
+*Work in progress — Phase 5 (verification) complete: `./verify.sh` ALL GREEN (21 stages, 73 tests). See [PLAN.md](PLAN.md) and [REVIEW.md](REVIEW.md).*
 
 A from-scratch PDF reader, text extractor and renderer (Python 3 stdlib only).
 
