@@ -508,10 +508,10 @@ class Renderer(Device):
         return paint_fn
 
 
-def render_page(doc, page, dpi=72.0, highlights=None, background=(255, 255, 255), annotations=True):
+def render_page(doc, page, dpi=72.0, highlights=None, background=(255, 255, 255), annotations=True, use_crop=True):
     """Render a page dict to a Canvas. highlights: list of (x0,y0,x1,y1) user-space rects."""
     s = dpi / 72.0
-    box = doc.page_box(page)
+    box = doc.page_box(page, use_crop)
     rot = doc.page_rotate(page)
     base, W, H = page_matrix(box, rot, s)
     if W * H > 60_000_000:

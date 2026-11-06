@@ -25,6 +25,7 @@ independent code, and (4) a plain read-through for shortcuts. Everything below w
 | 15 | LOW | Soft masks / blend modes were silently ignored. | now emit a warning (still unsupported) | — |
 | 16 | LOW | Non-PDF input said "cannot reconstruct: no catalog found". | "not a PDF file (or too damaged to recover)" | `test_garbage_input_raises_cleanly` |
 | 17 | LOW | Leftover dead code (miter maths, a `Filter`/`F` hack in `filter_chain`, unused flatten flag). | removed | — |
+| 19 | MED | Fuzz seeds 11, 14, 16: a mutated `/Encrypt` dictionary (wrong types, or a non-dictionary reached during xref reconstruction) raised bare `TypeError`/`AttributeError`. | malformed encryption dictionaries → `CryptError` | fuzz smoke test, `tools/fuzz.py 60 11` |
 | 18 | LOW (found during build) | `text` printed a blank line between *every* line (each line was its own XY-cut block); glyph origins ignored the CTM so a flipped page came out upside-down. | paragraph logic from vertical gaps; text positions use the full matrix | `test_vs_pdftotext` |
 
 Test-suite bugs I also caught: my incremental-update test used the wrong catalog object number; the CMYK
@@ -43,4 +44,4 @@ to test against).
 
 ## Fresh run-through (gate)
 After the fixes: `python3 -m unittest discover tests` green; `tools/gallery.py` — every case within budget;
-`tools/fuzz.py` 4 seeds × 60 mutants → 0 crashes, 0 hangs; none of the findings above reproduces.
+`tools/fuzz.py` 7 seeds × 60 mutants → 0 crashes, 0 hangs (seed 11 found #19 on the way); none of the findings above reproduces.

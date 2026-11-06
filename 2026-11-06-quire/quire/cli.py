@@ -36,7 +36,7 @@ def fmt(o, depth=0, maxlen=300):
         return "[" + " ".join(fmt(v, depth + 1) for v in o) + "]"
     if isinstance(o, PdfString):
         try:
-            s = bytes(o).decode("utf-16-be") if bytes(o)[:2] == b"\xfe\xff" else bytes(o).decode("latin-1")
+            s = (bytes(o)[2:].decode("utf-16-be") if bytes(o)[:2] == b"\xfe\xff" else bytes(o).decode("latin-1"))
         except UnicodeDecodeError:
             s = bytes(o).hex()
         s = s if len(s) <= maxlen else s[:maxlen] + "…"
@@ -49,6 +49,13 @@ def fmt(o, depth=0, maxlen=300):
 def cmd_info(args):
     doc = _open(args)
     pages = doc.pages()
+    if args.json:
+        info = {k: fmt(doc.resolve(v)) for k, v in doc.info.items()}
+        print(json.dumps({"file": args.file, "version": doc.version, "pages": len(pages), "info": info,
+                          "encrypted": doc.dec.describe() if doc.dec else None, "repaired": doc.repair_reason if doc.repaired else None,
+                          "page_sizes": [[round(doc.page_box(p)[2] - doc.page_box(p)[0], 2), round(doc.page_box(p)[3] - doc.page_box(p)[1], 2)] for p in pages],
+                          "warnings": sorted(set(doc.warnings))}, indent=2))
+        return 0
     print(f"File:        {args.file}")
     print(f"PDF version: {doc.version}")
     print(f"Pages:       {len(pages)}")
@@ -124,6 +131,8 @@ def cmd_text(args):
     except ValueError:
         sys.exit(f"quire: bad page list {args.pages!r}")
     txt = extract_text(doc, pages, expand_ligatures=not args.keep_ligatures)
+    if not txt.strip():
+        print("quire: no extractable text (scanned images, outlined glyphs, or fonts without a usable Unicode mapping)", file=sys.stderr)
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(txt)
@@ -150,15 +159,24 @@ def cmd_render(args):
         from .text import search_page
         for i in pages:
             hl[i] = [b for m in search_page(doc, i, pl[i], args.highlight) for b in m.boxes]
+    failed = 0
     for i in pages:
-        cv = render_page(doc, pl[i], args.dpi, hl.get(i))
+        try:
+            cv = render_page(doc, pl[i], args.dpi, hl.get(i), use_crop=not args.mediabox)
+        except ValueError as e:
+            print(f"quire: page {i + 1}: {e}", file=sys.stderr)
+            failed += 1
+            continue
         name = out if (len(pages) == 1 and out.endswith(".png")) else f"{out}-{i + 1}.png"
-        with open(name, "wb") as f:
-            f.write(cv.to_png())
+        try:
+            with open(name, "wb") as f:
+                f.write(cv.to_png())
+        except OSError as e:
+            sys.exit(f"quire: cannot write {name}: {e.strerror}")
         print(f"wrote {name} ({cv.w}x{cv.h})")
     for w in sorted(set(doc.warnings)):
         print(f"warning: {w}", file=sys.stderr)
-    return 0
+    return 1 if failed else 0
 
 
 def cmd_search(args):
@@ -206,7 +224,8 @@ def main(argv=None):
         p.add_argument("-p", "--password", help="user or owner password")
         p.set_defaults(fn=fn)
         return p
-    add("info", cmd_info, "document summary")
+    p = add("info", cmd_info, "document summary")
+    p.add_argument("--json", action="store_true", help="machine-readable output")
     p = add("dump", cmd_dump, "print the object table, or one object")
     p.add_argument("object", nargs="?", type=int)
     p.add_argument("--stream", action="store_true", help="also write the decoded stream bytes")
@@ -219,6 +238,7 @@ def main(argv=None):
     p.add_argument("--dpi", type=float, default=72.0)
     p.add_argument("-o", "--output", help="output file/prefix")
     p.add_argument("--highlight", help="highlight occurrences of this text")
+    p.add_argument("--mediabox", action="store_true", help="use the MediaBox instead of the CropBox (poppler's default)")
     p = add("search", cmd_search, "find text with bounding boxes")
     p.add_argument("query")
     p.add_argument("--case", action="store_true", help="case-sensitive")

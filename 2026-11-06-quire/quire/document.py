@@ -370,6 +370,8 @@ class Document:
 
     def _setup_encryption_inner(self):
         enc = self._raw_get(self.trailer["Encrypt"])
+        if not isinstance(enc, dict):
+            raise CryptError("/Encrypt does not point to a dictionary")
         enc = {k: self._plain(v) for k, v in enc.items()}
         ids = self._plain(self.trailer.get("ID")) or [b""]
         self.dec = Decryptor(enc, bytes(ids[0]) if ids and ids[0] is not None else b"", self._password)
@@ -378,7 +380,8 @@ class Document:
     # ----------------------------------------------------------- page tree
     @property
     def catalog(self):
-        return self._raw_get(self.trailer["Root"])
+        c = self._raw_get(self.trailer.get("Root"))
+        return c if isinstance(c, dict) else {}
 
     @property
     def info(self):
@@ -438,7 +441,7 @@ class Document:
                     self.warnings.append(f"content stream undecodable: {e}")
         return b"\n".join(parts)
 
-    def page_box(self, page):
+    def page_box(self, page, use_crop=True):
         def box(k):
             b = self._raw_get(page.get(k))
             if isinstance(b, list) and len(b) == 4:
@@ -447,7 +450,7 @@ class Document:
                     return [min(v[0], v[2]), min(v[1], v[3]), max(v[0], v[2]), max(v[1], v[3])]
             return None
         mb = box("MediaBox") or [0, 0, 612, 792]
-        cb = box("CropBox")
+        cb = box("CropBox") if use_crop else None
         if cb:
             x0, y0 = max(mb[0], cb[0]), max(mb[1], cb[1])
             x1, y1 = min(mb[2], cb[2]), min(mb[3], cb[3])

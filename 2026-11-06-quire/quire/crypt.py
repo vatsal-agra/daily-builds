@@ -195,6 +195,16 @@ class Decryptor:
     """Built from the /Encrypt dictionary (already resolved, strings as bytes)."""
 
     def __init__(self, enc, id0, password=b""):
+        try:
+            self._init(enc, id0, password)
+        except WrongPassword:
+            raise
+        except CryptError:
+            raise
+        except (TypeError, ValueError, KeyError, AttributeError, IndexError, struct.error, OverflowError) as e:
+            raise CryptError(f"malformed /Encrypt dictionary ({type(e).__name__}: {e})") from e
+
+    def _init(self, enc, id0, password):
         if enc.get("Filter") != "Standard":
             raise CryptError(f"unsupported security handler {enc.get('Filter')}")
         self.V = int(enc.get("V", 0))
