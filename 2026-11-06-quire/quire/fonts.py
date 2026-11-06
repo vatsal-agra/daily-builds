@@ -83,20 +83,20 @@ class CMap:
 
     def split(self, data):
         """Yield (code, nbytes) per the codespace ranges (default: 2 bytes)."""
-        spaces = self.codespaces or [(2, 0, 0xFFFF)]
+        spaces = [c for c in self.codespaces if 1 <= c[0] <= 4] or [(2, 0, 0xFFFF)]
         maxn = max(s[0] for s in spaces)
         i, n = 0, len(data)
         while i < n:
-            for ln in range(1, maxn + 1):
-                if i + ln > n:
-                    break
+            matched = False
+            for ln in range(1, min(maxn, n - i) + 1):
                 code = int.from_bytes(data[i:i + ln], "big")
                 if any(s[0] == ln and _in_cs(code, s, ln) for s in spaces):
                     yield code, ln
                     i += ln
+                    matched = True
                     break
-            else:
-                ln = min(spaces[0][0], n - i)
+            if not matched:  # byte(s) outside every codespace range (or a truncated tail): consume, never stall
+                ln = max(1, min(spaces[0][0], n - i))
                 yield int.from_bytes(data[i:i + ln], "big"), ln
                 i += ln
 
@@ -197,6 +197,10 @@ class Program:
             if self.cff:
                 m = self.cff.matrix
                 self.scale = m[0] if m and m[0] else self.scale
+        elif kind == "t1":
+            self.scale = obj.matrix[0] or 0.001
+            self.cff = None
+            self.is_cff_sfnt = False
         else:
             self.scale = (obj.matrix[0] or 0.001)
             self.cff = obj
@@ -287,6 +291,9 @@ class Font:
         desc = {k: v for k, v in desc.items()} if isinstance(desc, dict) else {}
         self.flags = int(r(desc.get("Flags")) or 0)
         self.program = load_program(self.doc, desc)
+        self._embedded = self.program is not None
+        from .stdmetrics import std_widths
+        self._std = std_widths(self.name)
         if self.program is None:
             sub = _find_substitute(self.name, self.flags)
             if sub is not None:
@@ -434,6 +441,10 @@ class Font:
             return self.widths[i] / 1000.0
         if self.widths is not None and self.missing:
             return self.missing / 1000.0
+        if self.widths is None and not self._embedded and self._std is not None:
+            ch = self._text_simple(code)
+            if len(ch) == 1 and ch in self._std:
+                return self._std[ch] / 1000.0
         if self.program and self.program.kind == "tt" and isinstance(gid, int):
             a = self.program.advance(gid)
             if a is not None:
@@ -499,6 +510,21 @@ class Font:
             except Exception:  # noqa: BLE001
                 self.cid2gid = None
 
+    def _reverse_cmap(self, gid):
+        """No ToUnicode: recover text from the embedded font's own (3,1)/(3,10) cmap, glyph -> char."""
+        p = self.program
+        if gid is None or p is None or p.kind != "tt":
+            return ""
+        rev = getattr(p, "_rev", None)
+        if rev is None:
+            rev = {}
+            cm = p.obj.cmaps()
+            for key in ((3, 10), (3, 1), (0, 3), (0, 4)):
+                for ch, g in cm.get(key, {}).items():
+                    rev.setdefault(g, chr(ch))
+            p._rev = rev
+        return rev.get(gid, "")
+
     def _gid_cid(self, cid):
         p = self.program
         if p is None:
@@ -550,9 +576,7 @@ class Font:
                     gid = self._gid_cid(cid)
                     text = self.tounicode.to_unicode(code) if self.tounicode else None
                     if text is None:
-                        text = ""
-                        if self.program and self.program.kind == "tt" and self.cmap.identity is False:
-                            text = ""
+                        text = self._reverse_cmap(gid)
                     wd = self.cid_w.get(cid, self.dw) / 1000.0
                     g = Glyph(code, text, wd, gid, ln, ln == 1 and code == 32)
                     self._glyphs[key] = g
@@ -581,6 +605,12 @@ class Font:
         """Path ops in em units for this glyph, or None."""
         if self.program is None or glyph.gid is None:
             return None
-        if self.program.kind == "t1":
-            return self.program.obj.outline(glyph.gid, self.program.scale)
-        return self.program.outline(glyph.gid)
+        try:
+            if self.program.kind == "t1":
+                return self.program.obj.outline(glyph.gid, self.program.scale)
+            return self.program.outline(glyph.gid)
+        except Exception as e:  # noqa: BLE001 — corrupt glyph data: skip the glyph
+            key = f"glyph {glyph.gid} of {self.name} unreadable"
+            if key not in self.doc.warnings:
+                self.doc.warnings.append(key)
+            return None

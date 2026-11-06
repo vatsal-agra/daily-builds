@@ -270,7 +270,12 @@ class Decryptor:
         return x
 
     def authenticate(self, password):
-        pw = password if isinstance(password, bytes) else password.encode("utf-8")
+        if isinstance(password, bytes):
+            pw = password
+        elif self.R >= 5:
+            pw = password.encode("utf-8")           # R5/R6: UTF-8 (SASLprep not applied)
+        else:
+            pw = password.encode("latin-1", "replace")  # R2-R4: PDFDocEncoding ~ Latin-1
         if self.R >= 5:
             return self._auth_v5(pw[:127])
         k = self._legacy_key(pw)

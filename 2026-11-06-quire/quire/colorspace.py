@@ -8,8 +8,55 @@ def clamp(v):
 
 
 def cmyk_to_rgb(c, m, y, k):
+    """Multilinear interpolation between the 16 corner colours of the CMYK cube, using the same
+    corner values as poppler/Ghostscript-style 'Adobe-like' conversion (pure C=1 is not RGB 0,255,255
+    but a printable cyan). Much closer to what viewers show than 1-c-k."""
     c, m, y, k = clamp(c), clamp(m), clamp(y), clamp(k)
-    return ((1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k))
+    c1, m1, y1, k1 = 1 - c, 1 - m, 1 - y, 1 - k
+    r = g = b = c1 * m1 * y1 * k1
+    x = c1 * m1 * y1 * k
+    r += 0.1373 * x; g += 0.1216 * x; b += 0.1255 * x
+    x = c1 * m1 * y * k1
+    r += x; g += 0.9490 * x
+    x = c1 * m1 * y * k
+    r += 0.1098 * x; g += 0.1020 * x
+    x = c1 * m * y1 * k1
+    r += 0.9255 * x; b += 0.5490 * x
+    x = c1 * m * y1 * k
+    r += 0.1412 * x
+    x = c1 * m * y * k1
+    r += 0.9294 * x; g += 0.1098 * x; b += 0.1412 * x
+    x = c1 * m * y * k
+    r += 0.1333 * x
+    x = c * m1 * y1 * k1
+    g += 0.6784 * x; b += 0.9373 * x
+    x = c * m1 * y1 * k
+    g += 0.0588 * x; b += 0.1412 * x
+    x = c * m1 * y * k1
+    g += 0.6510 * x; b += 0.3137 * x
+    x = c * m1 * y * k
+    g += 0.0745 * x
+    x = c * m * y1 * k1
+    r += 0.1804 * x; g += 0.1922 * x; b += 0.5725 * x
+    x = c * m * y1 * k
+    b += 0.0078 * x
+    x = c * m * y * k1
+    r += 0.2118 * x; g += 0.2119 * x; b += 0.2235 * x
+    return (clamp(r), clamp(g), clamp(b))
+
+
+def _srgb_gamma(u):
+    u = clamp(u)
+    return 12.92 * u if u <= 0.0031308 else 1.055 * u ** (1 / 2.4) - 0.055
+
+
+def _xyz_to_srgb(X, Y, Z, wp):
+    # scale to the D65 white point (simple von-Kries-like normalisation)
+    X, Y, Z = X / wp[0] * 0.9505, Y / wp[1], Z / wp[2] * 1.089
+    r = 3.2406 * X - 1.5372 * Y - 0.4986 * Z
+    g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z
+    b = 0.0557 * X - 0.2040 * Y + 1.0570 * Z
+    return (_srgb_gamma(r), _srgb_gamma(g), _srgb_gamma(b))
 
 
 def _lab_to_rgb(L, a, b, wp=(0.9505, 1.0, 1.089)):
@@ -50,11 +97,22 @@ class ColorSpace:
     def to_rgb(self, comps):
         k = self.kind
         try:
-            if k in ("DeviceGray", "CalGray"):
+            if k == "DeviceGray":
                 g = clamp(comps[0])
                 return (g, g, g)
-            if k in ("DeviceRGB", "CalRGB"):
+            if k == "CalGray":
+                Y = clamp(comps[0]) ** self.gamma
+                g = _srgb_gamma(Y)
+                return (g, g, g)
+            if k == "DeviceRGB":
                 return (clamp(comps[0]), clamp(comps[1]), clamp(comps[2]))
+            if k == "CalRGB":
+                A, B, C = (clamp(v) ** gm for v, gm in zip(comps[:3], self.gamma))
+                mt = self.matrix
+                X = mt[0] * A + mt[3] * B + mt[6] * C
+                Y = mt[1] * A + mt[4] * B + mt[7] * C
+                Z = mt[2] * A + mt[5] * B + mt[8] * C
+                return _xyz_to_srgb(X, Y, Z, self.wp)
             if k == "DeviceCMYK":
                 return cmyk_to_rgb(*comps[:4])
             if k == "Lab":
@@ -96,9 +154,9 @@ def parse_colorspace(doc, obj, resources=None, depth=0):
         return GRAY
     if isinstance(obj, (str, Name)) and not isinstance(obj, list):
         nm = str(obj)
-        if nm in ("DeviceGray", "G", "CalGray"):
+        if nm in ("DeviceGray", "G"):
             return GRAY
-        if nm in ("DeviceRGB", "RGB", "CalRGB"):
+        if nm in ("DeviceRGB", "RGB"):
             return RGB
         if nm in ("DeviceCMYK", "CMYK"):
             return CMYK
@@ -114,9 +172,14 @@ def parse_colorspace(doc, obj, resources=None, depth=0):
         if nm in ("DeviceGray", "G", "DeviceRGB", "RGB", "DeviceCMYK", "CMYK"):
             return parse_colorspace(doc, obj[0], resources, depth + 1)
         if nm == "CalGray":
-            return ColorSpace("CalGray", 1)
+            d = r(obj[1]) or {}
+            return ColorSpace("CalGray", 1, gamma=float(r(d.get("Gamma")) or 1.0))
         if nm == "CalRGB":
-            return ColorSpace("CalRGB", 3)
+            d = r(obj[1]) or {}
+            wp = [float(r(v)) for v in r(d.get("WhitePoint")) or [0.9505, 1, 1.089]]
+            gm = [float(r(v)) for v in r(d.get("Gamma")) or [1, 1, 1]]
+            mt = [float(r(v)) for v in r(d.get("Matrix")) or [1, 0, 0, 0, 1, 0, 0, 0, 1]]
+            return ColorSpace("CalRGB", 3, wp=wp, gamma=gm, matrix=mt)
         if nm == "Lab":
             d = r(obj[1]) or {}
             wp = [float(r(v)) for v in r(d.get("WhitePoint")) or [0.9505, 1, 1.089]]

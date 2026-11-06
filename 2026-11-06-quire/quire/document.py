@@ -16,6 +16,9 @@ class Document:
         if isinstance(data, str):
             with open(data, "rb") as f:
                 data = f.read()
+        k = data.find(b"%PDF-", 0, 1024)
+        if k > 0:  # junk before the header: offsets are relative to the header (Acrobat's rule)
+            data = data[k:]
         self.data = data
         self.xref = {}          # num -> ("n", offset, gen) | ("c", objstm_num, index)
         self.trailer = {}
@@ -362,7 +365,7 @@ class Document:
                 if isinstance(o, dict) and o.get("Type") == "Catalog":
                     self.trailer["Root"] = Ref(num, 0)
             if "Root" not in self.trailer:
-                raise PdfError("cannot reconstruct: no catalog found")
+                raise PdfError("not a PDF file (or too damaged to recover): no document catalog found")
         self.warnings.append(f"xref reconstructed ({reason})")
 
     def _setup_encryption_inner(self):

@@ -73,3 +73,57 @@ if __name__ == "__main__":
     if "chromium" in which: chromium()
     if "libreoffice" in which: libreoffice()
     if "pypdf" in which: pypdf_variants()
+
+
+def jpeg_fixtures():
+    """Needs Pillow. Writes small JPEGs of every flavour the decoder supports."""
+    import io, math
+    from PIL import Image
+    w, h = 96, 64
+    img = Image.new("RGB", (w, h)); px = img.load()
+    for y in range(h):
+        for x in range(w):
+            px[x, y] = (int(255 * x / w), int(255 * y / h), int(128 + 100 * math.sin(x / 6 + y / 8)))
+            if (x // 12 + y // 12) % 5 == 0:
+                px[x, y] = (230, 40, 40)
+    flavours = {"jpg_420": (img, dict(subsampling=2, quality=88)), "jpg_444": (img, dict(subsampling=0, quality=92)),
+                "jpg_prog": (img, dict(subsampling=2, quality=85, progressive=True)),
+                "jpg_gray": (img.convert("L"), dict(quality=90)), "jpg_cmyk": (img.convert("CMYK"), dict(quality=90)),
+                "jpg_rst": (img, dict(subsampling=2, quality=80, restart_marker_blocks=4))}
+    for n, (im, kw) in flavours.items():
+        im.save(os.path.join(FX, n + ".jpg"), "JPEG", **kw)
+
+
+if __name__ == "__main__" and "jpeg" in sys.argv[1:]:
+    jpeg_fixtures()
+
+
+def chromium_cff():
+    """A page set in Inter (OpenType/CFF) so the CFF charstring interpreter gets exercised."""
+    tmp = tempfile.mkdtemp()
+    html = """<!doctype html><meta charset=utf-8><style>@page{size:A5;margin:14mm}body{font-family:'Inter';font-size:12pt;line-height:1.4}
+h1{font-weight:800;font-size:24pt;margin:0 0 8pt}.l{font-weight:300}.i{font-style:italic}.b{font-weight:700}</style>
+<h1>Compact Font Format</h1><p>Charstrings are tiny programs: rlineto, rrcurveto, hintmask, callsubr. Sphinx of black quartz, judge my vow! 0123456789 &amp; @ # %</p>
+<p class=l>Light weight — “curly quotes”, naïve café, Ångström, ß, ﬁ ligature.</p><p class=i>Italic style text with <span class=b>bold inside</span>.</p>
+<p style="font-size:40pt;letter-spacing:-1px">Qgyj&amp;@</p>"""
+    open(tmp + "/c.html", "w").write(html)
+    js = f"""const {{chromium}}=require('playwright');(async()=>{{const b=await chromium.launch();const p=await b.newPage();
+await p.goto('file://{tmp}/c.html');await p.pdf({{path:'{FX}/chrome_cff.pdf',format:'A5',printBackground:true,preferCSSPageSize:true}});await b.close()}})()"""
+    open(tmp + "/g.js", "w").write(js)
+    subprocess.check_call(["node", tmp + "/g.js"], env={**os.environ, "NODE_PATH": subprocess.check_output(["npm", "root", "-g"]).decode().strip()})
+
+
+if __name__ == "__main__" and "cff" in sys.argv[1:]:
+    chromium_cff()
+
+
+def libreoffice_cff():
+    """Inter via LibreOffice => embedded Type1C (bare CFF) fonts with built-in encodings."""
+    tmp = tempfile.mkdtemp()
+    open(tmp + "/lo.html", "w").write("""<html><body style="font-family:Inter;font-size:14pt"><h1 style="font-family:Inter">Compact Font Format</h1><p>Charstrings are tiny programs: rlineto, rrcurveto, hintmask, callsubr. Sphinx of black quartz, judge my vow! 0123456789 &amp; @ # %</p><p><i>Italic style</i> and <b>bold style</b> — “curly quotes”, naïve café, Ångström.</p><p style="font-family:'Inter Display';font-size:30pt">Qgyj&amp;@ Display</p></body></html>""")
+    subprocess.check_call(["libreoffice", "--headless", "--convert-to", "pdf:writer_web_pdf_Export", "--outdir", tmp, tmp + "/lo.html"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    shutil.copy(tmp + "/lo.pdf", FX + "/libreoffice_cff.pdf")
+
+
+if __name__ == "__main__" and "locff" in sys.argv[1:]:
+    libreoffice_cff()

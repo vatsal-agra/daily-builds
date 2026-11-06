@@ -268,3 +268,29 @@ class TestRender(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestEncryptedObjectStreams(unittest.TestCase):
+    """AES-128 + object streams + xref stream, written by tests/encwriter.py and checked against poppler."""
+    def test_roundtrip_and_poppler(self):
+        from encwriter import encrypt_pdf
+        src = Document(fx("chrome.pdf"))
+        data = encrypt_pdf(src, b"secret", b"owner")
+        d = Document(data, b"secret")
+        self.assertFalse(d.repaired)
+        self.assertTrue(any(e[0] == "c" for e in d.xref.values()))
+        self.assertEqual(extract_text(d), extract_text(src))
+        self.assertEqual(Document(data, b"owner").dec.who, "owner")
+        with self.assertRaises(WrongPassword):
+            Document(data, b"wrong")
+        if HAVE_POPPLER:
+            with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
+                f.write(data); f.flush()
+                self.assertGreater(token_ratio(extract_text(d), poppler_text(f.name, "secret")), 0.95)
+
+    def test_reconstruction_of_encrypted_file(self):
+        from encwriter import encrypt_pdf
+        data = encrypt_pdf(Document(fx("libreoffice.pdf")), b"pw", b"ow")
+        d = Document(data[:data.rindex(b"startxref")], b"pw")   # xref lost: must rescan, decrypt object streams, find the catalog
+        self.assertTrue(d.repaired)
+        self.assertEqual(extract_text(d), extract_text(Document(fx("libreoffice.pdf"))))

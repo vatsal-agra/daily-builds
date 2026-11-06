@@ -63,11 +63,7 @@ def flatten(ops, m, tol=0.12):
         elif k == "Z":
             if cur is not None:
                 subs.append((cur, True))
-                cur = [start] if start is not None else None
-                if cur is not None:
-                    # a new subpath implicitly starts at the same point; mark as pending (dropped if unused)
-                    cur = [start]
-                    subs_pending = True  # noqa: F841
+                cur = [start] if start is not None else None  # next segment implicitly restarts here
     if cur is not None and len(cur) >= 1:
         # drop a lone start-point left by 'Z'
         if not (len(cur) == 1 and subs and subs[-1][1] and subs[-1][0][0] == cur[0]):
@@ -90,6 +86,9 @@ def dash_polyline(pts, closed, dash, phase):
         arr = arr * 2
     total = sum(arr)
     if total <= 1e-9 or any(v < 0 for v in arr):
+        return [(pts, False)]
+    length = sum(math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]) for i in range(len(pts) - 1))
+    if length / total * len(arr) > 200000:  # absurdly fine dash pattern: draw solid instead of hanging
         return [(pts, False)]
     idx = 0
     phase = phase % total if total else 0
@@ -211,12 +210,8 @@ def stroke_polygons(subpaths, width, cap, join, miter_limit):
             a_ = (p[0] + n0[0], p[1] + n0[1])
             b_ = (p[0] + n1[0], p[1] + n1[1])
             if join == 0:
-                # miter: ratio = 1/sin(theta/2); cos(theta)= -dot between segments
-                sin_half = math.sqrt(max((1 - (-dot if False else dot)) / 2.0, 0.0)) if False else None
-                # angle between segments theta: cos(theta) = -dot  -> sin(theta/2) = sqrt((1+cos)/2)= sqrt((1-dot)/2)
-                s2 = math.sqrt(max((1 - dot) / 2.0, 0.0))
-                # miter length / width = 1/ sin(theta/2) where theta = pi - turn ; turn has cos = dot
-                # => sin(theta/2) = cos(turn/2) = sqrt((1+dot)/2)
+                # miter length / line width = 1 / sin(theta/2), theta = interior angle = pi - turn;
+                # sin(theta/2) = cos(turn/2) = sqrt((1 + dot) / 2), dot = cos(turn)
                 s2 = math.sqrt(max((1 + dot) / 2.0, 0.0))
                 if s2 > 1e-9 and 1.0 / s2 <= miter_limit:
                     mx, my = n0[0] + n1[0], n0[1] + n1[1]

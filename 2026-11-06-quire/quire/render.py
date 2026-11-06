@@ -2,7 +2,7 @@
 import math
 
 from .content import Device, Interpreter, hidden_ocgs, mmul, minv, apply, IDENT, Shading, transform_path
-from .objects import Stream, Name
+from .objects import Stream, Name, Ref
 from . import colorspace as cs
 from . import raster as R
 from . import filters
@@ -342,20 +342,35 @@ class Renderer(Device):
         sc = math.sqrt(det) if det > 1e-12 else 0.0
         if sc == 0:
             return
-        subs = R.flatten(path, IDENT, tol=0.12 / sc)
         w = style["w"]
         if w * sc < 1.0:
             w = 1.0 / sc
         dash, phase = style["dash"]
+        axis = abs(m[1]) < 1e-9 and abs(m[2]) < 1e-9 and abs(abs(m[0]) - abs(m[3])) < 1e-6 * sc
+        subs = R.flatten(path, IDENT, tol=0.12 / sc)
         if dash and any(v > 0 for v in dash):
             ns = []
             for pts, closed in subs:
                 if len(pts) >= 2:
                     ns += R.dash_polyline(pts, closed, dash, phase)
             subs = ns
-        polys_u = R.stroke_polygons(subs, w, style["cap"], style["join"], style["miter"])
         a, b, c, d, e, f = m
-        polys = [[(a * x + c * y + e, b * x + d * y + f) for x, y in poly] for poly in polys_u]
+        if axis and w * sc < 3.0:
+            # stroke adjustment (as poppler does): thin axis-aligned lines are snapped to whole pixels
+            wr = max(1, int(round(w * sc)))
+            adj = []
+            for pts, closed in subs:
+                dev = [(a * x + e, d * y + f) for x, y in pts]
+                if all(abs(p[0] - q[0]) < 1e-6 or abs(p[1] - q[1]) < 1e-6 for p, q in zip(dev, dev[1:] + ([dev[0]] if closed else []))):
+                    if wr % 2:
+                        dev = [(math.floor(x) + 0.5, math.floor(y) + 0.5) for x, y in dev]
+                    else:
+                        dev = [(round(x), round(y)) for x, y in dev]
+                adj.append((dev, closed))
+            polys = R.stroke_polygons(adj, wr, style["cap"], style["join"], style["miter"])
+        else:
+            polys_u = R.stroke_polygons(subs, w, style["cap"], style["join"], style["miter"])
+            polys = [[(a * x + c * y + e, b * x + d * y + f) for x, y in poly] for poly in polys_u]
         if not polys:
             return
         p = self._paint_of(paint, alpha)
@@ -398,21 +413,42 @@ class Renderer(Device):
         W, H = img.w, img.h
         rgb, al = img.rgb, img.alpha
 
+        # poppler's rule: upscaling is bilinear below 400 %, nearest-neighbour (crisp pixels) from 400 % up
+        smooth = (sx > W or sy > H) and sx < 4 * W and sy < 4 * H
+
         def paint(px, py):
             u = inv[0] * (px + 0.5) + inv[2] * (py + 0.5) + inv[4]
             v = inv[1] * (px + 0.5) + inv[3] * (py + 0.5) + inv[5]
-            ix = int(u * W)
-            iy = int((1 - v) * H)
-            if ix < 0:
-                ix = 0
-            elif ix >= W:
-                ix = W - 1
-            if iy < 0:
-                iy = 0
-            elif iy >= H:
-                iy = H - 1
-            i = iy * W + ix
-            return (rgb[3 * i], rgb[3 * i + 1], rgb[3 * i + 2], al[i] / 255.0 if al is not None else 1.0)
+            fx = u * W
+            fy = (1 - v) * H
+            if not smooth or W < 2 or H < 2 or img.stencil:
+                ix = int(fx)
+                iy = int(fy)
+                ix = 0 if ix < 0 else W - 1 if ix >= W else ix
+                iy = 0 if iy < 0 else H - 1 if iy >= H else iy
+                i = iy * W + ix
+                return (rgb[3 * i], rgb[3 * i + 1], rgb[3 * i + 2], al[i] / 255.0 if al is not None else 1.0)
+            fx -= 0.5
+            fy -= 0.5
+            x0 = int(math.floor(fx))
+            y0 = int(math.floor(fy))
+            tx = fx - x0
+            ty = fy - y0
+            x1 = x0 + 1
+            y1 = y0 + 1
+            x0 = 0 if x0 < 0 else W - 1 if x0 >= W else x0
+            x1 = 0 if x1 < 0 else W - 1 if x1 >= W else x1
+            y0 = 0 if y0 < 0 else H - 1 if y0 >= H else y0
+            y1 = 0 if y1 < 0 else H - 1 if y1 >= H else y1
+            i00, i10, i01, i11 = y0 * W + x0, y0 * W + x1, y1 * W + x0, y1 * W + x1
+            w00, w10, w01, w11 = (1 - tx) * (1 - ty), tx * (1 - ty), (1 - tx) * ty, tx * ty
+            o = (rgb[3 * i00] * w00 + rgb[3 * i10] * w10 + rgb[3 * i01] * w01 + rgb[3 * i11] * w11,
+                 rgb[3 * i00 + 1] * w00 + rgb[3 * i10 + 1] * w10 + rgb[3 * i01 + 1] * w01 + rgb[3 * i11 + 1] * w11,
+                 rgb[3 * i00 + 2] * w00 + rgb[3 * i10 + 2] * w10 + rgb[3 * i01 + 2] * w01 + rgb[3 * i11 + 2] * w11)
+            a = 1.0
+            if al is not None:
+                a = (al[i00] * w00 + al[i10] * w10 + al[i01] * w01 + al[i11] * w11) / 255.0
+            return (o[0], o[1], o[2], a)
         quad = [apply(m, 0, 0), apply(m, 1, 0), apply(m, 1, 1), apply(m, 0, 1)]
         self.cv.fill_polys([quad], False, self.cur_clip, paint, alpha)
 
@@ -472,21 +508,98 @@ class Renderer(Device):
         return paint_fn
 
 
-def render_page(doc, page, dpi=72.0, highlights=None, background=(255, 255, 255)):
+def render_page(doc, page, dpi=72.0, highlights=None, background=(255, 255, 255), annotations=True):
     """Render a page dict to a Canvas. highlights: list of (x0,y0,x1,y1) user-space rects."""
     s = dpi / 72.0
     box = doc.page_box(page)
     rot = doc.page_rotate(page)
     base, W, H = page_matrix(box, rot, s)
+    if W * H > 60_000_000:
+        raise ValueError(f"page would be {int(W)}x{int(H)} pixels; use a lower --dpi")
     cv = R.Canvas(max(1, int(math.ceil(W - 1e-6))), max(1, int(math.ceil(H - 1e-6))), background)
     dev = Renderer(doc, cv, base)
     res = doc.resolve(page.get("Resources"))
     data = doc.page_content(page)
     Interpreter(doc, dev, res if isinstance(res, dict) else {}, base, hidden_ocgs=hidden_ocgs(doc)).run(data)
     dev.cur_clip = R.Clip(0, 0, cv.w, cv.h)
+    if annotations:
+        _draw_annotations(doc, page, dev, base, res, hidden_ocgs(doc))
+        dev.cur_clip = R.Clip(0, 0, cv.w, cv.h)
     for rect in highlights or []:
         x0, y0, x1, y1 = rect
         quad = [apply(base, x0, y0), apply(base, x1, y0), apply(base, x1, y1), apply(base, x0, y1)]
         cv.fill_polys([quad], False, dev.cur_clip, (255, 214, 0), 0.4)
     doc.render_unsupported = dev.unsupported
     return cv
+
+
+def _draw_annotations(doc, page, dev, base, res, hidden):
+    """Paint annotation appearance streams (/AP /N) the way viewers do: BBox*Matrix is fitted to /Rect."""
+    r = doc.resolve
+    annots = r(page.get("Annots"))
+    if not isinstance(annots, list):
+        return
+    for aref in annots:
+        a = r(aref)
+        if not isinstance(a, dict) or str(r(a.get("Subtype"))) == "Popup":
+            continue
+        flags = int(r(a.get("F")) or 0)
+        if flags & 2 or flags & 32:   # Hidden / NoView
+            continue
+        ap = r(a.get("AP"))
+        n = r(ap.get("N")) if isinstance(ap, dict) else None
+        if isinstance(n, dict):       # appearance states: pick /AS
+            n = r(n.get(str(r(a.get("AS")) or "")))
+        rect = r(a.get("Rect"))
+        if not isinstance(n, Stream):
+            if str(r(a.get("Subtype"))) == "Link" and isinstance(rect, list) and len(rect) == 4:
+                _link_border(doc, a, rect, dev, base)
+            continue
+        if not isinstance(rect, list) or len(rect) != 4:
+            continue
+        try:
+            rx0, ry0, rx1, ry1 = (float(r(v)) for v in rect)
+            rx0, rx1 = sorted((rx0, rx1))
+            ry0, ry1 = sorted((ry0, ry1))
+            bb = [float(r(v)) for v in r(n.dict.get("BBox")) or [0, 0, 1, 1]]
+            mt = tuple(float(r(v)) for v in r(n.dict.get("Matrix")) or IDENT)
+            pts = [apply(mt, bb[0], bb[1]), apply(mt, bb[2], bb[1]), apply(mt, bb[2], bb[3]), apply(mt, bb[0], bb[3])]
+            bx0, bx1 = min(p[0] for p in pts), max(p[0] for p in pts)
+            by0, by1 = min(p[1] for p in pts), max(p[1] for p in pts)
+            sx = (rx1 - rx0) / (bx1 - bx0) if bx1 > bx0 else 1.0
+            sy = (ry1 - ry0) / (by1 - by0) if by1 > by0 else 1.0
+            A = (sx, 0, 0, sy, rx0 - bx0 * sx, ry0 - by0 * sy)
+            it = Interpreter(doc, dev, res if isinstance(res, dict) else {}, base, hidden_ocgs=hidden)
+            it.gs.ctm = mmul(A, base)
+            oc = a.get("OC")
+            if oc is not None and it._oc_hidden(oc):
+                continue
+            dev.cur_clip = R.Clip(0, 0, dev.cv.w, dev.cv.h)
+            it._form(n, aref if isinstance(aref, Ref) and False else n)
+        except Exception as e:  # noqa: BLE001
+            doc.warnings.append(f"annotation skipped: {type(e).__name__}: {e}")
+
+
+def _link_border(doc, a, rect, dev, base):
+    """Links without an appearance stream show their /Border (or /BS) as a rectangle, as viewers do."""
+    r = doc.resolve
+    border = r(a.get("Border"))
+    bs = r(a.get("BS"))
+    width, dash = None, []
+    if isinstance(bs, dict):
+        width = float(r(bs.get("W", 1)))
+        if str(r(bs.get("S")) or "S") == "D":
+            dash = [float(r(v)) for v in r(bs.get("D")) or [3]]
+    elif isinstance(border, list) and len(border) >= 3:
+        width = float(r(border[2]))
+        if len(border) > 3 and isinstance(r(border[3]), list):
+            dash = [float(r(v)) for v in r(border[3])]
+    if not width or width <= 0:
+        return
+    c = [float(r(v)) for v in r(a.get("C")) or [0, 0, 0]]
+    rgb = (c[0],) * 3 if len(c) == 1 else tuple(c) if len(c) == 3 else cs.cmyk_to_rgb(*c) if len(c) == 4 else (0.0, 0.0, 0.0)
+    x0, y0, x1, y1 = (float(r(v)) for v in rect)
+    x0, x1 = sorted((x0, x1)); y0, y1 = sorted((y0, y1))
+    path = [("M", x0, y0), ("L", x1, y0), ("L", x1, y1), ("L", x0, y1), ("Z",)]  # centred on the Rect edge (as poppler)
+    dev.cur_clip = R.Clip(0, 0, dev.cv.w, dev.cv.h)
+    dev.stroke(path, base, {"w": width, "cap": 0, "join": 0, "miter": 10, "dash": (dash, 0.0)}, ("rgb", rgb), 1.0)

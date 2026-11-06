@@ -15,7 +15,7 @@ doc = Document(f, pw.encode())
 cv = render_page(doc, doc.pages()[page - 1], dpi)
 tmp = tempfile.mkdtemp()
 open("/tmp/quire-cmp-ours.png", "wb").write(cv.to_png())
-cmd = ["pdftoppm", "-r", str(dpi), "-png", "-f", str(page), "-l", str(page)] + (["-upw", pw] if pw else []) + [f, tmp + "/ref"]
+cmd = ["pdftoppm", "-cropbox", "-r", str(dpi), "-png", "-f", str(page), "-l", str(page)] + (["-upw", pw] if pw else []) + [f, tmp + "/ref"]
 subprocess.check_call(cmd)
 ref = [x for x in os.listdir(tmp) if x.endswith(".png")][0]
 os.replace(tmp + "/" + ref, "/tmp/quire-cmp-ref.png")

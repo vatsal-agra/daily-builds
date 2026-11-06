@@ -212,7 +212,7 @@ class Interpreter:
                     if fn is not None:
                         try:
                             fn(ops)
-                        except (IndexError, TypeError, ValueError, ZeroDivisionError, KeyError, FunctionError, AttributeError) as e:
+                        except Exception as e:  # noqa: BLE001 — a bad operator must never abort the page
                             self.warnings.append(f"operator {t} failed: {type(e).__name__}: {e}")
                     ops = []
                 continue
@@ -293,6 +293,16 @@ class Interpreter:
         if "D" in d:
             dd = r(d["D"])
             g.dash = ([float(r(x)) for x in r(dd[0])], float(r(dd[1])))
+        sm = r(d.get("SMask"))
+        if isinstance(sm, dict):
+            self.warnings.append("soft mask (ExtGState /SMask) not supported: drawn unmasked") if "soft mask" not in " ".join(self.warnings) else None
+        bm = r(d.get("BM"))
+        if isinstance(bm, list) and bm:
+            bm = r(bm[0])
+        if bm is not None and str(bm) not in ("Normal", "Compatible"):
+            msg = f"blend mode {bm} not supported: drawn as Normal"
+            if msg not in self.warnings:
+                self.warnings.append(msg)
         if "CA" in d: g.sa = float(r(d["CA"]))
         if "ca" in d: g.fa = float(r(d["ca"]))
         if "Font" in d:
