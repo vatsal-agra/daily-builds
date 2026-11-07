@@ -43,8 +43,8 @@ Flags: `-O 0|1|2`, `-k <regs>` (2–64), `-alg ls|gc`, `-noinline`, `-engine vm|
 
 ## Results (honest numbers)
 - 34/34 `verify.sh` checks green; ~15,000 fuzz programs × 16 executors, 0 divergences after review fixes.
-- Optimiser at -O2 (dynamic IR instructions): gcdlcm 3133 → 1864, nqueens 137k → 109k, mandel 109k → 85k, collatz 237k → 187k. Inlining + SCCP delete `gcd`'s call entirely in `gcdlcm.sb`.
-- Allocators are close: graph colouring wins on call-heavy/loop-heavy code (ackermann 115k → 88k cycles at K=4, 0 vs 1,347 dynamic moves on a big function) but *loses* on `mandel` at K=4 (276k vs 226k cycles) — its spill choice is cost/degree, linear scan's furthest-end rule happened to suit that loop. Neither dominates.
+- Optimiser at -O2 (dynamic IR instructions): gcdlcm 3133 → 1864, nqueens 137k → 109k, mandel 109k → 85k, collatz 237k → 174k. Inlining + SCCP delete `gcd`'s call entirely in `gcdlcm.sb`.
+- Allocators are close: graph colouring wins on call-heavy/loop-heavy code (ackermann 115k → 88k cycles and collatz 690k → 351k cycles at K=4; 10 vs 1,347 dynamic moves on the big stress function) but *loses* on `mandel` at K=4 (276k vs 224k cycles) — its spill choice is cost/degree, linear scan's furthest-end rule happened to suit that loop. Neither dominates.
 - 1,500-statement function: 0.19 s (linear scan) / 0.9 s (graph colouring) to compile.
 - Fairness caveat: linear scan gets two extra scratch registers for spill reloads; graph colouring spills via temporaries and uses none.
 
