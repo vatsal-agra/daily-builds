@@ -5,6 +5,7 @@ import "fmt"
 type parser struct {
 	toks []Token
 	i    int
+	nest int
 }
 
 func (p *parser) peek() Token { return p.toks[p.i] }
@@ -104,8 +105,24 @@ func (p *parser) parseFunc() *FuncDecl {
 	return f
 }
 
+func (p *parser) enter(t Token) {
+	p.nest++
+	if p.nest > maxStmtNest {
+		p.fail(t, "nesting too deep (more than %d levels of blocks)", maxStmtNest)
+	}
+}
+
+func (p *parser) checkDepth(t Token, d int) int {
+	if d > maxExprDepth {
+		p.fail(t, "expression too deeply nested (more than %d levels)", maxExprDepth)
+	}
+	return d
+}
+
 func (p *parser) parseBlock() *BlockStmt {
 	lb := p.expectOp("{")
+	p.enter(lb)
+	defer func() { p.nest-- }()
 	b := &BlockStmt{P: lb.Pos}
 	for !p.isOp("}") {
 		if p.peek().Kind == TEOF {
@@ -198,6 +215,8 @@ func (p *parser) parseStmt() Stmt {
 
 func (p *parser) parseIf() Stmt {
 	t := p.next()
+	p.enter(t)
+	defer func() { p.nest-- }()
 	c := p.parseExpr()
 	s := &If{P: t.Pos, Cond: c, Then: p.parseBlock()}
 	if p.isKw("else") {
@@ -229,7 +248,8 @@ func (p *parser) parseBin(min int) Expr {
 		}
 		p.next()
 		r := p.parseBin(prec + 1)
-		l = &Binary{P: t.Pos, Op: t.Text, L: l, R: r}
+		d := p.checkDepth(t, 1+max(exprDepth(l), exprDepth(r)))
+		l = &Binary{P: t.Pos, Op: t.Text, L: l, R: r, d: d}
 	}
 }
 
@@ -237,7 +257,13 @@ func (p *parser) parseUnary() Expr {
 	t := p.peek()
 	if t.Kind == TOp && (t.Text == "-" || t.Text == "!" || t.Text == "~") {
 		p.next()
-		return &Unary{P: t.Pos, Op: t.Text, X: p.parseUnary()}
+		p.nest++
+		defer func() { p.nest-- }()
+		if p.nest > maxExprDepth {
+			p.fail(t, "expression too deeply nested (more than %d levels)", maxExprDepth)
+		}
+		x := p.parseUnary()
+		return &Unary{P: t.Pos, Op: t.Text, X: x, d: p.checkDepth(t, 1+exprDepth(x))}
 	}
 	return p.parsePrimary()
 }
@@ -251,17 +277,31 @@ func (p *parser) parsePrimary() Expr {
 		if p.isOp("(") {
 			p.next()
 			c := &Call{P: t.Pos, Name: t.Text}
+			p.nest++
+			defer func() { p.nest-- }()
+			if p.nest > maxExprDepth {
+				p.fail(t, "expression too deeply nested (more than %d levels)", maxExprDepth)
+			}
+			d := 1
 			for !p.isOp(")") {
-				c.Args = append(c.Args, p.parseExpr())
+				a := p.parseExpr()
+				d = max(d, 1+exprDepth(a))
+				c.Args = append(c.Args, a)
 				if !p.isOp(")") {
 					p.expectOp(",")
 				}
 			}
 			p.next()
+			c.d = p.checkDepth(t, d)
 			return c
 		}
 		return &VarRef{P: t.Pos, Name: t.Text}
 	case t.Kind == TOp && t.Text == "(":
+		p.nest++
+		defer func() { p.nest-- }()
+		if p.nest > maxExprDepth {
+			p.fail(t, "expression too deeply nested (more than %d levels)", maxExprDepth)
+		}
 		e := p.parseExpr()
 		p.expectOp(")")
 		return e

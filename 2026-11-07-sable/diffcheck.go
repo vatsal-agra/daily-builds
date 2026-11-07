@@ -15,7 +15,7 @@ type CheckResult struct {
 	Rows   []CheckRow
 }
 
-const checkFuel = 200_000_000
+const checkFuel = 50_000_000
 
 // CheckAll runs one program through every executor in the toolchain and
 // compares each against the AST oracle: lowered IR, SSA, every optimisation
@@ -30,6 +30,13 @@ func CheckAll(src string) (*CheckResult, error) {
 
 func CheckAST(ast *Program) (*CheckResult, error) {
 	res := &CheckResult{Oracle: RunAST(ast, checkFuel)}
+	// Executors only need to be as patient as the oracle was: a program that
+	// exhausted the oracle's budget is compiled (to catch compiler crashes) but
+	// barely run, so `check` on an endless loop returns immediately.
+	fuel := res.Oracle.Steps*50 + 1_000_000
+	if res.Oracle.Resource() {
+		fuel = 10_000
+	}
 	add := func(name string, o Outcome) {
 		row := CheckRow{Name: name, Outcome: o}
 		switch {
@@ -46,7 +53,7 @@ func CheckAST(ast *Program) (*CheckResult, error) {
 	if err := VerifyModule(lowered, false); err != nil {
 		return nil, err
 	}
-	add("IR (slots, pre-SSA)", RunIR(lowered, checkFuel*20))
+	add("IR (slots, pre-SSA)", RunIR(lowered, fuel))
 	for level := 0; level <= 2; level++ {
 		m := Lower(ast)
 		if err := BuildSSA(m); err != nil {
@@ -55,7 +62,7 @@ func CheckAST(ast *Program) (*CheckResult, error) {
 		if _, err := Optimize(m, Options{Level: level, Verify: true}); err != nil {
 			return nil, err
 		}
-		add(fmt.Sprintf("SSA -O%d (IR interpreter)", level), RunIR(m, checkFuel*20))
+		add(fmt.Sprintf("SSA -O%d (IR interpreter)", level), RunIR(m, fuel))
 		if level == 2 {
 			m2 := m
 			for _, alg := range []Alg{LinearScan, GraphColor} {
@@ -64,7 +71,7 @@ func CheckAST(ast *Program) (*CheckResult, error) {
 					if err != nil {
 						return nil, err
 					}
-					o, _ := RunProgram(img, checkFuel*20)
+					o, _ := RunProgram(img, fuel)
 					add(fmt.Sprintf("VM -O2 %v K=%d", alg, k), o)
 				}
 			}

@@ -186,16 +186,19 @@ type (
 		P  Pos
 		Op string // - ! ~
 		X  Expr
+		d  int // tree depth, bounded by the parser
 	}
 	Binary struct {
 		P    Pos
 		Op   string
 		L, R Expr
+		d    int
 	}
 	Call struct {
 		P    Pos
 		Name string
 		Args []Expr
+		d    int
 	}
 )
 
@@ -279,4 +282,23 @@ type FuncDecl struct {
 type Program struct {
 	Funcs  []*FuncDecl
 	ByName map[string]*FuncDecl
+}
+
+// Nesting limits keep every recursive pass (checker, lowering, interpreter) far
+// away from the Go stack limit on hostile input.
+const (
+	maxExprDepth = 2000
+	maxStmtNest  = 300
+)
+
+func exprDepth(e Expr) int {
+	switch e := e.(type) {
+	case *Unary:
+		return e.d
+	case *Binary:
+		return e.d
+	case *Call:
+		return e.d
+	}
+	return 1
 }

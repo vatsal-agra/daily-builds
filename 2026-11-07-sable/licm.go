@@ -6,44 +6,35 @@ import "sort"
 // a loop preheader (created on demand).
 func LICM(f *Func) bool {
 	changed := false
-	done := map[*Block]bool{}
-	for {
-		an := Analyze(f)
-		loops := an.Loops()
-		sort.SliceStable(loops, func(i, j int) bool { return len(loops[i].Blocks) < len(loops[j].Blocks) })
-		var lp *Loop
-		for _, l := range loops {
-			if !done[l.Header] {
-				lp = l
-				break
-			}
+	an := Analyze(f)
+	loops := an.Loops()
+	if len(loops) == 0 {
+		return false
+	}
+	// 1. give every loop a preheader (edits the CFG, so analyse afterwards)
+	created := false
+	for _, lp := range loops {
+		before := len(f.Blocks)
+		if preheader(f, lp) != nil && len(f.Blocks) != before {
+			created = true
 		}
-		if lp == nil {
-			return changed
-		}
-		done[lp.Header] = true
-		ph := preheader(f, lp)
+	}
+	if created {
+		an = Analyze(f)
+		loops = an.Loops()
+	}
+	// 2. hoist innermost loops first so invariants can climb out of nests
+	sort.SliceStable(loops, func(i, j int) bool { return len(loops[i].Blocks) < len(loops[j].Blocks) })
+	for _, lp := range loops {
+		ph := preheader(f, lp) // already exists: returns it without editing
 		if ph == nil {
 			continue
 		}
-		// recompute membership info after a possible CFG edit
-		an = Analyze(f)
-		var cur *Loop
-		for _, l := range an.Loops() {
-			if l.Header == lp.Header {
-				cur = l
-			}
-		}
-		if cur == nil {
-			continue
-		}
-		if hoist(f, an, cur, ph) {
+		if hoist(f, an, lp, ph) {
 			changed = true
 		}
-		if ph.ID >= 0 && lp.Header.predIndex(ph) >= 0 {
-			changed = changed || false
-		}
 	}
+	return changed || created
 }
 
 func preheader(f *Func, lp *Loop) *Block {

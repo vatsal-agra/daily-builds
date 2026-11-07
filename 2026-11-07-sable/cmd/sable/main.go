@@ -148,7 +148,13 @@ func showError(name, src string, err error) error {
 	msg := fmt.Sprintf("%s:%s: error: %s", name, e.Pos, e.Msg)
 	if e.Pos.Line >= 1 && e.Pos.Line <= len(lines) {
 		l := strings.ReplaceAll(lines[e.Pos.Line-1], "\t", " ")
-		msg += fmt.Sprintf("\n  %s\n  %s^", l, strings.Repeat(" ", max(e.Pos.Col-1, 0)))
+		col := max(e.Pos.Col-1, 0)
+		if len(l) > 100 { // keep the caret readable on very long lines
+			lo := max(col-40, 0)
+			hi := min(col+40, len(l))
+			l, col = l[lo:hi], col-lo
+		}
+		msg += fmt.Sprintf("\n  %s\n  %s^", l, strings.Repeat(" ", col))
 	}
 	return fmt.Errorf("%s", msg)
 }
@@ -170,7 +176,7 @@ func cmdRun(args []string) error {
 	var c common
 	c.register(fs)
 	engine := fs.String("engine", "vm", "executor: vm, ast or ir")
-	fuel := fs.Int64("fuel", 2_000_000_000, "instruction budget")
+	fuel := fs.Int64("fuel", 300_000_000, "instruction budget (about 2 s of VM time)")
 	stats := fs.Bool("stats", false, "print VM counters")
 	if err := parseFlags(fs, args); err != nil {
 		return err
@@ -310,7 +316,10 @@ func cmdStats(args []string) error {
 	if err != nil {
 		return showError(name, src, err)
 	}
-	oracle := sable.RunAST(prog, 2_000_000_000)
+	oracle := sable.RunAST(prog, 300_000_000)
+	if oracle.Resource() {
+		return fmt.Errorf("stats needs a program that finishes: oracle ended with %q", oracle.Trap)
+	}
 	fmt.Printf("oracle: %v   (AST steps %d)\n\n", oracle, oracle.Steps)
 	comp, err := sable.CompileAST(prog, cfg)
 	if err != nil {
@@ -326,8 +335,8 @@ func cmdStats(args []string) error {
 		optN += f.NumInstrs()
 	}
 	fmt.Printf("static IR instructions: %d -> %d\n", ssaN, optN)
-	ir0 := sable.RunIR(comp.SSA, 4_000_000_000)
-	ir1 := sable.RunIR(comp.Opt, 4_000_000_000)
+	ir0 := sable.RunIR(comp.SSA, oracle.Steps*60+10_000_000)
+	ir1 := sable.RunIR(comp.Opt, oracle.Steps*60+10_000_000)
 	fmt.Printf("dynamic IR instructions: %d -> %d\n\n", ir0.Steps, ir1.Steps)
 
 	fmt.Println("register allocation (dynamic counts from the VM; mem = loads+stores incl. callee-save traffic):")
@@ -341,7 +350,7 @@ func cmdStats(args []string) error {
 			if err != nil {
 				return err
 			}
-			out, st := sable.RunProgram(cm.Prog, 4_000_000_000)
+			out, st := sable.RunProgram(cm.Prog, oracle.Steps*60+10_000_000)
 			spilled, static := 0, 0
 			for _, f := range cm.Prog.Funcs {
 				spilled += cm.Prog.Stats[f.Name].Spilled
@@ -392,6 +401,16 @@ func cmdCheck(args []string) error {
 	if bad > 0 {
 		return fmt.Errorf("%d executor(s) disagree with the oracle", bad)
 	}
-	fmt.Printf("all %d executors agree\n", len(res.Rows))
+	skipped := 0
+	for _, r := range res.Rows {
+		if r.Skipped != "" {
+			skipped++
+		}
+	}
+	if skipped == len(res.Rows) {
+		fmt.Println("nothing compared: the program did not finish within the oracle's budget")
+		return nil
+	}
+	fmt.Printf("%d executors agree (%d skipped)\n", len(res.Rows)-skipped, skipped)
 	return nil
 }

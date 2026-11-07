@@ -4,12 +4,13 @@ package sable
 // dominance frontiers, natural loops.
 
 type Analysis struct {
-	F        *Func
-	RPO      []*Block
-	Index    map[*Block]int // RPO index
-	Idom     map[*Block]*Block
-	Children map[*Block][]*Block // dominator tree
-	DF       map[*Block][]*Block
+	F         *Func
+	RPO       []*Block
+	Index     map[*Block]int // RPO index
+	Idom      map[*Block]*Block
+	Children  map[*Block][]*Block // dominator tree
+	DF        map[*Block][]*Block
+	pre, post map[*Block]int // dominator-tree DFS numbering: O(1) dominance queries
 }
 
 func (f *Func) rpo() []*Block {
@@ -90,12 +91,36 @@ func Analyze(f *Func) *Analysis {
 		for _, p := range b.Preds {
 			r := p
 			for r != a.Idom[b] {
-				if !containsBlock(a.DF[r], b) {
+				// blocks are visited once each, so b can only repeat consecutively
+				if l := a.DF[r]; len(l) == 0 || l[len(l)-1] != b {
 					a.DF[r] = append(a.DF[r], b)
 				}
 				r = a.Idom[r]
 			}
 		}
+	}
+	a.pre, a.post = map[*Block]int{}, map[*Block]int{}
+	clock := 0
+	type frm struct {
+		b *Block
+		i int
+	}
+	stack := []frm{{f.Entry, 0}}
+	a.pre[f.Entry] = clock
+	clock++
+	for len(stack) > 0 {
+		t := &stack[len(stack)-1]
+		if kids := a.Children[t.b]; t.i < len(kids) {
+			c := kids[t.i]
+			t.i++
+			a.pre[c] = clock
+			clock++
+			stack = append(stack, frm{c, 0})
+			continue
+		}
+		a.post[t.b] = clock
+		clock++
+		stack = stack[:len(stack)-1]
 	}
 	return a
 }
@@ -111,15 +136,7 @@ func containsBlock(l []*Block, b *Block) bool {
 
 // Dominates reports whether a dominates b (reflexive).
 func (a *Analysis) Dominates(x, y *Block) bool {
-	for {
-		if x == y {
-			return true
-		}
-		if y == a.F.Entry {
-			return false
-		}
-		y = a.Idom[y]
-	}
+	return a.pre[x] <= a.pre[y] && a.post[y] <= a.post[x]
 }
 
 // Loop is a natural loop (all back edges to one header merged).
