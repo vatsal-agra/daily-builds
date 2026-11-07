@@ -1,0 +1,20 @@
+// trial division with short-circuit conditions and a loop-invariant bound
+func isprime(n) {
+    if n < 2 { return 0; }
+    var d = 2;
+    while d * d <= n {
+        if n % d == 0 { return 0; }
+        d = d + 1;
+    }
+    return 1;
+}
+func main() {
+    var count = 0;
+    var last = 0;
+    for var i = 0; i < 400; i = i + 1 {
+        if isprime(i) { count = count + 1; last = i; }
+    }
+    print(count);
+    print(last);
+    return count * 1000 + last;
+}

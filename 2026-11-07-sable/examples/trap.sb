@@ -1,0 +1,8 @@
+// the trap must survive optimisation even though the result is "unused"
+func main() {
+    print(1);
+    var d = 5 - 5;
+    var unused = 100 / d;
+    print(2);
+    return 0;
+}

@@ -1,0 +1,23 @@
+// N-Queens by bitmask backtracking: counts solutions for n = 1..8
+func solve(n, cols, d1, d2, row) {
+    if row == n { return 1; }
+    var count = 0;
+    var avail = ~(cols | d1 | d2) & ((1 << n) - 1);
+    while avail != 0 {
+        var bit = avail & -avail;
+        avail = avail ^ bit;
+        count = count + solve(n, cols | bit, ((d1 | bit) << 1) & ((1 << n) - 1), (d2 | bit) >> 1, row + 1);
+    }
+    return count;
+}
+func main() {
+    var n = 1;
+    var total = 0;
+    while n <= 8 {
+        var c = solve(n, 0, 0, 0, 0);
+        print(c);
+        total = total + c;
+        n = n + 1;
+    }
+    return total;
+}

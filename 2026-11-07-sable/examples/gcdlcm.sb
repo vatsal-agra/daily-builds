@@ -1,0 +1,18 @@
+// invariant code in loops, redundant expressions, dead computations
+func gcd(a, b) { while b != 0 { var t = a % b; a = b; b = t; } return a; }
+func main() {
+    var n = 50;
+    var k = 7;
+    var acc = 0;
+    var i = 1;
+    while i <= n {
+        var scale = k * k + 3 * k + 11;   // loop invariant
+        var dead = i * 99 + scale;         // never used
+        var a = i * scale;
+        var b = i * scale;                 // redundant with a
+        acc = acc + gcd(a, 360) + (a - b);
+        i = i + 1;
+    }
+    print(acc);
+    return acc;
+}

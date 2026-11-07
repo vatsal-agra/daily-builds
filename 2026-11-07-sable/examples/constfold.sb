@@ -1,0 +1,12 @@
+// SCCP showpiece: constants flow through branches and loops
+func f(x) {
+    var k = 10;
+    var r = 0;
+    if k > 5 { r = x + k * 2; } else { r = 12345; }
+    var i = 0;
+    var z = 0;
+    while i < 3 { z = z + k; i = i + 1; }
+    if z == 30 { r = r + 1; } else { r = r - 99999; }
+    return r;
+}
+func main() { print(f(1)); print(f(100)); return f(7) * 2 + (4 << 3) - (100 / 7) + (100 % 7); }
