@@ -1,7 +1,7 @@
 # REVIEW — adversarial pass over Sable (Phase 3)
 
 Method: (1) hostile hand-written programs and CLI abuse, (2) scale/limits attacks,
-(3) a random-program differential fuzzer (≈14,000 programs across seeds and sizes,
+(3) a random-program differential fuzzer (≈15,000 programs across seeds and sizes,
 every program run through 16 executors), (4) **mutation testing of the compiler
 itself** — 17 deliberately injected bugs, to learn whether my own tests would notice
 (a test suite that never fails proves nothing), (5) reading the generated code for
@@ -37,11 +37,11 @@ Caught only by the fuzzer: GVN treating `sub` as commutative · LICM hoisting a 
 ## Quality observations (not defects — recorded in README "where next")
 - No **shrink-wrapping**: `fib`'s base case still saves/restores two callee-saved registers it never touches.
 - No **loop rotation**: loops pay one extra `jmp` per iteration; no fused compare-and-branch.
-- Linear scan does no copy coalescing (the graph colourer does: it removes ~100× more moves on the 1,500-statement stress program: 10 vs 1,347 dynamic `mov`s).
+- Linear scan does no copy coalescing (the graph colourer does: the 1,500-statement stress program executes 10 dynamic `mov`s under graph colouring vs 1,347 under linear scan).
 - Inliner not yet written at the end of Phase 3 (stub returning 0) — implemented in Phase 4 (stretch #5).
 
 ## Fresh run-through (gate)
-After the fixes: `go vet`, `gofmt -l` clean; all unit/edge/scale tests green; fuzz seeds 1–300,
-1000–7000, 9000–12000 (funcs=6) and 50000–52000 (funcs=6): **0 findings**; the three
+After the fixes: `go vet`, `gofmt -l` clean; all unit/edge/scale tests green; fuzz seeds 1–300, 1000–6999,
+9000–11999 (funcs=6), 70000–72499 (funcs=5) and — in Phase 5 — 424242+1500 and 777000+600: **0 findings**; the three
 nesting bombs and the endless loop now return in milliseconds with a clear message.
 None of the nine issues above reproduces.
