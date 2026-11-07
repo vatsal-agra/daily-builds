@@ -202,7 +202,7 @@ type Assignment struct {
 	Slot map[int]int
 }
 
-func linearScan(mf *MFunc, t Target) (*Assignment, AllocStats) {
+func linearScan(mf *MFunc, t Target) (*Assignment, AllocStats, []*Interval) {
 	lv := computeLiveness(mf)
 	ivs := buildIntervals(mf, lv)
 	sort.SliceStable(ivs, func(i, j int) bool {
@@ -275,7 +275,7 @@ func linearScan(mf *MFunc, t Target) (*Assignment, AllocStats) {
 		}
 	}
 	st.Rounds = 1
-	return as, st
+	return as, st, ivs
 }
 
 func insertByEnd(l []*Interval, iv *Interval) []*Interval {
@@ -394,7 +394,7 @@ func Allocate(mf *MFunc, t Target, alg Alg) AllocStats {
 	var st AllocStats
 	switch alg {
 	case LinearScan:
-		as, st = linearScan(mf, t)
+		as, st, _ = linearScan(mf, t)
 	default:
 		as, st = graphColor(mf, t)
 	}
