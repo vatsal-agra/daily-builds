@@ -1,6 +1,6 @@
 # Reel — a from-scratch hybrid video codec (Go)
 
-Status: **Phase 3 (adversarial review) complete** — see [PLAN.md](PLAN.md) and [REVIEW.md](REVIEW.md).
+Status: **Phase 4 (stretch + polish) complete** — see [PLAN.md](PLAN.md) and [REVIEW.md](REVIEW.md).
 
 Reel is an H.264-style hybrid video codec written from scratch in Go (stdlib only): encoder, decoder,
 `.reel` container, procedural test-video generator, PSNR/SSIM metrics.
@@ -24,3 +24,7 @@ reel info clip.reel
 
 ## Review summary (Phase 3)
 11 findings fixed — the worst: a scene-cut detector that coded a fast scroll as all I-frames (504 KB → 30 KB after the fix, libx264: 31 KB). See [REVIEW.md](REVIEW.md).
+
+## Stretch features now shipped (Phase 4)
+Deblocking filter, B-frames, bitrate rate control, RDO + MC scene-cut detection, and `reel report` — an HTML rate–distortion lab
+(R-D curves per tool, BD-rate table, comparison with libx264 via ffmpeg, MV/mode maps, rate-control accuracy). Run `reel report -o report.html`.

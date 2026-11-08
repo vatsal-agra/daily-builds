@@ -30,8 +30,9 @@ shortcut I took. Every finding below was fixed and has a regression test or a sc
 * **Odd sizes** (17x33, 83x51, 16x16, one frame, two frames): encode → decode bit-exact; ffmpeg reads our Y4M output.
 * **Rate control** lands within ~1% of target for 60–1200 kbit/s on three presets (heavy noise bottoms out at the QP-51 floor, now reported).
 * **Closed loop**: decoder output equals the encoder reconstruction bit-for-bit across 12 tool combinations incl. B-frames, GOP/B interaction, odd size.
-* **Compression sanity vs libx264** at equal QP 28 on ffmpeg-generated clips: Reel's size is within ~7% and ~1–2 dB lower PSNR on
-  `testsrc2`/`mandelbrot`/`life` (a 20-year-old feature set vs a modern one) — believable, not suspicious.
+* **Compression sanity vs libx264** at the same nominal QP 28 on ffmpeg-generated clips (`testsrc2`, `mandelbrot`, `life`): Reel's
+  stream is 3-8% *smaller* than x264's MP4 but 1.1-1.9 dB *lower* in PSNR (QP scales are not equivalent, so this is only a sanity check;
+  the report's BD-rate numbers are the fair comparison) — believable for a 2000s-era feature set, not suspicious.
 
 ## Known limitations (deliberate scope, not bugs)
 * Intra: only 16x16 / 8x8-chroma prediction (no I4x4, no luma-DC Hadamard); chroma uses the luma QP.
