@@ -370,3 +370,148 @@ func TestRateControlAccuracy(t *testing.T) {
 		}
 	}
 }
+
+// ---- mutation-driven additions (Phase 5: mutants that survived the first suite) ----
+
+// Spec-literal reference for all 16 quarter-pel positions (H.264 sample naming:
+// G integer, b/h half, j centre, others averages of the two nearest samples).
+func TestQuarterPelAgainstSpecReference(t *testing.T) {
+	rng := rand.New(rand.NewSource(11))
+	p := newPlane(48, 48, 32)
+	for i := range p.Pix {
+		p.Pix[i] = uint8(rng.Intn(256))
+	}
+	at := func(x, y int) int { return int(p.Pix[p.idx(x, y)]) }
+	tp := []int{1, -5, 20, 20, -5, 1}
+	rawH := func(x, y int) int {
+		s := 0
+		for k, c := range tp {
+			s += c * at(x-2+k, y)
+		}
+		return s
+	}
+	rawV := func(x, y int) int {
+		s := 0
+		for k, c := range tp {
+			s += c * at(x, y-2+k)
+		}
+		return s
+	}
+	b := func(x, y int) int { return int(clip255((rawH(x, y) + 16) >> 5)) }
+	h := func(x, y int) int { return int(clip255((rawV(x, y) + 16) >> 5)) }
+	j := func(x, y int) int {
+		s := 0
+		for k, c := range tp {
+			s += c * rawH(x, y-2+k)
+		}
+		return int(clip255((s + 512) >> 10))
+	}
+	G := at
+	a := func(u, v int) int { return (u + v + 1) >> 1 }
+	ref := func(x, y, fx, fy int) int {
+		switch [2]int{fx, fy} {
+		case [2]int{0, 0}:
+			return G(x, y)
+		case [2]int{1, 0}:
+			return a(G(x, y), b(x, y))
+		case [2]int{2, 0}:
+			return b(x, y)
+		case [2]int{3, 0}:
+			return a(b(x, y), G(x+1, y))
+		case [2]int{0, 1}:
+			return a(G(x, y), h(x, y))
+		case [2]int{0, 2}:
+			return h(x, y)
+		case [2]int{0, 3}:
+			return a(h(x, y), G(x, y+1))
+		case [2]int{1, 1}:
+			return a(b(x, y), h(x, y))
+		case [2]int{3, 1}:
+			return a(b(x, y), h(x+1, y))
+		case [2]int{1, 3}:
+			return a(h(x, y), b(x, y+1))
+		case [2]int{3, 3}:
+			return a(h(x+1, y), b(x, y+1))
+		case [2]int{2, 2}:
+			return j(x, y)
+		case [2]int{2, 1}:
+			return a(b(x, y), j(x, y))
+		case [2]int{2, 3}:
+			return a(j(x, y), b(x, y+1))
+		case [2]int{1, 2}:
+			return a(h(x, y), j(x, y))
+		default:
+			return a(j(x, y), h(x+1, y)) // (3,2)
+		}
+	}
+	for fy := 0; fy < 4; fy++ {
+		for fx := 0; fx < 4; fx++ {
+			for it := 0; it < 60; it++ {
+				x, y := 4+rng.Intn(30), 4+rng.Intn(30)
+				var d [1]uint8
+				predLuma(p, x*4+fx, y*4+fy, 1, 1, d[:])
+				if int(d[0]) != ref(x, y, fx, fy) {
+					t.Fatalf("frac (%d,%d) at (%d,%d): got %d want %d", fx, fy, x, y, d[0], ref(x, y, fx, fy))
+				}
+			}
+		}
+	}
+}
+
+func TestBoundaryStrength(t *testing.T) {
+	fc := &frameCtx{}
+	mv := func(x, y int16) [2]MV { return [2]MV{{x, y}, {}} }
+	cases := []struct {
+		p, q Blk
+		want int
+	}{
+		{Blk{Intra: true}, Blk{}, 3},
+		{Blk{}, Blk{Intra: true}, 3},
+		{Blk{NZ: true, Use: 1}, Blk{Use: 1}, 2},
+		{Blk{Use: 1, MV: mv(0, 0)}, Blk{Use: 1, MV: mv(3, 3)}, 0},
+		{Blk{Use: 1, MV: mv(0, 0)}, Blk{Use: 1, MV: mv(4, 0)}, 1},
+		{Blk{Use: 1, MV: mv(0, 0)}, Blk{Use: 1, MV: mv(0, -5)}, 1},
+		{Blk{Use: 1}, Blk{Use: 2}, 1},
+		{Blk{Use: 3, MV: [2]MV{{1, 1}, {1, 1}}}, Blk{Use: 3, MV: [2]MV{{1, 1}, {9, 1}}}, 1},
+		{Blk{Use: 3, MV: [2]MV{{1, 1}, {1, 1}}}, Blk{Use: 3, MV: [2]MV{{2, 1}, {1, 2}}}, 0},
+	}
+	for i, c := range cases {
+		if got := fc.boundaryStrength(&c.p, &c.q); got != c.want {
+			t.Errorf("case %d: bS %d want %d", i, got, c.want)
+		}
+	}
+}
+
+// At a very low QP every plane must be reconstructed nearly losslessly: this
+// catches block-placement/mapping bugs (e.g. wrong chroma block order) that
+// the bit-exactness tests cannot, because encoder and decoder share the mapping.
+func TestHighQualityReconstruction(t *testing.T) {
+	for _, preset := range []string{"objects", "mixed"} {
+		v := gen(t, preset, 96, 80, 6)
+		p := DefaultParams()
+		p.QP = 8
+		p.BFrames = 1
+		r, _ := Encode(v, p)
+		for i, f := range r.Recon {
+			y, u, vv := PSNR(v.Frames[i], f)
+			if y < 44 || u < 44 || vv < 44 {
+				t.Errorf("%s frame %d: PSNR Y %.1f U %.1f V %.1f at QP 8", preset, i, y, u, vv)
+			}
+		}
+	}
+}
+
+// Regression band on a fixed configuration: guards encoder tuning (quantiser
+// rounding, search patterns, RDO) that bit-exactness cannot see.
+func TestCompressionRegressionBand(t *testing.T) {
+	v := gen(t, "mixed", 176, 144, 16)
+	p := DefaultParams()
+	p.QP, p.BFrames = 30, 2
+	r, _ := Encode(v, p)
+	rec := &Video{Width: v.Width, Height: v.Height, FPSNum: 30, FPSDen: 1, Frames: r.Recon}
+	m, _ := Compare(v, rec)
+	t.Logf("bytes=%d psnr=%.3f", r.Bytes, m.PSNR)
+	if r.Bytes < 7270 || r.Bytes > 7880 || m.PSNR < 37.2 {
+		t.Errorf("fixed-config result drifted: %d bytes, %.2f dB", r.Bytes, m.PSNR)
+	}
+}

@@ -44,3 +44,10 @@ shortcut I took. Every finding below was fixed and has a regression test or a sc
 ## Fresh run-through
 After the fixes: `go test ./codec` green (all of the above), the five ffmpeg-sourced clips re-encoded (cellauto 504 KB → 30 KB, others unchanged),
 CLI error/edge-case script re-run with clean messages. Zero of the listed issues reproduce.
+
+## Phase 5 addendum — mutation testing of the test-suite
+Eight single-line mutants were injected (quarter-pel neighbour, MV-predictor rule, bS residual rule, chroma block map, quantiser rounding,
+half-pel search pattern, RDO residual drop, skip context, DC rounding). The first suite let **5 survive**; that produced four new tests
+(spec-literal reference for all 16 quarter-pel positions, `boundaryStrength` table, QP-8 near-lossless reconstruction of every plane,
+fixed-config size/PSNR regression band). Result: 6 of 8 killed after, and the 2 survivors (half-pel search offset (0,-3) instead of (0,-2) and
+DC rounding) are encoder-side tuning changes that keep the stream valid and the size within the band — equivalent mutants for correctness purposes.
