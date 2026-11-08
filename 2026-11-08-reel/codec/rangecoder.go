@@ -37,6 +37,7 @@ type bitIO interface {
 	bit(c *Ctx, v int) int
 	bypass(v int) int
 	err() error
+	decoding() bool
 }
 
 // ---------------------------------------------------------------- encoder
@@ -97,7 +98,8 @@ func (e *rcEnc) bypass(v int) int {
 	return v
 }
 
-func (e *rcEnc) err() error { return nil }
+func (e *rcEnc) err() error     { return nil }
+func (e *rcEnc) decoding() bool { return false }
 
 func (e *rcEnc) finish() []byte {
 	for i := 0; i < 5; i++ {
@@ -178,14 +180,15 @@ func (d *rcDec) bypass(_ int) int {
 	return v
 }
 
-func (d *rcDec) err() error { return d.fault }
+func (d *rcDec) err() error     { return d.fault }
+func (d *rcDec) decoding() bool { return true }
 
 // ---------------------------------------------------------------- helpers
 
 // codeEG codes a non-negative integer with an order-k Exp-Golomb code using
 // bypass bins, bounded so corrupt streams cannot loop forever.
 func codeEG(io bitIO, v, k int) int {
-	if _, dec := io.(*rcDec); !dec {
+	if !io.decoding() {
 		v += 1 << k
 		n := 0
 		for (v >> (n + 1)) != 0 {

@@ -24,7 +24,8 @@ usage:
 `
 
 func fatal(format string, a ...any) {
-	fmt.Fprintf(os.Stderr, "reel: "+format+"\n", a...)
+	msg := strings.TrimPrefix(fmt.Sprintf(format, a...), "reel: ") // codec errors already carry the prefix
+	fmt.Fprintf(os.Stderr, "reel: %s\n", msg)
 	os.Exit(1)
 }
 
@@ -155,6 +156,14 @@ func cmdEnc(args []string) {
 	fmt.Printf("  size      %d bytes  (%.1f kbit/s, %.1f:1 vs raw)\n", r.Bytes, kbps, float64(raw)/float64(r.Bytes))
 	fmt.Printf("  quality   PSNR %.2f dB (Y %.2f U %.2f V %.2f)  SSIM %.4f\n", m.PSNR, m.PSNRY, m.PSNRU, m.PSNRV, m.SSIM)
 	fmt.Printf("  search    %d SAD evaluations\n", r.SADEvals)
+	if p.Bitrate > 0 {
+		switch {
+		case kbps > 1.15*float64(p.Bitrate):
+			fmt.Printf("  warning   target %d kbit/s is below what this content needs even at QP %d; got %.1f kbit/s\n", p.Bitrate, codec.MaxQP, kbps)
+		case kbps < 0.85*float64(p.Bitrate):
+			fmt.Printf("  note      the quantiser floor (QP 0) was reached; used only %.1f of the %d kbit/s target\n", kbps, p.Bitrate)
+		}
+	}
 }
 
 func cmdDec(args []string) {

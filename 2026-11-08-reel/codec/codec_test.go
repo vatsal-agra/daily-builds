@@ -2,7 +2,6 @@ package codec
 
 import (
 	"bytes"
-	"fmt"
 	"testing"
 )
 
@@ -74,4 +73,36 @@ func TestBitExactAllTools(t *testing.T) {
 	}
 }
 
-func TestSmoke(t *testing.T) { fmt.Sprint() }
+// Motion estimation must recover the generator's true sub-pixel pan
+// (1.7, 0.6) px/frame = (6.8, 2.4) quarter-pel, for both search algorithms.
+func TestMotionRecoversTruePan(t *testing.T) {
+	v := gen(t, "pan", 96, 96, 6)
+	for _, algo := range []int{SearchDiamond, SearchFull} {
+		p := DefaultParams()
+		p.Search = algo
+		p.QP = 22
+		r, err := Encode(v, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, st, err := Decode(r.Stream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		good, total := 0, 0
+		for _, f := range st[1:] {
+			for _, m := range f.MVs {
+				if m.Kind == 2 {
+					continue
+				}
+				total++
+				if iabs(m.MVX-7) <= 1 && iabs(m.MVY-2) <= 1 {
+					good++
+				}
+			}
+		}
+		if total == 0 || float64(good)/float64(total) < 0.75 {
+			t.Errorf("algo %d: only %d/%d macroblocks found the true motion (7,2)", algo, good, total)
+		}
+	}
+}

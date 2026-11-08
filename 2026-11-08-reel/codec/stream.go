@@ -25,7 +25,8 @@ type FrameStat struct {
 	Type, Disp, QP, Bytes int
 	Skip, Intra           int // macroblock counts
 	Inter16, InterSplit   int
-	L0, L1, Bi            int // partitions by prediction direction
+	L0, L1, Bi            int    // partitions by prediction direction
+	IModes                [4]int // intra 16x16 luma modes used (DC, V, H, TM)
 	PSNRY, PSNRU, PSNRV   float64
 	SADEvals              int
 	Deblock               bool
@@ -79,6 +80,12 @@ func Decode(data []byte) (v *Video, stats []FrameStat, err error) {
 			v, stats, err = nil, nil, fmt.Errorf("reel: corrupt stream (internal check failed: %v)", r)
 		}
 	}()
+	return decodeNoRecover(data)
+}
+
+// decodeNoRecover is Decode without the safety net, so tests can prove the
+// safety net is never needed.
+func decodeNoRecover(data []byte) (v *Video, stats []FrameStat, err error) {
 	if len(data) < hdrSize || string(data[:4]) != magic {
 		return nil, nil, errors.New("reel: not a .reel stream (bad magic)")
 	}
@@ -152,6 +159,7 @@ func Decode(data []byte) (v *Video, stats []FrameStat, err error) {
 				}
 				fc.reconMB(&mb, mx, my)
 				st.count(&mb)
+				st.MVs = append(st.MVs, motionSummary(&mb))
 			}
 		}
 		if fc.deblock {
@@ -188,6 +196,7 @@ func (st *FrameStat) count(mb *MB) {
 		st.Skip++
 	case mb.Intra:
 		st.Intra++
+		st.IModes[mb.IMode]++
 	case mb.Shape == 0:
 		st.Inter16++
 	default:
@@ -205,4 +214,31 @@ func (st *FrameStat) count(mb *MB) {
 			}
 		}
 	}
+}
+
+// motionSummary reduces a macroblock to what the visualiser needs.
+func motionSummary(mb *MB) MBMotion {
+	switch {
+	case mb.Skip:
+		return MBMotion{Kind: 0, MVX: int(mb.Parts[0].MV[0].X), MVY: int(mb.Parts[0].MV[0].Y), Dir: mb.Parts[0].Dir}
+	case mb.Intra:
+		return MBMotion{Kind: 2}
+	}
+	// representative vector: average over partitions' first used list
+	sx, sy, n := 0, 0, 0
+	for pi := range partRects[mb.Shape] {
+		p := mb.Parts[pi]
+		l := 0
+		if p.Dir&1 == 0 {
+			l = 1
+		}
+		sx += int(p.MV[l].X)
+		sy += int(p.MV[l].Y)
+		n++
+	}
+	k := 1
+	if mb.Shape != 0 {
+		k = 3
+	}
+	return MBMotion{Kind: k, MVX: sx / n, MVY: sy / n, Dir: mb.Parts[0].Dir}
 }

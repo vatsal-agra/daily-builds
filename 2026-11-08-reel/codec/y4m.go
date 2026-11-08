@@ -60,8 +60,10 @@ func ReadY4M(r io.Reader) (*Video, error) {
 				}
 			}
 		case 'C':
-			if !strings.HasPrefix(val, "420") {
-				return nil, fmt.Errorf("y4m: unsupported chroma format C%s (only 4:2:0)", val)
+			switch val {
+			case "420", "420jpeg", "420mpeg2", "420paldv":
+			default:
+				return nil, fmt.Errorf("y4m: unsupported chroma format C%s (only 8-bit 4:2:0)", val)
 			}
 		case 'I':
 			if val != "p" && val != "?" {

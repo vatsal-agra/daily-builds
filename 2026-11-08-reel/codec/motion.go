@@ -144,9 +144,10 @@ func (s *searcher) run(cands []MV) (MV, float64) {
 	}
 	switch s.algo {
 	case SearchFull:
+		// exhaustive: duplicates of the few candidates are harmless, so skip the map.
 		for dy := -s.rng; dy <= s.rng; dy++ {
 			for dx := -s.rng; dx <= s.rng; dx++ {
-				try(dx, dy)
+				s.tryInt(dx, dy)
 			}
 		}
 	default:

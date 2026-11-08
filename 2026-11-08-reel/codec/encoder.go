@@ -461,28 +461,91 @@ func (e *enc) encodeFrame(src *Frame, typ int, refs [2]*Frame, qp, disp int) ([]
 	return append(hdr, payload...), fc.cur, st
 }
 
+// lumaCopy extracts the visible luma into a tight int slice.
+func lumaCopy(f *Frame) []int {
+	pix := make([]int, f.Width*f.Height)
+	for y := 0; y < f.Height; y++ {
+		for x := 0; x < f.Width; x++ {
+			pix[y*f.Width+x] = int(f.Y.Pix[f.Y.idx(x, y)])
+		}
+	}
+	return pix
+}
+
+// cutScore measures how badly frame b is predicted from frame a *after
+// motion compensation*: a plain frame difference fires on every frame of a
+// fast scroll, a motion-searched one only on genuine scene changes. Blocks are
+// 16x16 (sampled on a 2-pixel lattice), search is exhaustive over +-8 pixels.
+// It returns the mean best-match SAD per sample and the fraction of blocks for
+// which inter prediction is barely better than coding the block from its own mean.
+func cutScore(a, b []int, w, h int) (meanSAD, poorFrac float64) {
+	const bs, rng = 16, 8
+	var total, samples float64
+	poor, blocks := 0, 0
+	for by := 0; by+bs <= h; by += bs {
+		for bx := 0; bx+bs <= w; bx += bs {
+			mean, cnt := 0, 0
+			for j := 0; j < bs; j += 2 {
+				for i := 0; i < bs; i += 2 {
+					mean += b[(by+j)*w+bx+i]
+					cnt++
+				}
+			}
+			mean /= cnt
+			intra := 0
+			for j := 0; j < bs; j += 2 {
+				for i := 0; i < bs; i += 2 {
+					intra += iabs(b[(by+j)*w+bx+i] - mean)
+				}
+			}
+			best := 1 << 30
+			for dy := -rng; dy <= rng; dy++ {
+				for dx := -rng; dx <= rng; dx++ {
+					s := 0
+					for j := 0; j < bs && s < best; j += 2 {
+						yy := clampi(by+j+dy, 0, h-1)
+						for i := 0; i < bs; i += 2 {
+							xx := clampi(bx+i+dx, 0, w-1)
+							s += iabs(b[(by+j)*w+bx+i] - a[yy*w+xx])
+						}
+					}
+					if s < best {
+						best = s
+					}
+				}
+			}
+			total += float64(best)
+			samples += float64(cnt)
+			blocks++
+			if float64(best) > 0.8*float64(intra) {
+				poor++
+			}
+		}
+	}
+	if blocks == 0 {
+		return 0, 0
+	}
+	return total / samples, float64(poor) / float64(blocks)
+}
+
 // detectCuts flags frames that start a new scene.
 func detectCuts(v *Video) []bool {
 	n := len(v.Frames)
 	cut := make([]bool, n)
-	diff := make([]float64, n)
+	w, h := v.Width, v.Height
+	prev := lumaCopy(v.Frames[0])
+	// A cut is a *jump* in unpredictability relative to the clip's own
+	// baseline: steady heavy noise is hard to predict on every frame, but
+	// it is not a scene change.
+	base := 6.0
 	for i := 1; i < n; i++ {
-		a, b := v.Frames[i-1].Y, v.Frames[i].Y
-		var s, c float64
-		for y := 0; y < v.Height; y += 2 {
-			for x := 0; x < v.Width; x += 2 {
-				s += math.Abs(float64(a.Pix[a.idx(x, y)]) - float64(b.Pix[b.idx(x, y)]))
-				c++
-			}
+		cur := lumaCopy(v.Frames[i])
+		m, poor := cutScore(prev, cur, w, h)
+		cut[i] = (poor > 0.6 && m > 6 && m > 2.5*base+2) || m > 40
+		if !cut[i] {
+			base = math.Max(m, 1)
 		}
-		diff[i] = s / c
-		prev := 2.0
-		if i > 1 {
-			prev = math.Max(diff[i-1], 2)
-		}
-		if diff[i] > 30 || (diff[i] > 14 && diff[i] > 4*prev) {
-			cut[i] = true
-		}
+		prev = cur
 	}
 	return cut
 }
@@ -535,6 +598,14 @@ func Encode(v *Video, p EncParams) (*EncResult, error) {
 	}
 	if v.Width < 16 || v.Height < 16 || v.Width > maxDim || v.Height > maxDim {
 		return nil, fmt.Errorf("encode: unsupported size %dx%d", v.Width, v.Height)
+	}
+	for i, f := range v.Frames {
+		if f == nil || f.Width != v.Width || f.Height != v.Height {
+			return nil, fmt.Errorf("encode: frame %d has a different size from the sequence", i)
+		}
+	}
+	if v.FPSNum <= 0 || v.FPSDen <= 0 {
+		return nil, errors.New("encode: invalid frame rate")
 	}
 	var cut []bool
 	if p.SceneCut {

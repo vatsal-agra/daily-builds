@@ -1,37 +1,22 @@
 package codec
 
-import "math"
-
 // In-loop deblocking filter. Boundary strength bS is derived from the coding
 // state of the two 4x4 blocks that meet at an edge:
 //   3 — either side intra;  2 — either side has coded residual;
 //   1 — motion differs by >= 1 pel (or different prediction lists);  0 — no filtering.
 // alpha/beta thresholds grow with QP (flat for QP < 16, where blocking is invisible).
 
-var alphaTab = [52]int{}
-var betaTab = [52]int{}
-var tc0Tab = [4][52]int{}
+// The tables are integer literals (not computed with floating point) so the
+// bitstream definition cannot differ between platforms.
+var alphaTab = [52]int{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 5, 6, 7, 8, 9, 10, 12, 13, 15, 17, 20, 22, 25, 28, 32, 36, 40, 45, 50, 56, 63, 71, 80, 90, 101, 113, 127, 144, 162, 182, 203, 226, 255, 255}
+var betaTab = [52]int{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18}
 
-func init() {
-	alpha := []int{4, 4, 5, 6, 7, 8, 9, 10, 12, 13, 15, 17, 20, 22, 25, 28, 32, 36, 40, 45, 50, 56, 63, 71, 80, 90, 101, 113, 127, 144, 162, 182, 203, 226, 255, 255}
-	beta := []int{2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18}
-	if len(alpha) != 36 || len(beta) != 36 {
-		panic("deblock tables")
-	}
-	mult := [4]float64{0, 1.0, 1.5, 2.2}
-	for i := 16; i < 52; i++ {
-		alphaTab[i] = alpha[i-16]
-		betaTab[i] = beta[i-16]
-	}
-	for bs := 1; bs <= 3; bs++ {
-		for i := 0; i < 52; i++ {
-			base := 0.55 * math.Pow(2, float64(i-24)/6)
-			if i < 17 {
-				base = 0
-			}
-			tc0Tab[bs][i] = int(base*mult[bs] + 0.5)
-		}
-	}
+// tc0Tab[bS][indexA]; row 0 unused.
+var tc0Tab = [4][52]int{
+	{},
+	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 4, 4, 5, 6, 6, 7, 8, 9, 10, 11, 12},
+	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5, 6, 7, 7, 8, 9, 10, 12, 13, 15, 17, 19},
+	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 17, 19, 22, 24, 27},
 }
 
 func (fc *frameCtx) boundaryStrength(p, q *Blk) int {
