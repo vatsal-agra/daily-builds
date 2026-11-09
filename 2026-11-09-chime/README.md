@@ -1,7 +1,7 @@
 # Chime
 A from-scratch perceptual audio codec (MDCT + psychoacoustics + range coding) in Go, stdlib only.
 
-**Status:** Phase 4 (stretch + polish) complete — M/S stereo, noise filling and the HTML report (`chime report`) are shipped. Phase 3 (adversarial review) complete — findings and fixes in [REVIEW.md](REVIEW.md); plan in [PLAN.md](PLAN.md).
+**Status:** Phase 5 (verification) complete — `./verify.sh` is green (unit tests, CLI round trips, perceptual-vs-flat gate, report). Phase 4 (stretch + polish) complete — M/S stereo, noise filling and the HTML report (`chime report`) are shipped. Phase 3 (adversarial review) complete — findings and fixes in [REVIEW.md](REVIEW.md); plan in [PLAN.md](PLAN.md).
 
 Working end-to-end today (`go build ./cmd/chime`):
 * MDCT/IMDCT with TDAC perfect reconstruction and adaptive long/short block switching

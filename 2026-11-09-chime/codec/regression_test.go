@@ -242,3 +242,91 @@ func TestNoFalseTransients(t *testing.T) {
 		}
 	}
 }
+
+// Feature 7: the report renders every section and embeds four spectrograms.
+func TestReportRenders(t *testing.T) {
+	a := mustGen(t, "mix", 2)
+	per, flat, err := Shootout(a, Params{Kbps: 48, MS: true, Transient: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := Report("<mix>.wav", a, per, flat)
+	for _, want := range []string{"&lt;mix&gt;.wav", "Noise over mask", "Spectrograms", "Per-frame decisions", "Where the bits go", "Bitstream budget"} {
+		if !strings.Contains(h, want) {
+			t.Fatalf("report missing %q", want)
+		}
+	}
+	if n := strings.Count(h, "data:image/png;base64,"); n != 4 {
+		t.Fatalf("%d spectrogram images, want 4", n)
+	}
+	if strings.Contains(h, "<mix>") {
+		t.Fatal("file name not escaped")
+	}
+}
+
+// Feature 5: M/S frames occur on correlated stereo and decode back to correct L/R.
+func TestMSRoundTripAccuracy(t *testing.T) {
+	a := mustGen(t, "mix", 3)
+	f, st, _ := Encode(a, Params{Quality: 40, MS: true, Transient: true})
+	if st.MSFrames == 0 {
+		t.Fatal("no M/S frames")
+	}
+	d, _ := Decode(f)
+	for c := 0; c < 2; c++ {
+		var sig, noi float64
+		for i, v := range a.Ch[c] {
+			sig += v * v
+			noi += (d.Ch[c][i] - v) * (d.Ch[c][i] - v)
+		}
+		if 10*math.Log10(sig/noi) < 40 {
+			t.Fatalf("channel %d SNR %.1f dB", c, 10*math.Log10(sig/noi))
+		}
+	}
+}
+
+// Metrics sanity: identical audio → no noise; heavy noise → large NMR.
+func TestMetricsSanity(t *testing.T) {
+	a := mustGen(t, "tones", 2)
+	m, _ := Compare(a, a)
+	if m.SNR < 100 || m.MeanExcess != 0 || m.HoleFrac != 0 {
+		t.Fatalf("identity metrics %+v", m)
+	}
+	n := &Audio{Rate: a.Rate, Ch: [][]float64{append([]float64(nil), a.Ch[0]...), append([]float64(nil), a.Ch[1]...)}}
+	r := rand.New(rand.NewSource(1))
+	for c := range n.Ch {
+		for i := range n.Ch[c] {
+			n.Ch[c][i] += r.NormFloat64() * 800
+		}
+	}
+	m, _ = Compare(a, n)
+	if m.MeanExcess < 0.5 || m.TempExcess < 5 || m.SNR > 20 {
+		t.Fatalf("noisy metrics %+v", m)
+	}
+	if _, err := Compare(a, &Audio{Rate: a.Rate, Ch: a.Ch[:1]}); err == nil {
+		t.Fatal("shape mismatch accepted")
+	}
+}
+
+func TestGeneratorsDeterministic(t *testing.T) {
+	for _, name := range SignalNames {
+		a, err := Generate(name, 0.5, 22050, 3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := Generate(name, 0.5, 22050, 3)
+		for i := range a.Ch[0] {
+			if a.Ch[0][i] != b.Ch[0][i] || a.Ch[1][i] != b.Ch[1][i] {
+				t.Fatalf("%s not deterministic", name)
+			}
+			if math.IsNaN(a.Ch[0][i]) || math.Abs(a.Ch[0][i]) > 60000 {
+				t.Fatalf("%s sample out of range: %g", name, a.Ch[0][i])
+			}
+		}
+	}
+	if _, err := Generate("nope", 1, 44100, 1); err == nil {
+		t.Fatal("unknown signal accepted")
+	}
+	if _, err := Generate("mix", math.NaN(), 44100, 1); err == nil {
+		t.Fatal("NaN duration accepted")
+	}
+}
