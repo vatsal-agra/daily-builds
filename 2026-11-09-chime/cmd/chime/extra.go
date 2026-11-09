@@ -62,4 +62,32 @@ func cmdEval(args []string) error {
 	return nil
 }
 
-func cmdReport(args []string) error { return fmt.Errorf("todo") }
+func cmdReport(args []string) error {
+	fs := flag.NewFlagSet("report", flag.ContinueOnError)
+	var e encFlags
+	addEncFlags(fs, &e)
+	out := fs.String("o", "chime-report.html", "output HTML file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("report: need in.wav")
+	}
+	a, err := readWAV(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	p := e.params(false)
+	if p.Kbps == 0 {
+		p.Kbps = 128
+	}
+	per, flat, err := codec.Shootout(a, p)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(*out, []byte(codec.Report(fs.Arg(0), a, per, flat)), 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("wrote %s (chime %.1f kbps vs flat %.1f kbps)\n", *out, per.Stats.Kbps, flat.Stats.Kbps)
+	return nil
+}

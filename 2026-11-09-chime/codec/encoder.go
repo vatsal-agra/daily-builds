@@ -160,10 +160,10 @@ func clampSF(s int) int {
 func quantBlock(x, thr []float64, lay *Layout, off float64, flat, nfill bool) BlockQ {
 	b := newBlockQ(lay)
 	gain := math.Pow(10, -off/10)
-	flatSF := clampSF(int(math.Round(4 * (10 - off/6.0206))))
+	flatF := 4 * (10 - off/6.0206)
 	for bd := 0; bd < lay.NB(); bd++ {
 		lo, hi := lay.Edges[bd], lay.Edges[bd+1]
-		s := flatSF
+		s := flatSF(flatF, bd)
 		if !flat {
 			delta := math.Sqrt(12 * thr[bd] * gain)
 			s = clampSF(int(math.Round(4 * math.Log2(delta))))
@@ -198,10 +198,10 @@ func quantBlock(x, thr []float64, lay *Layout, off float64, flat, nfill bool) Bl
 // bitCost estimates the bits needed for x at the given per-band steps.
 func bitCost(x, thr []float64, lay *Layout, off float64, flat bool) float64 {
 	gain := math.Pow(10, -off/10)
-	flatSF := clampSF(int(math.Round(4 * (10 - off/6.0206))))
+	flatF := 4 * (10 - off/6.0206)
 	var bits float64
 	for bd := 0; bd < lay.NB(); bd++ {
-		s := flatSF
+		s := flatSF(flatF, bd)
 		if !flat {
 			s = clampSF(int(math.Round(4 * math.Log2(math.Sqrt(12*thr[bd]*gain)))))
 		}
@@ -257,8 +257,10 @@ type Stats struct {
 	BandBits    [2][]float64
 	BlockCnt    [2]int
 	Iterations  int
-	Overshoot   bool // target bitrate could not be met even at the coarsest setting
-	Capped      bool // target bitrate is more than the codec can spend (finest setting reached)
+	ShortMap    []bool // per frame: block-switched
+	MSMap       []bool // per frame: M/S coded
+	Overshoot   bool   // target bitrate could not be met even at the coarsest setting
+	Capped      bool   // target bitrate is more than the codec can spend (finest setting reached)
 }
 
 func (an *Analysis) encodeAt(off float64, track bool) ([]byte, *Stats) {
@@ -267,7 +269,7 @@ func (an *Analysis) encodeAt(off float64, track bool) ([]byte, *Stats) {
 	rc.Track = track
 	sx := NewSyntax(rc, a.Rate, len(a.Ch), an.p.NoiseFill)
 	sx.Flags(append([]bool(nil), an.Short...))
-	st := &Stats{Offset: off, Frames: len(an.Short)}
+	st := &Stats{Offset: off, Frames: len(an.Short), ShortMap: append([]bool(nil), an.Short...), MSMap: make([]bool, len(an.Short))}
 	for f := range an.Short {
 		fr := an.quantFrame(f, off)
 		sx.Frame(fr, an.Short[f])
@@ -276,6 +278,7 @@ func (an *Analysis) encodeAt(off float64, track bool) ([]byte, *Stats) {
 		}
 		if fr.MS {
 			st.MSFrames++
+			st.MSMap[f] = true
 		}
 	}
 	out := rc.Finish()
@@ -377,4 +380,18 @@ func assignNoise(b *BlockQ, x []float64, l *Layout) {
 			}
 		}
 	}
+}
+
+// flatSF turns the baseline's fractional global step into per-band integer
+// scalefactors: bands dither between ⌊f⌋ and ⌊f⌋+1 so the rate loop can land
+// exactly on the target bitrate instead of in 1.5 dB jumps.
+func flatSF(f float64, band int) int {
+	base := math.Floor(f)
+	frac := f - base
+	h := math.Mod(float64(band)*0.6180339887, 1)
+	s := int(base)
+	if h < frac {
+		s++
+	}
+	return clampSF(s)
 }
