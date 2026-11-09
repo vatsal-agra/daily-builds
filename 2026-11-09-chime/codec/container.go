@@ -16,8 +16,22 @@ import (
 //	10  frames (samples per channel) u32
 //	14  payload length u32
 //	18  CRC32(payload) u32
-//	22  payload (range coded)
-const headerSize = 22
+//	22  band-layout fingerprint u32 (guards against FP differences between platforms)
+//	26  payload (range coded)
+const headerSize = 26
+
+// layoutFingerprint hashes the band edges the decoder will derive for this rate.
+func layoutFingerprint(rate int) uint32 {
+	h := crc32.NewIEEE()
+	var b [4]byte
+	for _, m := range []int{LongM, ShortM} {
+		for _, e := range LayoutFor(m, rate).Edges {
+			binary.LittleEndian.PutUint32(b[:], uint32(e))
+			h.Write(b[:])
+		}
+	}
+	return h.Sum32()
+}
 
 func packContainer(a *Audio, an *Analysis, payload []byte) []byte {
 	h := make([]byte, headerSize, headerSize+len(payload))
@@ -30,6 +44,7 @@ func packContainer(a *Audio, an *Analysis, payload []byte) []byte {
 	binary.LittleEndian.PutUint32(h[10:], uint32(a.Frames()))
 	binary.LittleEndian.PutUint32(h[14:], uint32(len(payload)))
 	binary.LittleEndian.PutUint32(h[18:], crc32.ChecksumIEEE(payload))
+	binary.LittleEndian.PutUint32(h[22:], layoutFingerprint(a.Rate))
 	return append(h, payload...)
 }
 
@@ -68,6 +83,9 @@ func ParseContainer(b []byte) (*Header, error) {
 	plen := int(binary.LittleEndian.Uint32(b[14:]))
 	if plen != len(b)-headerSize {
 		return nil, fmt.Errorf("chm: payload length %d does not match file (%d)", plen, len(b)-headerSize)
+	}
+	if binary.LittleEndian.Uint32(b[22:]) != layoutFingerprint(h.Rate) {
+		return nil, errors.New("chm: band layout differs from the encoder's (built on a platform with different floating point?)")
 	}
 	h.Payload = b[headerSize:]
 	if crc32.ChecksumIEEE(h.Payload) != binary.LittleEndian.Uint32(b[18:]) {

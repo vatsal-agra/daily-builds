@@ -36,9 +36,10 @@ type Analysis struct {
 }
 
 const (
-	offLo = -40.0
-	offHi = 70.0
-	dz    = 0.1 // dead-zone: round at 0.6 instead of 0.5
+	offLo  = -40.0
+	offHi  = 70.0
+	dz     = 0.1 // dead-zone: round at 0.6 instead of 0.5
+	nfGain = 0.5 // noise-fill level relative to the true band rms (−6 dB: fills holes without doubling the error)
 )
 
 func analyze(a *Audio, p Params) (*Analysis, error) {
@@ -48,6 +49,19 @@ func analyze(a *Audio, p Params) (*Analysis, error) {
 	n := a.Frames()
 	if n == 0 {
 		return nil, errors.New("empty audio")
+	}
+	if n > 1<<30 {
+		return nil, errors.New("audio too long (limit 2^30 samples per channel)")
+	}
+	for c := range a.Ch {
+		if len(a.Ch[c]) != n {
+			return nil, errors.New("channels have different lengths")
+		}
+		for i, v := range a.Ch[c] {
+			if math.IsNaN(v) || math.IsInf(v, 0) || math.Abs(v) > 1<<24 {
+				return nil, fmt.Errorf("channel %d sample %d is not a usable value (%g)", c, i, v)
+			}
+		}
 	}
 	an := &Analysis{Audio: a, p: p}
 	nf := NumFrames(n)
@@ -107,11 +121,25 @@ func analyze(a *Audio, p Params) (*Analysis, error) {
 			}
 			for i := range an.lr[0][f].blocks {
 				tl, tr := an.lr[0][f].thr[i], an.lr[1][f].thr[i]
-				t := make([]float64, len(tl))
-				for b := range t {
-					t[b] = math.Min(tl[b], tr[b])
+				lay := LayoutFor(len(an.lr[0][f].blocks[i]), a.Rate)
+				tm := make([]float64, len(tl))
+				ts := make([]float64, len(tl))
+				sx := an.ms[1][f].blocks[i]
+				for b := range tm {
+					t := math.Min(tl[b], tr[b])
+					// Noise in L and R is (nM+nS)/2, so M and S must share the budget:
+					// S noise is limited to t; if S is below t it is quantised to zero and
+					// only adds its own energy, leaving the rest of 2t for M.
+					var eS float64
+					lo, hi := lay.Edges[b], lay.Edges[b+1]
+					for k := lo; k < hi; k++ {
+						eS += sx[k] * sx[k]
+					}
+					eS /= float64(hi - lo)
+					tm[b] = 2*t - math.Min(eS, t)
+					ts[b] = t
 				}
-				an.ms[0][f].thr[i], an.ms[1][f].thr[i] = t, t
+				an.ms[0][f].thr[i], an.ms[1][f].thr[i] = tm, ts
 			}
 		}
 	}
@@ -142,7 +170,6 @@ func quantBlock(x, thr []float64, lay *Layout, off float64, flat, nfill bool) Bl
 		}
 		inv := 1 / Step(s)
 		var any bool
-		var e float64
 		for k := lo; k < hi; k++ {
 			v := math.Abs(x[k]) * inv
 			q := int32(math.Floor(v + 0.5 - dz))
@@ -156,23 +183,14 @@ func quantBlock(x, thr []float64, lay *Layout, off float64, flat, nfill bool) Bl
 				}
 			}
 			b.Q[k] = q
-			e += x[k] * x[k]
 		}
 		if any {
 			b.NZ[bd] = true
 			b.SF[bd] = s
-		} else if nfill {
-			rms := math.Sqrt(e/float64(hi-lo)) * 0.7
-			if rms*rms > lay.ATH[bd] && rms > NoiseRMS(1) {
-				n := int(math.Round(2*math.Log2(rms/0.25))) + 1
-				if n > NFMax {
-					n = NFMax
-				}
-				if n >= 1 {
-					b.NF[bd] = n
-				}
-			}
 		}
+	}
+	if nfill {
+		assignNoise(&b, x, lay)
 	}
 	return b
 }
@@ -240,6 +258,7 @@ type Stats struct {
 	BlockCnt    [2]int
 	Iterations  int
 	Overshoot   bool // target bitrate could not be met even at the coarsest setting
+	Capped      bool // target bitrate is more than the codec can spend (finest setting reached)
 }
 
 func (an *Analysis) encodeAt(off float64, track bool) ([]byte, *Stats) {
@@ -268,7 +287,7 @@ func (an *Analysis) encodeAt(off float64, track bool) ([]byte, *Stats) {
 // Encode compresses audio into a .chm file image.
 func Encode(a *Audio, p Params) ([]byte, *Stats, error) {
 	if p.Kbps < 0 || math.IsNaN(p.Kbps) || math.IsNaN(p.Quality) {
-		return nil, nil, errors.New("invalid bitrate/quality")
+		return nil, nil, fmt.Errorf("invalid bitrate %g / quality %g (bitrate must be ≥ 0, quality finite)", p.Kbps, p.Quality)
 	}
 	if p.Kbps > 0 && p.Kbps < 1 {
 		return nil, nil, fmt.Errorf("bitrate %.2f kbps is below the 1 kbps minimum", p.Kbps)
@@ -287,7 +306,7 @@ func Encode(a *Audio, p Params) ([]byte, *Stats, error) {
 	}
 	off := p.Quality
 	iters := 0
-	over := false
+	over, capped := false, false
 	if p.Kbps > 0 {
 		target := int(p.Kbps * 1000 * dur / 8)
 		lo, hi := offLo, offHi
@@ -296,7 +315,7 @@ func Encode(a *Audio, p Params) ([]byte, *Stats, error) {
 			off, over = lo, true
 			iters = 1
 		case size(hi) <= target:
-			off = hi
+			off, capped = hi, true
 			iters = 2
 		default:
 			for i := 0; i < 16; i++ {
@@ -316,8 +335,46 @@ func Encode(a *Audio, p Params) ([]byte, *Stats, error) {
 	payload, st := an.encodeAt(off, true)
 	st.Iterations = iters
 	st.Overshoot = over
+	st.Capped = capped
 	file := packContainer(a, an, payload)
 	st.Bytes = len(file)
 	st.Kbps = float64(len(file)) * 8 / dur / 1000
 	return file, st, nil
+}
+
+// assignNoise sets one noise-fill level per group of bands from the energy of
+// the group's zero-quantised bands.
+func assignNoise(b *BlockQ, x []float64, l *Layout) {
+	G := l.NFGroup()
+	for g0 := 0; g0 < l.NB(); g0 += G {
+		var e, ath float64
+		var w, cnt int
+		for bd := g0; bd < g0+G && bd < l.NB(); bd++ {
+			if b.NZ[bd] {
+				continue
+			}
+			for k := l.Edges[bd]; k < l.Edges[bd+1]; k++ {
+				e += x[k] * x[k]
+			}
+			w += l.Edges[bd+1] - l.Edges[bd]
+			ath += l.ATH[bd]
+			cnt++
+		}
+		if cnt == 0 {
+			continue
+		}
+		rms := math.Sqrt(e/float64(w)) * nfGain
+		level := 0
+		if rms*rms > ath/float64(cnt) && rms > NoiseRMS(1) {
+			level = int(math.Round(math.Log2(rms/0.25))) + 1
+			if level > NFMax {
+				level = NFMax
+			}
+		}
+		for bd := g0; bd < g0+G && bd < l.NB(); bd++ {
+			if !b.NZ[bd] {
+				b.NF[bd] = level
+			}
+		}
+	}
 }

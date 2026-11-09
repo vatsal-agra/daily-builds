@@ -124,8 +124,8 @@ func (e *encFlags) params(qSet bool) codec.Params {
 	p := codec.DefaultParams()
 	if qSet {
 		p.Kbps, p.Quality = 0, e.q
-	} else if e.b > 0 {
-		p.Kbps = e.b
+	} else if e.b != 0 {
+		p.Kbps = e.b // invalid values are rejected by codec.Encode
 	}
 	p.MS = !e.noMS
 	p.NoiseFill = e.nf
@@ -166,6 +166,9 @@ func cmdEncode(args []string) error {
 	}
 	fmt.Printf("%s → %s: %d bytes, %.1f kbps (offset %+.2f dB, %d frames, %d short, %d M/S)\n",
 		fs.Arg(0), fs.Arg(1), st.Bytes, st.Kbps, st.Offset, st.Frames, st.ShortFrames, st.MSFrames)
+	if st.Capped {
+		fmt.Fprintf(os.Stderr, "note: %.0f kbps is more than this signal can use; encoded at the finest setting (%.1f kbps)\n", e.b, st.Kbps)
+	}
 	if st.Overshoot {
 		fmt.Fprintln(os.Stderr, "warning: target bitrate could not be reached; this is the lowest the codec can go")
 	}

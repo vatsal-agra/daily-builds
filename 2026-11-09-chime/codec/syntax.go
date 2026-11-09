@@ -12,7 +12,7 @@ import (
 const (
 	SFMin   = -8
 	SFMax   = 90
-	NFMax   = 40
+	NFMax   = 22
 	maxQ    = 1 << 22
 	nCtx    = 11
 	magUn   = 14
@@ -23,7 +23,7 @@ const (
 func Step(s int) float64 { return math.Exp2(float64(s) / 4) }
 
 // NoiseRMS returns the noise-filling rms for level n (1..NFMax).
-func NoiseRMS(n int) float64 { return 0.25 * math.Exp2(float64(n-1)/2) }
+func NoiseRMS(n int) float64 { return 0.25 * math.Exp2(float64(n-1)) }
 
 // BlockQ is one quantised block (a long frame has one, a short frame eight).
 type BlockQ struct {
@@ -114,7 +114,7 @@ func NewSyntax(rc *RC, rate, nch int, nfill bool) *Syntax {
 		}
 		s.nfD[c] = newDelta()
 		s.lastSF[c] = 40
-		s.lastNF[c] = 12
+		s.lastNF[c] = 8
 	}
 	s.BandBits[0] = make([]float64, LayoutFor(LongM, rate).NB())
 	s.BandBits[1] = make([]float64, LayoutFor(ShortM, rate).NB())
@@ -218,6 +218,7 @@ func (s *Syntax) Block(ch int, b *BlockQ, short bool) {
 	prevBand := 0
 	ref := -1000
 	prevNF := 0
+	curGroup, groupLevel := -1, 0
 	s.BlockCnt[sh]++
 	for bd := 0; bd < lay.NB(); bd++ {
 		lo, hi := lay.Edges[bd], lay.Edges[bd+1]
@@ -235,25 +236,28 @@ func (s *Syntax) Block(ch int, b *BlockQ, short bool) {
 		prevBand = b2i(nz)
 		if !nz {
 			if s.nfill {
-				cn := rc.Cost
-				on := rc.Bit(&s.nfNZ[ch][prevNF], b2i(b.NF[bd] > 0)) == 1
-				if on {
-					d := s.signed(&s.nfD[ch], b.NF[bd]-s.lastNF[ch])
-					v := s.lastNF[ch] + d
-					if v < 1 || v > NFMax {
-						if rc.Decoding() && rc.Err == nil {
-							rc.Err = errors.New("noise level out of range")
+				g := bd / lay.NFGroup()
+				if g != curGroup { // first zero band of a noise-fill group carries the level
+					curGroup = g
+					cn := rc.Cost
+					on := rc.Bit(&s.nfNZ[ch][prevNF], b2i(b.NF[bd] > 0)) == 1
+					groupLevel = 0
+					if on {
+						d := s.signed(&s.nfD[ch], b.NF[bd]-s.lastNF[ch])
+						v := s.lastNF[ch] + d
+						if v < 1 || v > NFMax {
+							if rc.Decoding() && rc.Err == nil {
+								rc.Err = errors.New("noise level out of range")
+							}
+							v = 1
 						}
-						v = 1
+						groupLevel = v
+						s.lastNF[ch] = v
 					}
-					b.NF[bd] = v
-					s.lastNF[ch] = v
+					prevNF = b2i(on)
+					s.NoiseBits += rc.Cost - cn
 				}
-				if !on {
-					b.NF[bd] = 0
-				}
-				prevNF = b2i(on)
-				s.NoiseBits += rc.Cost - cn
+				b.NF[bd] = groupLevel
 			} else {
 				b.NF[bd] = 0
 			}

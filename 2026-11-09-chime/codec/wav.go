@@ -96,7 +96,11 @@ func ReadWAV(data []byte) (*Audio, error) {
 			var v float64
 			switch {
 			case format == 3:
-				v = float64(math.Float32frombits(binary.LittleEndian.Uint32(p))) * 32768
+				f := float64(math.Float32frombits(binary.LittleEndian.Uint32(p)))
+				if math.IsNaN(f) || math.IsInf(f, 0) {
+					return nil, fmt.Errorf("wav: non-finite float sample at frame %d", i)
+				}
+				v = math.Max(-32768, math.Min(32767, f*32768)) // hard-clip beyond full scale
 			case bits == 8:
 				v = (float64(p[0]) - 128) * 256
 			case bits == 16:

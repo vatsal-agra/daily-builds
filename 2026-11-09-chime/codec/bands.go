@@ -127,3 +127,11 @@ func spreadDB(dz float64) float64 {
 	x := dz + 0.474
 	return 15.81 + 7.5*x - 17.5*math.Sqrt(1+x*x)
 }
+
+// NFGroup is the number of consecutive bands that share one noise-fill level.
+func (l *Layout) NFGroup() int {
+	if l.M == ShortM {
+		return 5
+	}
+	return 6
+}
