@@ -1,0 +1,10 @@
+# Quarter of a square plate with a circular hole, pulled in y (Kirsch problem).
+# Symmetry planes: u_x = 0 on x=0, u_y = 0 on y=0.
+title Plate with a circular hole under tension
+material E=200000 nu=0.3 t=1
+mesh quarterhole a=1 L=10 nr=14 nt=24 type=tri6
+fix where x==0 dofs=x
+fix where y==0 dofs=y
+traction where y==10 tx=0 ty=100
+solve solver=cg-ic0
+plot fields=syy,vonmises,disp mesh=off

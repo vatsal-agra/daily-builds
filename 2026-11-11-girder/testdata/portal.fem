@@ -1,0 +1,13 @@
+# Portal frame: two columns, a beam with a UDL, and a lateral wind load at the eaves.
+frame
+title Portal frame under gravity and wind
+node 0 0
+node 0 4
+node 6 4
+node 6 0
+beam 0 1 E=200e6 A=0.01 I=8e-5
+beam 1 2 E=200e6 A=0.01 I=8e-5 w=-20
+beam 3 2 E=200e6 A=0.01 I=8e-5
+support 0 dofs=xyr
+support 3 dofs=xyr
+force 1 fx=15

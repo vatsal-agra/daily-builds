@@ -1,0 +1,7 @@
+# Slender cantilever, tip load applied as a line load on the free end.
+title Cantilever beam, quad4
+material E=200000 nu=0.3 t=10
+mesh rect w=100 h=10 nx=60 ny=6 type=quad4
+fix where x==0 dofs=xy
+traction where x==100 tx=0 ty=-5
+plot fields=vonmises,sxx,disp

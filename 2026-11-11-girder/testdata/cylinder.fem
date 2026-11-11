@@ -1,0 +1,8 @@
+# Thick-walled cylinder under internal pressure (plane strain), quarter model.
+title Thick cylinder, internal pressure 50
+material E=200000 nu=0.3 t=1 plane=strain
+mesh annulus a=1 b=2 nr=10 nt=12 type=tri6
+fix where y==0 dofs=y
+fix where x==0 dofs=x
+pressure where r<=1 p=50
+plot fields=syy,sxx,disp

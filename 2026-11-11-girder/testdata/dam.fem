@@ -1,0 +1,8 @@
+# Concrete gravity wall under self weight and a hydrostatic-like side load (plane strain).
+title Gravity wall: self weight + side pressure
+material E=30000 nu=0.2 t=1 plane=strain rho=2.4e-9
+mesh rect w=4 h=10 nx=12 ny=30 type=quad4
+fix where y==0 dofs=xy
+body bx=0 by=-0.0235
+pressure where x==0 p=0.08
+plot fields=s1,s3,vonmises mesh=on
