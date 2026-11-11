@@ -146,7 +146,9 @@ func ContourSVG(m *Mesh, u []float64, vals []float64, o ContourOpts) string {
 	tris := subTriangles(m.Type, sub)
 	var b strings.Builder
 	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %.0f %.0f" role="img" aria-label="%s" class="contour">`, o.Width, height+barH+4, html.EscapeString(o.Title))
-	for e, c := range m.Conn {
+	const levels = 64 // colours are quantised so each level is a single <path>
+	paths := make([]strings.Builder, levels)
+	for _, c := range m.Conn {
 		xs, ys := make([]float64, len(c)), make([]float64, len(c))
 		vs := make([]float64, len(c))
 		for i, n := range c {
@@ -167,11 +169,21 @@ func ContourSVG(m *Mesh, u []float64, vals []float64, o ContourOpts) string {
 				pts[k] = [2]float64{tx(x), ty(y)}
 				v += val / 3
 			}
-			col := rampColor((v - lo) / (hi - lo))
-			fmt.Fprintf(&b, `<polygon points="%.1f,%.1f %.1f,%.1f %.1f,%.1f" fill="%s" stroke="%s" stroke-width="0.6"/>`,
-				pts[0][0], pts[0][1], pts[1][0], pts[1][1], pts[2][0], pts[2][1], col, col)
+			lv := int(math.Round((v - lo) / (hi - lo) * (levels - 1)))
+			if lv < 0 {
+				lv = 0
+			} else if lv >= levels {
+				lv = levels - 1
+			}
+			fmt.Fprintf(&paths[lv], "M%.1f %.1fL%.1f %.1fL%.1f %.1fz", pts[0][0], pts[0][1], pts[1][0], pts[1][1], pts[2][0], pts[2][1])
 		}
-		_ = e
+	}
+	for lv := range paths {
+		if paths[lv].Len() == 0 {
+			continue
+		}
+		col := rampColor(float64(lv) / (levels - 1))
+		fmt.Fprintf(&b, `<path fill="%s" stroke="%s" stroke-width="0.7" stroke-linejoin="round" d="%s"/>`, col, col, paths[lv].String())
 	}
 	if o.ShowMesh {
 		corners := 3
@@ -328,12 +340,18 @@ func FrameSVG(f *Frame, sol *FrameSolution, defScale float64, width float64, sho
 	for i := range f.X {
 		fmt.Fprintf(&b, `<circle class="node" cx="%.1f" cy="%.1f" r="3.2"/>`, tx(f.X[i]), ty(f.Y[i]))
 	}
+	supported := map[int]bool{}
 	for d := range f.Fixed {
-		n := d / 3
-		fmt.Fprintf(&b, `<path class="support" d="M%.1f %.1f l-7 12 h14 z"/>`, tx(f.X[n]), ty(f.Y[n])+3)
-		break
+		supported[d/3] = true
 	}
-	_ = sort.Ints
+	var sn []int
+	for n := range supported {
+		sn = append(sn, n)
+	}
+	sort.Ints(sn)
+	for _, n := range sn {
+		fmt.Fprintf(&b, `<path class="support" d="M%.1f %.1f l-7 12 h14 z"/>`, tx(f.X[n]), ty(f.Y[n])+3)
+	}
 	b.WriteString(`</svg>`)
 	return b.String()
 }

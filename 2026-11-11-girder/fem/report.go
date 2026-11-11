@@ -134,15 +134,40 @@ func FrameReport(in *Input, sol *FrameSolution) string {
 	body.WriteString(stat("max |axial|", fmtNum(maxN)))
 	body.WriteString(`</div><div class="panels">`)
 	fmt.Fprintf(&body, `<figure><figcaption>Deformed shape and bending moment<small>deformation ×%s; colour = axial force (blue compression → red tension); shaded = moment diagram on the tension side</small></figcaption>%s</figure>`, fmtNum(scale), FrameSVG(f, sol, scale, 720, true))
-	body.WriteString(`</div><h2>Member forces</h2><div class="tablewrap"><table><tr><th>#</th><th>nodes</th><th>N (tension +)</th><th>V start</th><th>M start</th><th>M end</th></tr>`)
+	anyBeam := false
+	for _, m := range f.Members {
+		anyBeam = anyBeam || !m.Truss
+	}
+	body.WriteString(`</div><h2>Member forces</h2><div class="tablewrap"><table><tr><th>#</th><th>nodes</th><th>N (tension +)</th>`)
+	if anyBeam {
+		body.WriteString(`<th>V start</th><th>M start</th><th>M end</th>`)
+	}
+	body.WriteString(`</tr>`)
 	for i, m := range f.Members {
 		ef := sol.EndForces[i]
-		fmt.Fprintf(&body, `<tr><td>%d</td><td>%d–%d %s</td><td>%.5g</td><td>%.5g</td><td>%.5g</td><td>%.5g</td></tr>`, i, m.N1, m.N2, map[bool]string{true: "bar", false: "beam"}[m.Truss], f.AxialForce(sol, i), ef[1], ef[2], ef[5])
+		fmt.Fprintf(&body, `<tr><td>%d</td><td>%d–%d %s</td><td>%.5g</td>`, i, m.N1, m.N2, map[bool]string{true: "bar", false: "beam"}[m.Truss], f.AxialForce(sol, i))
+		if anyBeam {
+			if m.Truss {
+				body.WriteString(`<td>–</td><td>–</td><td>–</td>`)
+			} else {
+				fmt.Fprintf(&body, `<td>%.5g</td><td>%.5g</td><td>%.5g</td>`, ef[1], ef[2], ef[5])
+			}
+		}
+		body.WriteString(`</tr>`)
 	}
 	body.WriteString(`</table></div><h2>Reactions</h2><div class="tablewrap"><table><tr><th>node</th><th>Rx</th><th>Ry</th><th>Mz</th></tr>`)
 	for n := range f.X {
 		rx, ry, rm := sol.R[3*n], sol.R[3*n+1], sol.R[3*n+2]
-		if math.Abs(rx)+math.Abs(ry)+math.Abs(rm) > 1e-12 {
+		rmax := 0.0
+		for _, v := range sol.R {
+			rmax = math.Max(rmax, math.Abs(v))
+		}
+		for _, p := range []*float64{&rx, &ry, &rm} { // suppress round-off noise
+			if math.Abs(*p) < 1e-10*rmax {
+				*p = 0
+			}
+		}
+		if math.Abs(rx)+math.Abs(ry)+math.Abs(rm) > 0 {
 			fmt.Fprintf(&body, `<tr><td>%d</td><td>%.5g</td><td>%.5g</td><td>%.5g</td></tr>`, n, rx, ry, rm)
 		}
 	}

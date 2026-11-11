@@ -2,6 +2,7 @@ package fem
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -440,5 +441,91 @@ func TestFrameCantileverAndPortal(t *testing.T) {
 		if rel(tr.AxialForce(s3, i), want) > 1e-9 {
 			t.Errorf("truss bar %d axial %g want %g", i, tr.AxialForce(s3, i), want)
 		}
+	}
+}
+
+// Regression (found in adversarial review): a global-diagonal pivot threshold flagged valid but
+// badly scaled frames (very slender, axially stiff members) as mechanisms.
+func TestIllScaledFrameIsNotAMechanism(t *testing.T) {
+	for _, I := range []float64{1e-3, 1e-6, 1e-9} {
+		f := NewFrame()
+		a, b, c := f.AddNode(0, 0), f.AddNode(1, 0), f.AddNode(2, 0)
+		f.AddMember(Member{N1: a, N2: b, E: 1, A: 1e4, I: I})
+		f.AddMember(Member{N1: b, N2: c, E: 1, A: 1e4, I: I})
+		f.Fix(a, 0)
+		f.Fix(a, 1)
+		f.Fix(a, 2)
+		f.Load(c, 0, -1, 0)
+		s, err := f.Solve()
+		if err != nil {
+			t.Fatalf("I=%g: %v", I, err)
+		}
+		if rel(-s.U[3*c+1], 8/(3*I)) > 1e-5 {
+			t.Errorf("I=%g tip %g want %g", I, -s.U[3*c+1], 8/(3*I))
+		}
+	}
+}
+
+func TestMechanismMessageNamesNode(t *testing.T) {
+	f := NewFrame()
+	f.AddNode(0, 0)
+	f.AddNode(4, 0)
+	f.AddNode(8, 0)
+	f.AddMember(Member{N1: 0, N2: 1, E: 1, A: 1, Truss: true})
+	f.AddMember(Member{N1: 1, N2: 2, E: 1, A: 1, Truss: true})
+	f.Fix(0, 0)
+	f.Fix(0, 1)
+	f.Fix(2, 0)
+	f.Fix(2, 1)
+	f.Load(1, 0, -1, 0)
+	_, err := f.Solve()
+	if err == nil || !strings.Contains(err.Error(), "node 1") {
+		t.Fatalf("want mechanism error naming node 1, got %v", err)
+	}
+	g := NewFrame()
+	g.AddNode(0, 0)
+	g.AddNode(1, 0)
+	g.AddNode(5, 5)
+	g.AddMember(Member{N1: 0, N2: 1, E: 1, A: 1, I: 1})
+	g.Fix(0, 0)
+	if _, err := g.Solve(); err == nil || !strings.Contains(err.Error(), "not connected") {
+		t.Fatalf("orphan node must be named, got %v", err)
+	}
+}
+
+func TestSymEigenAndDenseSolve(t *testing.T) {
+	a := NewDense(3, 3)
+	vals := [][]float64{{4, 1, 0.5}, {1, 3, 0.2}, {0.5, 0.2, 2}}
+	for i := range vals {
+		for j := range vals[i] {
+			a.Set(i, j, vals[i][j])
+		}
+	}
+	w, v := SymEigen(a)
+	for k := 0; k < 3; k++ {
+		col := []float64{v.At(0, k), v.At(1, k), v.At(2, k)}
+		av := a.MulVec(col)
+		for i := range av {
+			if math.Abs(av[i]-w[k]*col[i]) > 1e-10 {
+				t.Fatalf("eigenpair %d residual too large", k)
+			}
+		}
+		if k > 0 && w[k] < w[k-1] {
+			t.Fatal("eigenvalues not ascending")
+		}
+	}
+	x, err := SolveDense(a, []float64{1, 2, 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := a.MulVec(x)
+	for i, want := range []float64{1, 2, 3} {
+		if math.Abs(r[i]-want) > 1e-12 {
+			t.Fatal("dense solve residual")
+		}
+	}
+	sing := NewDense(2, 2)
+	if _, err := SolveDense(sing, []float64{1, 1}); err == nil {
+		t.Fatal("singular matrix must error")
 	}
 }

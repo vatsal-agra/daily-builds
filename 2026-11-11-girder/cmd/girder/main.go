@@ -139,6 +139,9 @@ func cmdSolve(args []string) error {
 		dmax, _ := fem.MaxField(d)
 		fmt.Printf("solid: %d nodes, %d %s elements, %d free DOFs  solver=%s  (%.1f ms)\n", md.Mesh.NumNodes(), md.Mesh.NumElems(), md.Mesh.Type, sol.Info.FreeDOFs, sol.Info.Solver, time.Since(t0).Seconds()*1000)
 		fmt.Printf("  max von Mises = %.6g at node %d (%.4g, %.4g)\n  max |u| = %.6g\n  strain energy = %.6g\n  force balance residual = (%.2e, %.2e)\n", vmax, at, md.Mesh.X[at], md.Mesh.Y[at], dmax, res.Energy, res.Equilib[0], res.Equilib[1])
+		if loadless(md) {
+			fmt.Println("  warning: the model carries no loads or prescribed displacements — all results are zero")
+		}
 		page, err = fem.SolidReport(in, res)
 		if err != nil {
 			return err
@@ -172,4 +175,18 @@ func cmdMesh(args []string) error {
 	fmt.Printf("%d nodes, %d %s elements, area %.6g, bounds [%.4g,%.4g]x[%.4g,%.4g], %d boundary edges, %d fixed dofs\n",
 		m.NumNodes(), m.NumElems(), m.Type, m.Area(), x0, x1, y0, y1, len(m.BoundaryEdges()), len(in.Solid.Fixed))
 	return nil
+}
+
+func loadless(md *fem.Model) bool {
+	for _, f := range md.F {
+		if f != 0 {
+			return false
+		}
+	}
+	for _, v := range md.Fixed {
+		if v != 0 {
+			return false
+		}
+	}
+	return true
 }

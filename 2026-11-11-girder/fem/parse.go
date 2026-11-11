@@ -20,6 +20,9 @@ type Input struct {
 	Mesh   bool    // draw mesh lines
 }
 
+// MaxCells caps generated meshes (quad cells; triangle meshes have twice as many elements).
+const MaxCells = 250000
+
 type kv map[string]string
 
 // kvRe matches key=value tokens but not comparison operators like x==0, r<=1 or y>=3.
@@ -183,6 +186,10 @@ func Parse(src string) (*Input, error) {
 			continue
 		}
 		cmd := strings.ToLower(fields[0])
+		if cmd == "title" { // free text: may contain '=' characters
+			in.Title = strings.TrimSpace(strings.TrimSpace(line)[len(fields[0]):])
+			continue
+		}
 		args, rest, err := parseKV(fields[1:])
 		if err != nil {
 			return fail(err)
@@ -198,12 +205,13 @@ func Parse(src string) (*Input, error) {
 			}
 		}
 		switch cmd {
-		case "title":
-			in.Title = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), fields[0]))
 		case "frame":
 			isFrame = true
 			in.Frame = NewFrame()
 		case "material":
+			if haveMat {
+				return fail(fmt.Errorf("`material` may only be given once, before `mesh`"))
+			}
 			if err := args.check("e", "nu", "t", "plane", "rho", "k"); err != nil {
 				return fail(err)
 			}
@@ -266,8 +274,8 @@ func Parse(src string) (*Input, error) {
 						return fail(e)
 					}
 				}
-				if nx*ny > 400000 {
-					return fail(fmt.Errorf("mesh too large (%d cells)", nx*ny))
+				if nx*ny > MaxCells {
+					return fail(fmt.Errorf("mesh too large (%d cells, limit %d)", nx*ny, MaxCells))
 				}
 				mesh, err = Rect(x0, y0, w, h, nx, ny, et)
 			case "annulus", "quarterhole":
@@ -293,8 +301,8 @@ func Parse(src string) (*Input, error) {
 						return fail(e)
 					}
 				}
-				if nr*nt > 400000 {
-					return fail(fmt.Errorf("mesh too large"))
+				if nr*nt > MaxCells {
+					return fail(fmt.Errorf("mesh too large (%d cells, limit %d)", nr*nt, MaxCells))
 				}
 				if rest[0] == "annulus" {
 					mesh, err = Annulus(a, b, nr, nt, et)
@@ -382,6 +390,14 @@ func (in *Input) applyBC(cmd string, args kv, rest []string, line string, isFram
 			n2, e2 := strconv.Atoi(rest[1])
 			if e1 != nil || e2 != nil {
 				return fmt.Errorf("node ids must be integers")
+			}
+			if cmd == "bar" {
+				if _, ok := args["i"]; ok {
+					return fmt.Errorf("bars carry no bending: remove I= (use `beam` for a stiff member)")
+				}
+				if _, ok := args["w"]; ok {
+					return fmt.Errorf("bars cannot take a distributed load: remove w= (use `beam`)")
+				}
 			}
 			m := Member{N1: n1, N2: n2, Truss: cmd == "bar"}
 			var err error

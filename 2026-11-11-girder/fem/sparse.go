@@ -207,6 +207,23 @@ type Skyline struct {
 
 var ErrNotSPD = errors.New("matrix is not symmetric positive definite (mechanism or missing supports?)")
 
+// MaxSkylineEntries bounds the direct solver's factor storage (entries, 8 bytes each).
+var MaxSkylineEntries = 150_000_000
+
+// SingularError reports the (reduced-system) row at which factorisation lost positive definiteness.
+type SingularError struct {
+	Row   int
+	Pivot float64
+}
+
+func (e *SingularError) Error() string {
+	return fmt.Sprintf("%s (pivot %d = %.3e)", ErrNotSPD.Error(), e.Row, e.Pivot)
+}
+func (e *SingularError) Unwrap() error { return ErrNotSPD }
+
+// ErrTooLarge means the direct factorisation would not fit in memory.
+var ErrTooLarge = errors.New("direct factorisation would need too much memory; use the cg-ic0 solver")
+
 // FactorSkyline factorises the SPD matrix m (should be RCM-ordered for speed).
 func FactorSkyline(m *CSR) (*Skyline, error) {
 	n := m.N
@@ -221,6 +238,9 @@ func FactorSkyline(m *CSR) (*Skyline, error) {
 		s.First[i] = f
 		s.Ptr[i+1] = s.Ptr[i] + (i - f + 1)
 	}
+	if s.Ptr[n] > MaxSkylineEntries {
+		return nil, fmt.Errorf("%w (%d factor entries)", ErrTooLarge, s.Ptr[n])
+	}
 	s.Val = make([]float64, s.Ptr[n])
 	for i := 0; i < n; i++ {
 		for p := m.RowPtr[i]; p < m.RowPtr[i+1]; p++ {
@@ -229,10 +249,7 @@ func FactorSkyline(m *CSR) (*Skyline, error) {
 			}
 		}
 	}
-	maxd := 0.0
-	for _, d := range m.Diag() {
-		maxd = math.Max(maxd, math.Abs(d))
-	}
+	diag := m.Diag() // pivots are judged against each row's own diagonal (scale-invariant)
 	for i := 0; i < n; i++ {
 		fi := s.First[i]
 		for j := fi; j <= i; j++ {
@@ -247,8 +264,8 @@ func FactorSkyline(m *CSR) (*Skyline, error) {
 				sum -= s.Val[ri+k] * s.Val[rj+k]
 			}
 			if j == i {
-				if sum <= 1e-12*maxd {
-					return nil, fmt.Errorf("%w (pivot %d = %.3e)", ErrNotSPD, i, sum)
+				if sum <= 1e-12*diag[i] {
+					return nil, &SingularError{Row: i, Pivot: sum}
 				}
 				s.Val[s.Ptr[i]+i-fi] = math.Sqrt(sum)
 			} else {
@@ -469,6 +486,10 @@ func SolveSPD(a *CSR, b []float64) ([]float64, error) {
 	ap := a.Permute(perm)
 	f, err := FactorSkyline(ap)
 	if err != nil {
+		var se *SingularError
+		if errors.As(err, &se) {
+			se.Row = perm[se.Row] // report in the caller's numbering
+		}
 		return nil, err
 	}
 	pb := make([]float64, a.N)

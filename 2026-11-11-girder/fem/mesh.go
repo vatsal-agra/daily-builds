@@ -76,14 +76,15 @@ func (m *Mesh) Validate() error {
 
 // fixOrientation flips clockwise elements so that all are counter-clockwise.
 func (m *Mesh) fixOrientation() {
+	corners := 3
+	if m.Type == Quad4 {
+		corners = 4
+	}
 	for e, c := range m.Conn {
 		xs, ys := m.ElemCoords(e)
 		a := 0.0
-		for i := 0; i < m.Type.NodesPer() && i < 4; i++ {
-			if m.Type == Tri6 && i >= 3 {
-				break
-			}
-			j := (i + 1) % map[ElemType]int{Tri3: 3, Tri6: 3, Quad4: 4}[m.Type]
+		for i := 0; i < corners; i++ {
+			j := (i + 1) % corners
 			a += xs[i]*ys[j] - xs[j]*ys[i]
 		}
 		if a >= 0 {

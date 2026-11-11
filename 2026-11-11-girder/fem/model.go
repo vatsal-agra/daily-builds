@@ -1,6 +1,7 @@
 package fem
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -250,6 +251,10 @@ func ReduceAndSolve(K *CSR, f []float64, fixed map[int]float64, kind SolverKind,
 			var err error
 			xf, err = SolveSPD(kr, rhs)
 			if err != nil {
+				var se *SingularError
+				if errors.As(err, &se) {
+					se.Row = free[se.Row] // reduced row -> global dof
+				}
 				return nil, err
 			}
 		}
@@ -283,7 +288,13 @@ func (md *Model) Solve(kind SolverKind) (*Solution, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ReduceAndSolve(K, md.F, md.Fixed, kind, 1e-11)
+	sol, err := ReduceAndSolve(K, md.F, md.Fixed, kind, 1e-11)
+	var se *SingularError
+	if errors.As(err, &se) {
+		n := se.Row / 2
+		return nil, fmt.Errorf("%w: the structure can move freely at node %d (x=%.4g, y=%.4g) in %s — add supports", err, n, md.Mesh.X[n], md.Mesh.Y[n], []string{"x", "y"}[se.Row%2])
+	}
+	return sol, err
 }
 
 // SortedFixed lists constrained dofs in order.

@@ -1,6 +1,7 @@
 package fem
 
 import (
+	"errors"
 	"fmt"
 	"math"
 )
@@ -202,6 +203,15 @@ func (f *Frame) Solve() (*FrameSolution, error) {
 	if len(f.Members) == 0 {
 		return nil, fmt.Errorf("frame has no members")
 	}
+	used := make([]bool, len(f.X))
+	for _, m := range f.Members {
+		used[m.N1], used[m.N2] = true, true
+	}
+	for n, u := range used {
+		if !u {
+			return nil, fmt.Errorf("node %d (x=%.4g, y=%.4g) is not connected to any member", n, f.X[n], f.Y[n])
+		}
+	}
 	K := f.Assemble(false)
 	rhs := append([]float64(nil), f.F...)
 	for _, m := range f.Members { // equivalent nodal loads from member UDL
@@ -225,6 +235,11 @@ func (f *Frame) Solve() (*FrameSolution, error) {
 	}
 	sol, err := ReduceAndSolve(K, rhs, fixed, SolverDirect, 0)
 	if err != nil {
+		var se *SingularError
+		if errors.As(err, &se) {
+			n := se.Row / 3
+			return nil, fmt.Errorf("frame is a mechanism: node %d (x=%.4g, y=%.4g) can move freely in %s — add supports or bracing", n, f.X[n], f.Y[n], []string{"x", "y", "rotation"}[se.Row%3])
+		}
 		return nil, fmt.Errorf("frame solve failed: %w", err)
 	}
 	fs := &FrameSolution{U: sol.U, R: sol.R}

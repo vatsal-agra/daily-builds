@@ -90,3 +90,25 @@ func TestValidationSuiteAndRates(t *testing.T) {
 		t.Errorf("asymptotic convergence orders too low: %v", last)
 	}
 }
+
+func TestReviewRegressionsInParser(t *testing.T) {
+	bad := map[string]string{
+		"material E=1 t=1\nmesh rect w=1 h=1 nx=2 ny=2\nmaterial E=9 t=1": "only be given once",
+		"frame\nnode 0 0\nnode 1 0\nbar 0 1 E=1 A=1 w=-3":                 "distributed",
+		"frame\nnode 0 0\nnode 1 0\nbar 0 1 E=1 A=1 i=3":                  "bending",
+		"material E=1 t=1\nmesh rect w=1 h=1 nx=900 ny=900":               "too large",
+	}
+	for src, want := range bad {
+		if _, err := Parse(src); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: want error containing %q, got %v", src, want, err)
+		}
+	}
+	in, err := Parse("title a=1 a=2 <b>\nmaterial E=1 t=1\nmesh rect w=1 h=1 nx=1 ny=1")
+	if err != nil || in.Title != "a=1 a=2 <b>" {
+		t.Errorf("title with '=' mishandled: %v %q", err, in.Title)
+	}
+	html := Page(in.Title, "x", "")
+	if strings.Contains(html, "<b>") {
+		t.Error("title must be HTML-escaped")
+	}
+}
