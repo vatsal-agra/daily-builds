@@ -1,6 +1,6 @@
 # Girder — finite-element structural-mechanics lab (Go)
 
-**Status: Phase 4 (stretch + polish) complete.** All 4 required and all 4 stretch features work; the
+**Status: Phase 5 (verification) complete — `./verify.sh` ends ALL GREEN (25 end-to-end checks + unit/physics tests; 3 injected element/load bugs all caught).** All 4 required and all 4 stretch features work; the
 adversarial review ([REVIEW.md](REVIEW.md), 13 findings, all fixed) is done. The verify script and final
 README follow in phases 5–6. See [PLAN.md](PLAN.md).
 
@@ -31,3 +31,7 @@ go test ./...
 
 ## Phase 3 review
 See [REVIEW.md](REVIEW.md).
+
+## Verification (phase 5)
+`./verify.sh` runs gofmt/vet/build, all Go tests, the closed-form suite, every example model through
+all solvers, topology/modal/heat runs, and six hostile inputs that must be rejected with a precise message.
