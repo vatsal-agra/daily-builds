@@ -1,7 +1,8 @@
 # Girder — finite-element structural-mechanics lab (Go)
 
-**Status: Phase 2 (core build) complete.** Required features 1–4 work end to end; stretch features,
-adversarial review, polish and the full verify script follow in later phases. See [PLAN.md](PLAN.md).
+**Status: Phase 4 (stretch + polish) complete.** All 4 required and all 4 stretch features work; the
+adversarial review ([REVIEW.md](REVIEW.md), 13 findings, all fixed) is done. The verify script and final
+README follow in phases 5–6. See [PLAN.md](PLAN.md).
 
 ## Quick start
 ```
@@ -19,3 +20,14 @@ go test ./...
    beam theory for frames, patch test to 1e-10, convergence orders (tri3/quad4 → 2, tri6 → 3).
 4. **Post-processing + report** — Gauss-point stress, nodal recovery, von Mises, force-balance check,
    SVG contour plots on the deformed shape, self-contained HTML reports, text model-file CLI.
+
+## Stretch features (phase 4)
+5. **SIMP topology optimisation** — `girder topopt -case mbb -o topo.html` (mbb / cantilever / bridge),
+   density filter, OC update, evolution gallery and convergence chart.
+6. **Modal analysis** — `girder modal testdata/modal_plate.fem` (consistent mass, shift-invert subspace
+   iteration); frames match Euler–Bernoulli frequencies to <0.2 %.
+7. **tri6 quadratic triangles** — observed displacement convergence order ≈ 3.2 vs 2 for tri3/quad4.
+8. **Heat conduction** — `girder heat testdata/heat_hole.fem` on the same element machinery.
+
+## Phase 3 review
+See [REVIEW.md](REVIEW.md).

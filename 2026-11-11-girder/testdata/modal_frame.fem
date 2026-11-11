@@ -1,0 +1,12 @@
+frame
+title Portal frame vibration
+node 0 0
+node 0 4
+node 6 4
+node 6 0
+beam 0 1 E=200e9 A=0.01 I=8e-5 rho=7850
+beam 1 2 E=200e9 A=0.01 I=8e-5 rho=7850
+beam 3 2 E=200e9 A=0.01 I=8e-5 rho=7850
+support 0 dofs=xyr
+support 3 dofs=xyr
+modes n=4

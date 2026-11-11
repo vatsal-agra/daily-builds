@@ -16,8 +16,10 @@ type Input struct {
 	Frame  *Frame
 	Solver SolverKind
 	Fields []Field
-	Scale  float64 // deformation scale, 0 = auto
-	Mesh   bool    // draw mesh lines
+	Scale  float64    // deformation scale, 0 = auto
+	Mesh   bool       // draw mesh lines
+	Heat   *HeatModel // set when the file uses temp/flux/source directives
+	Modes  int        // number of modes requested by `modes n=`
 }
 
 // MaxCells caps generated meshes (quad cells; triangle meshes have twice as many elements).
@@ -319,6 +321,10 @@ func Parse(src string) (*Input, error) {
 				return fail(fmt.Errorf("define `material` before `mesh`"))
 			}
 			in.Solid = NewModel(mesh, mat)
+		case "temp", "flux", "source", "modes":
+			if err := in.applyHeat(cmd, args); err != nil {
+				return fail(err)
+			}
 		case "fix", "load", "traction", "pressure", "body", "node", "beam", "bar", "support", "force":
 			if err := in.applyBC(cmd, args, rest, line, isFrame); err != nil {
 				return fail(err)
@@ -630,4 +636,84 @@ func oneInt(rest []string, usage string) (int, error) {
 		return 0, fmt.Errorf("node id %q is not an integer", rest[0])
 	}
 	return n, nil
+}
+
+func (in *Input) applyHeat(cmd string, args kv) error {
+	if cmd == "modes" {
+		if err := args.check("n"); err != nil {
+			return err
+		}
+		n, err := args.integer("n", 6, false)
+		if err != nil || n < 1 || n > 200 {
+			return fmt.Errorf("modes n= must be an integer in 1..200")
+		}
+		in.Modes = n
+		return nil
+	}
+	if in.Solid == nil {
+		return fmt.Errorf("`%s` must come after `mesh`", cmd)
+	}
+	if in.Heat == nil {
+		in.Heat = NewHeatModel(in.Solid.Mesh, in.Solid.Mat)
+	}
+	h := in.Heat
+	x0, y0, x1, y1 := h.Mesh.Bounds()
+	tol := 1e-9 * math.Max(x1-x0, y1-y0)
+	if args["where"] == "" && cmd != "source" {
+		return fmt.Errorf("`%s` needs `where <selection>`", cmd)
+	}
+	var sel []term
+	if args["where"] != "" {
+		var err error
+		if sel, err = parsePred(args["where"]); err != nil {
+			return err
+		}
+	}
+	switch cmd {
+	case "temp":
+		if err := args.check("where", "t"); err != nil {
+			return err
+		}
+		v, err := args.num("t", 0, true)
+		if err != nil {
+			return err
+		}
+		cnt := 0
+		for i := range h.Mesh.X {
+			if evalPred(sel, h.Mesh.X[i], h.Mesh.Y[i], tol) {
+				h.Fixed[i] = v
+				cnt++
+			}
+		}
+		if cnt == 0 {
+			return fmt.Errorf("selection %q matches no nodes", args["where"])
+		}
+	case "flux":
+		if err := args.check("where", "q"); err != nil {
+			return err
+		}
+		q, err := args.num("q", 0, true)
+		if err != nil {
+			return err
+		}
+		es := h.Mesh.EdgesWhere(func(ax, ay, bx, by float64) bool { return evalPred(sel, ax, ay, tol) && evalPred(sel, bx, by, tol) })
+		if len(es) == 0 {
+			return fmt.Errorf("selection %q matches no boundary edges", args["where"])
+		}
+		for _, e := range es {
+			if err := h.EdgeFlux(e, q); err != nil {
+				return err
+			}
+		}
+	case "source":
+		if err := args.check("q"); err != nil {
+			return err
+		}
+		q, err := args.num("q", 0, true)
+		if err != nil {
+			return err
+		}
+		return h.Source(q)
+	}
+	return nil
 }

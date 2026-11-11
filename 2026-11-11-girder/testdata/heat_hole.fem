@@ -1,0 +1,8 @@
+# Hot bore in a square block: 300 C on the hole, 20 C on the outer faces, heat leaking nowhere else.
+title Heat conduction around a hot bore
+material E=1 nu=0.3 t=1 k=45
+mesh quarterhole a=1 L=6 nr=16 nt=24 type=tri6
+temp where r<=1 t=300
+temp where x>=6 t=20
+temp where y>=6 t=20
+solve solver=cg-ic0

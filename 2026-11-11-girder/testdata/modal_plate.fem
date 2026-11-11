@@ -1,0 +1,6 @@
+# Clamped steel cantilever plate (plane stress): first modes vs. beam theory (f1 = 81.5 Hz for an Euler-Bernoulli beam; the 2-D model is ~0.6% softer from shear).
+title Cantilever vibration modes
+material E=200e9 nu=0.3 t=0.05 rho=7850
+mesh rect w=1 h=0.1 nx=40 ny=4 type=tri6
+fix where x==0 dofs=xy
+modes n=4
