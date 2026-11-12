@@ -1,0 +1,19 @@
+[package]
+name = "kripke"
+version = "0.1.0"
+edition = "2021"
+description = "A symbolic model checker: BDD engine, SMV-style language, CTL/LTL with fairness, counterexamples."
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "kripke"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+debug = false
+
+[profile.test]
+opt-level = 2
