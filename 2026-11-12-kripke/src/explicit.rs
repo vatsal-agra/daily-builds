@@ -69,7 +69,11 @@ impl Explicit {
                 }
             }
         }
-        let defines: HashMap<String, Expr> = prog.defines.iter().map(|(n, e, _)| (n.clone(), e.clone())).collect();
+        let defines: HashMap<String, Expr> = prog
+            .defines
+            .iter()
+            .map(|(n, e, _)| (n.clone(), e.clone()))
+            .collect();
         let state_vars: Vec<usize> = (0..vars.len()).filter(|&i| !vars[i].input).collect();
         let input_vars: Vec<usize> = (0..vars.len()).filter(|&i| vars[i].input).collect();
         let mut ex = Explicit {
@@ -120,9 +124,16 @@ impl Explicit {
     }
 
     fn enumerate(&mut self, max_states: usize) -> Result<(), String> {
-        let total: usize = self.state_vars.iter().map(|&i| domain(&self.vars[i].ty).len()).product();
+        let total: usize = self
+            .state_vars
+            .iter()
+            .map(|&i| domain(&self.vars[i].ty).len())
+            .product();
         if total > max_states {
-            return Err(format!("explicit state space too large ({} candidate states)", total));
+            return Err(format!(
+                "explicit state space too large ({} candidate states)",
+                total
+            ));
         }
         let cands = self.product(&self.state_vars.clone());
         // legal states: INVAR and plain assignments
@@ -203,7 +214,14 @@ impl Explicit {
             }
             Ek::Next(inner) => {
                 let nxt = env.nxt.ok_or("next() outside transition")?;
-                self.eval(inner, &Env { cur: nxt, nxt: None }, d)?
+                self.eval(
+                    inner,
+                    &Env {
+                        cur: nxt,
+                        nxt: None,
+                    },
+                    d,
+                )?
             }
             Ek::Un(UnOp::Not, a) => vec![EV::B(!self.truthy_v(&self.eval(a, env, d)?))],
             Ek::Un(UnOp::Neg, a) => {
@@ -216,7 +234,9 @@ impl Explicit {
                 }
                 dedup(out)
             }
-            Ek::Un(..) | Ek::EU(..) | Ek::AU(..) => return Err("temporal operator in expression".into()),
+            Ek::Un(..) | Ek::EU(..) | Ek::AU(..) => {
+                return Err("temporal operator in expression".into())
+            }
             Ek::Set(es) => {
                 let mut out = vec![];
                 for x in es {
@@ -349,7 +369,10 @@ impl Explicit {
     }
 
     pub fn trans_ok(&self, cur: &Valuation, nxt: &Valuation) -> Result<bool, String> {
-        let env = Env { cur, nxt: Some(nxt) };
+        let env = Env {
+            cur,
+            nxt: Some(nxt),
+        };
         for e in &self.prog.transes {
             if !self.truthy(e, &env)? {
                 return Ok(false);
@@ -402,8 +425,15 @@ impl Explicit {
             }
         }
         let reach: Vec<bool> = dist.iter().map(|&d| d != usize::MAX).collect();
-        let diam = dist.iter().filter(|&&d| d != usize::MAX).copied().max().unwrap_or(0);
-        let dead = (0..n).filter(|&i| reach[i] && self.succ[i].is_empty()).count();
+        let diam = dist
+            .iter()
+            .filter(|&&d| d != usize::MAX)
+            .copied()
+            .max()
+            .unwrap_or(0);
+        let dead = (0..n)
+            .filter(|&i| reach[i] && self.succ[i].is_empty())
+            .count();
         (reach, diam, dead)
     }
 
@@ -522,7 +552,9 @@ impl Explicit {
 
     fn ex(&mut self, f: &[bool]) -> Vec<bool> {
         let fair = self.fair();
-        (0..self.n()).map(|i| self.succ[i].iter().any(|&j| f[j] && fair[j])).collect()
+        (0..self.n())
+            .map(|i| self.succ[i].iter().any(|&j| f[j] && fair[j]))
+            .collect()
     }
 
     fn not(f: &[bool]) -> Vec<bool> {
@@ -599,7 +631,10 @@ impl Explicit {
     pub fn atom(&self, e: &Expr) -> Res<Vec<bool>> {
         let mut out = vec![];
         for s in &self.states {
-            out.push(self.truthy(e, &Env { cur: s, nxt: None }).map_err(|m| Error::new(e.pos, m))?);
+            out.push(
+                self.truthy(e, &Env { cur: s, nxt: None })
+                    .map_err(|m| Error::new(e.pos, m))?,
+            );
         }
         Ok(out)
     }
@@ -630,7 +665,10 @@ impl Explicit {
                 },
                 Ltl::Imp(p, q) => match (*p, *q) {
                     (Ltl::Atom(p), Ltl::F(q)) => match *q {
-                        Ltl::Atom(q) => Some(Ctl::AG(b(Ctl::Imp(b(Ctl::Atom(p)), b(Ctl::AF(b(Ctl::Atom(q)))))))),
+                        Ltl::Atom(q) => Some(Ctl::AG(b(Ctl::Imp(
+                            b(Ctl::Atom(p)),
+                            b(Ctl::AF(b(Ctl::Atom(q)))),
+                        )))),
                         _ => None,
                     },
                     _ => None,
@@ -717,7 +755,8 @@ impl Explicit {
             };
             if let Some(nx) = succ {
                 let cur = &vs[i].1;
-                let is_stutter = self.stutter && &vs[i].0 == nx && self.deadlocked[self.index[&vs[i].0]];
+                let is_stutter =
+                    self.stutter && &vs[i].0 == nx && self.deadlocked[self.index[&vs[i].0]];
                 if !self.inputs_ok(cur)? || !(is_stutter || self.trans_ok(cur, nx)?) {
                     return Err(format!("step {} -> next is not a transition", i + 1));
                 }
@@ -734,7 +773,9 @@ impl Explicit {
         };
         let vs = self.trace_valuations(t);
         self.prog.fairness.iter().all(|f| {
-            vs[l..].iter().any(|(s, _)| self.truthy(f, &Env { cur: s, nxt: None }).unwrap_or(false))
+            vs[l..]
+                .iter()
+                .any(|(s, _)| self.truthy(f, &Env { cur: s, nxt: None }).unwrap_or(false))
         })
     }
 

@@ -32,7 +32,10 @@ pub fn simulate(src: &str, steps: usize, seed: u64) -> Res<Trace> {
     let mut rng = Rng(seed.wrapping_mul(0x9E3779B97F4A7C15) | 1);
     let init = md.init;
     if init == FALSE {
-        return Err(Error::new(Pos { line: 1, col: 1 }, "the model has no initial state"));
+        return Err(Error::new(
+            Pos { line: 1, col: 1 },
+            "the model has no initial state",
+        ));
     }
     let mut cubes = vec![random_cube(&mut md, init, &mut rng)];
     for _ in 0..steps {

@@ -16,15 +16,25 @@ pub struct Error {
 
 impl Error {
     pub fn new(pos: Pos, msg: impl Into<String>) -> Error {
-        Error { pos, msg: msg.into() }
+        Error {
+            pos,
+            msg: msg.into(),
+        }
     }
 
     /// Render with the offending source line and a caret.
     pub fn render(&self, src: &str, file: &str) -> String {
-        let mut s = format!("{}:{}:{}: error: {}\n", file, self.pos.line, self.pos.col, self.msg);
+        let mut s = format!(
+            "{}:{}:{}: error: {}\n",
+            file, self.pos.line, self.pos.col, self.msg
+        );
         if self.pos.line >= 1 {
             if let Some(line) = src.lines().nth(self.pos.line as usize - 1) {
-                s.push_str(&format!("  {}\n  {}^\n", line, " ".repeat(self.pos.col.saturating_sub(1) as usize)));
+                s.push_str(&format!(
+                    "  {}\n  {}^\n",
+                    line,
+                    " ".repeat(self.pos.col.saturating_sub(1) as usize)
+                ));
             }
         }
         s
@@ -242,7 +252,11 @@ impl fmt::Display for Expr {
                 let right_assoc = matches!(op, BinOp::Imp | BinOp::Until | BinOp::Release);
                 let non_assoc = p == 6 || matches!(op, BinOp::Iff);
                 let (pa, pb) = (prec(a), prec(b));
-                let lp = if right_assoc || non_assoc { pa <= p } else { pa < p };
+                let lp = if right_assoc || non_assoc {
+                    pa <= p
+                } else {
+                    pa < p
+                };
                 let rp = if right_assoc { pb < p } else { pb <= p };
                 write!(f, "{} {} {}", child(a, lp), s, child(b, rp))
             }
@@ -286,7 +300,8 @@ pub struct Token {
 }
 
 const SYMS: &[&str] = &[
-    "<->", ":=", "..", "->", "!=", "<=", ">=", "(", ")", "{", "}", "[", "]", ",", ";", ":", "=", "<", ">", "+", "-", "*", "/", "!", "&", "|",
+    "<->", ":=", "..", "->", "!=", "<=", ">=", "(", ")", "{", "}", "[", "]", ",", ";", ":", "=",
+    "<", ">", "+", "-", "*", "/", "!", "&", "|",
 ];
 
 pub fn lex(src: &str) -> Res<Vec<Token>> {
@@ -323,10 +338,15 @@ pub fn lex(src: &str) -> Res<Vec<Token>> {
                     .ok_or_else(|| Error::new(pos, "integer literal too large"))?;
                 adv!();
             }
-            out.push(Token { t: Tok::Num(n), pos });
+            out.push(Token {
+                t: Tok::Num(n),
+                pos,
+            });
         } else if c.is_alphabetic() || c == '_' {
             let mut s = String::new();
-            while i < cs.len() && (cs[i].is_alphanumeric() || cs[i] == '_' || cs[i] == '$' || cs[i] == '#') {
+            while i < cs.len()
+                && (cs[i].is_alphanumeric() || cs[i] == '_' || cs[i] == '$' || cs[i] == '#')
+            {
                 s.push(cs[i]);
                 adv!();
             }
@@ -345,27 +365,80 @@ pub fn lex(src: &str) -> Res<Vec<Token>> {
                     for _ in 0..s.chars().count() {
                         adv!();
                     }
-                    out.push(Token { t: Tok::Sym(s), pos });
+                    out.push(Token {
+                        t: Tok::Sym(s),
+                        pos,
+                    });
                 }
                 None => return Err(Error::new(pos, format!("unexpected character '{}'", c))),
             }
         }
     }
-    out.push(Token { t: Tok::Eof, pos: Pos { line, col } });
+    out.push(Token {
+        t: Tok::Eof,
+        pos: Pos { line, col },
+    });
     Ok(out)
 }
 
 // -------------------------------------------------------------------------------------- parser
 
 const SECTIONS: &[&str] = &[
-    "MODULE", "VAR", "IVAR", "DEFINE", "INIT", "INVAR", "TRANS", "ASSIGN", "FAIRNESS", "JUSTICE", "SPEC", "CTLSPEC", "LTLSPEC",
+    "MODULE",
+    "VAR",
+    "IVAR",
+    "DEFINE",
+    "INIT",
+    "INVAR",
+    "TRANS",
+    "ASSIGN",
+    "FAIRNESS",
+    "JUSTICE",
+    "SPEC",
+    "CTLSPEC",
+    "LTLSPEC",
     "INVARSPEC",
 ];
 
 const RESERVED: &[&str] = &[
-    "MODULE", "VAR", "IVAR", "DEFINE", "INIT", "INVAR", "TRANS", "ASSIGN", "FAIRNESS", "JUSTICE", "SPEC", "CTLSPEC", "LTLSPEC",
-    "INVARSPEC", "TRUE", "FALSE", "case", "esac", "next", "init", "boolean", "mod", "xor", "in", "EX", "AX", "EF", "AF", "EG", "AG", "E",
-    "A", "X", "F", "G", "U", "R", "NAME",
+    "MODULE",
+    "VAR",
+    "IVAR",
+    "DEFINE",
+    "INIT",
+    "INVAR",
+    "TRANS",
+    "ASSIGN",
+    "FAIRNESS",
+    "JUSTICE",
+    "SPEC",
+    "CTLSPEC",
+    "LTLSPEC",
+    "INVARSPEC",
+    "TRUE",
+    "FALSE",
+    "case",
+    "esac",
+    "next",
+    "init",
+    "boolean",
+    "mod",
+    "xor",
+    "in",
+    "EX",
+    "AX",
+    "EF",
+    "AF",
+    "EG",
+    "AG",
+    "E",
+    "A",
+    "X",
+    "F",
+    "G",
+    "U",
+    "R",
+    "NAME",
 ];
 
 pub fn is_reserved(s: &str) -> bool {
@@ -385,14 +458,24 @@ const MAX_DEPTH: usize = 2000;
 
 pub fn parse(src: &str) -> Res<Program> {
     let toks = lex(src)?;
-    let mut p = Parser { toks, p: 0, no_until: false, depth: 0 };
+    let mut p = Parser {
+        toks,
+        p: 0,
+        no_until: false,
+        depth: 0,
+    };
     p.program()
 }
 
 /// Parse a single expression (used by tests and the CLI `--spec` flag).
 pub fn parse_expr(src: &str) -> Res<Expr> {
     let toks = lex(src)?;
-    let mut p = Parser { toks, p: 0, no_until: false, depth: 0 };
+    let mut p = Parser {
+        toks,
+        p: 0,
+        no_until: false,
+        depth: 0,
+    };
     let e = p.expr()?;
     if p.peek() != &Tok::Eof {
         return Err(Error::new(p.pos(), "unexpected trailing input"));
@@ -460,7 +543,10 @@ impl Parser {
         if self.eat_sym(s) {
             Ok(())
         } else {
-            Err(Error::new(self.pos(), format!("expected '{}', found {}", s, self.describe())))
+            Err(Error::new(
+                self.pos(),
+                format!("expected '{}', found {}", s, self.describe()),
+            ))
         }
     }
 
@@ -468,7 +554,10 @@ impl Parser {
         if self.eat_kw(s) {
             Ok(())
         } else {
-            Err(Error::new(self.pos(), format!("expected '{}', found {}", s, self.describe())))
+            Err(Error::new(
+                self.pos(),
+                format!("expected '{}', found {}", s, self.describe()),
+            ))
         }
     }
 
@@ -479,13 +568,20 @@ impl Parser {
                 self.bump();
                 Ok((s, pos))
             }
-            Tok::Id(s) => Err(Error::new(pos, format!("'{}' is a reserved word and cannot be used as a name", s))),
-            _ => Err(Error::new(pos, format!("expected an identifier, found {}", self.describe()))),
+            Tok::Id(s) => Err(Error::new(
+                pos,
+                format!("'{}' is a reserved word and cannot be used as a name", s),
+            )),
+            _ => Err(Error::new(
+                pos,
+                format!("expected an identifier, found {}", self.describe()),
+            )),
         }
     }
 
     fn at_section(&self) -> bool {
-        matches!(self.peek(), Tok::Id(s) if SECTIONS.contains(&s.as_str())) || self.peek() == &Tok::Eof
+        matches!(self.peek(), Tok::Id(s) if SECTIONS.contains(&s.as_str()))
+            || self.peek() == &Tok::Eof
     }
 
     fn program(&mut self) -> Res<Program> {
@@ -493,14 +589,25 @@ impl Parser {
         if self.eat_kw("MODULE") {
             let (n, pos) = self.ident()?;
             if n != "main" {
-                return Err(Error::new(pos, "only 'MODULE main' is supported (flat models)"));
+                return Err(Error::new(
+                    pos,
+                    "only 'MODULE main' is supported (flat models)",
+                ));
             }
         }
         while self.peek() != &Tok::Eof {
             let pos = self.pos();
             let kw = match self.peek().clone() {
                 Tok::Id(s) if SECTIONS.contains(&s.as_str()) => s,
-                _ => return Err(Error::new(pos, format!("expected a section keyword (VAR, INIT, TRANS, SPEC, ...), found {}", self.describe()))),
+                _ => {
+                    return Err(Error::new(
+                        pos,
+                        format!(
+                            "expected a section keyword (VAR, INIT, TRANS, SPEC, ...), found {}",
+                            self.describe()
+                        ),
+                    ))
+                }
             };
             self.bump();
             match kw.as_str() {
@@ -511,7 +618,12 @@ impl Parser {
                         self.expect_sym(":")?;
                         let ty = self.ty()?;
                         self.expect_sym(";")?;
-                        prog.vars.push(VarDecl { name, ty, input: kw == "IVAR", pos: npos });
+                        prog.vars.push(VarDecl {
+                            name,
+                            ty,
+                            input: kw == "IVAR",
+                            pos: npos,
+                        });
                     }
                 }
                 "DEFINE" => {
@@ -527,7 +639,11 @@ impl Parser {
                     while !self.at_section() {
                         let apos = self.pos();
                         let (kind, var) = if self.is_kw("init") || self.is_kw("next") {
-                            let k = if self.is_kw("init") { AssignKind::Init } else { AssignKind::Next };
+                            let k = if self.is_kw("init") {
+                                AssignKind::Init
+                            } else {
+                                AssignKind::Next
+                            };
                             self.bump();
                             self.expect_sym("(")?;
                             let (v, _) = self.ident()?;
@@ -539,7 +655,12 @@ impl Parser {
                         self.expect_sym(":=")?;
                         let e = self.expr()?;
                         self.expect_sym(";")?;
-                        prog.assigns.push(Assign { kind, var, expr: e, pos: apos });
+                        prog.assigns.push(Assign {
+                            kind,
+                            var,
+                            expr: e,
+                            pos: apos,
+                        });
                     }
                 }
                 "INIT" => {
@@ -573,7 +694,12 @@ impl Parser {
                         "INVARSPEC" => SpecKind::Invar,
                         _ => SpecKind::Ctl,
                     };
-                    prog.specs.push(Spec { kind, name, expr: e, pos });
+                    prog.specs.push(Spec {
+                        kind,
+                        name,
+                        expr: e,
+                        pos,
+                    });
                 }
                 _ => unreachable!(),
             }
@@ -623,7 +749,10 @@ impl Parser {
                 self.bump();
                 Ok(if neg { -n } else { n })
             }
-            _ => Err(Error::new(self.pos(), format!("expected a number, found {}", self.describe()))),
+            _ => Err(Error::new(
+                self.pos(),
+                format!("expected a number, found {}", self.describe()),
+            )),
         }
     }
 
@@ -636,7 +765,10 @@ impl Parser {
     fn enter(&mut self) -> Res<()> {
         self.depth += 1;
         if self.depth > MAX_DEPTH {
-            return Err(Error::new(self.pos(), format!("expression nested too deeply (limit {})", MAX_DEPTH)));
+            return Err(Error::new(
+                self.pos(),
+                format!("expression nested too deeply (limit {})", MAX_DEPTH),
+            ));
         }
         Ok(())
     }
@@ -889,16 +1021,26 @@ impl Parser {
                     let b = self.expr()?;
                     self.no_until = saved;
                     self.expect_sym("]")?;
-                    let k = if s == "E" { Ek::EU(Box::new(a), Box::new(b)) } else { Ek::AU(Box::new(a), Box::new(b)) };
+                    let k = if s == "E" {
+                        Ek::EU(Box::new(a), Box::new(b))
+                    } else {
+                        Ek::AU(Box::new(a), Box::new(b))
+                    };
                     Ok(self.mk(k, pos))
                 }
-                _ if is_reserved(&s) => Err(Error::new(pos, format!("unexpected keyword '{}' in expression", s))),
+                _ if is_reserved(&s) => Err(Error::new(
+                    pos,
+                    format!("unexpected keyword '{}' in expression", s),
+                )),
                 _ => {
                     self.bump();
                     Ok(self.mk(Ek::Id(s), pos))
                 }
             },
-            _ => Err(Error::new(pos, format!("expected an expression, found {}", self.describe()))),
+            _ => Err(Error::new(
+                pos,
+                format!("expected an expression, found {}", self.describe()),
+            )),
         }
     }
 }
@@ -910,9 +1052,22 @@ impl Expr {
             Ek::Int(_) | Ek::Bool(_) | Ek::Id(_) => false,
             Ek::Next(e) => e.is_temporal(),
             Ek::Un(op, e) => {
-                matches!(op, UnOp::EX | UnOp::AX | UnOp::EF | UnOp::AF | UnOp::EG | UnOp::AG | UnOp::X | UnOp::F | UnOp::G) || e.is_temporal()
+                matches!(
+                    op,
+                    UnOp::EX
+                        | UnOp::AX
+                        | UnOp::EF
+                        | UnOp::AF
+                        | UnOp::EG
+                        | UnOp::AG
+                        | UnOp::X
+                        | UnOp::F
+                        | UnOp::G
+                ) || e.is_temporal()
             }
-            Ek::Bin(op, a, b) => matches!(op, BinOp::Until | BinOp::Release) || a.is_temporal() || b.is_temporal(),
+            Ek::Bin(op, a, b) => {
+                matches!(op, BinOp::Until | BinOp::Release) || a.is_temporal() || b.is_temporal()
+            }
             Ek::Case(arms) => arms.iter().any(|(c, v)| c.is_temporal() || v.is_temporal()),
             Ek::Set(es) => es.iter().any(|e| e.is_temporal()),
             Ek::EU(..) | Ek::AU(..) => true,

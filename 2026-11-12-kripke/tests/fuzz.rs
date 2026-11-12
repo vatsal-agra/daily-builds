@@ -2,7 +2,10 @@ use kripke::fuzz::{cross_check, gen_model, Rng};
 
 #[test]
 fn differential_random_models() {
-    let n: u64 = std::env::var("KRIPKE_FUZZ").ok().and_then(|v| v.parse().ok()).unwrap_or(150);
+    let n: u64 = std::env::var("KRIPKE_FUZZ")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(150);
     let mut failures = vec![];
     for seed in 1..=n {
         let src = gen_model(seed);

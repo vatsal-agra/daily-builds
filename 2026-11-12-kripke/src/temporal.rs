@@ -81,7 +81,10 @@ pub fn lower_ctl<A>(e: &Expr, atom: &mut dyn FnMut(&Expr) -> Res<A>) -> Res<Ctl<
         }
         Ek::EU(l, r) => Ok(Ctl::EU(b(lower_ctl(l, atom)?), b(lower_ctl(r, atom)?))),
         Ek::AU(l, r) => Ok(Ctl::AU(b(lower_ctl(l, atom)?), b(lower_ctl(r, atom)?))),
-        _ => Err(Error::new(e.pos, "temporal operators may only be combined with boolean connectives")),
+        _ => Err(Error::new(
+            e.pos,
+            "temporal operators may only be combined with boolean connectives",
+        )),
     }
 }
 
@@ -97,16 +100,35 @@ pub fn lower_ltl<A>(e: &Expr, atom: &mut dyn FnMut(&Expr) -> Res<A>) -> Res<Ltl<
                 UnOp::X => Ltl::X(b(sub)),
                 UnOp::F => Ltl::F(b(sub)),
                 UnOp::G => Ltl::G(b(sub)),
-                UnOp::Neg => return Err(Error::new(e.pos, "arithmetic applied to a temporal formula")),
-                _ => return Err(Error::new(e.pos, "path quantifiers (EX/AG/...) are not allowed in LTLSPEC; use X/F/G/U/R")),
+                UnOp::Neg => {
+                    return Err(Error::new(
+                        e.pos,
+                        "arithmetic applied to a temporal formula",
+                    ))
+                }
+                _ => {
+                    return Err(Error::new(
+                        e.pos,
+                        "path quantifiers (EX/AG/...) are not allowed in LTLSPEC; use X/F/G/U/R",
+                    ))
+                }
             })
         }
         Ek::Bin(op, l, r) => {
             let (l2, r2) = match op {
-                BinOp::And | BinOp::Or | BinOp::Imp | BinOp::Iff | BinOp::Xor | BinOp::Until | BinOp::Release => {
-                    (lower_ltl(l, atom)?, lower_ltl(r, atom)?)
+                BinOp::And
+                | BinOp::Or
+                | BinOp::Imp
+                | BinOp::Iff
+                | BinOp::Xor
+                | BinOp::Until
+                | BinOp::Release => (lower_ltl(l, atom)?, lower_ltl(r, atom)?),
+                _ => {
+                    return Err(Error::new(
+                        e.pos,
+                        "a temporal formula cannot be an operand of a comparison or arithmetic",
+                    ))
                 }
-                _ => return Err(Error::new(e.pos, "a temporal formula cannot be an operand of a comparison or arithmetic")),
             };
             Ok(match op {
                 BinOp::And => Ltl::And(b(l2), b(r2)),
@@ -118,8 +140,14 @@ pub fn lower_ltl<A>(e: &Expr, atom: &mut dyn FnMut(&Expr) -> Res<A>) -> Res<Ltl<
                 _ => Ltl::R(b(l2), b(r2)),
             })
         }
-        Ek::EU(..) | Ek::AU(..) => Err(Error::new(e.pos, "path quantifiers are not allowed in LTLSPEC")),
-        _ => Err(Error::new(e.pos, "temporal operators may only be combined with boolean connectives")),
+        Ek::EU(..) | Ek::AU(..) => Err(Error::new(
+            e.pos,
+            "path quantifiers are not allowed in LTLSPEC",
+        )),
+        _ => Err(Error::new(
+            e.pos,
+            "temporal operators may only be combined with boolean connectives",
+        )),
     }
 }
 
@@ -129,7 +157,11 @@ impl<A> Ctl<A> {
         !matches!(self, Ctl::Atom(_))
             && match self {
                 Ctl::Not(a) => a.is_pathy(),
-                Ctl::And(a, b) | Ctl::Or(a, b) | Ctl::Imp(a, b) | Ctl::Iff(a, b) | Ctl::Xor(a, b) => a.is_pathy() || b.is_pathy(),
+                Ctl::And(a, b)
+                | Ctl::Or(a, b)
+                | Ctl::Imp(a, b)
+                | Ctl::Iff(a, b)
+                | Ctl::Xor(a, b) => a.is_pathy() || b.is_pathy(),
                 _ => true,
             }
     }

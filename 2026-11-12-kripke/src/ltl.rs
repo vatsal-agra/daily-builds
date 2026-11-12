@@ -39,11 +39,17 @@ pub fn nnf(f: &Ltl<Bdd>, neg: bool) -> Ltl<Bdd> {
         (Imp(x, y), true) => And(b(nnf(x, false)), b(nnf(y, true))),
         (Iff(x, y), n) => {
             // x <-> y  ==  (x & y) | (!x & !y)
-            let eq = Or(b(And(x.clone(), y.clone())), b(And(b(Not(x.clone())), b(Not(y.clone())))));
+            let eq = Or(
+                b(And(x.clone(), y.clone())),
+                b(And(b(Not(x.clone())), b(Not(y.clone())))),
+            );
             nnf(&eq, n)
         }
         (Xor(x, y), n) => {
-            let ne = Or(b(And(x.clone(), b(Not(y.clone())))), b(And(b(Not(x.clone())), y.clone())));
+            let ne = Or(
+                b(And(x.clone(), b(Not(y.clone())))),
+                b(And(b(Not(x.clone())), y.clone())),
+            );
             nnf(&ne, n)
         }
         (X(x), n) => X(b(nnf(x, n))),
@@ -155,7 +161,13 @@ pub fn check(prog: &Program, expr: &Expr, lax: bool, stutter: bool) -> Res<LtlRe
     let psi = nnf(&phi, true);
     let base_trans = md.trans;
     let base_init = md.init;
-    let mut tb = Tableau { md: &mut md, memo: HashMap::new(), aux: HashMap::new(), order: vec![], eventualities: vec![] };
+    let mut tb = Tableau {
+        md: &mut md,
+        memo: HashMap::new(),
+        aux: HashMap::new(),
+        order: vec![],
+        eventualities: vec![],
+    };
     let top = tb.val(&psi);
     let mut constraints = vec![];
     let mut i = 0;
@@ -200,5 +212,9 @@ pub fn check(prog: &Program, expr: &Expr, lax: bool, stutter: bool) -> Res<LtlRe
         let tr = ck.to_trace(&cubes, lp);
         Verdict::Fails(Some(tr))
     };
-    Ok(LtlResult { verdict, stats: ck.stats.clone(), aux_vars })
+    Ok(LtlResult {
+        verdict,
+        stats: ck.stats.clone(),
+        aux_vars,
+    })
 }

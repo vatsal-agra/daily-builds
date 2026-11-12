@@ -36,7 +36,11 @@ fn read_source(path: &str) -> String {
     match std::fs::read(path) {
         Ok(bytes) => match String::from_utf8(bytes) {
             Ok(s) => s,
-            Err(e) => die(&format!("{}: not valid UTF-8 text (invalid byte at offset {})", path, e.utf8_error().valid_up_to())),
+            Err(e) => die(&format!(
+                "{}: not valid UTF-8 text (invalid byte at offset {})",
+                path,
+                e.utf8_error().valid_up_to()
+            )),
         },
         Err(e) => die(&format!("cannot read {}: {}", path, e)),
     }
@@ -47,10 +51,12 @@ fn flag(args: &[String], name: &str) -> bool {
 }
 
 fn value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
-    args.iter().position(|a| a == name).map(|i| match args.get(i + 1) {
-        Some(v) => v.as_str(),
-        None => die(&format!("{} needs a value", name)),
-    })
+    args.iter()
+        .position(|a| a == name)
+        .map(|i| match args.get(i + 1) {
+            Some(v) => v.as_str(),
+            None => die(&format!("{} needs a value", name)),
+        })
 }
 
 fn check_unknown_flags(args: &[String], known_flags: &[&str], known_values: &[&str]) {
@@ -97,7 +103,19 @@ fn path_arg(rest: &[String]) -> &str {
 }
 
 fn cmd_check(rest: &[String]) -> i32 {
-    check_unknown_flags(rest, &["--reorder", "--stutter", "--lax", "--full-traces", "--stats", "--quiet", "--gc-stress"], &["--html"]);
+    check_unknown_flags(
+        rest,
+        &[
+            "--reorder",
+            "--stutter",
+            "--lax",
+            "--full-traces",
+            "--stats",
+            "--quiet",
+            "--gc-stress",
+        ],
+        &["--html"],
+    );
     let path = {
         let mut skip = false;
         let mut found = None;
@@ -118,10 +136,19 @@ fn cmd_check(rest: &[String]) -> i32 {
         found.unwrap_or_else(|| die("missing model file (see `kripke help`)"))
     };
     let src = read_source(path);
-    let opts = Options { reorder: flag(rest, "--reorder"), gc_stress: flag(rest, "--gc-stress"), lax: flag(rest, "--lax"), stutter: flag(rest, "--stutter") };
+    let opts = Options {
+        reorder: flag(rest, "--reorder"),
+        gc_stress: flag(rest, "--gc-stress"),
+        lax: flag(rest, "--lax"),
+        stutter: flag(rest, "--stutter"),
+    };
     match run(&src, &opts) {
         Ok(r) => {
-            let ro = RenderOpts { verbose: flag(rest, "--stats"), full_traces: flag(rest, "--full-traces"), quiet: flag(rest, "--quiet") };
+            let ro = RenderOpts {
+                verbose: flag(rest, "--stats"),
+                full_traces: flag(rest, "--full-traces"),
+                quiet: flag(rest, "--quiet"),
+            };
             print!("{}", render_report(&r, &ro));
             if let Some(out) = value(rest, "--html") {
                 let html = kripke::html::render_html(&r, path, &src);
@@ -155,7 +182,14 @@ fn cmd_explicit(rest: &[String]) -> i32 {
         }
     };
     let stutter = flag(rest, "--stutter");
-    let sym = match kripke::driver::run_program(&prog, &Options { stutter, ..Default::default() }, std::time::Instant::now()) {
+    let sym = match kripke::driver::run_program(
+        &prog,
+        &Options {
+            stutter,
+            ..Default::default()
+        },
+        std::time::Instant::now(),
+    ) {
         Ok(r) => r,
         Err(e) => {
             eprint!("{}", e.render(&src, path));
@@ -171,16 +205,38 @@ fn cmd_explicit(rest: &[String]) -> i32 {
     let bad = std::cell::Cell::new(0);
     let line = |what: &str, a: String, b: String| {
         let ok = a == b;
-        println!("{:<22} symbolic {:>10}   explicit {:>10}   {}", what, a, b, if ok { "agree" } else { "MISMATCH" });
+        println!(
+            "{:<22} symbolic {:>10}   explicit {:>10}   {}",
+            what,
+            a,
+            b,
+            if ok { "agree" } else { "MISMATCH" }
+        );
         if !ok {
             bad.set(bad.get() + 1);
         }
     };
-    line("reachable states", sym.info.reachable.to_string(), nreach.to_string());
+    line(
+        "reachable states",
+        sym.info.reachable.to_string(),
+        nreach.to_string(),
+    );
     line("diameter", sym.info.diameter.to_string(), diam.to_string());
-    line("deadlock states", sym.info.deadlocks.to_string(), dead.to_string());
-    line("initial states", sym.info.init_states.to_string(), ex.init_count().to_string());
-    line("fair states", sym.info.fair_states.to_string(), ex.fair_count().to_string());
+    line(
+        "deadlock states",
+        sym.info.deadlocks.to_string(),
+        dead.to_string(),
+    );
+    line(
+        "initial states",
+        sym.info.init_states.to_string(),
+        ex.init_count().to_string(),
+    );
+    line(
+        "fair states",
+        sym.info.fair_states.to_string(),
+        ex.fair_count().to_string(),
+    );
     for (i, sp) in prog.specs.iter().enumerate() {
         let o = &sym.outcomes[i];
         let s = o.verdict == kripke::check::Verdict::Holds;
@@ -214,9 +270,14 @@ fn cmd_explicit(rest: &[String]) -> i32 {
 }
 
 fn cmd_gen(rest: &[String]) -> i32 {
-    let name = rest.first().map(|s| s.as_str()).unwrap_or_else(|| die("usage: kripke gen NAME N"));
+    let name = rest
+        .first()
+        .map(|s| s.as_str())
+        .unwrap_or_else(|| die("usage: kripke gen NAME N"));
     let n: usize = match rest.get(1) {
-        Some(v) => v.parse().unwrap_or_else(|_| die("N must be a positive integer")),
+        Some(v) => v
+            .parse()
+            .unwrap_or_else(|_| die("N must be a positive integer")),
         None => die("usage: kripke gen NAME N"),
     };
     match kripke::gen::generate(name, n) {
@@ -230,8 +291,12 @@ fn cmd_gen(rest: &[String]) -> i32 {
 
 fn cmd_fuzz(rest: &[String]) -> i32 {
     check_unknown_flags(rest, &[], &["--count", "--seed"]);
-    let count: u64 = value(rest, "--count").map(|v| v.parse().unwrap_or_else(|_| die("--count needs a number"))).unwrap_or(200);
-    let seed0: u64 = value(rest, "--seed").map(|v| v.parse().unwrap_or_else(|_| die("--seed needs a number"))).unwrap_or(1);
+    let count: u64 = value(rest, "--count")
+        .map(|v| v.parse().unwrap_or_else(|_| die("--count needs a number")))
+        .unwrap_or(200);
+    let seed0: u64 = value(rest, "--seed")
+        .map(|v| v.parse().unwrap_or_else(|_| die("--seed needs a number")))
+        .unwrap_or(1);
     let mut bad = 0;
     for seed in seed0..seed0 + count {
         let src = kripke::fuzz::gen_model(seed);
@@ -248,7 +313,10 @@ fn cmd_fuzz(rest: &[String]) -> i32 {
             }
         }
     }
-    println!("{} random models cross-checked, {} disagreement(s)", count, bad);
+    println!(
+        "{} random models cross-checked, {} disagreement(s)",
+        count, bad
+    );
     if bad == 0 {
         0
     } else {
@@ -258,7 +326,12 @@ fn cmd_fuzz(rest: &[String]) -> i32 {
 
 fn cmd_dot(rest: &[String]) -> i32 {
     let path = path_arg(rest);
-    let what = rest.iter().filter(|a| !a.starts_with("--")).nth(1).map(|s| s.as_str()).unwrap_or("reach");
+    let what = rest
+        .iter()
+        .filter(|a| !a.starts_with("--"))
+        .nth(1)
+        .map(|s| s.as_str())
+        .unwrap_or("reach");
     let src = read_source(path);
     let prog = match kripke::lang::parse(&src) {
         Ok(p) => p,
@@ -281,18 +354,28 @@ fn cmd_dot(rest: &[String]) -> i32 {
             let mut ck = kripke::check::Checker::new(&mut md);
             ck.reach().set
         }
-        other => die(&format!("unknown BDD '{}': choose init, trans or reach", other)),
+        other => die(&format!(
+            "unknown BDD '{}': choose init, trans or reach",
+            other
+        )),
     };
     let names = kripke::driver::bit_names(&md);
-    print!("{}", md.m.to_dot(&[(what.to_string(), root)], &|v| names[v as usize].clone()));
+    print!(
+        "{}",
+        md.m.to_dot(&[(what.to_string(), root)], &|v| names[v as usize].clone())
+    );
     0
 }
 
 fn cmd_sim(rest: &[String]) -> i32 {
     check_unknown_flags(rest, &[], &["--steps", "--seed"]);
     let path = path_arg(rest);
-    let steps: usize = value(rest, "--steps").map(|v| v.parse().unwrap_or_else(|_| die("--steps needs a number"))).unwrap_or(10);
-    let seed: u64 = value(rest, "--seed").map(|v| v.parse().unwrap_or_else(|_| die("--seed needs a number"))).unwrap_or(1);
+    let steps: usize = value(rest, "--steps")
+        .map(|v| v.parse().unwrap_or_else(|_| die("--steps needs a number")))
+        .unwrap_or(10);
+    let seed: u64 = value(rest, "--seed")
+        .map(|v| v.parse().unwrap_or_else(|_| die("--seed needs a number")))
+        .unwrap_or(1);
     let src = read_source(path);
     match kripke::sim::simulate(&src, steps, seed) {
         Ok(t) => {
@@ -308,11 +391,16 @@ fn cmd_sim(rest: &[String]) -> i32 {
 
 fn main() {
     // Deeply nested or very long expressions recurse deeply; give the worker a generous stack.
-    let child = std::thread::Builder::new().stack_size(1 << 30).spawn(main_inner).expect("cannot start worker thread");
+    let child = std::thread::Builder::new()
+        .stack_size(1 << 30)
+        .spawn(main_inner)
+        .expect("cannot start worker thread");
     match child.join() {
         Ok(code) => exit(code),
         Err(_) => {
-            eprintln!("kripke: internal error (this is a bug; please report the model that triggered it)");
+            eprintln!(
+                "kripke: internal error (this is a bug; please report the model that triggered it)"
+            );
             exit(70)
         }
     }

@@ -123,7 +123,10 @@ impl Model {
         let mut to_cur = HashMap::new();
         for d in &prog.vars {
             if var_ix.contains_key(&d.name) {
-                return Err(Error::new(d.pos, format!("variable '{}' declared twice", d.name)));
+                return Err(Error::new(
+                    d.pos,
+                    format!("variable '{}' declared twice", d.name),
+                ));
             }
             let size = match &d.ty {
                 Ty::Bool => 2,
@@ -156,26 +159,45 @@ impl Model {
                 }
             }
             var_ix.insert(d.name.clone(), vars.len());
-            vars.push(VarInfo { name: d.name.clone(), ty: d.ty.clone(), input: d.input, cur, nxt, size });
+            vars.push(VarInfo {
+                name: d.name.clone(),
+                ty: d.ty.clone(),
+                input: d.input,
+                cur,
+                nxt,
+                size,
+            });
         }
         for (n, _, pos) in &prog.defines {
             if var_ix.contains_key(n) {
-                return Err(Error::new(*pos, format!("'{}' is both a variable and a definition", n)));
+                return Err(Error::new(
+                    *pos,
+                    format!("'{}' is both a variable and a definition", n),
+                ));
             }
         }
         let mut defines = HashMap::new();
         for (n, e, pos) in &prog.defines {
             if defines.insert(n.clone(), e.clone()).is_some() {
-                return Err(Error::new(*pos, format!("definition '{}' declared twice", n)));
+                return Err(Error::new(
+                    *pos,
+                    format!("definition '{}' declared twice", n),
+                ));
             }
             if sym_ix.contains_key(n) {
-                return Err(Error::new(*pos, format!("'{}' is both an enum value and a definition", n)));
+                return Err(Error::new(
+                    *pos,
+                    format!("'{}' is both an enum value and a definition", n),
+                ));
             }
         }
         for n in var_ix.keys() {
             if sym_ix.contains_key(n) {
                 let pos = prog.vars[var_ix[n]].pos;
-                return Err(Error::new(pos, format!("'{}' is both a variable and an enum value", n)));
+                return Err(Error::new(
+                    pos,
+                    format!("'{}' is both a variable and an enum value", n),
+                ));
             }
         }
         let cur_cube = m.cube(&cur_vars);
@@ -234,7 +256,11 @@ impl Model {
     }
 
     fn code_bdd(&mut self, bits: &[u32], code: usize) -> Bdd {
-        let lits: Vec<(u32, bool)> = bits.iter().enumerate().map(|(i, &b)| (b, (code >> i) & 1 == 1)).collect();
+        let lits: Vec<(u32, bool)> = bits
+            .iter()
+            .enumerate()
+            .map(|(i, &b)| (b, (code >> i) & 1 == 1))
+            .collect();
         self.m.literals(&lits)
     }
 
@@ -290,9 +316,15 @@ impl Model {
             return V::Bool(self.m.var(bits[0]));
         }
         if v.size > MAX_TAB {
-            let Ty::Range(lo, _) = v.ty else { unreachable!("only ranges are large") };
+            let Ty::Range(lo, _) = v.ty else {
+                unreachable!("only ranges are large")
+            };
             let b = bv::from_unsigned(&bits.iter().map(|&x| self.m.var(x)).collect::<Vec<_>>());
-            let b = if lo == 0 { b } else { bv::add(&mut self.m, &b, &bv::constant(lo)) };
+            let b = if lo == 0 {
+                b
+            } else {
+                bv::add(&mut self.m, &b, &bv::constant(lo))
+            };
             return V::Bv(vec![(b, TRUE)]);
         }
         let mut tab = Vec::new();
@@ -331,7 +363,9 @@ impl Model {
                 }
                 t
             }
-            V::Bv(_) => unreachable!("bit-vector value reached to_tab: callers must dispatch first"),
+            V::Bv(_) => {
+                unreachable!("bit-vector value reached to_tab: callers must dispatch first")
+            }
         }
     }
 
@@ -339,18 +373,31 @@ impl Model {
     fn to_alts(&mut self, v: V, pos: Pos) -> Res<Vec<(Bv, Bdd)>> {
         match v {
             V::Bv(a) => Ok(a),
-            V::Bool(_) => Err(Error::new(pos, "expected an integer expression, found a boolean")),
+            V::Bool(_) => Err(Error::new(
+                pos,
+                "expected an integer expression, found a boolean",
+            )),
             V::Tab(t) => {
                 for (val, _) in &t {
                     if !matches!(val, Val::I(_)) {
-                        return Err(Error::new(pos, format!("expected an integer expression, found {} value {}", Self::kind_name(*val), self.val_str(*val))));
+                        return Err(Error::new(
+                            pos,
+                            format!(
+                                "expected an integer expression, found {} value {}",
+                                Self::kind_name(*val),
+                                self.val_str(*val)
+                            ),
+                        ));
                     }
                 }
                 if t.len() <= 16 {
-                    return Ok(t.into_iter().map(|(v, g)| match v {
-                        Val::I(n) => (bv::constant(n), g),
-                        _ => unreachable!(),
-                    }).collect());
+                    return Ok(t
+                        .into_iter()
+                        .map(|(v, g)| match v {
+                            Val::I(n) => (bv::constant(n), g),
+                            _ => unreachable!(),
+                        })
+                        .collect());
                 }
                 // many entries: build bit functions, which is only valid if the guards are disjoint
                 let mut acc = FALSE;
@@ -360,8 +407,16 @@ impl Model {
                     }
                     acc = self.m.or(acc, *g);
                 }
-                let lo = t.iter().map(|(v, _)| if let Val::I(n) = v { *n } else { 0 }).min().unwrap();
-                let hi = t.iter().map(|(v, _)| if let Val::I(n) = v { *n } else { 0 }).max().unwrap();
+                let lo = t
+                    .iter()
+                    .map(|(v, _)| if let Val::I(n) = v { *n } else { 0 })
+                    .min()
+                    .unwrap();
+                let hi = t
+                    .iter()
+                    .map(|(v, _)| if let Val::I(n) = v { *n } else { 0 })
+                    .max()
+                    .unwrap();
                 let w = bv::constant(lo).width().max(bv::constant(hi).width());
                 let mut bits = vec![FALSE; w];
                 for (val, g) in &t {
@@ -380,7 +435,10 @@ impl Model {
 
     fn bv_pairs_ok(&self, a: usize, b: usize, pos: Pos) -> Res<()> {
         if a * b > MAX_ALT_PAIRS {
-            return Err(Error::new(pos, "too many nondeterministic alternatives in a large-integer expression"));
+            return Err(Error::new(
+                pos,
+                "too many nondeterministic alternatives in a large-integer expression",
+            ));
         }
         Ok(())
     }
@@ -417,7 +475,11 @@ impl Model {
                         // only constant positive divisors are supported on bit-vectors
                         let c = y.bits.iter().enumerate().try_fold(0i64, |acc, (i, &b)| {
                             if b == TRUE {
-                                Some(if i + 1 == y.bits.len() { acc - (1i64 << i) } else { acc | (1i64 << i) })
+                                Some(if i + 1 == y.bits.len() {
+                                    acc - (1i64 << i)
+                                } else {
+                                    acc | (1i64 << i)
+                                })
                             } else if b == FALSE {
                                 Some(acc)
                             } else {
@@ -450,14 +512,26 @@ impl Model {
     fn to_bool(&mut self, v: V, pos: Pos) -> Res<Bdd> {
         match v {
             V::Bool(b) => Ok(b),
-            V::Bv(_) => Err(Error::new(pos, "expected a boolean expression, found an integer")),
+            V::Bv(_) => Err(Error::new(
+                pos,
+                "expected a boolean expression, found an integer",
+            )),
             V::Tab(t) => {
                 let mut acc = FALSE;
                 for (val, g) in t {
                     match val {
                         Val::B(true) => acc = self.m.or(acc, g),
                         Val::B(false) => {}
-                        other => return Err(Error::new(pos, format!("expected a boolean expression, found {} value {}", Self::kind_name(other), self.val_str(other)))),
+                        other => {
+                            return Err(Error::new(
+                                pos,
+                                format!(
+                                    "expected a boolean expression, found {} value {}",
+                                    Self::kind_name(other),
+                                    self.val_str(other)
+                                ),
+                            ))
+                        }
                     }
                 }
                 Ok(acc)
@@ -478,7 +552,13 @@ impl Model {
     }
 
     pub fn atom(&mut self, e: &Expr) -> Res<Bdd> {
-        let v = self.comp(e, Mode { next: false, ctx: Ctx::State })?;
+        let v = self.comp(
+            e,
+            Mode {
+                next: false,
+                ctx: Ctx::State,
+            },
+        )?;
         self.to_bool(v, e.pos)
     }
 
@@ -494,12 +574,21 @@ impl Model {
             Ek::Id(name) => self.comp_id(name, e.pos, mode),
             Ek::Next(inner) => {
                 if mode.ctx != Ctx::Trans {
-                    return Err(Error::new(e.pos, "next(..) is only allowed in TRANS and next-state assignments"));
+                    return Err(Error::new(
+                        e.pos,
+                        "next(..) is only allowed in TRANS and next-state assignments",
+                    ));
                 }
                 if mode.next {
                     return Err(Error::new(e.pos, "next(next(..)) is not allowed"));
                 }
-                self.comp(inner, Mode { next: true, ctx: mode.ctx })
+                self.comp(
+                    inner,
+                    Mode {
+                        next: true,
+                        ctx: mode.ctx,
+                    },
+                )
             }
             Ek::Un(op, a) => match op {
                 UnOp::Not => {
@@ -510,7 +599,10 @@ impl Model {
                 UnOp::Neg => {
                     let v = self.comp(a, mode)?;
                     if let V::Bv(alts) = v {
-                        let out = alts.iter().map(|(b, g)| (bv::neg(&mut self.m, b), *g)).collect();
+                        let out = alts
+                            .iter()
+                            .map(|(b, g)| (bv::neg(&mut self.m, b), *g))
+                            .collect();
                         return Ok(V::Bv(out));
                     }
                     let t = self.to_tab(v);
@@ -518,14 +610,29 @@ impl Model {
                     for (val, g) in t {
                         match val {
                             Val::I(n) => out.push((Val::I(-n), g)),
-                            other => return Err(Error::new(e.pos, format!("unary '-' needs an integer, found {} value {}", Self::kind_name(other), self.val_str(other)))),
+                            other => {
+                                return Err(Error::new(
+                                    e.pos,
+                                    format!(
+                                        "unary '-' needs an integer, found {} value {}",
+                                        Self::kind_name(other),
+                                        self.val_str(other)
+                                    ),
+                                ))
+                            }
                         }
                     }
                     Ok(V::Tab(out))
                 }
-                _ => Err(Error::new(e.pos, "temporal operators are only allowed in SPEC / LTLSPEC formulas")),
+                _ => Err(Error::new(
+                    e.pos,
+                    "temporal operators are only allowed in SPEC / LTLSPEC formulas",
+                )),
             },
-            Ek::EU(..) | Ek::AU(..) => Err(Error::new(e.pos, "temporal operators are only allowed in SPEC / LTLSPEC formulas")),
+            Ek::EU(..) | Ek::AU(..) => Err(Error::new(
+                e.pos,
+                "temporal operators are only allowed in SPEC / LTLSPEC formulas",
+            )),
             Ek::Set(es) => {
                 let mut vs = vec![];
                 for x in es {
@@ -560,7 +667,10 @@ impl Model {
                     remaining = self.m.and(remaining, ncb);
                 }
                 if remaining != FALSE && !self.case_uncovered_ok(remaining) {
-                    return Err(Error::new(e.pos, "case expression is not exhaustive: add a final 'TRUE : ...;' arm"));
+                    return Err(Error::new(
+                        e.pos,
+                        "case expression is not exhaustive: add a final 'TRUE : ...;' arm",
+                    ));
                 }
                 if parts.iter().any(|p| matches!(p, V::Bv(_))) {
                     let mut alts = vec![];
@@ -612,7 +722,12 @@ impl Model {
                 if Self::kind_name(*v) != k {
                     return Err(Error::new(
                         pos,
-                        format!("mixed types in one expression: {} and {} ({})", k, Self::kind_name(*v), self.val_str(*v)),
+                        format!(
+                            "mixed types in one expression: {} and {} ({})",
+                            k,
+                            Self::kind_name(*v),
+                            self.val_str(*v)
+                        ),
                     ));
                 }
             }
@@ -627,14 +742,20 @@ impl Model {
                     return Err(Error::new(pos, format!("input variable '{}' may only be used in TRANS and next-state assignments", name)));
                 }
                 if mode.next {
-                    return Err(Error::new(pos, format!("input variable '{}' has no next-state copy", name)));
+                    return Err(Error::new(
+                        pos,
+                        format!("input variable '{}' has no next-state copy", name),
+                    ));
                 }
             }
             return Ok(self.read_var(vi, mode.next));
         }
         if let Some(def) = self.defines.get(name).cloned() {
             if self.expanding.iter().any(|n| n == name) {
-                return Err(Error::new(pos, format!("definition '{}' is recursive", name)));
+                return Err(Error::new(
+                    pos,
+                    format!("definition '{}' is recursive", name),
+                ));
             }
             self.expanding.push(name.to_string());
             let r = self.comp(&def, mode);
@@ -644,23 +765,39 @@ impl Model {
         if let Some(&s) = self.sym_ix.get(name) {
             return Ok(V::Tab(vec![(Val::S(s), TRUE)]));
         }
-        let mut cands: Vec<&String> = self.var_ix.keys().chain(self.defines.keys()).chain(self.sym_ix.keys()).collect();
+        let mut cands: Vec<&String> = self
+            .var_ix
+            .keys()
+            .chain(self.defines.keys())
+            .chain(self.sym_ix.keys())
+            .collect();
         cands.sort_by_key(|c| edit_distance(c, name));
         let hint = match cands.first() {
-            Some(c) if edit_distance(c, name) <= 2.max(name.len() / 3) => format!(" (did you mean '{}'?)", c),
+            Some(c) if edit_distance(c, name) <= 2.max(name.len() / 3) => {
+                format!(" (did you mean '{}'?)", c)
+            }
             _ => String::new(),
         };
-        Err(Error::new(pos, format!("unknown identifier '{}'{}", name, hint)))
+        Err(Error::new(
+            pos,
+            format!("unknown identifier '{}'{}", name, hint),
+        ))
     }
 
     fn comp_bin(&mut self, op: BinOp, a: &Expr, b: &Expr, pos: Pos, mode: Mode) -> Res<V> {
         use BinOp::*;
         if matches!(op, Until | Release) {
-            return Err(Error::new(pos, "temporal operators are only allowed in SPEC / LTLSPEC formulas"));
+            return Err(Error::new(
+                pos,
+                "temporal operators are only allowed in SPEC / LTLSPEC formulas",
+            ));
         }
         let va = self.comp(a, mode)?;
         let vb = self.comp(b, mode)?;
-        let numeric = matches!(op, Eq | Ne | In | Lt | Le | Gt | Ge | Add | Sub | Mul | Div | Mod);
+        let numeric = matches!(
+            op,
+            Eq | Ne | In | Lt | Le | Gt | Ge | Add | Sub | Mul | Div | Mod
+        );
         if numeric && (matches!(va, V::Bv(_)) || matches!(vb, V::Bv(_))) {
             return self.bv_binop(op, va, vb, pos);
         }
@@ -685,7 +822,10 @@ impl Model {
                 let tb = self.to_tab(vb);
                 if let (Some(ka), Some(kb)) = (Self::tab_kind(&ta), Self::tab_kind(&tb)) {
                     if ka != kb {
-                        return Err(Error::new(pos, format!("cannot compare {} with {}", ka, kb)));
+                        return Err(Error::new(
+                            pos,
+                            format!("cannot compare {} with {}", ka, kb),
+                        ));
                     }
                 }
                 let mut ga: BTreeMap<Val, Bdd> = BTreeMap::new();
@@ -777,7 +917,17 @@ impl Model {
         for (val, g) in t {
             match val {
                 Val::I(n) => out.push((n, g)),
-                other => return Err(Error::new(pos, format!("{} needs integers, found {} value {}", what, Self::kind_name(other), self.val_str(other)))),
+                other => {
+                    return Err(Error::new(
+                        pos,
+                        format!(
+                            "{} needs integers, found {} value {}",
+                            what,
+                            Self::kind_name(other),
+                            self.val_str(other)
+                        ),
+                    ))
+                }
             }
         }
         out.sort_by_key(|x| x.0);
@@ -796,11 +946,29 @@ impl Model {
         }
     }
 
-    fn assign_rel_bv(&mut self, vi: usize, alts: Vec<(Bv, Bdd)>, next: bool, pos: Pos, legal: Bdd) -> Res<Bdd> {
+    fn assign_rel_bv(
+        &mut self,
+        vi: usize,
+        alts: Vec<(Bv, Bdd)>,
+        next: bool,
+        pos: Pos,
+        legal: Bdd,
+    ) -> Res<Bdd> {
         let Ty::Range(lo, hi) = self.vars[vi].ty else {
-            return Err(Error::new(pos, format!("cannot assign an integer to '{}' of type {}", self.vars[vi].name, self.ty_str(vi))));
+            return Err(Error::new(
+                pos,
+                format!(
+                    "cannot assign an integer to '{}' of type {}",
+                    self.vars[vi].name,
+                    self.ty_str(vi)
+                ),
+            ));
         };
-        let bits = if next { self.vars[vi].nxt.clone() } else { self.vars[vi].cur.clone() };
+        let bits = if next {
+            self.vars[vi].nxt.clone()
+        } else {
+            self.vars[vi].cur.clone()
+        };
         let (clo, chi) = (bv::constant(lo), bv::constant(hi));
         let mut acc = FALSE;
         for (b, g) in alts {
@@ -839,8 +1007,19 @@ impl Model {
 
     /// `var ∈ table` as a relation (over current or next bits), erroring if the table can produce a
     /// value outside the variable's type in some legal situation.
-    fn assign_rel(&mut self, vi: usize, tab: Vec<(Val, Bdd)>, next: bool, pos: Pos, legal: Bdd) -> Res<Bdd> {
-        let bits = if next { self.vars[vi].nxt.clone() } else { self.vars[vi].cur.clone() };
+    fn assign_rel(
+        &mut self,
+        vi: usize,
+        tab: Vec<(Val, Bdd)>,
+        next: bool,
+        pos: Pos,
+        legal: Bdd,
+    ) -> Res<Bdd> {
+        let bits = if next {
+            self.vars[vi].nxt.clone()
+        } else {
+            self.vars[vi].cur.clone()
+        };
         let mut acc = FALSE;
         for (val, g) in tab {
             match self.code_of_val(vi, val) {
@@ -853,7 +1032,9 @@ impl Model {
                     let bad = self.m.and(g, legal);
                     if bad != FALSE && !self.lax_ranges {
                         let kind_ok = match (&self.vars[vi].ty, val) {
-                            (Ty::Bool, Val::B(_)) | (Ty::Range(..), Val::I(_)) | (Ty::Enum(_), Val::S(_)) => true,
+                            (Ty::Bool, Val::B(_))
+                            | (Ty::Range(..), Val::I(_))
+                            | (Ty::Enum(_), Val::S(_)) => true,
                             _ => false,
                         };
                         let what = if kind_ok {
@@ -907,8 +1088,14 @@ impl Model {
             let vi = *self.var_ix.get(&a.var).ok_or_else(|| {
                 let mut cands: Vec<&String> = self.var_ix.keys().collect();
                 cands.sort_by_key(|c| edit_distance(c, &a.var));
-                let hint = cands.first().map(|c| format!(" (did you mean '{}'?)", c)).unwrap_or_default();
-                Error::new(a.pos, format!("assignment to undeclared variable '{}'{}", a.var, hint))
+                let hint = cands
+                    .first()
+                    .map(|c| format!(" (did you mean '{}'?)", c))
+                    .unwrap_or_default();
+                Error::new(
+                    a.pos,
+                    format!("assignment to undeclared variable '{}'{}", a.var, hint),
+                )
             })?;
             let kind_id = match a.kind {
                 AssignKind::Init => 0u8,
@@ -919,21 +1106,43 @@ impl Model {
                 return Err(Error::new(a.pos, format!("'{}' is assigned twice", a.var)));
             }
             if self.vars[vi].input && a.kind != AssignKind::Plain {
-                return Err(Error::new(a.pos, format!("input variable '{}' cannot have init/next assignments", a.var)));
+                return Err(Error::new(
+                    a.pos,
+                    format!(
+                        "input variable '{}' cannot have init/next assignments",
+                        a.var
+                    ),
+                ));
             }
             match a.kind {
                 AssignKind::Init => {
-                    let v = self.comp(&a.expr, Mode { next: false, ctx: Ctx::State })?;
+                    let v = self.comp(
+                        &a.expr,
+                        Mode {
+                            next: false,
+                            ctx: Ctx::State,
+                        },
+                    )?;
                     let r = self.assign_rel_v(vi, v, false, a.expr.pos, dom_space)?;
                     init = self.m.and(init, r);
                 }
                 AssignKind::Next => {
-                    let v = self.comp(&a.expr, Mode { next: false, ctx: Ctx::Trans })?;
+                    let v = self.comp(
+                        &a.expr,
+                        Mode {
+                            next: false,
+                            ctx: Ctx::Trans,
+                        },
+                    )?;
                     let r = self.assign_rel_v(vi, v, true, a.expr.pos, legal_trans)?;
                     trans = self.m.and(trans, r);
                 }
                 AssignKind::Plain => {
-                    let ctx = if self.vars[vi].input { Ctx::Trans } else { Ctx::State };
+                    let ctx = if self.vars[vi].input {
+                        Ctx::Trans
+                    } else {
+                        Ctx::State
+                    };
                     let v = self.comp(&a.expr, Mode { next: false, ctx })?;
                     let r = self.assign_rel_v(vi, v, false, a.expr.pos, dom_space)?;
                     if self.vars[vi].input {
@@ -981,7 +1190,15 @@ impl Model {
         }
         self.fair = fair;
         // keep the long-lived functions alive across garbage collections
-        for b in [self.init, self.trans, self.space, self.cur_cube, self.nxt_cube, self.inp_cube, self.inp_nxt_cube] {
+        for b in [
+            self.init,
+            self.trans,
+            self.space,
+            self.cur_cube,
+            self.nxt_cube,
+            self.inp_cube,
+            self.inp_nxt_cube,
+        ] {
             self.m.pin(b);
         }
         for b in self.fair.clone() {
@@ -1000,7 +1217,12 @@ impl Model {
         let has_succ = self.m.exists(self.trans, cube);
         let dead = self.m.diff(self.space, has_succ);
         let mut eq = TRUE;
-        for (&c, &n) in self.cur_vars.clone().iter().zip(self.nxt_vars.clone().iter()) {
+        for (&c, &n) in self
+            .cur_vars
+            .clone()
+            .iter()
+            .zip(self.nxt_vars.clone().iter())
+        {
             let (a, b) = (self.m.var(c), self.m.var(n));
             let e = self.m.iff(a, b);
             eq = self.m.and(eq, e);
@@ -1079,7 +1301,10 @@ impl Model {
         match &v.ty {
             Ty::Bool => if code == 1 { "TRUE" } else { "FALSE" }.to_string(),
             Ty::Range(lo, _) => (lo + code as i64).to_string(),
-            Ty::Enum(names) => names.get(code).cloned().unwrap_or_else(|| format!("?{}", code)),
+            Ty::Enum(names) => names
+                .get(code)
+                .cloned()
+                .unwrap_or_else(|| format!("?{}", code)),
         }
     }
 
@@ -1109,7 +1334,13 @@ impl Model {
         self.init = init;
         self.trans = trans;
         self.fair.extend(extra_fair);
-        for b in [self.init, self.trans, self.cur_cube, self.nxt_cube, self.inp_nxt_cube] {
+        for b in [
+            self.init,
+            self.trans,
+            self.cur_cube,
+            self.nxt_cube,
+            self.inp_nxt_cube,
+        ] {
             self.m.pin(b);
         }
         for b in self.fair.clone() {

@@ -5,7 +5,10 @@ use crate::driver::{Report, SpecOutcome};
 use crate::report::{fmt_count, kind_name};
 
 fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 const CSS: &str = r#"
@@ -38,20 +41,36 @@ fn trace_table(t: &Trace) -> String {
     let n = t.steps.len();
     // abbreviate very long traces: keep the head and tail columns
     let (head, tail) = (24usize, 12usize);
-    let keep: Vec<usize> = if n > head + tail + 1 { (0..head).chain(n - tail..n).collect() } else { (0..n).collect() };
-    let gap_at = if n > head + tail + 1 { Some(head) } else { None };
+    let keep: Vec<usize> = if n > head + tail + 1 {
+        (0..head).chain(n - tail..n).collect()
+    } else {
+        (0..n).collect()
+    };
+    let gap_at = if n > head + tail + 1 {
+        Some(head)
+    } else {
+        None
+    };
     let mut h = String::from("<table><thead><tr><th class=\"v\">state</th>");
     for (c, &i) in keep.iter().enumerate() {
         if gap_at == Some(c) {
             h.push_str(&format!("<th>… {} omitted …</th>", n - head - tail));
         }
         let lp = t.loop_start == Some(i);
-        h.push_str(&format!("<th class=\"{}\">{}{}</th>", if lp { "loop" } else { "" }, i + 1, if lp { " ↻" } else { "" }));
+        h.push_str(&format!(
+            "<th class=\"{}\">{}{}</th>",
+            if lp { "loop" } else { "" },
+            i + 1,
+            if lp { " ↻" } else { "" }
+        ));
     }
     h.push_str("</tr></thead><tbody>");
     let nvars = t.steps[0].state.len();
     for k in 0..nvars {
-        h.push_str(&format!("<tr><th class=\"v\">{}</th>", esc(&t.steps[0].state[k].0)));
+        h.push_str(&format!(
+            "<tr><th class=\"v\">{}</th>",
+            esc(&t.steps[0].state[k].0)
+        ));
         for (c, &i) in keep.iter().enumerate() {
             if gap_at == Some(c) {
                 h.push_str("<td>…</td>");
@@ -71,9 +90,20 @@ fn trace_table(t: &Trace) -> String {
         h.push_str("</tr>");
     }
     if t.steps.iter().any(|s| !s.inputs.is_empty()) {
-        let names: Vec<String> = t.steps.iter().find(|s| !s.inputs.is_empty()).unwrap().inputs.iter().map(|(k, _)| k.clone()).collect();
+        let names: Vec<String> = t
+            .steps
+            .iter()
+            .find(|s| !s.inputs.is_empty())
+            .unwrap()
+            .inputs
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect();
         for (k, name) in names.iter().enumerate() {
-            h.push_str(&format!("<tr class=\"inp\"><th class=\"v\">in: {}</th>", esc(name)));
+            h.push_str(&format!(
+                "<tr class=\"inp\"><th class=\"v\">in: {}</th>",
+                esc(name)
+            ));
             for (c, &i) in keep.iter().enumerate() {
                 if gap_at == Some(c) {
                     h.push_str("<td>…</td>");
@@ -107,7 +137,11 @@ fn spec_card(o: &SpecOutcome) -> String {
     }
     s.push_str("</header>");
     if let Verdict::Fails(Some(t)) = &o.verdict {
-        let kind = if t.loop_start.is_some() { "Lasso counterexample" } else { "Counterexample" };
+        let kind = if t.loop_start.is_some() {
+            "Lasso counterexample"
+        } else {
+            "Counterexample"
+        };
         s.push_str(&format!("<div class=\"trace\"><div class=\"cap\">{} — {} states. Highlighted cells changed since the previous state.</div>{}</div>", kind, t.steps.len(), trace_table(t)));
     }
     s.push_str("</section>");
@@ -144,13 +178,24 @@ fn profile_svg(pts: &[(usize, u128)]) -> String {
 
 pub fn render_html(r: &Report, file: &str, src: &str) -> String {
     let i = &r.info;
-    let pass = r.outcomes.iter().filter(|o| o.verdict == Verdict::Holds).count();
+    let pass = r
+        .outcomes
+        .iter()
+        .filter(|o| o.verdict == Verdict::Holds)
+        .count();
     let total = r.outcomes.len();
     let all = pass == total;
     let mut s = String::new();
     s.push_str("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
-    s.push_str(&format!("<title>Kripke report — {}</title><style>{}</style></head><body><main>", esc(file), CSS));
-    s.push_str(&format!("<h1>Kripke report</h1><p class=\"sub mono\">{}</p>", esc(file)));
+    s.push_str(&format!(
+        "<title>Kripke report — {}</title><style>{}</style></head><body><main>",
+        esc(file),
+        CSS
+    ));
+    s.push_str(&format!(
+        "<h1>Kripke report</h1><p class=\"sub mono\">{}</p>",
+        esc(file)
+    ));
     s.push_str(&format!(
         "<div class=\"banner {}\"><b>{}</b><span>{} of {} specifications hold · checked in {:.1} ms</span></div>",
         if all { "ok" } else { "bad" },
@@ -168,19 +213,42 @@ pub fn render_html(r: &Report, file: &str, src: &str) -> String {
             fmt_count(i.deadlocks)
         ));
     }
-    let stat = |k: &str, v: String| format!("<div class=\"stat\"><div class=\"k\">{}</div><div class=\"n\">{}</div></div>", k, v);
+    let stat = |k: &str, v: String| {
+        format!(
+            "<div class=\"stat\"><div class=\"k\">{}</div><div class=\"n\">{}</div></div>",
+            k, v
+        )
+    };
     s.push_str("<h2>Model</h2><div class=\"grid\">");
-    s.push_str(&stat("state variables", format!("{} <span class=\"sub\">({} bits)</span>", i.state_vars, i.state_bits)));
-    s.push_str(&stat("input variables", format!("{} <span class=\"sub\">({} bits)</span>", i.input_vars, i.input_bits)));
+    s.push_str(&stat(
+        "state variables",
+        format!(
+            "{} <span class=\"sub\">({} bits)</span>",
+            i.state_vars, i.state_bits
+        ),
+    ));
+    s.push_str(&stat(
+        "input variables",
+        format!(
+            "{} <span class=\"sub\">({} bits)</span>",
+            i.input_vars, i.input_bits
+        ),
+    ));
     s.push_str(&stat("initial states", fmt_count(i.init_states)));
     s.push_str(&stat("reachable states", fmt_count(i.reachable)));
     s.push_str(&stat("diameter", i.diameter.to_string()));
     s.push_str(&stat("fair states", fmt_count(i.fair_states)));
     s.push_str(&stat("deadlocks", fmt_count(i.deadlocks)));
-    s.push_str(&stat("fairness constraints", i.fair_constraints.to_string()));
+    s.push_str(&stat(
+        "fairness constraints",
+        i.fair_constraints.to_string(),
+    ));
     s.push_str(&stat("transition BDD", format!("{} nodes", i.trans_nodes)));
     s.push_str(&stat("reachable BDD", format!("{} nodes", i.reach_nodes)));
-    s.push_str(&stat("fixpoint iterations", i.stats.fixpoint_iterations.to_string()));
+    s.push_str(&stat(
+        "fixpoint iterations",
+        i.stats.fixpoint_iterations.to_string(),
+    ));
     s.push_str(&stat("garbage collections", i.gc_runs.to_string()));
     s.push_str("</div>");
     if let Some((b, a, sw)) = i.reorder {

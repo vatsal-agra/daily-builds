@@ -63,8 +63,16 @@ impl<'a> Gen<'a> {
                     "r".to_string()
                 }
             }
-            3 => format!("(({} + {}) mod 4)", self.int(depth - 1, next_ok), self.int(depth - 1, next_ok)),
-            _ => format!("(({} * {}) mod 4)", self.int(depth - 1, next_ok), self.int(depth - 1, next_ok)),
+            3 => format!(
+                "(({} + {}) mod 4)",
+                self.int(depth - 1, next_ok),
+                self.int(depth - 1, next_ok)
+            ),
+            _ => format!(
+                "(({} * {}) mod 4)",
+                self.int(depth - 1, next_ok),
+                self.int(depth - 1, next_ok)
+            ),
         }
     }
 
@@ -79,17 +87,46 @@ impl<'a> Gen<'a> {
                     self.bvar()
                 }
             }
-            2 => format!("(r {} {})", self.r.pick(&["=", "!=", "<", "<=", ">", ">="]), self.r.below(4)),
+            2 => format!(
+                "(r {} {})",
+                self.r.pick(&["=", "!=", "<", "<=", ">", ">="]),
+                self.r.below(4)
+            ),
             3 => format!("(e {} {})", self.r.pick(&["=", "!="]), self.r.pick(&SYMS)),
             4 => ["TRUE", "FALSE"][self.r.below(2)].to_string(),
             5 => format!("(r in {{{}, {}}})", self.r.below(4), self.r.below(4)),
             6 => format!("(!{})", self.boolean(depth - 1, next_ok)),
-            7 => format!("({} & {})", self.boolean(depth - 1, next_ok), self.boolean(depth - 1, next_ok)),
-            8 => format!("({} | {})", self.boolean(depth - 1, next_ok), self.boolean(depth - 1, next_ok)),
-            9 => format!("({} -> {})", self.boolean(depth - 1, next_ok), self.boolean(depth - 1, next_ok)),
-            10 => format!("({} <-> {})", self.boolean(depth - 1, next_ok), self.boolean(depth - 1, next_ok)),
-            11 => format!("({} {} {})", self.int(depth - 1, next_ok), self.r.pick(&["=", "<", "<=", "!="]), self.int(depth - 1, next_ok)),
-            _ => format!("({} xor {})", self.boolean(depth - 1, next_ok), self.boolean(depth - 1, next_ok)),
+            7 => format!(
+                "({} & {})",
+                self.boolean(depth - 1, next_ok),
+                self.boolean(depth - 1, next_ok)
+            ),
+            8 => format!(
+                "({} | {})",
+                self.boolean(depth - 1, next_ok),
+                self.boolean(depth - 1, next_ok)
+            ),
+            9 => format!(
+                "({} -> {})",
+                self.boolean(depth - 1, next_ok),
+                self.boolean(depth - 1, next_ok)
+            ),
+            10 => format!(
+                "({} <-> {})",
+                self.boolean(depth - 1, next_ok),
+                self.boolean(depth - 1, next_ok)
+            ),
+            11 => format!(
+                "({} {} {})",
+                self.int(depth - 1, next_ok),
+                self.r.pick(&["=", "<", "<=", "!="]),
+                self.int(depth - 1, next_ok)
+            ),
+            _ => format!(
+                "({} xor {})",
+                self.boolean(depth - 1, next_ok),
+                self.boolean(depth - 1, next_ok)
+            ),
         }
     }
 
@@ -108,7 +145,12 @@ impl<'a> Gen<'a> {
             0 => format!("{{{}, {}}}", self.r.below(4), self.r.below(4)),
             1 => self.int(2, false),
             2 => format!("{}", self.r.below(4)),
-            _ => format!("{{{}, {}, {}}}", self.r.below(4), self.r.below(4), self.r.below(4)),
+            _ => format!(
+                "{{{}, {}, {}}}",
+                self.r.below(4),
+                self.r.below(4),
+                self.r.below(4)
+            ),
         }
     }
 
@@ -150,7 +192,11 @@ impl<'a> Gen<'a> {
             9 => format!("({} | {})", self.ctl(depth - 1), self.ctl(depth - 1)),
             10 => format!("({} -> {})", self.ctl(depth - 1), self.ctl(depth - 1)),
             11 => format!("(!{})", self.paren_ctl(depth - 1)),
-            12 => format!("AG ({} -> AF {})", self.boolean(1, false), self.paren_ctl(depth - 1)),
+            12 => format!(
+                "AG ({} -> AF {})",
+                self.boolean(1, false),
+                self.paren_ctl(depth - 1)
+            ),
             _ => format!("({} <-> {})", self.ctl(depth - 1), self.ctl(depth - 1)),
         }
     }
@@ -167,7 +213,11 @@ pub fn gen_model(seed: u64) -> String {
         rng.next();
     }
     let has_input = rng.chance(1, 2);
-    let mut g = Gen { r: &mut rng, has_input, allow: false };
+    let mut g = Gen {
+        r: &mut rng,
+        has_input,
+        allow: false,
+    };
     let mut s = String::from("MODULE main\n");
     if has_input {
         s.push_str("IVAR iv : boolean;\n     ir : 0..2;\n");
@@ -254,27 +304,52 @@ pub fn gen_model(seed: u64) -> String {
 
 /// Cross-check one model. Returns a list of mismatches (empty = agreement).
 pub fn cross_check(src: &str, rng: &mut Rng) -> Result<Vec<String>, String> {
-    let prog = parse(src).map_err(|e| format!("generated model does not parse: {} \n{}", e, src))?;
-    let opts = Options { lax: false, reorder: rng.chance(1, 2), gc_stress: rng.chance(1, 3), stutter: rng.chance(1, 3) };
-    let report = run_program(&prog, &opts, Instant::now()).map_err(|e| format!("generated model does not compile: {}\n{}", e, src))?;
-    let mut ex = Explicit::new(&prog, 4096, opts.stutter).map_err(|e| format!("explicit: {}", e))?;
+    let prog =
+        parse(src).map_err(|e| format!("generated model does not parse: {} \n{}", e, src))?;
+    let opts = Options {
+        lax: false,
+        reorder: rng.chance(1, 2),
+        gc_stress: rng.chance(1, 3),
+        stutter: rng.chance(1, 3),
+    };
+    let report = run_program(&prog, &opts, Instant::now())
+        .map_err(|e| format!("generated model does not compile: {}\n{}", e, src))?;
+    let mut ex =
+        Explicit::new(&prog, 4096, opts.stutter).map_err(|e| format!("explicit: {}", e))?;
     let mut bad = vec![];
     let (reach, diam, dead) = ex.reachability();
     let nreach = reach.iter().filter(|&&b| b).count() as u128;
     if report.info.reachable != nreach {
-        bad.push(format!("reachable: symbolic {} vs explicit {}", report.info.reachable, nreach));
+        bad.push(format!(
+            "reachable: symbolic {} vs explicit {}",
+            report.info.reachable, nreach
+        ));
     }
     if nreach > 0 && report.info.diameter != diam {
-        bad.push(format!("diameter: symbolic {} vs explicit {}", report.info.diameter, diam));
+        bad.push(format!(
+            "diameter: symbolic {} vs explicit {}",
+            report.info.diameter, diam
+        ));
     }
     if report.info.deadlocks != dead as u128 {
-        bad.push(format!("deadlocks: symbolic {} vs explicit {}", report.info.deadlocks, dead));
+        bad.push(format!(
+            "deadlocks: symbolic {} vs explicit {}",
+            report.info.deadlocks, dead
+        ));
     }
     if report.info.init_states != ex.init_count() as u128 {
-        bad.push(format!("init states: symbolic {} vs explicit {}", report.info.init_states, ex.init_count()));
+        bad.push(format!(
+            "init states: symbolic {} vs explicit {}",
+            report.info.init_states,
+            ex.init_count()
+        ));
     }
     if report.info.fair_states != ex.fair_count() as u128 {
-        bad.push(format!("fair states: symbolic {} vs explicit {}", report.info.fair_states, ex.fair_count()));
+        bad.push(format!(
+            "fair states: symbolic {} vs explicit {}",
+            report.info.fair_states,
+            ex.fair_count()
+        ));
     }
     if let Some(t) = &report.info.deadlock_example {
         if let Err(m) = ex.validate_trace(t) {
@@ -291,23 +366,42 @@ pub fn cross_check(src: &str, rng: &mut Rng) -> Result<Vec<String>, String> {
         };
         if let Some(exp) = exp {
             if exp != sym {
-                bad.push(format!("spec {} `{}`: symbolic {} vs explicit {}", i + 1, o.text, sym, exp));
+                bad.push(format!(
+                    "spec {} `{}`: symbolic {} vs explicit {}",
+                    i + 1,
+                    o.text,
+                    sym,
+                    exp
+                ));
             }
         }
         if let Verdict::Fails(Some(t)) = &o.verdict {
             if let Err(m) = ex.validate_trace(t) {
-                bad.push(format!("spec {} `{}`: invalid counterexample: {}", i + 1, o.text, m));
+                bad.push(format!(
+                    "spec {} `{}`: invalid counterexample: {}",
+                    i + 1,
+                    o.text,
+                    m
+                ));
             }
             if matches!(sp.kind, SpecKind::Ltl) {
                 // every LTL counterexample must be a lasso whose loop is fair
                 if t.loop_start.is_none() || !ex.lasso_is_fair(t) {
-                    bad.push(format!("spec {} `{}`: LTL counterexample is not a fair lasso", i + 1, o.text));
+                    bad.push(format!(
+                        "spec {} `{}`: LTL counterexample is not a fair lasso",
+                        i + 1,
+                        o.text
+                    ));
                 }
             }
             if matches!(sp.kind, SpecKind::Invar) {
                 let last = t.steps.last().unwrap();
                 if ex.eval_state_expr(&sp.expr, &last.state).unwrap_or(true) {
-                    bad.push(format!("spec {} `{}`: invariant counterexample's last state satisfies it", i + 1, o.text));
+                    bad.push(format!(
+                        "spec {} `{}`: invariant counterexample's last state satisfies it",
+                        i + 1,
+                        o.text
+                    ));
                 }
             }
             // `AG p` / `AF p` with an atomic body have easily checked traces
@@ -321,7 +415,10 @@ pub fn cross_check(src: &str, rng: &mut Rng) -> Result<Vec<String>, String> {
                             }
                         } else {
                             if t.loop_start.is_none() || !ex.lasso_is_fair(t) {
-                                bad.push(format!("spec {}: AF counterexample is not a fair lasso", i + 1));
+                                bad.push(format!(
+                                    "spec {}: AF counterexample is not a fair lasso",
+                                    i + 1
+                                ));
                             }
                             for s in &t.steps {
                                 if ex.eval_state_expr(body, &s.state).unwrap_or(true) {

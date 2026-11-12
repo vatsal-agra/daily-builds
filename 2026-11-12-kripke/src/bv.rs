@@ -26,7 +26,11 @@ pub fn constant(n: i64) -> Bv {
     while w < 64 && !(-(1i64 << (w - 1))..(1i64 << (w - 1))).contains(&n) {
         w += 1;
     }
-    Bv { bits: (0..w).map(|i| if (n >> i) & 1 == 1 { TRUE } else { FALSE }).collect() }
+    Bv {
+        bits: (0..w)
+            .map(|i| if (n >> i) & 1 == 1 { TRUE } else { FALSE })
+            .collect(),
+    }
 }
 
 pub fn extend(a: &Bv, w: usize) -> Bv {
@@ -74,14 +78,18 @@ pub fn add(m: &mut Manager, a: &Bv, b: &Bv) -> Bv {
 pub fn neg(m: &mut Manager, a: &Bv) -> Bv {
     let w = a.width() + 1;
     let e = extend(a, w);
-    let inv = Bv { bits: e.bits.iter().map(|&x| m.not(x)).collect() };
+    let inv = Bv {
+        bits: e.bits.iter().map(|&x| m.not(x)).collect(),
+    };
     trim(add_carry(m, &inv, &constant(0), TRUE))
 }
 
 pub fn sub(m: &mut Manager, a: &Bv, b: &Bv) -> Bv {
     let w = a.width().max(b.width()) + 1;
     let e = extend(b, w);
-    let inv = Bv { bits: e.bits.iter().map(|&x| m.not(x)).collect() };
+    let inv = Bv {
+        bits: e.bits.iter().map(|&x| m.not(x)).collect(),
+    };
     trim(add_carry(m, &extend(a, w), &inv, TRUE))
 }
 
@@ -96,7 +104,9 @@ fn trim(mut a: Bv) -> Bv {
 pub fn mul(m: &mut Manager, a: &Bv, b: &Bv) -> Bv {
     let w = (a.width() + b.width()).min(MAX_WIDTH + 1);
     let (a, b) = (extend(a, w), extend(b, w));
-    let mut acc = Bv { bits: vec![FALSE; w] };
+    let mut acc = Bv {
+        bits: vec![FALSE; w],
+    };
     for i in 0..w {
         // partial product: (a << i) & b_i, truncated to w bits
         let mut pp = vec![FALSE; w];
@@ -141,7 +151,9 @@ pub fn le(m: &mut Manager, a: &Bv, b: &Bv) -> Bdd {
 pub fn ite(m: &mut Manager, c: Bdd, t: &Bv, e: &Bv) -> Bv {
     let w = t.width().max(e.width());
     let (t, e) = (extend(t, w), extend(e, w));
-    Bv { bits: (0..w).map(|i| m.ite(c, t.bits[i], e.bits[i])).collect() }
+    Bv {
+        bits: (0..w).map(|i| m.ite(c, t.bits[i], e.bits[i])).collect(),
+    }
 }
 
 /// Truncating division and Euclidean remainder (`0 <= r < c`) by a positive constant.
@@ -161,7 +173,9 @@ pub fn divmod_const(m: &mut Manager, a: &Bv, c: i64) -> (Bv, Bv) {
     };
     let cb = constant(c);
     let rw = cb.width() + 1;
-    let mut rem = Bv { bits: vec![FALSE; rw] };
+    let mut rem = Bv {
+        bits: vec![FALSE; rw],
+    };
     let mut qbits = vec![FALSE; ubits.len()];
     for i in (0..ubits.len()).rev() {
         // rem = (rem << 1) | bit

@@ -51,7 +51,12 @@ pub struct Checker<'a> {
 
 impl<'a> Checker<'a> {
     pub fn new(md: &'a mut Model) -> Checker<'a> {
-        Checker { md, fair_states: None, reach: None, stats: Stats::default() }
+        Checker {
+            md,
+            fair_states: None,
+            reach: None,
+            stats: Stats::default(),
+        }
     }
 
     fn neg(&mut self, f: Bdd) -> Bdd {
@@ -96,7 +101,10 @@ impl<'a> Checker<'a> {
                 self.md.m.pin(l);
             }
             self.md.m.pin(visited);
-            self.reach = Some(Reach { set: visited, layers });
+            self.reach = Some(Reach {
+                set: visited,
+                layers,
+            });
         }
         self.reach.as_ref().unwrap()
     }
@@ -318,7 +326,11 @@ impl<'a> Checker<'a> {
 
     pub fn pick_state(&mut self, set: Bdd) -> Bdd {
         let vars = self.md.cur_vars.clone();
-        let bits = self.md.m.pick_one(set, &vars).expect("pick_state on an empty set");
+        let bits = self
+            .md
+            .m
+            .pick_one(set, &vars)
+            .expect("pick_state on an empty set");
         let lits: Vec<(u32, bool)> = vars.iter().cloned().zip(bits).collect();
         let c = self.md.m.literals(&lits);
         self.md.m.pin(c)
@@ -333,7 +345,13 @@ impl<'a> Checker<'a> {
     /// Shortest path (list of state cubes) from the single state `from` to any state in `to`, moving
     /// only through states in `within`. With `min_steps == 1` the path must have at least one step
     /// (used to close loops).
-    pub fn shortest_path(&mut self, from: Bdd, to: Bdd, within: Bdd, min_steps: usize) -> Option<Vec<Bdd>> {
+    pub fn shortest_path(
+        &mut self,
+        from: Bdd,
+        to: Bdd,
+        within: Bdd,
+        min_steps: usize,
+    ) -> Option<Vec<Bdd>> {
         let mark = self.md.m.pin_mark();
         self.md.m.pin(from);
         self.md.m.pin(to);
@@ -562,9 +580,9 @@ impl<'a> Checker<'a> {
             for &fc in &fairs {
                 let target = self.md.m.and(z, fc);
                 self.md.m.pin(target);
-                let p = self
-                    .shortest_path(last, target, z, 0)
-                    .expect("fair lasso: a fairness set must be reachable inside EG (fixpoint invariant)");
+                let p = self.shortest_path(last, target, z, 0).expect(
+                    "fair lasso: a fairness set must be reachable inside EG (fixpoint invariant)",
+                );
                 path.extend_from_slice(&p[1..]);
                 last = *path.last().unwrap();
             }
@@ -610,7 +628,10 @@ pub fn negate(c: &Ctl<Bdd>) -> Ctl<Bdd> {
         AX(f) => EX(bx(negate(f))),
         AU(f, g) => {
             let ng = negate(g);
-            Or(bx(EU(bx(ng.clone()), bx(And(bx(negate(f)), bx(ng.clone()))))), bx(EG(bx(ng))))
+            Or(
+                bx(EU(bx(ng.clone()), bx(And(bx(negate(f)), bx(ng.clone()))))),
+                bx(EG(bx(ng))),
+            )
         }
         other => Not(bx(other.clone())),
     }

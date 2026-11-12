@@ -75,10 +75,18 @@ pub fn bit_names(md: &Model) -> Vec<String> {
     let mut names = vec![String::new(); md.m.num_vars()];
     for v in &md.vars {
         for (i, &b) in v.cur.iter().enumerate() {
-            names[b as usize] = if v.cur.len() == 1 { v.name.clone() } else { format!("{}.{}", v.name, i) };
+            names[b as usize] = if v.cur.len() == 1 {
+                v.name.clone()
+            } else {
+                format!("{}.{}", v.name, i)
+            };
         }
         for (i, &b) in v.nxt.iter().enumerate() {
-            names[b as usize] = if v.nxt.len() == 1 { format!("{}'", v.name) } else { format!("{}.{}'", v.name, i) };
+            names[b as usize] = if v.nxt.len() == 1 {
+                format!("{}'", v.name)
+            } else {
+                format!("{}.{}'", v.name, i)
+            };
         }
     }
     names
@@ -127,7 +135,10 @@ pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
     for sp in &prog.specs {
         if let Some(n) = &sp.name {
             if seen.contains(&n.as_str()) {
-                return Err(Error::new(sp.pos, format!("duplicate specification name '{}'", n)));
+                return Err(Error::new(
+                    sp.pos,
+                    format!("duplicate specification name '{}'", n),
+                ));
             }
             seen.push(n);
         }
@@ -157,7 +168,10 @@ pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
         match s.kind {
             SpecKind::Invar => {
                 if s.expr.is_temporal() {
-                    return Err(Error::new(s.expr.pos, "INVARSPEC must be a plain state predicate"));
+                    return Err(Error::new(
+                        s.expr.pos,
+                        "INVARSPEC must be a plain state predicate",
+                    ));
                 }
                 let a = md.atom(&s.expr)?;
                 md.m.pin(a);
@@ -180,7 +194,9 @@ pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
         }
     }
     if prog.specs.is_empty() {
-        info.warnings.push("the model has no SPEC / LTLSPEC / INVARSPEC lines: nothing to check".to_string());
+        info.warnings.push(
+            "the model has no SPEC / LTLSPEC / INVARSPEC lines: nothing to check".to_string(),
+        );
     }
     let mut outcomes = vec![];
     {
@@ -188,7 +204,10 @@ pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
         let init = ck.md.init;
         info.init_states = ck.md.count_states(init);
         if init == FALSE {
-            info.warnings.push("the initial-state set is empty: every universal property holds vacuously".to_string());
+            info.warnings.push(
+                "the initial-state set is empty: every universal property holds vacuously"
+                    .to_string(),
+            );
         }
         let (rset, diam) = {
             let r = ck.reach();
@@ -234,7 +253,10 @@ pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
                 "no state has an infinite fair path: every CTL/LTL property with a universal path quantifier holds vacuously".to_string(),
             );
         } else if vacuous_paths && init != FALSE {
-            info.warnings.push("no initial state has an infinite fair path: CTL/LTL properties hold vacuously".to_string());
+            info.warnings.push(
+                "no initial state has an infinite fair path: CTL/LTL properties hold vacuously"
+                    .to_string(),
+            );
         }
         for (i, s) in prog.specs.iter().enumerate() {
             let t = Instant::now();
@@ -269,7 +291,11 @@ pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
         }
     }
     let names = bit_names(&md);
-    info.order = md.m.order().iter().map(|&v| names[v as usize].clone()).collect();
+    info.order =
+        md.m.order()
+            .iter()
+            .map(|&v| names[v as usize].clone())
+            .collect();
     info.gc_runs = md.m.gc_runs;
     info.warnings.extend(md.warnings.clone());
     info.total_micros = t0.elapsed().as_micros();

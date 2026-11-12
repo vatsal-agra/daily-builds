@@ -22,7 +22,11 @@ pub fn generate(name: &str, n: usize) -> Result<String, String> {
         _ => Err(format!(
             "unknown family '{}'; available: {}",
             name,
-            FAMILIES.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+            FAMILIES
+                .iter()
+                .map(|(n, _)| *n)
+                .collect::<Vec<_>>()
+                .join(", ")
         )),
     }
 }
@@ -32,7 +36,16 @@ fn philosophers(n: usize, fixed: bool) -> Result<String, String> {
         return Err("philosophers: N must be between 2 and 12".into());
     }
     let mut s = String::new();
-    let _ = writeln!(s, "-- {} dining philosophers ({}). Philosopher i uses forks a(i) then b(i).", n, if fixed { "last one reversed: deadlock-free" } else { "all left-handed: can deadlock" });
+    let _ = writeln!(
+        s,
+        "-- {} dining philosophers ({}). Philosopher i uses forks a(i) then b(i).",
+        n,
+        if fixed {
+            "last one reversed: deadlock-free"
+        } else {
+            "all left-handed: can deadlock"
+        }
+    );
     let _ = writeln!(s, "-- A scheduler variable picks who moves; FAIRNESS makes it pick everyone infinitely often.");
     let _ = writeln!(s, "MODULE main\nVAR\n  sched : 0..{};", n - 1);
     for i in 0..n {
@@ -63,10 +76,19 @@ fn philosophers(n: usize, fixed: bool) -> Result<String, String> {
         for i in 0..n {
             let (a, b) = (first(i), second(i));
             if a == k {
-                let _ = writeln!(s, "    sched = {i} & p{i} = think & next(p{i}) = left : TRUE;", i = i);
+                let _ = writeln!(
+                    s,
+                    "    sched = {i} & p{i} = think & next(p{i}) = left : TRUE;",
+                    i = i
+                );
             }
             if b == k {
-                let _ = writeln!(s, "    sched = {i} & p{i} = left & !f{k} : TRUE;", i = i, k = k);
+                let _ = writeln!(
+                    s,
+                    "    sched = {i} & p{i} = left & !f{k} : TRUE;",
+                    i = i,
+                    k = k
+                );
             }
             if a == k || b == k {
                 let _ = writeln!(s, "    sched = {i} & p{i} = eat : FALSE;", i = i);
@@ -77,12 +99,24 @@ fn philosophers(n: usize, fixed: bool) -> Result<String, String> {
     for i in 0..n {
         let _ = writeln!(s, "FAIRNESS sched = {}", i);
     }
-    let pairs: Vec<String> = (0..n).map(|i| format!("!(p{} = eat & p{} = eat)", i, (i + 1) % n)).collect();
-    let _ = writeln!(s, "INVARSPEC NAME neighbours_never_both_eat := {}", pairs.join(" & "));
+    let pairs: Vec<String> = (0..n)
+        .map(|i| format!("!(p{} = eat & p{} = eat)", i, (i + 1) % n))
+        .collect();
+    let _ = writeln!(
+        s,
+        "INVARSPEC NAME neighbours_never_both_eat := {}",
+        pairs.join(" & ")
+    );
     let _ = writeln!(s, "SPEC NAME philosopher0_can_eat := EF p0 = eat");
-    let _ = writeln!(s, "SPEC NAME always_possible_to_eat_again := AG EF p0 = eat    -- needs --stutter to see a deadlock");
-    let _ = writeln!(s, "LTLSPEC NAME no_starvation_0 := G (p0 = left -> F p0 = eat)");
-    let _ = writeln!(s, "LTLSPEC NAME everyone_eats_infinitely_often := G F p0 = eat");
+    let _ = writeln!(s, "SPEC NAME always_possible_to_eat_again := AG EF p0 = eat    -- fails for the left-handed table: everyone holds a left fork and nothing can move");
+    let _ = writeln!(
+        s,
+        "LTLSPEC NAME no_starvation_0 := G (p0 = left -> F p0 = eat)"
+    );
+    let _ = writeln!(
+        s,
+        "LTLSPEC NAME everyone_eats_infinitely_often := G F p0 = eat"
+    );
     Ok(s)
 }
 
@@ -91,7 +125,11 @@ fn tokenring(n: usize) -> Result<String, String> {
         return Err("tokenring: N must be between 2 and 16".into());
     }
     let mut s = String::new();
-    let _ = writeln!(s, "-- token ring mutual exclusion, {} nodes; every node moves in lock step", n);
+    let _ = writeln!(
+        s,
+        "-- token ring mutual exclusion, {} nodes; every node moves in lock step",
+        n
+    );
     let _ = writeln!(s, "MODULE main\nVAR\n  tok : 0..{};", n - 1);
     for i in 0..n {
         let _ = writeln!(s, "  s{} : {{idle, wait, crit}};", i);
@@ -111,9 +149,17 @@ fn tokenring(n: usize) -> Result<String, String> {
             pairs.push(format!("!(s{} = crit & s{} = crit)", i, j));
         }
     }
-    let _ = writeln!(s, "INVARSPEC NAME mutual_exclusion := {}", pairs.join(" & "));
+    let _ = writeln!(
+        s,
+        "INVARSPEC NAME mutual_exclusion := {}",
+        pairs.join(" & ")
+    );
     for i in 0..n.min(3) {
-        let _ = writeln!(s, "SPEC NAME node{i}_served := AG (s{i} = wait -> AF s{i} = crit)", i = i);
+        let _ = writeln!(
+            s,
+            "SPEC NAME node{i}_served := AG (s{i} = wait -> AF s{i} = crit)",
+            i = i
+        );
     }
     let _ = writeln!(s, "SPEC NAME token_always_moves_on := AG AF tok = 0");
     let _ = writeln!(s, "LTLSPEC NAME ltl_served := G (s0 = wait -> F s0 = crit)");
@@ -128,12 +174,22 @@ fn counter(n: usize) -> Result<String, String> {
     let mut s = String::new();
     let _ = writeln!(s, "-- {}-bit counter with a synchronous reset input", n);
     let _ = writeln!(s, "MODULE main\nIVAR reset : boolean;\nVAR n : 0..{};", max);
-    let _ = writeln!(s, "ASSIGN\n  init(n) := 0;\n  next(n) := case reset : 0; TRUE : (n + 1) mod {}; esac;", max + 1);
+    let _ = writeln!(
+        s,
+        "ASSIGN\n  init(n) := 0;\n  next(n) := case reset : 0; TRUE : (n + 1) mod {}; esac;",
+        max + 1
+    );
     let _ = writeln!(s, "INVARSPEC NAME in_range := n <= {}", max);
     let _ = writeln!(s, "SPEC NAME wraps := AG EF n = 0");
-    let _ = writeln!(s, "SPEC NAME increments := AG (n < {} -> EX n = n + 1)", max);
+    if max >= 4 {
+        let _ = writeln!(s, "SPEC NAME can_count_up := AG (n = 3 -> EX n = 4)");
+    }
     let _ = writeln!(s, "LTLSPEC NAME returns_to_zero := G F n = 0");
-    let _ = writeln!(s, "INVARSPEC NAME never_reaches_max := n != {}   -- false: shortest counterexample counts up", max);
+    let _ = writeln!(
+        s,
+        "INVARSPEC NAME never_reaches_max := n != {}   -- false: shortest counterexample counts up",
+        max
+    );
     Ok(s)
 }
 
@@ -142,7 +198,11 @@ fn comparator(n: usize) -> Result<String, String> {
         return Err("comparator: N must be between 1 and 24".into());
     }
     let mut s = String::new();
-    let _ = writeln!(s, "-- two {}-bit registers that start equal and never change.", n);
+    let _ = writeln!(
+        s,
+        "-- two {}-bit registers that start equal and never change.",
+        n
+    );
     let _ = writeln!(s, "-- The reachable set is the comparator x = y: exponential BDD with x-bits-then-y-bits, linear when interleaved.");
     let _ = writeln!(s, "MODULE main\nVAR");
     for i in 0..n {
@@ -157,7 +217,11 @@ fn comparator(n: usize) -> Result<String, String> {
     for i in 0..n {
         let _ = writeln!(s, "  next(x{i}) := x{i};\n  next(y{i}) := y{i};", i = i);
     }
-    let _ = writeln!(s, "INVARSPEC NAME registers_stay_equal := {}", eqs.join(" & "));
+    let _ = writeln!(
+        s,
+        "INVARSPEC NAME registers_stay_equal := {}",
+        eqs.join(" & ")
+    );
     Ok(s)
 }
 
@@ -180,14 +244,26 @@ fn lfsr(n: usize) -> Result<String, String> {
         _ => return Err("lfsr: N must be between 3 and 16".into()),
     };
     let mut s = String::new();
-    let _ = writeln!(s, "-- {}-bit Fibonacci LFSR, taps {:?}: a maximal-length one visits 2^{} - 1 = {} states", n, taps, n, (1u64 << n) - 1);
+    let _ = writeln!(
+        s,
+        "-- {}-bit Fibonacci LFSR, taps {:?}: a maximal-length one visits 2^{} - 1 = {} states",
+        n,
+        taps,
+        n,
+        (1u64 << n) - 1
+    );
     let _ = writeln!(s, "MODULE main\nVAR");
     for i in 1..=n {
         let _ = writeln!(s, "  s{} : boolean;", i);
     }
     let _ = writeln!(s, "ASSIGN");
     for i in 1..=n {
-        let _ = writeln!(s, "  init(s{}) := {};", i, if i == 1 { "TRUE" } else { "FALSE" });
+        let _ = writeln!(
+            s,
+            "  init(s{}) := {};",
+            i,
+            if i == 1 { "TRUE" } else { "FALSE" }
+        );
     }
     let fb: Vec<String> = taps.iter().map(|t| format!("s{}", t)).collect();
     let _ = writeln!(s, "  next(s1) := {};", fb.join(" xor "));
@@ -195,10 +271,20 @@ fn lfsr(n: usize) -> Result<String, String> {
         let _ = writeln!(s, "  next(s{}) := s{};", i, i - 1);
     }
     let zero: Vec<String> = (1..=n).map(|i| format!("!s{}", i)).collect();
-    let _ = writeln!(s, "INVARSPEC NAME never_all_zero := !({})", zero.join(" & "));
+    let _ = writeln!(
+        s,
+        "INVARSPEC NAME never_all_zero := !({})",
+        zero.join(" & ")
+    );
     // AG AF on a 2^N-long cycle nests two fixpoints of length 2^N: only worth asking for small N.
     if n <= 9 {
-        let seed = format!("s1 & {}", (2..=n).map(|i| format!("!s{}", i)).collect::<Vec<_>>().join(" & "));
+        let seed = format!(
+            "s1 & {}",
+            (2..=n)
+                .map(|i| format!("!s{}", i))
+                .collect::<Vec<_>>()
+                .join(" & ")
+        );
         let _ = writeln!(s, "SPEC NAME seed_recurs := AG AF ({})", seed);
         let _ = writeln!(s, "LTLSPEC NAME ltl_seed_recurs := G F ({})", seed);
     }

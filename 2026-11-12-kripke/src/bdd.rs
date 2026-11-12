@@ -52,7 +52,11 @@ impl Default for Manager {
 
 impl Manager {
     pub fn new() -> Manager {
-        let t = Node { var: TERM, lo: FALSE, hi: FALSE };
+        let t = Node {
+            var: TERM,
+            lo: FALSE,
+            hi: FALSE,
+        };
         Manager {
             nodes: vec![t, t],
             unique: HashMap::new(),
@@ -137,7 +141,9 @@ impl Manager {
         if lo == hi {
             return lo;
         }
-        debug_assert!(self.lvl(lo) > self.level[var as usize] && self.lvl(hi) > self.level[var as usize]);
+        debug_assert!(
+            self.lvl(lo) > self.level[var as usize] && self.lvl(hi) > self.level[var as usize]
+        );
         if let Some(&n) = self.unique.get(&(var, lo, hi)) {
             return n;
         }
@@ -319,7 +325,11 @@ impl Manager {
         ls.sort_by_key(|&(v, _)| std::cmp::Reverse(self.level[v as usize]));
         let mut acc = TRUE;
         for (v, b) in ls {
-            acc = if b { self.mk(v, FALSE, acc) } else { self.mk(v, acc, FALSE) };
+            acc = if b {
+                self.mk(v, FALSE, acc)
+            } else {
+                self.mk(v, acc, FALSE)
+            };
         }
         acc
     }
@@ -443,7 +453,12 @@ impl Manager {
         self.restrict_rec(f, lits, &mut memo)
     }
 
-    fn restrict_rec(&mut self, f: Bdd, lits: &HashMap<u32, bool>, memo: &mut HashMap<Bdd, Bdd>) -> Bdd {
+    fn restrict_rec(
+        &mut self,
+        f: Bdd,
+        lits: &HashMap<u32, bool>,
+        memo: &mut HashMap<Bdd, Bdd>,
+    ) -> Bdd {
         if f < 2 {
             return f;
         }
@@ -529,7 +544,13 @@ impl Manager {
                 1u128 << k
             }
         }
-        fn rec(m: &Manager, f: Bdd, n: usize, pos: &HashMap<u32, usize>, memo: &mut HashMap<Bdd, u128>) -> u128 {
+        fn rec(
+            m: &Manager,
+            f: Bdd,
+            n: usize,
+            pos: &HashMap<u32, usize>,
+            memo: &mut HashMap<Bdd, u128>,
+        ) -> u128 {
             if f == FALSE {
                 return 0;
             }
@@ -540,9 +561,19 @@ impl Manager {
                 return c;
             }
             let nd = m.nodes[f as usize];
-            let me = *pos.get(&nd.var).unwrap_or_else(|| panic!("sat_count: variable {} not in the counting set", nd.var));
-            let pl = if nd.lo < 2 { n } else { pos[&m.nodes[nd.lo as usize].var] };
-            let ph = if nd.hi < 2 { n } else { pos[&m.nodes[nd.hi as usize].var] };
+            let me = *pos.get(&nd.var).unwrap_or_else(|| {
+                panic!("sat_count: variable {} not in the counting set", nd.var)
+            });
+            let pl = if nd.lo < 2 {
+                n
+            } else {
+                pos[&m.nodes[nd.lo as usize].var]
+            };
+            let ph = if nd.hi < 2 {
+                n
+            } else {
+                pos[&m.nodes[nd.hi as usize].var]
+            };
             let a = rec(m, nd.lo, n, pos, memo).saturating_mul(p2(pl - me - 1));
             let b = rec(m, nd.hi, n, pos, memo).saturating_mul(p2(ph - me - 1));
             let r = a.saturating_add(b);
@@ -553,7 +584,11 @@ impl Manager {
             return 0;
         }
         let mut memo = HashMap::new();
-        let top = if f < 2 { n } else { pos[&self.nodes[f as usize].var] };
+        let top = if f < 2 {
+            n
+        } else {
+            pos[&self.nodes[f as usize].var]
+        };
         rec(self, f, n, &pos, &mut memo).saturating_mul(p2(top))
     }
 
@@ -575,7 +610,11 @@ impl Manager {
                 x = n.hi;
             }
         }
-        Some(vars.iter().map(|v| *chosen.get(v).unwrap_or(&false)).collect())
+        Some(
+            vars.iter()
+                .map(|v| *chosen.get(v).unwrap_or(&false))
+                .collect(),
+        )
     }
 
     /// Enumerate satisfying cubes (partial assignments). Stops after `limit` cubes.
@@ -586,7 +625,13 @@ impl Manager {
         out
     }
 
-    fn all_sat_rec(&self, f: Bdd, path: &mut Vec<(u32, bool)>, out: &mut Vec<Vec<(u32, bool)>>, limit: usize) {
+    fn all_sat_rec(
+        &self,
+        f: Bdd,
+        path: &mut Vec<(u32, bool)>,
+        out: &mut Vec<Vec<(u32, bool)>>,
+        limit: usize,
+    ) {
         if out.len() >= limit || f == FALSE {
             return;
         }
@@ -605,11 +650,16 @@ impl Manager {
 
     /// Graphviz rendering of the functions rooted at `roots` (with display names).
     pub fn to_dot(&self, roots: &[(String, Bdd)], var_name: &dyn Fn(u32) -> String) -> String {
-        let mut s = String::from("digraph bdd {\n  rankdir=TB;\n  node [shape=circle, fontname=\"Helvetica\"];\n");
+        let mut s = String::from(
+            "digraph bdd {\n  rankdir=TB;\n  node [shape=circle, fontname=\"Helvetica\"];\n",
+        );
         let mut seen = std::collections::HashSet::new();
         let mut stack = Vec::new();
         for (i, (name, r)) in roots.iter().enumerate() {
-            s.push_str(&format!("  r{} [shape=plaintext,label=\"{}\"];\n  r{} -> n{};\n", i, name, i, r));
+            s.push_str(&format!(
+                "  r{} [shape=plaintext,label=\"{}\"];\n  r{} -> n{};\n",
+                i, name, i, r
+            ));
             stack.push(*r);
         }
         s.push_str("  n0 [shape=box,label=\"0\"];\n  n1 [shape=box,label=\"1\"];\n");
@@ -621,9 +671,15 @@ impl Manager {
                 continue;
             }
             let n = self.nodes[x as usize];
-            by_level.entry(self.level[n.var as usize]).or_default().push(x);
+            by_level
+                .entry(self.level[n.var as usize])
+                .or_default()
+                .push(x);
             body.push_str(&format!("  n{} [label=\"{}\"];\n", x, var_name(n.var)));
-            body.push_str(&format!("  n{} -> n{} [style=dashed];\n  n{} -> n{};\n", x, n.lo, x, n.hi));
+            body.push_str(&format!(
+                "  n{} -> n{} [style=dashed];\n  n{} -> n{};\n",
+                x, n.lo, x, n.hi
+            ));
             stack.push(n.lo);
             stack.push(n.hi);
         }
@@ -684,7 +740,11 @@ impl Manager {
                 continue;
             }
             self.unique.remove(&(n.var, n.lo, n.hi));
-            self.nodes[i] = Node { var: DEAD, lo: FALSE, hi: FALSE };
+            self.nodes[i] = Node {
+                var: DEAD,
+                lo: FALSE,
+                hi: FALSE,
+            };
             self.free.push(i as u32);
         }
         self.cache.clear();
@@ -697,7 +757,9 @@ impl Manager {
         self.swaps += 1;
         let x = self.at_level[level];
         let y = self.at_level[level + 1];
-        let xs: Vec<Bdd> = (2..self.nodes.len() as u32).filter(|&i| self.nodes[i as usize].var == x).collect();
+        let xs: Vec<Bdd> = (2..self.nodes.len() as u32)
+            .filter(|&i| self.nodes[i as usize].var == x)
+            .collect();
         // Flip the order first: `mk` below checks child levels against the *new* order.
         self.at_level[level] = y;
         self.at_level[level + 1] = x;
@@ -710,13 +772,25 @@ impl Manager {
             if !lo_y && !hi_y {
                 continue; // node stays on x; x is now one level lower, which is still legal
             }
-            let (f00, f01) = if lo_y { (self.nodes[lo as usize].lo, self.nodes[lo as usize].hi) } else { (lo, lo) };
-            let (f10, f11) = if hi_y { (self.nodes[hi as usize].lo, self.nodes[hi as usize].hi) } else { (hi, hi) };
+            let (f00, f01) = if lo_y {
+                (self.nodes[lo as usize].lo, self.nodes[lo as usize].hi)
+            } else {
+                (lo, lo)
+            };
+            let (f10, f11) = if hi_y {
+                (self.nodes[hi as usize].lo, self.nodes[hi as usize].hi)
+            } else {
+                (hi, hi)
+            };
             self.unique.remove(&(x, lo, hi));
             let nlo = self.mk(x, f00, f10);
             let nhi = self.mk(x, f01, f11);
             debug_assert_ne!(nlo, nhi);
-            self.nodes[n as usize] = Node { var: y, lo: nlo, hi: nhi };
+            self.nodes[n as usize] = Node {
+                var: y,
+                lo: nlo,
+                hi: nhi,
+            };
             let prev = self.unique.insert((y, nlo, nhi), n);
             debug_assert!(prev.is_none(), "swap produced a duplicate node");
         }
@@ -751,12 +825,16 @@ impl Manager {
         // sift heaviest blocks first
         let mut weight: Vec<(usize, usize)> = (0..blocks.len())
             .map(|b| {
-                let w = (2..self.nodes.len()).filter(|&i| blocks[b].contains(&self.nodes[i].var)).count();
+                let w = (2..self.nodes.len())
+                    .filter(|&i| blocks[b].contains(&self.nodes[i].var))
+                    .count();
                 (w, b)
             })
             .collect();
         weight.sort_by_key(|&(w, b)| (std::cmp::Reverse(w), b));
-        let start_of = |order: &[usize], pos: usize| -> usize { order[..pos].iter().map(|&b| blocks[b].len()).sum() };
+        let start_of = |order: &[usize], pos: usize| -> usize {
+            order[..pos].iter().map(|&b| blocks[b].len()).sum()
+        };
         for &(_, b) in &weight {
             let mut pos = order.iter().position(|&x| x == b).unwrap();
             let mut best = self.live_size(roots);
@@ -829,7 +907,9 @@ impl Manager {
             if n.lo == n.hi {
                 return Err(format!("node {} not reduced", i));
             }
-            if self.lvl(n.lo) <= self.level[n.var as usize] || self.lvl(n.hi) <= self.level[n.var as usize] {
+            if self.lvl(n.lo) <= self.level[n.var as usize]
+                || self.lvl(n.hi) <= self.level[n.var as usize]
+            {
                 return Err(format!("node {} violates order", i));
             }
             if self.unique.get(&(n.var, n.lo, n.hi)) != Some(&(i as u32)) {
@@ -837,7 +917,11 @@ impl Manager {
             }
         }
         if live != self.unique.len() {
-            return Err(format!("unique table has {} entries for {} live nodes", self.unique.len(), live));
+            return Err(format!(
+                "unique table has {} entries for {} live nodes",
+                self.unique.len(),
+                live
+            ));
         }
         Ok(())
     }

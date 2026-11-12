@@ -93,7 +93,10 @@ fn operations_match_truth_tables() {
         // canonicity: equal functions are the same node
         let (f2, tf2) = random_fn(&mut m, &mut r, 3);
         if tf2 == tf {
-            assert_eq!(f2, f, "hash-consing must give equal functions equal handles");
+            assert_eq!(
+                f2, f,
+                "hash-consing must give equal functions equal handles"
+            );
         }
         let vars: Vec<usize> = (0..N).filter(|_| r.chance(1, 3)).collect();
         let cube = m.cube(&vars.iter().map(|&v| v as u32).collect::<Vec<_>>());
@@ -141,7 +144,10 @@ fn rename_restrict_and_allsat() {
         lits.insert(4u32, true);
         let h = m.restrict(f, &lits);
         for a in 0..(1u64 << N) {
-            assert_eq!(m.eval(h, &|v| (a >> v) & 1 == 1), (tf >> (a | (1 << 4))) & 1 == 1);
+            assert_eq!(
+                m.eval(h, &|v| (a >> v) & 1 == 1),
+                (tf >> (a | (1 << 4))) & 1 == 1
+            );
         }
         // all_sat cubes cover exactly the satisfying assignments
         let cubes = m.all_sat(f, 1 << 12);
@@ -199,10 +205,19 @@ fn swaps_preserve_functions_and_sifting_never_grows() {
                 assert_eq!(table(&m, *f), *t, "swap changed a function");
             }
         }
-        let blocks: Vec<Vec<u32>> = vec![vec![m.var_at_level(0), m.var_at_level(1)], vec![m.var_at_level(2)], vec![m.var_at_level(3), m.var_at_level(4), m.var_at_level(5)]];
+        let blocks: Vec<Vec<u32>> = vec![
+            vec![m.var_at_level(0), m.var_at_level(1)],
+            vec![m.var_at_level(2)],
+            vec![m.var_at_level(3), m.var_at_level(4), m.var_at_level(5)],
+        ];
         let roots: Vec<Bdd> = fs.iter().map(|x| x.0).collect();
         let (b, a) = m.sift_blocks(&blocks, &roots);
-        assert!(a <= b, "sifting must not increase the DAG size ({} -> {})", b, a);
+        assert!(
+            a <= b,
+            "sifting must not increase the DAG size ({} -> {})",
+            b,
+            a
+        );
         m.check_invariants().unwrap();
         for (f, t) in &fs {
             assert_eq!(table(&m, *f), *t, "sifting changed a function");
@@ -212,7 +227,12 @@ fn swaps_preserve_functions_and_sifting_never_grows() {
         for blk in &blocks {
             let mut lv: Vec<u32> = blk.iter().map(|&v| m.level_of(v)).collect();
             lv.sort();
-            assert!(lv.windows(2).all(|w| w[1] == w[0] + 1), "block split: {:?} order {:?}", blk, ord);
+            assert!(
+                lv.windows(2).all(|w| w[1] == w[0] + 1),
+                "block split: {:?} order {:?}",
+                blk,
+                ord
+            );
         }
     }
 }
@@ -225,9 +245,15 @@ fn comparator_order_matters() {
         let mut m = Manager::new();
         let vars: Vec<u32> = (0..2 * n).map(|_| m.new_var()).collect();
         let (xs, ys): (Vec<u32>, Vec<u32>) = if interleaved {
-            ((0..n).map(|i| vars[2 * i]).collect(), (0..n).map(|i| vars[2 * i + 1]).collect())
+            (
+                (0..n).map(|i| vars[2 * i]).collect(),
+                (0..n).map(|i| vars[2 * i + 1]).collect(),
+            )
         } else {
-            ((0..n).map(|i| vars[i]).collect(), (0..n).map(|i| vars[n + i]).collect())
+            (
+                (0..n).map(|i| vars[i]).collect(),
+                (0..n).map(|i| vars[n + i]).collect(),
+            )
         };
         let mut f = TRUE;
         for i in 0..n {

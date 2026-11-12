@@ -46,14 +46,24 @@ pub fn render_trace_opts(t: &Trace, indent: &str, full: bool) -> String {
     let rows = step_changes(t);
     let n = t.steps.len();
     let abbreviate = !full && n > TRACE_LIMIT;
-    let loop_hidden = abbreviate && t.loop_start.map(|l| l >= TRACE_HEAD && l < n - TRACE_TAIL).unwrap_or(false);
+    let loop_hidden = abbreviate
+        && t.loop_start
+            .map(|l| l >= TRACE_HEAD && l < n - TRACE_TAIL)
+            .unwrap_or(false);
     for (i, _step) in t.steps.iter().enumerate() {
         if abbreviate && i >= TRACE_HEAD && i < n - TRACE_TAIL {
             if i == TRACE_HEAD {
                 let hidden = n - TRACE_TAIL - TRACE_HEAD;
-                s.push_str(&format!("{}... {} states omitted (use --full-traces to show them) ...\n", indent, hidden));
+                s.push_str(&format!(
+                    "{}... {} states omitted (use --full-traces to show them) ...\n",
+                    indent, hidden
+                ));
                 if loop_hidden {
-                    s.push_str(&format!("{}    (the loop starts at State {}, inside the omitted part)\n", indent, t.loop_start.unwrap() + 1));
+                    s.push_str(&format!(
+                        "{}    (the loop starts at State {}, inside the omitted part)\n",
+                        indent,
+                        t.loop_start.unwrap() + 1
+                    ));
                 }
             }
             continue;
@@ -68,7 +78,11 @@ pub fn render_trace_opts(t: &Trace, indent: &str, full: bool) -> String {
         s.push_str(&head);
         s.push('\n');
         if i > 0 && !t.steps[i - 1].inputs.is_empty() {
-            let inp: Vec<String> = t.steps[i - 1].inputs.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+            let inp: Vec<String> = t.steps[i - 1]
+                .inputs
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect();
             s.push_str(&format!("{}  [inputs taken: {}]\n", indent, inp.join(", ")));
         }
         let after_gap = abbreviate && i == n - TRACE_TAIL;
@@ -81,10 +95,18 @@ pub fn render_trace_opts(t: &Trace, indent: &str, full: bool) -> String {
     if let Some(l) = t.loop_start {
         let last = t.steps.last().unwrap();
         if !last.inputs.is_empty() {
-            let inp: Vec<String> = last.inputs.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+            let inp: Vec<String> = last
+                .inputs
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect();
             s.push_str(&format!("{}  [inputs taken: {}]\n", indent, inp.join(", ")));
         }
-        s.push_str(&format!("{}-> back to State {} (the trace repeats this loop forever)\n", indent, l + 1));
+        s.push_str(&format!(
+            "{}-> back to State {} (the trace repeats this loop forever)\n",
+            indent,
+            l + 1
+        ));
     }
     s
 }
@@ -110,11 +132,32 @@ pub fn render_outcome(o: &SpecOutcome, ro: &RenderOpts) -> String {
         Verdict::Holds => "PASS",
         Verdict::Fails(_) => "FAIL",
     };
-    let vac = if o.vacuous && o.verdict == Verdict::Holds { " (vacuous: no fair infinite path)" } else { "" };
-    s.push_str(&format!("[{}] {} {}: {}{}  ({:.1} ms)\n", mark, kind_name(o.kind), o.label, o.text, vac, o.micros as f64 / 1000.0));
+    let vac = if o.vacuous && o.verdict == Verdict::Holds {
+        " (vacuous: no fair infinite path)"
+    } else {
+        ""
+    };
+    s.push_str(&format!(
+        "[{}] {} {}: {}{}  ({:.1} ms)\n",
+        mark,
+        kind_name(o.kind),
+        o.label,
+        o.text,
+        vac,
+        o.micros as f64 / 1000.0
+    ));
     if let (Verdict::Fails(Some(t)), false) = (&o.verdict, ro.quiet) {
-        let kind = if t.loop_start.is_some() { "lasso counterexample" } else { "counterexample" };
-        s.push_str(&format!("  {} ({} state{}):\n", kind, t.steps.len(), if t.steps.len() == 1 { "" } else { "s" }));
+        let kind = if t.loop_start.is_some() {
+            "lasso counterexample"
+        } else {
+            "counterexample"
+        };
+        s.push_str(&format!(
+            "  {} ({} state{}):\n",
+            kind,
+            t.steps.len(),
+            if t.steps.len() == 1 { "" } else { "s" }
+        ));
         s.push_str(&render_trace_opts(t, "    ", ro.full_traces));
     }
     s
@@ -150,7 +193,10 @@ pub fn render_report(r: &Report, ro: &RenderOpts) -> String {
         s.push_str(&format!("warning: {}\n", w));
     }
     if let Some((b, a, sw)) = i.reorder {
-        s.push_str(&format!("reordering: shared DAG {} -> {} nodes ({} level swaps)\n", b, a, sw));
+        s.push_str(&format!(
+            "reordering: shared DAG {} -> {} nodes ({} level swaps)\n",
+            b, a, sw
+        ));
     }
     if verbose {
         s.push_str(&format!(
@@ -163,7 +209,16 @@ pub fn render_report(r: &Report, ro: &RenderOpts) -> String {
     for o in &r.outcomes {
         s.push_str(&render_outcome(o, ro));
     }
-    let pass = r.outcomes.iter().filter(|o| o.verdict == Verdict::Holds).count();
-    s.push_str(&format!("\n{} of {} specifications hold ({:.1} ms total)\n", pass, r.outcomes.len(), i.total_micros as f64 / 1000.0));
+    let pass = r
+        .outcomes
+        .iter()
+        .filter(|o| o.verdict == Verdict::Holds)
+        .count();
+    s.push_str(&format!(
+        "\n{} of {} specifications hold ({:.1} ms total)\n",
+        pass,
+        r.outcomes.len(),
+        i.total_micros as f64 / 1000.0
+    ));
     s
 }
