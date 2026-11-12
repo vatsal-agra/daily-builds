@@ -1,0 +1,31 @@
+-- A classic *wrong* mutex: test the other flag, THEN raise your own. Both processes can pass the
+-- test before either raises its flag. Kripke finds the shortest interleaving that breaks it.
+MODULE main
+VAR
+  sched : 0..1;
+  pc0 : {idle, test, setf, crit};
+  pc1 : {idle, test, setf, crit};
+  f0 : boolean;
+  f1 : boolean;
+ASSIGN
+  init(pc0) := idle;  init(pc1) := idle;  init(f0) := FALSE;  init(f1) := FALSE;
+  next(sched) := {0, 1};
+  next(pc0) := case
+    sched != 0 : pc0;
+    pc0 = idle : {idle, test};
+    pc0 = test : case !f1 : setf; TRUE : test; esac;
+    pc0 = setf : crit;
+    TRUE       : idle;
+  esac;
+  next(pc1) := case
+    sched != 1 : pc1;
+    pc1 = idle : {idle, test};
+    pc1 = test : case !f0 : setf; TRUE : test; esac;
+    pc1 = setf : crit;
+    TRUE       : idle;
+  esac;
+  next(f0) := case sched = 0 & pc0 = setf : TRUE; sched = 0 & pc0 = crit : FALSE; TRUE : f0; esac;
+  next(f1) := case sched = 1 & pc1 = setf : TRUE; sched = 1 & pc1 = crit : FALSE; TRUE : f1; esac;
+
+INVARSPEC NAME mutual_exclusion := !(pc0 = crit & pc1 = crit)
+SPEC NAME can_reach_crit := EF pc0 = crit

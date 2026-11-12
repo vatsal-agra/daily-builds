@@ -1,0 +1,52 @@
+-- Peterson's mutual-exclusion algorithm for two processes.
+-- A scheduler variable picks which process moves at each step; FAIRNESS says it picks
+-- each process infinitely often (without that, "eventually enters" is trivially false).
+--   pc: 0 idle | 1 raise flag | 2 give away the turn | 3 wait | 4 critical section
+MODULE main
+VAR
+  sched : 0..1;
+  pc0   : 0..4;
+  pc1   : 0..4;
+  flag0 : boolean;
+  flag1 : boolean;
+  turn  : 0..1;
+DEFINE
+  crit0 := pc0 = 4;
+  crit1 := pc1 = 4;
+  try0  := pc0 >= 1 & pc0 <= 3;
+  try1  := pc1 >= 1 & pc1 <= 3;
+ASSIGN
+  init(pc0) := 0;  init(pc1) := 0;
+  init(flag0) := FALSE;  init(flag1) := FALSE;
+  init(turn) := 0;
+  next(sched) := {0, 1};
+
+  next(pc0) := case
+    sched != 0 : pc0;
+    pc0 = 0    : {0, 1};
+    pc0 = 1    : 2;
+    pc0 = 2    : 3;
+    pc0 = 3    : case !flag1 | turn = 0 : 4; TRUE : 3; esac;
+    TRUE       : 0;
+  esac;
+  next(pc1) := case
+    sched != 1 : pc1;
+    pc1 = 0    : {0, 1};
+    pc1 = 1    : 2;
+    pc1 = 2    : 3;
+    pc1 = 3    : case !flag0 | turn = 1 : 4; TRUE : 3; esac;
+    TRUE       : 0;
+  esac;
+  next(flag0) := case sched = 0 & pc0 = 1 : TRUE; sched = 0 & pc0 = 4 : FALSE; TRUE : flag0; esac;
+  next(flag1) := case sched = 1 & pc1 = 1 : TRUE; sched = 1 & pc1 = 4 : FALSE; TRUE : flag1; esac;
+  next(turn)  := case sched = 0 & pc0 = 2 : 1; sched = 1 & pc1 = 2 : 0; TRUE : turn; esac;
+
+FAIRNESS sched = 0
+FAIRNESS sched = 1
+
+INVARSPEC NAME mutual_exclusion := !(crit0 & crit1)
+SPEC NAME no_starvation_0 := AG (try0 -> AF crit0)
+SPEC NAME no_starvation_1 := AG (try1 -> AF crit1)
+SPEC NAME can_enter := EF crit0 & EF crit1
+LTLSPEC NAME ltl_starvation_free := G (try0 -> F crit0)
+LTLSPEC NAME ltl_always_enters := G F crit0      -- false: a process may idle forever
