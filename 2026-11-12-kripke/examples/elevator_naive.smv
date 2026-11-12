@@ -1,0 +1,52 @@
+-- NAIVE variant: re-pressing the button of the floor the car is standing at is accepted, so an
+-- adversarial passenger can keep the elevator parked there forever. Kripke finds that starvation
+-- as a lasso counterexample (compare examples/elevator.smv, where the button is ignored).
+MODULE main
+IVAR
+  call : 0..4;
+VAR
+  floor : 0..3;
+  dir   : {up, down};
+  door  : {open, closed};
+  p0 : boolean;  p1 : boolean;  p2 : boolean;  p3 : boolean;     -- pending requests
+DEFINE
+  here   := case floor = 0 : p0; floor = 1 : p1; floor = 2 : p2; TRUE : p3; esac;
+  above  := (floor < 1 & p1) | (floor < 2 & p2) | (floor < 3 & p3);
+  below  := (floor > 0 & p0) | (floor > 1 & p1) | (floor > 2 & p2);
+  moving := door = closed & !here & (above | below);
+ASSIGN
+  init(floor) := 0;  init(dir) := up;  init(door) := closed;
+  init(p0) := FALSE;  init(p1) := FALSE;  init(p2) := FALSE;  init(p3) := FALSE;
+
+  next(door) := case
+    door = open           : closed;            -- doors close after one step
+    door = closed & here  : open;
+    TRUE                  : door;
+  esac;
+
+  next(dir) := case
+    door = open | here     : dir;
+    dir = up   & !above & below : down;
+    dir = down & !below & above : up;
+    TRUE                   : dir;
+  esac;
+
+  next(floor) := case
+    door = closed & !here & dir = up   & above : floor + 1;
+    door = closed & !here & dir = down & below : floor - 1;
+    door = closed & !here & dir = up   & !above & below : floor - 1;
+    door = closed & !here & dir = down & !below & above : floor + 1;
+    TRUE : floor;
+  esac;
+
+  next(p0) := case call = 0 : TRUE; door = closed & here & floor = 0 : FALSE; TRUE : p0; esac;
+  next(p1) := case call = 1 : TRUE; door = closed & here & floor = 1 : FALSE; TRUE : p1; esac;
+  next(p2) := case call = 2 : TRUE; door = closed & here & floor = 2 : FALSE; TRUE : p2; esac;
+  next(p3) := case call = 3 : TRUE; door = closed & here & floor = 3 : FALSE; TRUE : p3; esac;
+
+INVARSPEC NAME doors_closed_while_moving := !(door = open & moving)
+SPEC NAME floor0_served := AG (p0 -> AF (floor = 0 & door = open))
+SPEC NAME floor3_served := AG (p3 -> AF (floor = 3 & door = open))
+SPEC NAME can_reach_top := EF floor = 3
+SPEC NAME no_spurious_stops := AG (door = open -> !(AX door = open))
+LTLSPEC NAME ltl_floor2_served := G (p2 -> F (floor = 2 & door = open))

@@ -255,9 +255,9 @@ pub fn gen_model(seed: u64) -> String {
 /// Cross-check one model. Returns a list of mismatches (empty = agreement).
 pub fn cross_check(src: &str, rng: &mut Rng) -> Result<Vec<String>, String> {
     let prog = parse(src).map_err(|e| format!("generated model does not parse: {} \n{}", e, src))?;
-    let opts = Options { lax: false, reorder: rng.chance(1, 2), gc_stress: rng.chance(1, 3) };
+    let opts = Options { lax: false, reorder: rng.chance(1, 2), gc_stress: rng.chance(1, 3), stutter: rng.chance(1, 3) };
     let report = run_program(&prog, &opts, Instant::now()).map_err(|e| format!("generated model does not compile: {}\n{}", e, src))?;
-    let mut ex = Explicit::new(&prog, 4096).map_err(|e| format!("explicit: {}", e))?;
+    let mut ex = Explicit::new(&prog, 4096, opts.stutter).map_err(|e| format!("explicit: {}", e))?;
     let mut bad = vec![];
     let (reach, diam, dead) = ex.reachability();
     let nreach = reach.iter().filter(|&&b| b).count() as u128;

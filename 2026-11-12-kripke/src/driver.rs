@@ -16,6 +16,8 @@ pub struct Options {
     pub reorder: bool,
     /// Collect garbage at every opportunity (testing aid).
     pub gc_stress: bool,
+    /// Give deadlock states a self-loop so every state has an infinite path.
+    pub stutter: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -26,6 +28,8 @@ pub struct SpecOutcome {
     pub verdict: Verdict,
     pub micros: u128,
     pub pos: Pos,
+    /// Held only because no fair infinite path starts in an initial state.
+    pub vacuous: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -38,9 +42,12 @@ pub struct ModelInfo {
     pub reachable: u128,
     pub diameter: usize,
     pub deadlocks: u128,
+    /// States first reached at each BFS depth (downsampled to at most ~400 points).
+    pub layer_counts: Vec<(usize, u128)>,
     pub deadlock_example: Option<Trace>,
     pub fair_constraints: usize,
     pub fair_states: u128,
+    pub legal_states: u128,
     pub trans_nodes: usize,
     pub init_nodes: usize,
     pub reach_nodes: usize,
@@ -115,8 +122,21 @@ pub fn run(src: &str, opts: &Options) -> Res<Report> {
 }
 
 pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
+    // duplicate spec names make reports ambiguous
+    let mut seen: Vec<&str> = vec![];
+    for sp in &prog.specs {
+        if let Some(n) = &sp.name {
+            if seen.contains(&n.as_str()) {
+                return Err(Error::new(sp.pos, format!("duplicate specification name '{}'", n)));
+            }
+            seen.push(n);
+        }
+    }
     let mut md = Model::compile(prog.clone(), opts.lax)?;
     md.m.gc_stress = opts.gc_stress;
+    if opts.stutter {
+        md.stutter_deadlocks();
+    }
     let mut info = ModelInfo::default();
     if opts.reorder {
         info.reorder = Some(reorder(&mut md));
@@ -126,7 +146,7 @@ pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
     info.state_bits = md.cur_vars.len();
     info.input_bits = md.inp_vars.len();
     info.fair_constraints = md.fair.len();
-    // ---- pre-lower specs so atom compilation errors surface before any heavy work
+    // ---- lower specs first so atom compilation errors surface before any heavy work
     enum Lowered {
         Ctl(crate::temporal::Ctl<Bdd>),
         Invar(Bdd),
@@ -159,6 +179,9 @@ pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
             }
         }
     }
+    if prog.specs.is_empty() {
+        info.warnings.push("the model has no SPEC / LTLSPEC / INVARSPEC lines: nothing to check".to_string());
+    }
     let mut outcomes = vec![];
     {
         let mut ck = Checker::new(&mut md);
@@ -174,18 +197,17 @@ pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
         info.reachable = ck.md.count_states(rset);
         info.diameter = diam;
         info.reach_nodes = ck.md.m.dag_size(&[rset]);
+        {
+            let layers = ck.reach().layers.clone();
+            let stride = (layers.len() / 400).max(1);
+            for (d, &l) in layers.iter().enumerate().step_by(stride) {
+                info.layer_counts.push((d, ck.md.count_states(l)));
+            }
+        }
+        // deadlocks, with the shortest path to one
         let dead = ck.deadlocks();
         info.deadlocks = ck.md.count_states(dead);
         if dead != FALSE {
-            let s = ck.pick_state(dead);
-            // shortest path from init to this deadlock
-            let to = s;
-            let sp = ck.md.space;
-            let init = ck.md.init;
-            let init_state = ck.pick_state(init);
-            let _ = init_state;
-            let mut best: Option<Vec<Bdd>> = None;
-            // search from the whole initial set: use layers of reach to find the shortest prefix
             let layers = ck.reach().layers.clone();
             for (i, &l) in layers.iter().enumerate() {
                 let hit = ck.md.m.and(l, dead);
@@ -197,26 +219,29 @@ pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
                         let cand = ck.md.m.and(pr, layers[j]);
                         path[j] = ck.pick_state(cand);
                     }
-                    best = Some(path);
+                    info.deadlock_example = Some(ck.to_trace(&path, None));
                     break;
                 }
-            }
-            let _ = (to, sp);
-            if let Some(p) = best {
-                info.deadlock_example = Some(ck.to_trace(&p, None));
             }
         }
         let fair = ck.fair();
         info.fair_states = ck.md.count_states(fair);
+        info.legal_states = ck.md.count_states(ck.md.space);
+        let init_fair = ck.md.m.and(init, fair);
+        let vacuous_paths = init_fair == FALSE;
         if info.fair_states == 0 && init != FALSE {
-            info.warnings.push("no state has an infinite (fair) path: CTL formulas with path quantifiers are decided over an empty set of paths".to_string());
+            info.warnings.push(
+                "no state has an infinite fair path: every CTL/LTL property with a universal path quantifier holds vacuously".to_string(),
+            );
+        } else if vacuous_paths && init != FALSE {
+            info.warnings.push("no initial state has an infinite fair path: CTL/LTL properties hold vacuously".to_string());
         }
         for (i, s) in prog.specs.iter().enumerate() {
             let t = Instant::now();
             let verdict = match &lowered[i] {
                 Lowered::Invar(p) => ck.check_invariant(*p),
                 Lowered::Ctl(c) => ck.check_ctl(c),
-                Lowered::Ltl => Verdict::Holds, // placeholder, replaced below
+                Lowered::Ltl => Verdict::Holds, // replaced below by the product-model result
             };
             outcomes.push(SpecOutcome {
                 label: spec_label(s, i),
@@ -225,6 +250,7 @@ pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
                 verdict,
                 micros: t.elapsed().as_micros(),
                 pos: s.pos,
+                vacuous: s.kind != SpecKind::Invar && vacuous_paths,
             });
         }
         info.stats = ck.stats.clone();
@@ -235,14 +261,15 @@ pub fn run_program(prog: &Program, opts: &Options, t0: Instant) -> Res<Report> {
     for (i, s) in prog.specs.iter().enumerate() {
         if let Lowered::Ltl = &lowered[i] {
             let t = Instant::now();
-            let r = ltl::check(prog, &s.expr, opts.lax)?;
+            let r = ltl::check(prog, &s.expr, opts.lax, opts.stutter)?;
             outcomes[i].verdict = r.verdict;
             outcomes[i].micros = t.elapsed().as_micros();
             info.stats.fixpoint_iterations += r.stats.fixpoint_iterations;
             info.stats.images += r.stats.images;
         }
     }
-    info.order = md.m.order().iter().map(|&v| bit_names(&md)[v as usize].clone()).collect();
+    let names = bit_names(&md);
+    info.order = md.m.order().iter().map(|&v| names[v as usize].clone()).collect();
     info.gc_runs = md.m.gc_runs;
     info.warnings.extend(md.warnings.clone());
     info.total_micros = t0.elapsed().as_micros();

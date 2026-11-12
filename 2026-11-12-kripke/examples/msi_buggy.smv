@@ -1,0 +1,43 @@
+-- The same protocol with a classic bug: a remote write only invalidates a cache that holds the
+-- line Modified; Shared copies are left behind. Kripke finds the shortest bus trace that breaks
+-- the single-writer / multiple-reader invariant, including the inputs (who, op) of every step.
+MODULE main
+IVAR
+  who : 0..2;
+  op  : {read, write, evict};
+VAR
+  c0 : {I, S, M};
+  c1 : {I, S, M};
+  c2 : {I, S, M};
+DEFINE
+  writers := (case c0 = M : 1; TRUE : 0; esac) + (case c1 = M : 1; TRUE : 0; esac) + (case c2 = M : 1; TRUE : 0; esac);
+  readers := (case c0 = S : 1; TRUE : 0; esac) + (case c1 = S : 1; TRUE : 0; esac) + (case c2 = S : 1; TRUE : 0; esac);
+ASSIGN
+  init(c0) := I;  init(c1) := I;  init(c2) := I;
+  next(c0) := case
+    who = 0 & op = read  : case c0 = I : S; TRUE : c0; esac;
+    who = 0 & op = write : M;
+    who = 0 & op = evict : I;
+    who != 0 & op = read  & c0 = M : S;
+    who != 0 & op = write & c0 = M : I;      -- BUG: Shared copies survive a remote write
+    TRUE : c0;
+  esac;
+  next(c1) := case
+    who = 1 & op = read  : case c1 = I : S; TRUE : c1; esac;
+    who = 1 & op = write : M;
+    who = 1 & op = evict : I;
+    who != 1 & op = read  & c1 = M : S;
+    who != 1 & op = write & c1 = M : I;
+    TRUE : c1;
+  esac;
+  next(c2) := case
+    who = 2 & op = read  : case c2 = I : S; TRUE : c2; esac;
+    who = 2 & op = write : M;
+    who = 2 & op = evict : I;
+    who != 2 & op = read  & c2 = M : S;
+    who != 2 & op = write & c2 = M : I;
+    TRUE : c2;
+  esac;
+
+INVARSPEC NAME writer_excludes_readers := !(writers = 1 & readers > 0)
+INVARSPEC NAME single_writer := writers <= 1

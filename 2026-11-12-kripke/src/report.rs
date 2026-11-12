@@ -26,10 +26,38 @@ pub fn step_changes(t: &Trace) -> Vec<Vec<(String, String, bool)>> {
     out
 }
 
+pub struct RenderOpts {
+    pub verbose: bool,
+    pub full_traces: bool,
+    pub quiet: bool,
+}
+
+/// Traces longer than this are abbreviated in terminal output (head and tail are kept).
+const TRACE_LIMIT: usize = 40;
+const TRACE_HEAD: usize = 20;
+const TRACE_TAIL: usize = 12;
+
 pub fn render_trace(t: &Trace, indent: &str) -> String {
+    render_trace_opts(t, indent, true)
+}
+
+pub fn render_trace_opts(t: &Trace, indent: &str, full: bool) -> String {
     let mut s = String::new();
     let rows = step_changes(t);
+    let n = t.steps.len();
+    let abbreviate = !full && n > TRACE_LIMIT;
+    let loop_hidden = abbreviate && t.loop_start.map(|l| l >= TRACE_HEAD && l < n - TRACE_TAIL).unwrap_or(false);
     for (i, _step) in t.steps.iter().enumerate() {
+        if abbreviate && i >= TRACE_HEAD && i < n - TRACE_TAIL {
+            if i == TRACE_HEAD {
+                let hidden = n - TRACE_TAIL - TRACE_HEAD;
+                s.push_str(&format!("{}... {} states omitted (use --full-traces to show them) ...\n", indent, hidden));
+                if loop_hidden {
+                    s.push_str(&format!("{}    (the loop starts at State {}, inside the omitted part)\n", indent, t.loop_start.unwrap() + 1));
+                }
+            }
+            continue;
+        }
         let mut head = format!("{}State {}", indent, i + 1);
         if i == 0 {
             head.push_str(" (initial)");
@@ -43,8 +71,9 @@ pub fn render_trace(t: &Trace, indent: &str) -> String {
             let inp: Vec<String> = t.steps[i - 1].inputs.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
             s.push_str(&format!("{}  [inputs taken: {}]\n", indent, inp.join(", ")));
         }
+        let after_gap = abbreviate && i == n - TRACE_TAIL;
         for (name, val, changed) in &rows[i] {
-            if *changed {
+            if *changed || after_gap {
                 s.push_str(&format!("{}  {} = {}\n", indent, name, val));
             }
         }
@@ -75,22 +104,24 @@ pub fn fmt_count(n: u128) -> String {
     out
 }
 
-pub fn render_outcome(o: &SpecOutcome) -> String {
+pub fn render_outcome(o: &SpecOutcome, ro: &RenderOpts) -> String {
     let mut s = String::new();
     let mark = match &o.verdict {
         Verdict::Holds => "PASS",
         Verdict::Fails(_) => "FAIL",
     };
-    s.push_str(&format!("[{}] {} {}: {}  ({:.1} ms)\n", mark, kind_name(o.kind), o.label, o.text, o.micros as f64 / 1000.0));
-    if let Verdict::Fails(Some(t)) = &o.verdict {
+    let vac = if o.vacuous && o.verdict == Verdict::Holds { " (vacuous: no fair infinite path)" } else { "" };
+    s.push_str(&format!("[{}] {} {}: {}{}  ({:.1} ms)\n", mark, kind_name(o.kind), o.label, o.text, vac, o.micros as f64 / 1000.0));
+    if let (Verdict::Fails(Some(t)), false) = (&o.verdict, ro.quiet) {
         let kind = if t.loop_start.is_some() { "lasso counterexample" } else { "counterexample" };
-        s.push_str(&format!("  {} ({} states):\n", kind, t.steps.len()));
-        s.push_str(&render_trace(t, "    "));
+        s.push_str(&format!("  {} ({} state{}):\n", kind, t.steps.len(), if t.steps.len() == 1 { "" } else { "s" }));
+        s.push_str(&render_trace_opts(t, "    ", ro.full_traces));
     }
     s
 }
 
-pub fn render_report(r: &Report, verbose: bool) -> String {
+pub fn render_report(r: &Report, ro: &RenderOpts) -> String {
+    let verbose = ro.verbose;
     let i = &r.info;
     let mut s = String::new();
     s.push_str(&format!(
@@ -98,17 +129,21 @@ pub fn render_report(r: &Report, verbose: bool) -> String {
         i.state_vars, i.state_bits, i.input_vars, i.input_bits, i.fair_constraints
     ));
     s.push_str(&format!(
-        "states: {} initial, {} reachable (diameter {}), {} fair\n",
+        "states: {} initial, {} reachable (diameter {}); {} of {} legal states start an infinite fair path\n",
         fmt_count(i.init_states),
         fmt_count(i.reachable),
         i.diameter,
-        fmt_count(i.fair_states)
+        fmt_count(i.fair_states),
+        fmt_count(i.legal_states)
     ));
     if i.deadlocks > 0 {
-        s.push_str(&format!("WARNING: {} reachable deadlock state(s)\n", fmt_count(i.deadlocks)));
+        s.push_str(&format!(
+            "WARNING: {} reachable deadlock state(s). INVARSPEC sees them; CTL/LTL formulas only quantify over infinite paths, so a\n         violation sitting in a deadlock is invisible to them (re-run with --stutter to give deadlocks a self-loop).\n",
+            fmt_count(i.deadlocks)
+        ));
         if let Some(t) = &i.deadlock_example {
             s.push_str("  shortest path to a deadlock:\n");
-            s.push_str(&render_trace(t, "    "));
+            s.push_str(&render_trace_opts(t, "    ", ro.full_traces));
         }
     }
     for w in &i.warnings {
@@ -126,7 +161,7 @@ pub fn render_report(r: &Report, verbose: bool) -> String {
     }
     s.push('\n');
     for o in &r.outcomes {
-        s.push_str(&render_outcome(o));
+        s.push_str(&render_outcome(o, ro));
     }
     let pass = r.outcomes.iter().filter(|o| o.verdict == Verdict::Holds).count();
     s.push_str(&format!("\n{} of {} specifications hold ({:.1} ms total)\n", pass, r.outcomes.len(), i.total_micros as f64 / 1000.0));

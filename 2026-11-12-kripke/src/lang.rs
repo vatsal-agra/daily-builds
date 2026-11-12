@@ -162,6 +162,31 @@ pub struct Program {
 
 // -------------------------------------------------------------------------------------- printing
 
+fn prec(e: &Expr) -> u8 {
+    match &e.k {
+        Ek::Bin(op, ..) => match op {
+            BinOp::Iff => 1,
+            BinOp::Imp => 2,
+            BinOp::Or | BinOp::Xor => 3,
+            BinOp::And => 4,
+            BinOp::Until | BinOp::Release => 5,
+            BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::In => 6,
+            BinOp::Add | BinOp::Sub => 7,
+            BinOp::Mul | BinOp::Div | BinOp::Mod => 8,
+        },
+        Ek::Un(..) => 9,
+        _ => 10,
+    }
+}
+
+fn child(e: &Expr, parens: bool) -> String {
+    if parens {
+        format!("({})", e)
+    } else {
+        format!("{}", e)
+    }
+}
+
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.k {
@@ -183,7 +208,11 @@ impl fmt::Display for Expr {
                     UnOp::F => "F ",
                     UnOp::G => "G ",
                 };
-                write!(f, "{}{}", s, paren(e))
+                // `!` and `-` take a tight operand; temporal operators read better with a parenthesised body
+                let tight = matches!(op, UnOp::Not | UnOp::Neg);
+                let p = prec(e);
+                let parens = if tight { p < 9 } else { p < 9 };
+                write!(f, "{}{}", s, child(e, parens))
             }
             Ek::Bin(op, a, b) => {
                 let s = match op {
@@ -207,7 +236,15 @@ impl fmt::Display for Expr {
                     BinOp::Until => "U",
                     BinOp::Release => "R",
                 };
-                write!(f, "{} {} {}", paren(a), s, paren(b))
+                let p = prec(self);
+                // `->` and `U`/`R` associate to the right, everything else to the left; non-associative
+                // comparisons and `<->` always parenthesise a same-level child
+                let right_assoc = matches!(op, BinOp::Imp | BinOp::Until | BinOp::Release);
+                let non_assoc = p == 6 || matches!(op, BinOp::Iff);
+                let (pa, pb) = (prec(a), prec(b));
+                let lp = if right_assoc || non_assoc { pa <= p } else { pa < p };
+                let rp = if right_assoc { pb < p } else { pb <= p };
+                write!(f, "{} {} {}", child(a, lp), s, child(b, rp))
             }
             Ek::Case(arms) => {
                 write!(f, "case ")?;
@@ -229,13 +266,6 @@ impl fmt::Display for Expr {
             Ek::EU(a, b) => write!(f, "E[{} U {}]", a, b),
             Ek::AU(a, b) => write!(f, "A[{} U {}]", a, b),
         }
-    }
-}
-
-fn paren(e: &Expr) -> String {
-    match &e.k {
-        Ek::Int(_) | Ek::Bool(_) | Ek::Id(_) | Ek::Next(_) | Ek::Set(_) | Ek::EU(..) | Ek::AU(..) | Ek::Case(_) => format!("{}", e),
-        _ => format!("({})", e),
     }
 }
 
@@ -347,18 +377,22 @@ struct Parser {
     p: usize,
     /// While true, a bare `U` is *not* consumed as the LTL until operator (inside `E[ .. U .. ]`).
     no_until: bool,
+    depth: usize,
 }
+
+/// Maximum syntactic nesting (parentheses, unary operators, right-associative chains).
+const MAX_DEPTH: usize = 2000;
 
 pub fn parse(src: &str) -> Res<Program> {
     let toks = lex(src)?;
-    let mut p = Parser { toks, p: 0, no_until: false };
+    let mut p = Parser { toks, p: 0, no_until: false, depth: 0 };
     p.program()
 }
 
 /// Parse a single expression (used by tests and the CLI `--spec` flag).
 pub fn parse_expr(src: &str) -> Res<Expr> {
     let toks = lex(src)?;
-    let mut p = Parser { toks, p: 0, no_until: false };
+    let mut p = Parser { toks, p: 0, no_until: false, depth: 0 };
     let e = p.expr()?;
     if p.peek() != &Tok::Eof {
         return Err(Error::new(p.pos(), "unexpected trailing input"));
@@ -599,7 +633,22 @@ impl Parser {
         Expr { k, pos }
     }
 
+    fn enter(&mut self) -> Res<()> {
+        self.depth += 1;
+        if self.depth > MAX_DEPTH {
+            return Err(Error::new(self.pos(), format!("expression nested too deeply (limit {})", MAX_DEPTH)));
+        }
+        Ok(())
+    }
+
     pub fn expr(&mut self) -> Res<Expr> {
+        self.enter()?;
+        let r = self.expr_inner();
+        self.depth -= 1;
+        r
+    }
+
+    fn expr_inner(&mut self) -> Res<Expr> {
         let mut lhs = self.imp()?;
         while self.is_sym("<->") {
             let pos = self.pos();
@@ -615,7 +664,10 @@ impl Parser {
         if self.is_sym("->") {
             let pos = self.pos();
             self.bump();
-            let rhs = self.imp()?;
+            self.enter()?;
+            let rhs = self.imp();
+            self.depth -= 1;
+            let rhs = rhs?;
             return Ok(self.mk(Ek::Bin(BinOp::Imp, Box::new(lhs), Box::new(rhs)), pos));
         }
         Ok(lhs)
@@ -662,7 +714,10 @@ impl Parser {
         };
         if let Some(op) = op {
             self.bump();
-            let rhs = self.until()?;
+            self.enter()?;
+            let rhs = self.until();
+            self.depth -= 1;
+            let rhs = rhs?;
             return Ok(self.mk(Ek::Bin(op, Box::new(lhs), Box::new(rhs)), pos));
         }
         Ok(lhs)
@@ -725,6 +780,13 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Res<Expr> {
+        self.enter()?;
+        let r = self.unary_inner();
+        self.depth -= 1;
+        r
+    }
+
+    fn unary_inner(&mut self) -> Res<Expr> {
         let pos = self.pos();
         let op = match self.peek() {
             Tok::Sym("!") => Some(UnOp::Not),

@@ -32,6 +32,9 @@ pub struct Explicit {
     pub succ: Vec<Vec<usize>>,
     fair_sets: Vec<Vec<bool>>,
     fair_states: Option<Vec<bool>>,
+    stutter: bool,
+    /// States that had no successor before stuttering self-loops were added.
+    deadlocked: Vec<bool>,
 }
 
 fn domain(ty: &Ty) -> Vec<EV> {
@@ -54,7 +57,7 @@ struct Env<'a> {
 }
 
 impl Explicit {
-    pub fn new(prog: &Program, max_states: usize) -> Result<Explicit, String> {
+    pub fn new(prog: &Program, max_states: usize, stutter: bool) -> Result<Explicit, String> {
         let vars = prog.vars.clone();
         let mut var_ix = HashMap::new();
         let mut syms = HashSet::new();
@@ -83,8 +86,18 @@ impl Explicit {
             succ: vec![],
             fair_sets: vec![],
             fair_states: None,
+            stutter,
+            deadlocked: vec![],
         };
         ex.enumerate(max_states)?;
+        ex.deadlocked = ex.succ.iter().map(|s| s.is_empty()).collect();
+        if stutter {
+            for i in 0..ex.succ.len() {
+                if ex.succ[i].is_empty() {
+                    ex.succ[i].push(i);
+                }
+            }
+        }
         Ok(ex)
     }
 
@@ -704,7 +717,8 @@ impl Explicit {
             };
             if let Some(nx) = succ {
                 let cur = &vs[i].1;
-                if !self.inputs_ok(cur)? || !self.trans_ok(cur, nx)? {
+                let is_stutter = self.stutter && &vs[i].0 == nx && self.deadlocked[self.index[&vs[i].0]];
+                if !self.inputs_ok(cur)? || !(is_stutter || self.trans_ok(cur, nx)?) {
                     return Err(format!("step {} -> next is not a transition", i + 1));
                 }
             }

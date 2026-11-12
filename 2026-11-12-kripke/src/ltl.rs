@@ -140,8 +140,11 @@ pub struct LtlResult {
     pub aux_vars: usize,
 }
 
-pub fn check(prog: &Program, expr: &Expr, lax: bool) -> Res<LtlResult> {
+pub fn check(prog: &Program, expr: &Expr, lax: bool, stutter: bool) -> Res<LtlResult> {
     let mut md = Model::compile(prog.clone(), lax)?;
+    if stutter {
+        md.stutter_deadlocks();
+    }
     let phi = {
         let md_ref = &mut md;
         lower_ltl(expr, &mut |e| {

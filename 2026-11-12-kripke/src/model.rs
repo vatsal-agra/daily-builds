@@ -6,6 +6,7 @@
 //! nondeterministic assignments are represented.
 
 use crate::bdd::{Bdd, Manager, FALSE, TRUE};
+use crate::bv::{self, Bv};
 use crate::lang::*;
 use std::collections::{BTreeMap, HashMap};
 
@@ -32,6 +33,8 @@ pub struct VarInfo {
 enum V {
     Bool(Bdd),
     Tab(Vec<(Val, Bdd)>),
+    /// Integer alternatives as bit-vectors (union semantics, like `Tab`); used for large ranges.
+    Bv(Vec<(Bv, Bdd)>),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -48,7 +51,8 @@ struct Mode {
     ctx: Ctx,
 }
 
-const MAX_TAB: usize = 1 << 14;
+const MAX_TAB: usize = 1 << 12;
+const MAX_ALT_PAIRS: usize = 256;
 const MAX_PAIRS: usize = 1 << 17;
 
 pub struct Model {
@@ -61,6 +65,8 @@ pub struct Model {
     defines: HashMap<String, Expr>,
     expanding: Vec<String>,
     pub lax_ranges: bool,
+    /// Conjunction of every variable's legal-code constraint (current, next and input copies).
+    dom_all: Bdd,
     // compiled parts
     pub init: Bdd,
     pub trans: Bdd,
@@ -190,6 +196,7 @@ impl Model {
             defines,
             expanding: vec![],
             lax_ranges,
+            dom_all: TRUE,
             init: TRUE,
             trans: TRUE,
             space: TRUE,
@@ -205,6 +212,17 @@ impl Model {
             to_cur,
             warnings: vec![],
         };
+        let mut dom = TRUE;
+        for vi in 0..model.vars.len() {
+            let d = model.domain(vi, false);
+            dom = model.m.and(dom, d);
+            if !model.vars[vi].input {
+                let dn = model.domain(vi, true);
+                dom = model.m.and(dom, dn);
+            }
+        }
+        model.dom_all = dom;
+        model.m.pin(dom);
         model.build(&prog)?;
         Ok(model)
     }
@@ -227,12 +245,8 @@ impl Model {
         if v.ty == Ty::Bool || v.size == 1usize << bits.len() {
             return TRUE;
         }
-        let mut acc = FALSE;
-        for c in 0..v.size {
-            let b = self.code_bdd(bits, c);
-            acc = self.m.or(acc, b);
-        }
-        acc
+        let nodes: Vec<Bdd> = bits.iter().map(|&b| self.m.var(b)).collect();
+        bv::ult_const(&mut self.m, &nodes, v.size as u64)
     }
 
     fn val_of_code(&self, vi: usize, code: usize) -> Val {
@@ -275,6 +289,12 @@ impl Model {
         if v.ty == Ty::Bool {
             return V::Bool(self.m.var(bits[0]));
         }
+        if v.size > MAX_TAB {
+            let Ty::Range(lo, _) = v.ty else { unreachable!("only ranges are large") };
+            let b = bv::from_unsigned(&bits.iter().map(|&x| self.m.var(x)).collect::<Vec<_>>());
+            let b = if lo == 0 { b } else { bv::add(&mut self.m, &b, &bv::constant(lo)) };
+            return V::Bv(vec![(b, TRUE)]);
+        }
         let mut tab = Vec::new();
         for c in 0..v.size {
             let g = self.code_bdd(&bits, c);
@@ -311,12 +331,126 @@ impl Model {
                 }
                 t
             }
+            V::Bv(_) => unreachable!("bit-vector value reached to_tab: callers must dispatch first"),
         }
+    }
+
+    /// Integer alternatives of an expression as bit-vectors.
+    fn to_alts(&mut self, v: V, pos: Pos) -> Res<Vec<(Bv, Bdd)>> {
+        match v {
+            V::Bv(a) => Ok(a),
+            V::Bool(_) => Err(Error::new(pos, "expected an integer expression, found a boolean")),
+            V::Tab(t) => {
+                for (val, _) in &t {
+                    if !matches!(val, Val::I(_)) {
+                        return Err(Error::new(pos, format!("expected an integer expression, found {} value {}", Self::kind_name(*val), self.val_str(*val))));
+                    }
+                }
+                if t.len() <= 16 {
+                    return Ok(t.into_iter().map(|(v, g)| match v {
+                        Val::I(n) => (bv::constant(n), g),
+                        _ => unreachable!(),
+                    }).collect());
+                }
+                // many entries: build bit functions, which is only valid if the guards are disjoint
+                let mut acc = FALSE;
+                for (_, g) in &t {
+                    if self.m.and(acc, *g) != FALSE {
+                        return Err(Error::new(pos, "cannot combine a nondeterministic multi-valued expression with a large integer range"));
+                    }
+                    acc = self.m.or(acc, *g);
+                }
+                let lo = t.iter().map(|(v, _)| if let Val::I(n) = v { *n } else { 0 }).min().unwrap();
+                let hi = t.iter().map(|(v, _)| if let Val::I(n) = v { *n } else { 0 }).max().unwrap();
+                let w = bv::constant(lo).width().max(bv::constant(hi).width());
+                let mut bits = vec![FALSE; w];
+                for (val, g) in &t {
+                    if let Val::I(n) = val {
+                        for (i, b) in bits.iter_mut().enumerate() {
+                            if (n >> i) & 1 == 1 {
+                                *b = self.m.or(*b, *g);
+                            }
+                        }
+                    }
+                }
+                Ok(vec![(Bv { bits }, acc)])
+            }
+        }
+    }
+
+    fn bv_pairs_ok(&self, a: usize, b: usize, pos: Pos) -> Res<()> {
+        if a * b > MAX_ALT_PAIRS {
+            return Err(Error::new(pos, "too many nondeterministic alternatives in a large-integer expression"));
+        }
+        Ok(())
+    }
+
+    fn bv_binop(&mut self, op: BinOp, va: V, vb: V, pos: Pos) -> Res<V> {
+        use BinOp::*;
+        let aa = self.to_alts(va, pos)?;
+        let ab = self.to_alts(vb, pos)?;
+        self.bv_pairs_ok(aa.len(), ab.len(), pos)?;
+        let mut cmp_acc = FALSE;
+        let mut alts: Vec<(Bv, Bdd)> = vec![];
+        for (x, gx) in &aa {
+            for (y, gy) in &ab {
+                let g = self.m.and(*gx, *gy);
+                if g == FALSE {
+                    continue;
+                }
+                match op {
+                    Eq | Ne | In | Lt | Le | Gt | Ge => {
+                        let c = match op {
+                            Eq | Ne | In => bv::eq(&mut self.m, x, y),
+                            Lt => bv::lt(&mut self.m, x, y),
+                            Le => bv::le(&mut self.m, x, y),
+                            Gt => bv::lt(&mut self.m, y, x),
+                            _ => bv::le(&mut self.m, y, x),
+                        };
+                        let t = self.m.and(g, c);
+                        cmp_acc = self.m.or(cmp_acc, t);
+                    }
+                    Add => alts.push((bv::add(&mut self.m, x, y), g)),
+                    Sub => alts.push((bv::sub(&mut self.m, x, y), g)),
+                    Mul => alts.push((bv::mul(&mut self.m, x, y), g)),
+                    Div | Mod => {
+                        // only constant positive divisors are supported on bit-vectors
+                        let c = y.bits.iter().enumerate().try_fold(0i64, |acc, (i, &b)| {
+                            if b == TRUE {
+                                Some(if i + 1 == y.bits.len() { acc - (1i64 << i) } else { acc | (1i64 << i) })
+                            } else if b == FALSE {
+                                Some(acc)
+                            } else {
+                                None
+                            }
+                        });
+                        match c {
+                            Some(c) if c > 0 => {
+                                let (q, r) = bv::divmod_const(&mut self.m, x, c);
+                                alts.push((if op == Div { q } else { r }, g));
+                            }
+                            Some(0) => return Err(Error::new(pos, "division by zero")),
+                            _ => return Err(Error::new(pos, "division / mod of a large integer needs a positive constant divisor")),
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+                if alts.iter().any(|(b, _)| b.width() > bv::MAX_WIDTH) {
+                    return Err(Error::new(pos, "integer expression is wider than 64 bits"));
+                }
+            }
+        }
+        Ok(match op {
+            Eq | In | Lt | Le | Gt | Ge => V::Bool(cmp_acc),
+            Ne => V::Bool(self.m.not(cmp_acc)),
+            _ => V::Bv(alts),
+        })
     }
 
     fn to_bool(&mut self, v: V, pos: Pos) -> Res<Bdd> {
         match v {
             V::Bool(b) => Ok(b),
+            V::Bv(_) => Err(Error::new(pos, "expected a boolean expression, found an integer")),
             V::Tab(t) => {
                 let mut acc = FALSE;
                 for (val, g) in t {
@@ -375,6 +509,10 @@ impl Model {
                 }
                 UnOp::Neg => {
                     let v = self.comp(a, mode)?;
+                    if let V::Bv(alts) = v {
+                        let out = alts.iter().map(|(b, g)| (bv::neg(&mut self.m, b), *g)).collect();
+                        return Ok(V::Bv(out));
+                    }
                     let t = self.to_tab(v);
                     let mut out = vec![];
                     for (val, g) in t {
@@ -389,9 +527,19 @@ impl Model {
             },
             Ek::EU(..) | Ek::AU(..) => Err(Error::new(e.pos, "temporal operators are only allowed in SPEC / LTLSPEC formulas")),
             Ek::Set(es) => {
-                let mut all = vec![];
+                let mut vs = vec![];
                 for x in es {
-                    let v = self.comp(x, mode)?;
+                    vs.push(self.comp(x, mode)?);
+                }
+                if vs.iter().any(|v| matches!(v, V::Bv(_))) {
+                    let mut alts = vec![];
+                    for v in vs {
+                        alts.extend(self.to_alts(v, e.pos)?);
+                    }
+                    return Ok(V::Bv(alts));
+                }
+                let mut all = vec![];
+                for v in vs {
                     all.extend(self.to_tab(v));
                 }
                 let t = self.merge(all);
@@ -413,6 +561,18 @@ impl Model {
                 }
                 if remaining != FALSE && !self.case_uncovered_ok(remaining) {
                     return Err(Error::new(e.pos, "case expression is not exhaustive: add a final 'TRUE : ...;' arm"));
+                }
+                if parts.iter().any(|p| matches!(p, V::Bv(_))) {
+                    let mut alts = vec![];
+                    for (p, g) in parts.into_iter().zip(guards) {
+                        for (b, bg) in self.to_alts(p, e.pos)? {
+                            let x = self.m.and(g, bg);
+                            if x != FALSE {
+                                alts.push((b, x));
+                            }
+                        }
+                    }
+                    return Ok(V::Bv(alts));
                 }
                 if parts.iter().all(|p| matches!(p, V::Bool(_))) {
                     let mut acc = FALSE;
@@ -442,15 +602,7 @@ impl Model {
     /// An uncovered `case` remainder is acceptable only if it contains no legal state at all
     /// (e.g. it is exactly the set of unused enum/range codes).
     fn case_uncovered_ok(&mut self, remaining: Bdd) -> bool {
-        let mut dom = TRUE;
-        for vi in 0..self.vars.len() {
-            let d = self.domain(vi, false);
-            dom = self.m.and(dom, d);
-            if !self.vars[vi].input {
-                let dn = self.domain(vi, true);
-                dom = self.m.and(dom, dn);
-            }
-        }
+        let dom = self.dom_all;
         self.m.and(remaining, dom) == FALSE
     }
 
@@ -508,6 +660,10 @@ impl Model {
         }
         let va = self.comp(a, mode)?;
         let vb = self.comp(b, mode)?;
+        let numeric = matches!(op, Eq | Ne | In | Lt | Le | Gt | Ge | Add | Sub | Mul | Div | Mod);
+        if numeric && (matches!(va, V::Bv(_)) || matches!(vb, V::Bv(_))) {
+            return self.bv_binop(op, va, vb, pos);
+        }
         match op {
             And | Or | Xor | Imp | Iff => {
                 let x = self.to_bool(va, a.pos)?;
@@ -572,7 +728,9 @@ impl Model {
                 let ta = self.int_tab(va, a.pos, "arithmetic")?;
                 let tb = self.int_tab(vb, b.pos, "arithmetic")?;
                 if ta.len() * tb.len() > MAX_PAIRS {
-                    return Err(Error::new(pos, format!("arithmetic on {} x {} values is too large for the table-based encoding", ta.len(), tb.len())));
+                    let na = V::Tab(ta.into_iter().map(|(n, g)| (Val::I(n), g)).collect());
+                    let nb = V::Tab(tb.into_iter().map(|(n, g)| (Val::I(n), g)).collect());
+                    return self.bv_binop(op, na, nb, pos);
                 }
                 let mut out = vec![];
                 for (x, gx) in &ta {
@@ -581,20 +739,19 @@ impl Model {
                             Add => x.checked_add(*y),
                             Sub => x.checked_sub(*y),
                             Mul => x.checked_mul(*y),
-                            Div => {
-                                if *y == 0 {
-                                    None
-                                } else {
-                                    Some(x / y)
+                            Div | Mod if *y == 0 => {
+                                let g = self.m.and(*gx, *gy);
+                                let bad = self.m.and(g, self.dom_all);
+                                if bad != FALSE && !self.lax_ranges {
+                                    return Err(Error::new(
+                                        pos,
+                                        "the divisor can be zero here; guard the division with a case (or pass --lax to disable those transitions)",
+                                    ));
                                 }
+                                None
                             }
-                            _ => {
-                                if *y == 0 {
-                                    None
-                                } else {
-                                    Some(x.rem_euclid(y.abs()))
-                                }
-                            }
+                            Div => Some(x / y),
+                            _ => Some(x.rem_euclid(y.abs())),
                         };
                         if let Some(r) = r {
                             let g = self.m.and(*gx, *gy);
@@ -628,6 +785,57 @@ impl Model {
     }
 
     // ------------------------------------------------------------------ assembling the system
+
+    fn assign_rel_v(&mut self, vi: usize, v: V, next: bool, pos: Pos, legal: Bdd) -> Res<Bdd> {
+        match v {
+            V::Bv(alts) => self.assign_rel_bv(vi, alts, next, pos, legal),
+            other => {
+                let t = self.to_tab(other);
+                self.assign_rel(vi, t, next, pos, legal)
+            }
+        }
+    }
+
+    fn assign_rel_bv(&mut self, vi: usize, alts: Vec<(Bv, Bdd)>, next: bool, pos: Pos, legal: Bdd) -> Res<Bdd> {
+        let Ty::Range(lo, hi) = self.vars[vi].ty else {
+            return Err(Error::new(pos, format!("cannot assign an integer to '{}' of type {}", self.vars[vi].name, self.ty_str(vi))));
+        };
+        let bits = if next { self.vars[vi].nxt.clone() } else { self.vars[vi].cur.clone() };
+        let (clo, chi) = (bv::constant(lo), bv::constant(hi));
+        let mut acc = FALSE;
+        for (b, g) in alts {
+            let a = bv::le(&mut self.m, &clo, &b);
+            let c = bv::le(&mut self.m, &b, &chi);
+            let inr = self.m.and(a, c);
+            let nin = self.m.not(inr);
+            let bad = {
+                let t = self.m.and(g, nin);
+                self.m.and(t, legal)
+            };
+            if bad != FALSE && !self.lax_ranges {
+                return Err(Error::new(
+                    pos,
+                    format!(
+                        "assignment to '{}' can leave its type {} (for example by overflowing); guard it with a case, use `mod`, or pass --lax to disable such transitions",
+                        self.vars[vi].name,
+                        self.ty_str(vi)
+                    ),
+                ));
+            }
+            let diff = bv::sub(&mut self.m, &b, &clo);
+            let diff = bv::extend(&diff, bits.len().max(diff.width()));
+            let mut eqb = TRUE;
+            for (i, &vb) in bits.iter().enumerate() {
+                let x = self.m.var(vb);
+                let e = self.m.iff(x, diff.bits[i]);
+                eqb = self.m.and(eqb, e);
+            }
+            let t = self.m.and(g, inr);
+            let t = self.m.and(t, eqb);
+            acc = self.m.or(acc, t);
+        }
+        Ok(acc)
+    }
 
     /// `var ∈ table` as a relation (over current or next bits), erroring if the table can produce a
     /// value outside the variable's type in some legal situation.
@@ -716,21 +924,18 @@ impl Model {
             match a.kind {
                 AssignKind::Init => {
                     let v = self.comp(&a.expr, Mode { next: false, ctx: Ctx::State })?;
-                    let t = self.to_tab(v);
-                    let r = self.assign_rel(vi, t, false, a.expr.pos, dom_space)?;
+                    let r = self.assign_rel_v(vi, v, false, a.expr.pos, dom_space)?;
                     init = self.m.and(init, r);
                 }
                 AssignKind::Next => {
                     let v = self.comp(&a.expr, Mode { next: false, ctx: Ctx::Trans })?;
-                    let t = self.to_tab(v);
-                    let r = self.assign_rel(vi, t, true, a.expr.pos, legal_trans)?;
+                    let r = self.assign_rel_v(vi, v, true, a.expr.pos, legal_trans)?;
                     trans = self.m.and(trans, r);
                 }
                 AssignKind::Plain => {
                     let ctx = if self.vars[vi].input { Ctx::Trans } else { Ctx::State };
                     let v = self.comp(&a.expr, Mode { next: false, ctx })?;
-                    let t = self.to_tab(v);
-                    let r = self.assign_rel(vi, t, false, a.expr.pos, dom_space)?;
+                    let r = self.assign_rel_v(vi, v, false, a.expr.pos, dom_space)?;
                     if self.vars[vi].input {
                         // constraint on an input: applies to the transition relation
                         trans = self.m.and(trans, r);
@@ -786,6 +991,33 @@ impl Model {
     }
 
     // ------------------------------------------------------------------ image computation
+
+    /// Give every reachable-or-not deadlock state a self-loop ("stutter"), making the relation total.
+    pub fn stutter_deadlocks(&mut self) {
+        let mut ex_vars = self.nxt_vars.clone();
+        ex_vars.extend(&self.inp_vars);
+        let cube = self.m.cube(&ex_vars);
+        let has_succ = self.m.exists(self.trans, cube);
+        let dead = self.m.diff(self.space, has_succ);
+        let mut eq = TRUE;
+        for (&c, &n) in self.cur_vars.clone().iter().zip(self.nxt_vars.clone().iter()) {
+            let (a, b) = (self.m.var(c), self.m.var(n));
+            let e = self.m.iff(a, b);
+            eq = self.m.and(eq, e);
+        }
+        let mut inp_dom = TRUE;
+        for vi in 0..self.vars.len() {
+            if self.vars[vi].input {
+                let d = self.domain(vi, false);
+                inp_dom = self.m.and(inp_dom, d);
+            }
+        }
+        let stutter = self.m.and(dead, eq);
+        let stutter = self.m.and(stutter, inp_dom);
+        self.trans = self.m.or(self.trans, stutter);
+        let t = self.trans;
+        self.m.pin(t);
+    }
 
     pub fn to_next_map(&self) -> &HashMap<u32, u32> {
         &self.to_next

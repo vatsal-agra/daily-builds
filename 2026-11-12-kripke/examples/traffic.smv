@@ -1,0 +1,44 @@
+-- A pedestrian crossing controller. Cars have a light; pedestrians press a button (input).
+-- The controller must never show cars green while pedestrians walk, and a pressed button must
+-- eventually be served. `press` is a free input, so Kripke explores every button-pressing pattern.
+MODULE main
+IVAR
+  press : boolean;
+VAR
+  car  : {green, yellow, red};
+  walk : boolean;
+  wait : 0..3;            -- how long the pedestrian phase has run
+  req  : boolean;         -- a pedestrian is waiting
+ASSIGN
+  init(car) := green;  init(walk) := FALSE;  init(wait) := 0;  init(req) := FALSE;
+
+  next(req) := case
+    walk       : FALSE;                 -- walking clears the request
+    press      : TRUE;
+    TRUE       : req;
+  esac;
+
+  next(car) := case
+    car = green  & req           : yellow;
+    car = yellow                 : red;
+    car = red    & wait = 3      : green;
+    TRUE                         : car;
+  esac;
+
+  next(walk) := case
+    car = red & wait < 3 & !walk : TRUE;     -- walk phase starts once cars are stopped
+    walk & wait < 2              : TRUE;
+    TRUE                         : FALSE;
+  esac;
+
+  next(wait) := case
+    car = red & wait < 3         : wait + 1;
+    car = red                    : 0;
+    TRUE                         : 0;
+  esac;
+
+INVARSPEC NAME never_cars_and_pedestrians := !(car != red & walk)
+SPEC NAME request_is_served := AG (req -> AF walk)
+SPEC NAME cars_get_green_again := AG AF car = green
+SPEC NAME can_stay_green := EG car = green          -- while nobody presses the button
+LTLSPEC NAME ltl_request_served := G (req -> F walk)
