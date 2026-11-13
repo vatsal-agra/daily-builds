@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inkgrid — nonogram studio</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo" aria-hidden="true"></span><h1>Inkgrid</h1><span class="tag">nonogram studio</span></div>
+  <div class="stats">
+    <span id="timer" class="pill" title="Elapsed time">0:00</span>
+    <span id="ratingPill" class="pill" title="Measured difficulty">—</span>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="stage" id="stage">
+    <canvas id="board" aria-label="Nonogram board" tabindex="0"></canvas>
+    <div id="banner" class="banner" hidden></div>
+  </section>
+
+  <aside class="panel">
+    <div class="card">
+      <h2>New puzzle</h2>
+      <div class="row2">
+        <label>Width <input id="optW" type="number" min="3" max="40" value="15"></label>
+        <label>Height <input id="optH" type="number" min="3" max="40" value="15"></label>
+      </div>
+      <div class="row2">
+        <label>Difficulty
+          <select id="optDiff">
+            <option value="any">Any</option><option value="easy">Easy</option><option value="medium">Medium</option>
+            <option value="hard">Hard</option><option value="expert">Expert (probing)</option><option value="brutal">Brutal (guessing)</option>
+          </select></label>
+        <label>Seed <input id="optSeed" type="text" placeholder="random"></label>
+      </div>
+      <label class="range">Fill density <output id="densOut">55%</output>
+        <input id="optDens" type="range" min="25" max="80" value="55"></label>
+      <button id="btnNew" class="primary">Generate puzzle</button>
+      <p id="genNote" class="note"></p>
+    </div>
+
+    <div class="card">
+      <h2>Play</h2>
+      <div class="seg" role="group" aria-label="Tool">
+        <button id="toolFill" class="on" title="Fill (left click)">■ Fill</button>
+        <button id="toolCross" title="Cross out (right click / Shift)">✕ Cross</button>
+      </div>
+      <div class="btns">
+        <button id="btnUndo" title="Ctrl+Z">Undo</button>
+        <button id="btnRedo" title="Ctrl+Y">Redo</button>
+        <button id="btnHint">Hint</button>
+        <button id="btnCheck">Check</button>
+        <button id="btnClear">Clear</button>
+      </div>
+      <label class="check"><input id="optAuto" type="checkbox" checked> Auto-cross finished lines</label>
+      <p id="hintBox" class="hint" hidden></p>
+    </div>
+
+    <div class="card">
+      <h2>Solver</h2>
+      <div class="btns">
+        <button id="btnViz">Watch it solve</button>
+        <button id="btnReveal">Reveal solution</button>
+      </div>
+      <div id="vizCtl" hidden>
+        <div class="btns">
+          <button id="vizPlay">Pause</button><button id="vizStep">Step</button><button id="vizExit">Exit</button>
+        </div>
+        <label class="range">Speed <input id="vizSpeed" type="range" min="1" max="10" value="5"></label>
+        <p id="vizInfo" class="note"></p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Import / share</h2>
+      <div class="btns">
+        <button id="btnShare">Copy share link</button>
+        <button id="btnExport">Download .non</button>
+        <button id="btnPaste">Paste puzzle…</button>
+        <button id="btnImage">From image…</button>
+      </div>
+      <input id="fileImg" type="file" accept="image/*" hidden>
+      <div id="pasteBox" hidden>
+        <textarea id="pasteText" rows="6" placeholder="Paste a .non file or JSON {&quot;rows&quot;:[[1,2],…],&quot;cols&quot;:[…]}"></textarea>
+        <div class="btns"><button id="pasteGo" class="primary">Load</button><button id="pasteCancel">Cancel</button></div>
+      </div>
+      <p id="ioNote" class="note"></p>
+    </div>
+  </aside>
+</main>
+<script src="src/engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
