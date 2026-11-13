@@ -1,5 +1,5 @@
 # Inkgrid
-Status: **Phase 3 (adversarial review) complete — see REVIEW.md.** Open `index.html` directly in a browser.
+Status: **Phase 4 (stretch + polish) complete** — all four stretch features (visualiser, import/export/share, image import, CLI) shipped.
 
 Done so far: line-solver DP (verified against brute force), full solver with
 solution counting, difficulty rating, unique-puzzle generator, playable canvas UI,
