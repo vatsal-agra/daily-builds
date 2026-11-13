@@ -187,7 +187,7 @@
       }
     }
     rec(makeBoard(p), 0, null);
-    return { count: sols.length, solutions: sols, stats, truncated };
+    return { count: sols.length, solutions: sols, stats, truncated, exhaustive: !truncated && sols.length < limit };
   }
 
 
@@ -238,8 +238,9 @@
 
   // ---------- difficulty ----------
   // tier 0: line logic only. tier 1: needs one-level contradiction probing. tier 2: needs deeper search.
-  function rate(p) {
+  function rate(p, opts) {
     const { w, h } = validatePuzzle(p);
+    if (w * h > 1600 && !(opts && opts.force)) return { solvable: true, unique: true, tier: -2, label: 'unrated', score: 0 };
     const b = makeBoard(p);
     const r = propagate(b);
     if (!r.ok) return { solvable: false, unique: false, tier: -1, label: 'contradictory', score: 0 };
@@ -271,7 +272,7 @@
     }
     if (isSolved(b)) return { solvable: true, unique: true, tier: 1, probes, rounds: r.rounds, score: 100 + Math.round(probes / 4 + r.rounds * 5), label: 'expert' };
     const s = solve(p, { limit: 2 });
-    return { solvable: s.count > 0, unique: s.count === 1, tier: 2, guesses: s.stats.guesses, probes, score: 300 + s.stats.guesses * 3, label: s.count === 1 ? 'brutal (needs guessing)' : s.count > 1 ? 'ambiguous' : 'unsolvable' };
+    return { solvable: s.count > 0, unique: s.count === 1 && !s.truncated, tier: 2, guesses: s.stats.guesses, probes, score: 300 + s.stats.guesses * 3, label: s.count === 1 && !s.truncated ? 'brutal (needs guessing)' : s.count > 1 ? 'ambiguous' : 'unsolvable' };
   }
   const TIER_FOR = { easy: 0, medium: 0, hard: 0, expert: 1 };
   function meetsDifficulty(r, want) {
@@ -353,7 +354,9 @@
     for (let a = 0; a < attempts; a++) {
       const rnd = mulberry32(seed + a * 7919);
       const dens = Math.min(0.9, Math.max(0.1, density + (rnd() - 0.5) * 0.1 * Math.min(a, 6)));
-      const pic = blobGrid(w, h, dens, rnd);
+      let pic;
+      if (a % 3 === 2) { pic = []; for (let y = 0; y < h; y++) { const r = []; for (let x = 0; x < w; x++) r.push(rnd() < dens ? 1 : 0); pic.push(r); } }
+      else pic = blobGrid(w, h, dens, rnd);
       const uni = makeUnique(pic, rnd);
       if (!uni) continue;
       const p = cluesFromGrid(uni), r = rate(p);
@@ -405,6 +408,10 @@
     if (text[0] === '{') {
       let o; try { o = JSON.parse(text); } catch (e) { throw new Error('invalid JSON: ' + e.message); }
       if (o.grid && !o.rows) Object.assign(o, cluesFromGrid(o.grid));
+      if (Array.isArray(o.rows) && Array.isArray(o.cols)) {
+        const nz = c => Array.isArray(c) ? c.filter(v => v !== 0) : c; // [0] means an empty line
+        o.rows = o.rows.map(nz); o.cols = o.cols.map(nz);
+      }
       validatePuzzle(o); return { rows: o.rows, cols: o.cols, title: o.title };
     }
     // .non format

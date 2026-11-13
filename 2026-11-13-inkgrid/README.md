@@ -1,5 +1,5 @@
 # Inkgrid
-Status: **Phase 2 (core build) complete.** Open `index.html` directly in a browser.
+Status: **Phase 3 (adversarial review) complete — see REVIEW.md.** Open `index.html` directly in a browser.
 
 Done so far: line-solver DP (verified against brute force), full solver with
 solution counting, difficulty rating, unique-puzzle generator, playable canvas UI,

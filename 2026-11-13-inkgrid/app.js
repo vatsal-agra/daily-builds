@@ -28,11 +28,12 @@
     if (!sol) {
       const r = E.solve(S.p, { limit: 2, maxNodes: 100000 });
       if (r.count === 0) throw new Error(r.truncated ? 'This puzzle is too hard to analyse here.' : 'This puzzle has no solution — the clues contradict each other.');
-      sol = r.solutions[0]; unique = r.count === 1;
+      sol = r.solutions[0]; unique = r.count === 1 && !r.truncated;
     }
     S.solution = sol; S.unique = unique;
     const rt = opts.rating || (unique ? E.rate(S.p) : { label: 'multiple solutions', score: 0 });
-    $('ratingPill').textContent = unique ? rt.label + ' · ' + rt.score : 'multiple solutions';
+    if (!opts.grid && unique === false) S.unique = false;
+    $('ratingPill').textContent = !unique ? 'uniqueness unproven' : rt.tier === -2 ? 'unrated (large)' : rt.label + ' · ' + rt.score;
     $('ratingPill').title = unique ? 'Measured difficulty (tier ' + rt.tier + ')' : 'Any grid matching the clues counts as a win';
     resetTimer();
     try { history.replaceState(null, '', '#p=' + E.encodeShare(S.p)); } catch (e) { /* file:// restrictions */ }
@@ -72,11 +73,11 @@
     if (!S.p) return;
     const rowDepth = Math.max(1, ...S.p.rows.map(c => c.length)), colDepth = Math.max(1, ...S.p.cols.map(c => c.length));
     const avail = Math.max(240, $('stage').clientWidth - 8);
-    const cell = Math.max(11, Math.min(34, Math.floor((avail - 24) / (S.w + rowDepth * 0.8))));
+    const cell = Math.max(8, Math.min(34, Math.floor((avail - 24) / (S.w + rowDepth * 0.8))));
     const left = Math.ceil(rowDepth * cell * 0.8) + 10, top = Math.ceil(colDepth * cell * 0.8) + 10;
     const W = left + S.w * cell + 12, H = top + S.h * cell + 12;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = W * dpr; canvas.height = H * dpr; canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    canvas.width = W * dpr; canvas.height = H * dpr; canvas.style.width = W + 'px'; canvas.style.height = 'auto';
     S.geom = { cell, left, top, W, H, dpr };
   }
 
@@ -157,7 +158,8 @@
   // ---------- input ----------
   function cellAt(ev) {
     const r = canvas.getBoundingClientRect(), g = S.geom;
-    const x = Math.floor((ev.clientX - r.left - g.left) / g.cell), y = Math.floor((ev.clientY - r.top - g.top) / g.cell);
+    const k = g.W / r.width, ky = g.H / r.height; // canvas may be CSS-shrunk on narrow screens
+    const x = Math.floor(((ev.clientX - r.left) * k - g.left) / g.cell), y = Math.floor(((ev.clientY - r.top) * ky - g.top) / g.cell);
     return x >= 0 && y >= 0 && x < S.w && y < S.h ? { x, y } : null;
   }
   function setCell(i, v, entry) {
@@ -210,7 +212,8 @@
     if (checkWin()) {
       S.solved = true; S.elapsed = Math.floor((Date.now() - S.t0) / 1000); renderTimer();
       // tidy: unknown cells become crosses so the picture reads cleanly
-      for (let i = 0; i < S.marks.length; i++) if (S.marks[i] === -1) S.marks[i] = 0;
+      const last = S.undo[S.undo.length - 1];
+      for (let i = 0; i < S.marks.length; i++) if (S.marks[i] === -1) setCell(i, 0, last);
       showBanner('Solved in ' + $('timer').textContent + (S.unique ? '' : ' (one of several valid grids)'));
     }
     draw(); updateButtons();
@@ -233,6 +236,14 @@
   function hint() {
     if (S.viz || !S.p) return;
     if (S.solved) return showHint('Already solved!');
+    if (S.unique) {
+      const wrong = [];
+      for (let i = 0; i < S.marks.length; i++) { const v = S.marks[i]; if (v !== -1 && v !== S.solution[(i / S.w) | 0][i % S.w]) wrong.push(i); }
+      if (wrong.length) {
+        S.bad = new Set(wrong); S.hl = null; S.hintCells = [];
+        showHint('Before hinting: ' + wrong.length + ' mark' + (wrong.length === 1 ? ' is' : 's are') + ' wrong (red). Fix ' + (wrong.length === 1 ? 'it' : 'them') + ' and ask again.'); return draw();
+      }
+    }
     const h = E.findHint(S.p, S.marks);
     S.hintCells = h.cells || []; S.hl = h.t != null ? { t: h.t, i: h.i } : null;
     showHint(h.message); draw();
@@ -400,7 +411,7 @@
 
   // ---------- boot ----------
   function boot() {
-    const m = /[#&]p=([\w-]+)/.exec(location.hash);
+    const m = /[#&]p=([^&]*)/.exec(location.hash);
     if (m) {
       try { loadPuzzle(E.decodeShare(m[1])); io('Loaded puzzle from share link.', 'ok'); return; }
       catch (e) { io(e.message, 'err'); }
