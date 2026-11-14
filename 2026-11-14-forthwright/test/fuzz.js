@@ -11,13 +11,16 @@ const int = (a, b) => a + Math.floor(rnd() * (b - a + 1));
 
 const ATOMS = ['dup', 'drop', 'swap', 'over', 'rot', 'nip', 'tuck', '2dup', '2drop', '+', '-', '*', '1+', '1-', 'negate', 'abs',
   'min', 'max', '0=', '<', '=', 'and', 'or', 'xor', '2*', 'invert', '2swap', '2over', '-rot', 'depth', 'pick0', 'cells', '0<', 'u<', 'within', 'lshift'];
+const NEUTRAL = ['1+', '1-', 'negate', 'abs', '2*', 'invert', 'swap', '0=', 'dup drop', 'over drop', 'dup +', '3 +', '2 *', 'i +', 'i xor'];
+function neutral() { const n = int(1, 3), p = []; for (let i = 0; i < n; i++) p.push(pick(NEUTRAL)); return p.join(' '); }
 function gen(depth) {
   const parts = [], n = int(1, 6);
   for (let i = 0; i < n; i++) {
     const r = rnd();
     if (r < 0.50) parts.push(pick(ATOMS));
-    else if (r < 0.65) parts.push(String(int(-3, 9)));
-    else if (r < 0.75 && depth < 3) parts.push('if ' + gen(depth + 1) + ' else ' + gen(depth + 1) + ' then');
+    else if (r < 0.58) parts.push(String(int(-3, 9)));
+    else if (r < 0.72 && depth < 3) parts.push(pick([int(1, 4) + ' 0 do', int(0, 4) + ' 0 ?do']) + ' ' + neutral() + ' ' + pick(['loop', '1 +loop']) + (rnd() < 0.3 ? ' i +' : ''));
+    else if (r < 0.80 && depth < 3) parts.push('if ' + gen(depth + 1) + ' else ' + gen(depth + 1) + ' then');
     else if (r < 0.80 && depth < 3) parts.push('if ' + gen(depth + 1) + ' then');
     else if (r < 0.88 && depth < 3) parts.push(int(1, 3) + ' 0 do ' + gen(depth + 1) + ' loop');
     else if (r < 0.92 && depth < 3) parts.push('>r ' + gen(depth + 1) + ' r>');

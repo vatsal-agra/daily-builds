@@ -15,6 +15,7 @@
     <button id="trace" title="Record every VM step and scrub through it">Trace ⏱</button>
     <button id="profile">Profile</button>
     <button id="reset" title="Fresh VM">Reset</button>
+    <button id="share" title="Copy a link containing this program">Share 🔗</button>
     <label class="opt"><input type="checkbox" id="optimize" checked> optimize</label>
   </div>
 </header>
@@ -71,7 +72,7 @@
       </div>
     </div>
     <div id="tab-profile" class="tab"><div id="prof" class="empty">Press <b>Profile</b> to count executed ops per word.</div></div>
-    <div id="tab-see" class="tab"><pre id="disasm" class="disasm">Click a word in the Words tab, or type <code>see name</code> in the console.</pre></div>
+    <div id="tab-see" class="tab"><div class="seg" id="seebar" hidden><button id="see-opt" class="active-btn">optimized IR</button> <button id="see-src">source IR</button> <span id="see-note" class="hint"></span></div><pre id="disasm" class="disasm">Click a word in the Words tab, or type <code>see name</code> in the console.</pre></div>
   </section>
 </main>
 <script src="../src/forth.js"></script>

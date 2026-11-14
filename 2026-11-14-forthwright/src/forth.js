@@ -305,6 +305,7 @@
         if (r.error) w.warning = r.error;
       } else if (cur.nocheck) w.effNote = 'unchecked (NO-CHECK)';
       // analysis runs on the source IR so accept/reject never depends on the optimizer
+      w.srcCode = w.code;
       if (this.opts.optimize && this.optimizer) w.code = this.optimizer.optimize(w.code, this);
       this.cur = null; this.state = 0;
       this.addWord(w);
@@ -514,15 +515,18 @@
         default: return op.op;
       }
     }
-    disassemble(w) {
+    /** which: 'opt' (default, what actually runs) or 'src' (as compiled, before optimization) */
+    disassemble(w, which) {
       if (w.kind !== 'colon') {
         const e = w.eff ? ' ( ' + (w.effText || w.eff.text || '') + ' )' : '';
         return ': ' + w.name + ' [' + w.kind + ']' + e + '\n';
       }
-      const targets = new Set(w.code.filter(o => typeof o.a === 'number' && o.op !== O.LIT).map(o => o.a));
+      const code = which === 'src' && w.srcCode ? w.srcCode : w.code;
+      const targets = new Set(code.filter(o => typeof o.a === 'number' && o.op !== O.LIT && o.op !== O.CALL).map(o => o.a));
       let s = ': ' + w.name + '  ' + effectString(w) + '\n';
-      w.code.forEach((op, i) => { s += (targets.has(i) ? ' >' : '  ') + String(i).padStart(3) + '  ' + this.opText(op) + '\n'; });
-      if (targets.has(w.code.length)) s += ' >' + String(w.code.length).padStart(3) + '  (end)\n';
+      if (w.srcCode && w.srcCode.length !== w.code.length && !which) s += '\\ optimizer: ' + w.srcCode.length + ' -> ' + w.code.length + ' ops (inlining/folding)\n';
+      code.forEach((op, i) => { s += (targets.has(i) ? ' >' : '  ') + String(i).padStart(3) + '  ' + this.opText(op) + '\n'; });
+      if (targets.has(code.length)) s += ' >' + String(code.length).padStart(3) + '  (end)\n';
       return s + ';\n';
     }
   }

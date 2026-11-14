@@ -92,3 +92,7 @@ code{font-family:var(--mono);color:var(--amber2)}
   body{height:auto;overflow:auto}
 }
 @media (max-width:480px){.brand .tag{display:none}.wrow{grid-template-columns:1fr auto}.wrow .weff{grid-column:1/-1;order:3}.bar{grid-template-columns:80px 1fr 70px}}
+
+.active-btn{background:#3b2d12;border-color:var(--amber);color:var(--amber2)}
+#seebar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+#seebar[hidden]{display:none}

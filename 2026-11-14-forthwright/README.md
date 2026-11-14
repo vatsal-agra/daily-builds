@@ -1,5 +1,5 @@
 # Forthwright
-*Status: Phase 3 complete (adversarial review). Full README arrives in the ship phase. See [PLAN.md](PLAN.md), [REVIEW.md](REVIEW.md).*
+*Status: Phase 4 complete (stretch + polish). Full README arrives in the ship phase. See [PLAN.md](PLAN.md), [REVIEW.md](REVIEW.md).*
 
 A Forth system in dependency-free JavaScript with **static stack-effect inference**, a **time-travel tracer**,
 an **IR optimizer** and a **web IDE**.
@@ -13,4 +13,4 @@ node test/review.js && node test/fuzz.js # regression + analyzer soundness fuzz
 open web/index.html                      # browser IDE (no build step)
 ```
 
-Progress: Phase 1 plan ✔ · Phase 2 core (engine, analyzer, tracer, IDE) ✔ · Phase 3 review (11 findings fixed) ✔
+Progress: Phase 1 plan ✔ · Phase 2 core ✔ · Phase 3 review (11 findings fixed) ✔ · Phase 4 stretch ✔ (optimizer + `see` source/optimized views, 160-test conformance suite in Forth, profiler, share links)

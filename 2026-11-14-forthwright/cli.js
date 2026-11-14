@@ -12,7 +12,7 @@ usage:
   forthwright -e "<code>"                          evaluate code
   forthwright repl                                 interactive session
   forthwright effects <file.fth>                   print the inferred effect of every word
-  forthwright see <file.fth> <word>                disassemble a word (after optimization)
+  forthwright see <file.fth> <word> [--source]     disassemble a word (optimized, or as written)
   forthwright trace <file.fth> [--max N]           step-by-step trace (data stack per op)
   forthwright profile <file.fth>                   op counts per word
   forthwright test [dir]                           run conformance tests (*.fth) and print a summary
@@ -93,7 +93,7 @@ else if (cmd === 'run') {
   if (!args[2]) fail('see needs <file> <word>');
   const vm = mk(args); const r = vm.run(readSrc(args[1])); report(vm, r, args[1]);
   const w = vm.find(args[2]); if (!w) fail('no such word: ' + args[2]);
-  process.stdout.write(vm.disassemble(w));
+  process.stdout.write(vm.disassemble(w, args.includes('--source') ? 'src' : undefined));
 } else if (cmd === 'trace') {
   if (!args[1]) fail('trace needs a file');
   const mi = args.indexOf('--max'); const max = mi > 0 ? +args[mi + 1] : 200;

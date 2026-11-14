@@ -6,13 +6,15 @@
 
   const editor = $('editor'), gutter = $('gutter'), out = $('out'), status = $('status');
   let vm = null, tl = null, tlIndex = 0, timer = null, errLine = null, curLine = null;
-  const history = []; let hpos = 0;
+  const replHist = []; let hpos = 0;
 
   // ------------------------------------------------------------ VM -------
   function newVM() {
     vm = new F.Forth({ optimize: $('optimize').checked, maxSteps: 3000000, maxOutput: 200000 }).use({ analyzer: F.Analyzer, optimizer: F.Optimizer });
-    vm.onOutput = s => put(s);
+    vm.onOutput = s => { pend += s; };
   }
+  let pend = '';
+  function flush() { if (pend) { const t = pend; pend = ''; put(t); } }
   function put(text, cls) {
     if (cls) { out.appendChild(el('span', cls, text)); } else out.appendChild(document.createTextNode(text));
     out.scrollTop = out.scrollHeight;
@@ -85,7 +87,20 @@
       list.appendChild(row);
     }
   }
-  function showDisasm(w) { $('disasm').textContent = vm.disassemble(w); selectTab('see'); }
+  let seeWord = null;
+  function showDisasm(w, which) {
+    seeWord = w; which = which || 'opt';
+    $('disasm').textContent = vm.disassemble(w, which);
+    const has = w.kind === 'colon' && w.srcCode;
+    $('seebar').hidden = !has;
+    if (has) {
+      $('see-opt').classList.toggle('active-btn', which === 'opt'); $('see-src').classList.toggle('active-btn', which === 'src');
+      $('see-note').textContent = w.srcCode.length + ' ops as written → ' + w.code.length + ' after optimization';
+    }
+    selectTab('see');
+  }
+  $('see-opt').onclick = () => seeWord && showDisasm(seeWord, 'opt');
+  $('see-src').onclick = () => seeWord && showDisasm(seeWord, 'src');
   $('filter').addEventListener('input', () => vm && renderWords());
   $('showprims').addEventListener('change', () => vm && renderWords());
 
@@ -94,7 +109,7 @@
   function run() {
     stopPlay(); newVM(); clearOut(); errLine = null; curLine = null;
     const t0 = performance.now();
-    const r = vm.run(editor.value);
+    const r = vm.run(editor.value); flush();
     const ms = Math.max(1, Math.round(performance.now() - t0));
     if (!r.ok) {
       errLine = r.line || null;
@@ -111,9 +126,9 @@
   function runRepl(line) {
     if (!vm) newVM();
     if (!line.trim()) return;
-    history.push(line); hpos = history.length;
+    replHist.push(line); hpos = replHist.length;
     put('ok> ' + line + '\n', 'i');
-    const r = vm.run(line);
+    const r = vm.run(line); flush();
     if (r.error) put('error: ' + r.error + '\n', 'e');
     else if (!vm.cur) put(' ok  .S ' + '<' + vm.ds.length + '> ' + vm.ds.join(' ') + '\n', 'i');
     else put('  (compiling…)\n', 'i');
@@ -122,8 +137,8 @@
   $('repl').addEventListener('keydown', e => {
     const inp = e.target;
     if (e.key === 'Enter') { const v = inp.value; inp.value = ''; runRepl(v); }
-    else if (e.key === 'ArrowUp') { if (hpos > 0) inp.value = history[--hpos]; e.preventDefault(); }
-    else if (e.key === 'ArrowDown') { hpos = Math.min(history.length, hpos + 1); inp.value = history[hpos] || ''; e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { if (hpos > 0) inp.value = replHist[--hpos]; e.preventDefault(); }
+    else if (e.key === 'ArrowDown') { hpos = Math.min(replHist.length, hpos + 1); inp.value = replHist[hpos] || ''; e.preventDefault(); }
   });
 
   // ---------------------------------------------------------- trace -------
@@ -159,6 +174,7 @@
       if (s.line) now.appendChild(el('span', '', ' · line ' + s.line));
     } else now.appendChild(el('b', '', tl.truncated ? 'trace limit reached' : (tl.error ? 'stopped: ' + tl.error : 'finished')));
     $('tl-out').textContent = tl.output.slice(0, st.out);
+    if (i >= N && timer) stopPlay();
     const ops = $('tl-ops'); ops.textContent = '';
     for (let k = Math.max(0, i - 4); k <= Math.min(N - 1, i + 6); k++) {
       const r = el('div', k === i ? 'cur' : '');
@@ -228,7 +244,18 @@
   $('optimize').addEventListener('change', run);
 
   // ------------------------------------------------------ share link ------
+  function encode(str) { return btoa(String.fromCharCode(...new TextEncoder().encode(str))); }
+  function decode(b64) { return new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0))); }
+  $('share').onclick = () => {
+    const url = location.href.split('#')[0] + '#p=' + encodeURIComponent(encode(editor.value));
+    history.replaceState(null, '', url);
+    const done = () => { $('share').textContent = 'Link copied ✓'; setTimeout(() => $('share').textContent = 'Share 🔗', 1600); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, done); else done();
+  };
   editor.value = window.EXAMPLES[sel.value];
+  let loadErr = false;
+  try { const m = /#p=([^&]+)/.exec(location.hash); if (m) editor.value = decode(decodeURIComponent(m[1])); } catch (e) { loadErr = true; }
   newVM(); renderGutter(); run();
+  if (loadErr) put('Could not read the shared program from the link - showing the default example.\n', 'e');
   window.__fw = { get vm() { return vm; }, get trace() { return tl; } };
 })();
