@@ -20,6 +20,14 @@ in `test/review.js` (R-numbers) or the fuzzer, and **all are fixed**.
 | R10 | low | `forthwright -e` printed a spurious blank line when there was no output. | CLI probe | Fixed. |
 | R11 | low | Three of my own bundled examples were wrong (Hanoi forgot to drop 4 cells — **the analyzer caught it**; Collatz example left a `DO` open; the Tour's `fib(20)` blew the 20 k-step trace cap so the demo trace was truncated). | UI run-through | Examples rewritten and covered by `test/run.js`. |
 
+## Found later by the Phase 5 browser tests (also fixed)
+| # | Finding | Fix |
+|---|---------|-----|
+| R12 | `const history = []` in `app.js` shadowed `window.history`, so **Share 🔗 threw** `history.replaceState is not a function`. | Renamed to `replHist`. |
+| R13 | A runaway `emit` loop made the IDE unresponsive: every character was a DOM node plus a forced layout (`scrollTop`). | Output is buffered during a run and flushed once. |
+| R14 | A bad share link's error message was wiped by the initial auto-run. | Message printed after the first run. |
+| R15 | Trace ▶ kept showing ❚❚ after reaching the end. | Playback stops itself on the last step. |
+
 ## Known limitations (deliberate, documented in README)
 - Words whose behaviour depends on runtime values (`?DUP`, `EXECUTE`, `PICK` with a non-literal index, words
   calling them) get effect `?` ("dynamic"); they are still executed correctly, just not statically proven.
