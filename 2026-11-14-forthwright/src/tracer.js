@@ -17,9 +17,9 @@
     const steps = [];
     const saveHook = vm.hook, saveOut = vm.onOutput;
     vm.onOutput = null; vm.takeOutput();
-    let truncated = false, error = null, errLine = null;
+    let truncated = false, error = null, errLine = null, atStop = null;
     vm.hook = (v, f, op) => {
-      if (steps.length >= max) { truncated = true; throw new TraceLimit(); }
+      if (steps.length >= max) { truncated = true; atStop = { ds: v.ds.slice(), rs: v.rs.slice(), out: v.out.length }; throw new TraceLimit(); }
       steps.push({ word: wordOf(f), op: v.opText(op), line: op.line || null, ds: v.ds.slice(), rs: v.rs.slice(),
         depth: v.frames.length, out: v.out.length });
     };
@@ -30,7 +30,7 @@
       else throw e;
     } finally { vm.hook = saveHook; vm.onOutput = saveOut; }
     const output = vm.takeOutput();
-    const final = { ds: vm.ds.slice(), rs: vm.rs.slice(), out: output.length };
+    const final = atStop ? { ds: atStop.ds, rs: atStop.rs, out: Math.min(atStop.out, output.length) } : { ds: vm.ds.slice(), rs: vm.rs.slice(), out: output.length };
     // clamp output offsets (output was drained)
     for (const s of steps) if (s.out > output.length) s.out = output.length;
     return { steps, output, error, errLine, truncated, final };

@@ -24,18 +24,19 @@ window.EXAMPLES = {
 `,
   'Towers of Hanoi': `variable moves
 : hanoi ( n from to via -- )
-  2 pick 0= if 2drop 2drop exit then
-  3 pick 1- 3 pick 1 pick 4 pick recurse        \\ n-1 from via to
+  3 pick 0= if 2drop 2drop exit then
+  3 pick 1-  3 pick  2 pick  4 pick  recurse      \\ move n-1 from -> via
   1 moves +!
-  3 pick 1- 1 pick 4 pick 3 pick recurse ;
+  3 pick 1-  1 pick  3 pick  5 pick  recurse         \\ move n-1 via -> to
+  2drop 2drop ;
 : solve ( n -- ) 0 moves !  1 2 3 hanoi  moves @ . ." moves" cr ;
-3 solve
+3 solve  6 solve
 `,
-  'Collatz (BEGIN/WHILE)': `: collatz-step ( n -- n' ) dup 1 and if 3 * 1+ else 2/ then ;
-: collatz-len ( n -- len ) 0 swap begin dup 1 > while collatz-step swap 1+ swap repeat drop ;
-: longest ( limit -- n len )
-  0 0 rot 1 do i collatz-len 2dup < if 2swap then 2drop i over collatz-len ;
-27 collatz-len . cr
+  'Collatz (BEGIN/WHILE)': `: collatz-step ( n -- n )  dup 1 and if 3 * 1+ else 2/ then ;
+: collatz-len ( n -- len )  0 swap begin dup 1 > while collatz-step swap 1+ swap repeat drop ;
+: lengths ( n -- )  1+ 1 do i collatz-len . loop cr ;
+." steps to reach 1 for 1..15: " 15 lengths
+." 27 takes " 27 collatz-len . ." steps" cr
 `,
   'CREATE / DOES>': `: array ( n "name" -- ) create cells allot does> ( i -- addr ) swap cells + ;
 10 array squares

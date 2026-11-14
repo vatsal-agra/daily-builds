@@ -30,8 +30,8 @@
     const stack = [[0, 0, 0, -1]];
     let min = 0, unknown = null;
     const exits = [];
-    let error = null;
-    const fail = (msg, op) => { if (!error) error = msg + (op && op.line ? ' (line ' + op.line + ')' : ''); };
+    let error = null, errLine = null;
+    const fail = (msg, op) => { if (!error) { error = msg; errLine = op && op.line || null; } };
 
     while (stack.length && !error && !unknown) {
       const [pc, d, r, from] = stack.pop();
@@ -83,7 +83,7 @@
         default: unknown = 'unknown op ' + op.op;
       }
     }
-    if (error) return { error };
+    if (error) return { error, line: errLine };
     if (unknown) {
       if (w.declared) return { eff: w.declared, note: 'declared ' + show(w.declared) + ' (not verifiable: ' + unknown + ')' };
       return { eff: null, note: unknown };
@@ -97,7 +97,7 @@
     if (w.declared) {
       const dc = w.declared;
       if (dc.in !== eff.in || dc.out !== eff.out)
-        return { error: 'stack effect mismatch in ' + w.name.toUpperCase() + ': comment says ' + show(dc) + ' (' + dc.in + ' in, ' + dc.out + ' out) but the body is ' + eff.in + ' in, ' + eff.out + ' out' };
+        return { error: 'stack effect mismatch in ' + w.name.toUpperCase() + ': the comment ' + show(dc) + ' promises ' + dc.in + ' in / ' + dc.out + ' out, but the body actually takes ' + eff.in + ' and leaves ' + eff.out, line: w.line };
       eff.text = dc.text;
     }
     return { eff };

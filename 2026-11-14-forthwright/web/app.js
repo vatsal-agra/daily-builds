@@ -10,7 +10,7 @@
 
   // ------------------------------------------------------------ VM -------
   function newVM() {
-    vm = new F.Forth({ optimize: $('optimize').checked }).use({ analyzer: F.Analyzer, optimizer: F.Optimizer });
+    vm = new F.Forth({ optimize: $('optimize').checked, maxSteps: 3000000, maxOutput: 200000 }).use({ analyzer: F.Analyzer, optimizer: F.Optimizer });
     vm.onOutput = s => put(s);
   }
   function put(text, cls) {

@@ -16,10 +16,13 @@
 
   // ---- effect string "a b -- c" -> {in,out} ---------------------------------
   function parseEffect(text) {
+    const orig = text;
+    text = text.replace(/"[^"]*"/g, ' ');            // parse-time arguments ("name") are not stack items
+    if (text.includes('|') || text.includes('...')) return null;   // alternatives / variadic: not checkable
     const parts = text.split('--');
     if (parts.length !== 2) return null;
     const cnt = s => s.trim() === '' ? 0 : s.trim().split(/\s+/).length;
-    return { in: cnt(parts[0]), out: cnt(parts[1]), text: text.trim() };
+    return { in: cnt(parts[0]), out: cnt(parts[1]), text: orig.trim() };
   }
 
   const MEM_SIZE = 1 << 18;
@@ -27,7 +30,7 @@
 
   class Forth {
     constructor(opts = {}) {
-      this.opts = Object.assign({ optimize: true, maxSteps: 50000000, analyze: true, strict: true }, opts);
+      this.opts = Object.assign({ optimize: true, maxSteps: 50000000, analyze: true, strict: true, maxOutput: 20000000, maxStack: 200000 }, opts);
       this.mem = new DataView(new ArrayBuffer(MEM_SIZE));
       this.bytes = new Uint8Array(this.mem.buffer);
       this.here = HERE0;
@@ -35,7 +38,7 @@
       this.xts = [null];            // execution tokens: index -> word
       this.ds = []; this.rs = []; this.ls = []; this.frames = [];
       this.out = ''; this.onOutput = null;
-      this.hook = null; this.steps = 0;
+      this.hook = null; this.steps = 0; this.outCount = 0;
       this.cur = null;              // current colon definition
       this.state = 0;               // 0 interpret, 1 compile
       this.lastCreated = null; this.latest = null;
@@ -44,12 +47,16 @@
       this.optimizer = null; this.analyzer = null;
       this._installPrims();
       this._installCompilers();
+      this.coreWords = new Map(this.dict);   // immune to user redefinition
     }
+    core(name) { return this.coreWords ? this.coreWords.get(name) : this.dict.get(name); }
 
     use(parts) { if (parts.analyzer) this.analyzer = parts.analyzer; if (parts.optimizer) this.optimizer = parts.optimizer; return this; }
 
     // ------------------------------------------------------------ output ---
     emit(s) {
+      this.outCount += s.length;
+      if (this.outCount > this.opts.maxOutput) throw new ForthError('output limit exceeded (' + this.opts.maxOutput + ' chars) - runaway loop?');
       if (this.onOutput) this.onOutput(s); else this.out += s;
     }
     takeOutput() { const o = this.out; this.out = ''; return o; }
@@ -166,9 +173,14 @@
       if (w) {
         if (w.imm || (w.kind === 'prim' && w.compileOnly)) {
           if (w.compileOnly && !this.cur) throw new ForthError(tok.toUpperCase() + ' is compile-only', this.loc());
+          if (w.kind === 'colon') return this.execute(w);
           return w.fn(this);
         }
-        if (this.state && this.cur) { this.emitOp({ op: O.CALL, a: w }); return; }
+        if (this.state && this.cur) {
+          if (w.needLoop && this.cur.cs.filter(e => e.t === 'do').length < w.needLoop)
+            throw new ForthError(w.name.toUpperCase() + ' used outside ' + (w.needLoop > 1 ? 'two nested DO loops' : 'a DO loop') + ' in ' + this.cur.name.toUpperCase(), this.loc());
+          this.emitOp({ op: O.CALL, a: w }); return;
+        }
         return this.execute(w);
       }
       const n = this.parseNumber(tok);
@@ -181,7 +193,7 @@
 
     execute(w) {
       const base = this.frames.length;
-      this.steps = 0;
+      this.steps = 0; this.outCount = 0;
       if (this.hook) this.hook(this, null, { op: O.CALL, a: w, line: this.tokLine });
       this.invoke(w);
       this.loop(base);
@@ -208,7 +220,7 @@
     // ---------------------------------------------------------- VM loop -----
     loop(base) {
       const ds = this.ds, frames = this.frames;
-      const max = this.opts.maxSteps;
+      const max = this.opts.maxSteps, maxStack = this.opts.maxStack;
       while (frames.length > base) {
         const f = frames[frames.length - 1];
         if (f.ip >= f.code.length) { frames.pop(); continue; }
@@ -253,6 +265,8 @@
           }
           default: throw new ForthError('bad opcode ' + op.op);
         }
+        if (ds.length > maxStack || this.rs.length > maxStack || this.ls.length > maxStack)
+          throw new ForthError('stack overflow (more than ' + maxStack + ' items) - runaway loop?');
       }
     }
 
@@ -280,17 +294,18 @@
       const w = cur.w;
       w.code = cur.code;
       w.declared = cur.declared;
-      if (this.opts.optimize && this.optimizer) w.code = this.optimizer.optimize(w.code, this);
       w.eff = null; w.effNote = null;
       if (this.opts.analyze && this.analyzer && !cur.nocheck) {
         const r = this.analyzer.analyzeWord(w, this);
         if (r.error && this.opts.strict) {
           this.cur = null; this.state = 0;
-          throw new ForthError(r.error, { line: this.tokLine });
+          throw new ForthError(r.error, { line: r.line || this.tokLine });
         }
         w.eff = r.eff; w.effNote = r.note || r.error || null;
         if (r.error) w.warning = r.error;
       } else if (cur.nocheck) w.effNote = 'unchecked (NO-CHECK)';
+      // analysis runs on the source IR so accept/reject never depends on the optimizer
+      if (this.opts.optimize && this.optimizer) w.code = this.optimizer.optimize(w.code, this);
       this.cur = null; this.state = 0;
       this.addWord(w);
     }
@@ -373,7 +388,13 @@
         }
         throw new ForthError('LEAVE outside DO loop', vm.loc());
       });
-      co('EXIT', () => { vm.emitOp({ op: O.EXIT }); });
+      co('EXIT', () => {
+        const inDo = vm.cs().some(e => e.t === 'do');
+        const last = vm.cur.code[vm.cur.code.length - 1];
+        if (inDo && !(last && last.op === O.CALL && last.a.name === 'UNLOOP'))
+          throw new ForthError('EXIT inside a DO loop leaves loop parameters behind - write UNLOOP EXIT', vm.loc());
+        vm.emitOp({ op: O.EXIT });
+      });
       co('RECURSE', () => { vm.emitOp({ op: O.CALL, a: vm.cur.w, recurse: true }); });
       co('DOES>', () => { vm.emitOp({ op: O.DOES }); });
       // CASE .. OF .. ENDOF .. ENDCASE
@@ -381,9 +402,9 @@
       co('OF', () => {
         const c = vm.cs()[vm.cs().length - 1];
         if (!c || c.t !== 'case') throw new ForthError('OF without CASE', vm.loc());
-        vm.emitOp({ op: O.CALL, a: vm.find('OVER') }); vm.emitOp({ op: O.CALL, a: vm.find('=') });
+        vm.emitOp({ op: O.CALL, a: vm.core('OVER') }); vm.emitOp({ op: O.CALL, a: vm.core('=') });
         const at = vm.emitOp({ op: O.JZ, a: -1 });
-        vm.emitOp({ op: O.CALL, a: vm.find('DROP') });
+        vm.emitOp({ op: O.CALL, a: vm.core('DROP') });
         vm.cs().push({ t: 'of', at });
       });
       co('ENDOF', () => {
@@ -394,7 +415,7 @@
       });
       co('ENDCASE', () => {
         const c = vm.needCs('case', 'ENDCASE');
-        vm.emitOp({ op: O.CALL, a: vm.find('DROP') });
+        vm.emitOp({ op: O.CALL, a: vm.core('DROP') });
         for (const e of c.ends) vm.cur.code[e].a = vm.cur.code.length;
       });
 
@@ -423,7 +444,7 @@
         const s = vm.parseUntil('"');
         if (vm.cur && vm.state) {
           const a = vm.putString(s);
-          vm.emitOp({ op: O.LIT, a }); vm.emitOp({ op: O.LIT, a: s.length }); vm.emitOp({ op: O.CALL, a: vm.find('TYPE') });
+          vm.emitOp({ op: O.LIT, a }); vm.emitOp({ op: O.LIT, a: s.length }); vm.emitOp({ op: O.CALL, a: vm.core('TYPE') });
         } else vm.emit(s);
       });
       imm('.(', () => { vm.emit(vm.parseUntil(')')); });
@@ -457,13 +478,13 @@
         vm.addWord({ name, kind: 'var', addr, isValue: true, eff: null, fetchOnCall: true });
         const w = vm.latest;
         // a VALUE pushes its contents: model as a colon word  addr @
-        w.kind = 'colon'; w.code = [{ op: O.LIT, a: addr }, { op: O.CALL, a: vm.find('@') }];
+        w.kind = 'colon'; w.code = [{ op: O.LIT, a: addr }, { op: O.CALL, a: vm.core('@') }];
         w.eff = { in: 0, out: 1 }; w.valueAddr = addr;
       });
       imm('TO', () => {
         const n = vm.token(); const w = n && vm.find(n);
         if (!w || w.valueAddr === undefined) throw new ForthError('TO needs a VALUE name' + (n ? ': ' + n : ''), vm.loc());
-        if (vm.cur && vm.state) { vm.emitOp({ op: O.LIT, a: w.valueAddr }); vm.emitOp({ op: O.CALL, a: vm.find('!') }); }
+        if (vm.cur && vm.state) { vm.emitOp({ op: O.LIT, a: w.valueAddr }); vm.emitOp({ op: O.CALL, a: vm.core('!') }); }
         else vm.store(w.valueAddr, vm.pop1('TO'));
       });
       vm.def('CREATE', '--', () => {

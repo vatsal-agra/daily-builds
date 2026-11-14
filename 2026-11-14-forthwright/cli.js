@@ -78,7 +78,7 @@ const cmd = args[0];
 if (!cmd || cmd === '-h' || cmd === '--help') { process.stdout.write(HELP); process.exit(cmd ? 0 : 1); }
 if (cmd === '-e') {
   if (!args[1]) fail('-e needs code');
-  const vm = mk(args); const r = vm.run(args[1]); report(vm, r); process.stdout.write(r.output + '\n');
+  const vm = mk(args); const r = vm.run(args[1]); report(vm, r); if (r.output) process.stdout.write(r.output.endsWith('\n') ? r.output : r.output + '\n');
   if (vm.ds.length) process.stdout.write('stack: ' + vm.ds.join(' ') + '\n');
 } else if (cmd === 'repl') repl(mk(args));
 else if (cmd === 'run') {
