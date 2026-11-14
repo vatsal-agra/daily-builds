@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forthwright</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span class="glyph">⟫</span><h1>Forthwright</h1><span class="tag">Forth with static stack-effect inference</span></div>
+  <div class="controls">
+    <select id="examples" aria-label="Examples"></select>
+    <button id="run" class="primary" title="Ctrl+Enter">Run ▸</button>
+    <button id="trace" title="Record every VM step and scrub through it">Trace ⏱</button>
+    <button id="profile">Profile</button>
+    <button id="reset" title="Fresh VM">Reset</button>
+    <label class="opt"><input type="checkbox" id="optimize" checked> optimize</label>
+  </div>
+</header>
+<main>
+  <section class="left">
+    <div class="panel editor-panel">
+      <div class="panel-title">Program <span id="status" class="status"></span></div>
+      <div class="editor-wrap">
+        <div id="gutter" class="gutter" aria-hidden="true"></div>
+        <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
+      </div>
+    </div>
+    <div class="panel output-panel">
+      <div class="panel-title">Console</div>
+      <pre id="out" class="out" aria-live="polite"></pre>
+      <div class="repl"><span class="prompt">ok&gt;</span><input id="repl" type="text" spellcheck="false" autocomplete="off" placeholder="type Forth here, Enter to evaluate (↑ history)"></div>
+    </div>
+  </section>
+  <section class="right">
+    <nav class="tabs" role="tablist">
+      <button data-tab="stack" class="active" role="tab">Stack</button>
+      <button data-tab="words" role="tab">Words</button>
+      <button data-tab="timeline" role="tab">Trace</button>
+      <button data-tab="profile" role="tab">Profile</button>
+      <button data-tab="see" role="tab">Disasm</button>
+    </nav>
+    <div id="tab-stack" class="tab active">
+      <div class="two">
+        <div><h3>Data stack <small id="depth"></small></h3><div id="stack" class="stackviz"></div></div>
+        <div><h3>Return stack</h3><div id="rstack" class="stackviz small"></div></div>
+      </div>
+      <p class="hint">Live state of the REPL VM. Hex and signed views are shown on hover.</p>
+    </div>
+    <div id="tab-words" class="tab">
+      <input id="filter" class="filter" type="text" placeholder="filter words…" spellcheck="false">
+      <div class="seg"><label><input type="checkbox" id="showprims"> include built-ins</label></div>
+      <div id="wordlist" class="wordlist"></div>
+    </div>
+    <div id="tab-timeline" class="tab">
+      <div id="tl-empty" class="empty">Press <b>Trace ⏱</b> to record a run, then scrub through it — forwards <em>and</em> backwards.</div>
+      <div id="tl" hidden>
+        <div class="tl-controls">
+          <button id="tl-first" title="Start">⏮</button><button id="tl-back" title="Step back (←)">◀</button>
+          <button id="tl-play" title="Play">▶</button>
+          <button id="tl-fwd" title="Step forward (→)">▶|</button><button id="tl-last" title="End">⏭</button>
+          <span id="tl-pos" class="tl-pos"></span>
+        </div>
+        <input id="scrub" type="range" min="0" max="0" value="0" aria-label="Trace position">
+        <div id="tl-now" class="tl-now"></div>
+        <div class="two"><div><h3>Data stack</h3><div id="tl-stack" class="stackviz"></div></div>
+        <div><h3>Return stack</h3><div id="tl-rstack" class="stackviz small"></div></div></div>
+        <h3>Output so far</h3><pre id="tl-out" class="out mini"></pre>
+        <h3>Nearby ops</h3><div id="tl-ops" class="oplist"></div>
+      </div>
+    </div>
+    <div id="tab-profile" class="tab"><div id="prof" class="empty">Press <b>Profile</b> to count executed ops per word.</div></div>
+    <div id="tab-see" class="tab"><pre id="disasm" class="disasm">Click a word in the Words tab, or type <code>see name</code> in the console.</pre></div>
+  </section>
+</main>
+<script src="../src/forth.js"></script>
+<script src="../src/analyze.js"></script>
+<script src="../src/optimize.js"></script>
+<script src="../src/tracer.js"></script>
+<script src="examples.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
