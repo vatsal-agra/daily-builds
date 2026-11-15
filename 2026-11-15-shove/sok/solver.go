@@ -15,10 +15,11 @@ var (
 
 // Options bounds a search. Zero values mean "unlimited".
 type Options struct {
-	MaxNodes   int
-	Timeout    time.Duration
-	NoFreeze   bool // disable freeze-deadlock pruning (for differential testing)
-	NoMatching bool // use the weaker sum-of-nearest-goal heuristic (for ablation)
+	MaxNodes     int
+	MaxGenerated int // cap on stored states (memory guard); 0 = default 6,000,000
+	Timeout      time.Duration
+	NoFreeze     bool // disable freeze-deadlock pruning (for differential testing)
+	NoMatching   bool // use the weaker sum-of-nearest-goal heuristic (for ablation)
 }
 
 // Solution is a proven push-optimal answer.
@@ -40,7 +41,6 @@ type node struct {
 	g      int32
 	moves  int32
 }
-
 
 type entry struct {
 	id   int32
@@ -122,6 +122,10 @@ func Solve(lv *Level, opt Options) (*Solution, error) {
 	push(0, int32(h0))
 	best[s.key(root.boxes, s.canon(root.boxes, int(root.player)))] = 0
 	expanded := 0
+	genCap := opt.MaxGenerated
+	if genCap <= 0 {
+		genCap = 6_000_000
+	}
 	var sol []int32
 
 	for open.Len() > 0 {
@@ -139,6 +143,9 @@ func Solve(lv *Level, opt Options) (*Solution, error) {
 			break
 		}
 		expanded++
+		if len(nodes) > genCap {
+			return nil, ErrBudget
+		}
 		if opt.MaxNodes > 0 && expanded > opt.MaxNodes {
 			return nil, ErrBudget
 		}

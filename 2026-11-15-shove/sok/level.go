@@ -52,8 +52,8 @@ func Parse(text string) (*Level, error) {
 	for i, l := range raw {
 		t := strings.TrimRight(l, " \t")
 		if strings.HasPrefix(strings.TrimSpace(t), ";") {
-			if name == "" {
-				name = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(t), ";"))
+			if len(rows) == 0 {
+				name = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(t), ";")) // last comment above the map wins
 			}
 			continue
 		}

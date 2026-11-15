@@ -26,6 +26,7 @@ type Generated struct {
 	Rating   string
 	Attempt  int // which attempt produced it
 	Rated    int // how many candidates were solved & rated
+	Skipped  int // candidates dropped (invalid layout or over the solver budget)
 }
 
 // Rate names a difficulty band from solver effort.
@@ -80,15 +81,20 @@ func Generate(o GenOptions) (*Generated, error) {
 	}
 	rng := rand.New(rand.NewSource(o.Seed))
 	var best *Generated
-	rated := 0
+	rated, skipped := 0, 0
+	if o.MinPushes < 1 {
+		o.MinPushes = 1 // a level that is already solved is never interesting
+	}
 	for a := 1; a <= o.Attempts; a++ {
 		lv := candidate(rng, o)
 		if lv == nil {
+			skipped++
 			continue
 		}
-		sol, err := Solve(lv, Options{MaxNodes: o.MaxNodes})
+		sol, err := Solve(lv, Options{MaxNodes: o.MaxNodes, MaxGenerated: 4 * o.MaxNodes})
 		if err != nil {
-			continue // too hard for the budget (or the pull walk produced a pocket); skip
+			skipped++ // too hard for the node budget
+			continue
 		}
 		rated++
 		if sol.Pushes < o.MinPushes {
@@ -102,6 +108,7 @@ func Generate(o GenOptions) (*Generated, error) {
 		return nil, ErrNoCandidate
 	}
 	best.Rated = rated
+	best.Skipped = skipped
 	best.Rating = Rate(best.Solution)
 	best.Level.Name = fmt.Sprintf("%dx%d, %d boxes, seed %d", o.W, o.H, o.Boxes, o.Seed)
 	return best, nil
@@ -219,10 +226,14 @@ func candidate(rng *rand.Rand, o GenOptions) *Level {
 	if len(lv.Boxes) != o.Boxes {
 		return nil
 	}
+	onGoal := 0
 	for _, b := range lv.Boxes {
-		if lv.Goal[b] && o.Boxes > 1 {
-			return nil // keep boxes off their goals so the puzzle isn't partly pre-solved
+		if lv.Goal[b] {
+			onGoal++
 		}
+	}
+	if onGoal > o.Boxes/4 {
+		return nil // keep the puzzle from being mostly pre-solved
 	}
 	lv.Player = player
 	return lv

@@ -180,12 +180,12 @@ func cmdGen(args []string, pack bool) error {
 		return err
 	}
 	var sb strings.Builder
+	n := *count
 	if !pack {
-		count = new(int)
-		*count = 1
+		n = 1
 	}
 	var gens []*sok.Generated
-	for i := 0; i < *count; i++ {
+	for i := 0; i < n; i++ {
 		oo := o
 		oo.Seed = o.Seed + int64(i)
 		g, err := sok.Generate(oo)
@@ -213,7 +213,7 @@ func cmdGen(args []string, pack bool) error {
 			g.Level.Name = fmt.Sprintf("%d. %s", i+1, g.Level.Name)
 		}
 		fmt.Fprintf(&sb, ";%s\n%s\n", g.Level.Name, g.Level)
-		fmt.Fprintf(os.Stderr, "generated %-48s expanded=%-6d (best of %d rated)\n", g.Level.Name, g.Solution.Expanded, g.Rated)
+		fmt.Fprintf(os.Stderr, "generated %-48s expanded=%-6d (best of %d rated, %d skipped)\n", g.Level.Name, g.Solution.Expanded, g.Rated, g.Skipped)
 	}
 	if *out == "" {
 		fmt.Print(sb.String())

@@ -1,5 +1,5 @@
 # Shove
-Sokoban toolkit in Go (stdlib only). **Status: Phase 2 complete** — the four required features work end-to-end:
+Sokoban toolkit in Go (stdlib only). **Status: Phase 3 complete (adversarial review — see REVIEW.md, 8 findings fixed)** — the four required features work end-to-end:
 
 1. XSB parser/validator (`sok/level.go`)
 2. Push-optimal A* solver with Hungarian-matching heuristic + deadlock pruning (`sok/solver.go`, `sok/deadlock.go`)

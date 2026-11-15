@@ -67,12 +67,12 @@ var LEVELS=/*LEVELS*/[];
 var DIRS={u:[0,-1],d:[0,1],l:[-1,0],r:[1,0]};
 var cv=document.getElementById("cv"),ctx=cv.getContext("2d");
 var $=function(i){return document.getElementById(i)};
-var cur=0,L=null,st=null,hist=[],playing=null,solvedSet={},best={};
+var cur=0,L=null,st=null,hist=[],playing=null,peeked=false,solvedSet={},best={};
 try{best=JSON.parse(localStorage.getItem("shove-best-"+document.title)||"{}")}catch(e){best={}}
 function saveBest(){try{localStorage.setItem("shove-best-"+document.title,JSON.stringify(best))}catch(e){}}
 
 function load(i){
-  stopPlay();cur=i;var d=LEVELS[i];var w=0;d.rows.forEach(function(r){w=Math.max(w,r.length)});
+  stopPlay();peeked=false;cur=i;var d=LEVELS[i];var w=0;d.rows.forEach(function(r){w=Math.max(w,r.length)});
   L={w:w,h:d.rows.length,wall:[],goal:[],boxes:{},player:-1,d:d};
   for(var y=0;y<L.h;y++)for(var x=0;x<w;x++){var c=d.rows[y][x]||" ",k=y*w+x;
     L.wall[k]=c==="#";L.goal[k]=(c==="."||c==="*"||c==="+");
@@ -129,7 +129,8 @@ function updateUI(){
   $("iBoxes").textContent=Object.keys(L.boxes).length;$("iLen").textContent=d.solution.length+" moves";
   var b=best[cur];$("sBest").textContent=b?b.pushes+"p/"+b.moves+"m":"–";
   var dl=!playing&&deadlocked();$("warn").textContent=dl&&!solved()?"⚠ Deadlock: this position can no longer be solved. Undo or restart.":"";
-  if(solved()&&!playing){
+  if(solved()&&!playing&&peeked){$("msg").textContent="Solution shown \u2014 press R to try it yourself.";}
+  else if(solved()&&!playing){
     var verdict=st.pushes===d.pushes?"Perfect — push-optimal!":"Solved in "+st.pushes+" pushes (optimal is "+d.pushes+").";
     $("msg").textContent=verdict;solvedSet[cur]=1;
     if(!best[cur]||st.pushes<best[cur].pushes||(st.pushes===best[cur].pushes&&st.moves<best[cur].moves)){best[cur]={pushes:st.pushes,moves:st.moves};saveBest()}
@@ -183,12 +184,13 @@ var showDead=false;
 function stopPlay(){if(playing){clearTimeout(playing);playing=null}}
 function startPlay(){
   if(playing){stopPlay();updateUI();return}
-  load(cur);var sol=L.d.solution.toLowerCase(),i=0;playing=true;
+  load(cur);peeked=true;var sol=L.d.solution.toLowerCase(),i=0;playing=true;
   (function step(){if(i>=sol.length){playing=null;updateUI();return}
     move(sol[i++]);playing=setTimeout(step,1000/(+$("spd").value))})();
   $("bSolve").textContent="Stop";}
 
 document.addEventListener("keydown",function(e){
+  if(e.ctrlKey||e.metaKey||e.altKey)return;
   var m={ArrowUp:"u",ArrowDown:"d",ArrowLeft:"l",ArrowRight:"r",w:"u",s:"d",a:"l",d:"r",W:"u",S:"d",A:"l",D:"r"}[e.key];
   if(m){e.preventDefault();if(!playing)move(m);return}
   if(e.key==="z"||e.key==="Z"||e.key==="Backspace"){e.preventDefault();if(!playing)undo()}
