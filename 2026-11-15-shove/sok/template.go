@@ -12,7 +12,7 @@ header{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:
 h1{margin:0;font-size:20px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
 h1 small{color:var(--dim);letter-spacing:.05em;font-weight:400;text-transform:none;margin-left:8px}
 main{display:grid;grid-template-columns:230px 1fr 250px;gap:18px;padding:18px 20px;max-width:1200px;margin:0 auto}
-@media(max-width:860px){main{grid-template-columns:1fr}}
+@media(max-width:860px){main{grid-template-columns:1fr;padding:12px}#stage{order:-1}#levels{flex-direction:row;max-height:none;overflow-x:auto;padding-bottom:4px}#levels button{white-space:nowrap}}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
 #levels{max-height:70vh;overflow:auto;display:flex;flex-direction:column;gap:6px}
 #levels button{all:unset;cursor:pointer;padding:8px 10px;border-radius:8px;border:1px solid transparent;display:flex;justify-content:space-between;gap:8px}
@@ -38,14 +38,14 @@ h3{margin:0 0 8px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;c
 kbd{background:#2a2e3c;border:1px solid #3a4052;border-radius:4px;padding:0 5px;font-size:12px}
 input[type=range]{width:100%}
 </style></head><body>
-<header><h1>Shove<small id="ttl">{{TITLE}}</small></h1></header>
+<header><h1>Shove<small id="ttl">Sokoban &middot; solver-verified levels</small></h1></header>
 <main>
 <section class="card"><h3>Levels</h3><div id="levels"></div></section>
 <section id="stage">
  <div class="stats"><div class="stat"><b id="sMoves">0</b><span>moves</span></div><div class="stat"><b id="sPush">0</b><span>pushes</span></div><div class="stat"><b id="sBest">–</b><span>your best</span></div><div class="stat"><b id="sOpt">–</b><span>optimal</span></div></div>
  <canvas id="cv" width="640" height="480"></canvas>
  <div id="warn"></div><div id="msg"></div>
- <div class="btns"><button class="b" id="bUndo">Undo <kbd>Z</kbd></button><button class="b" id="bReset">Restart <kbd>R</kbd></button><button class="b" id="bPrev">&larr; Prev</button><button class="b" id="bNext">Next &rarr;</button><button class="b" id="bSolve">Show solution</button></div>
+ <div class="btns"><button class="b" id="bUndo">Undo <kbd>Z</kbd></button><button class="b" id="bReset">Restart <kbd>R</kbd></button><button class="b" id="bPrev">&larr; Prev</button><button class="b" id="bNext">Next &rarr;</button><button class="b" id="bHint" title="Solve from the current position in your browser and play the next push">Hint</button><button class="b" id="bSolve">Show solution</button></div>
 </section>
 <aside class="card"><h3>This level</h3>
  <div class="kv"><span>Rating</span><b id="iRate"></b></div>
@@ -201,6 +201,69 @@ document.addEventListener("keydown",function(e){
 $("bUndo").onclick=function(){if(!playing)undo()};$("bReset").onclick=function(){load(cur)};
 $("bPrev").onclick=function(){if(cur>0)load(cur-1)};$("bNext").onclick=function(){if(cur<LEVELS.length-1)load(cur+1)};
 $("bSolve").onclick=startPlay;
+// ---- in-browser A* (admissible sum-of-nearest-goal bound) used by the Hint button ----
+function pushTables(){
+  if(L.pd)return;var n=L.w*L.h,off=[1,-1,L.w,-L.w];L.pd=[];
+  for(var g=0;g<n;g++){if(!L.goal[g])continue;var d=new Int32Array(n).fill(-1);d[g]=0;var q=[g];
+    for(var h=0;h<q.length;h++){var c=q[h];for(var j=0;j<4;j++){var o=off[j],p=c-o,pl=p-o;
+      if(p<0||pl<0||L.wall[p]||L.wall[pl]||d[p]>=0)continue;d[p]=d[c]+1;q.push(p)}}
+    L.pd.push(d)}}
+var G=null;
+function scratch(){var n=L.w*L.h;if(G&&G.n===n&&G.L===L)return G;G={L:L,n:n,occ:new Uint8Array(n),seen:new Int32Array(n),stamp:0,q:new Int32Array(n),reach:new Uint8Array(n)};return G}
+// min-cost box->goal matching (Hungarian, O(n^3)) over single-box push distances: admissible and much tighter than sum-of-nearest
+function hOf(bx){var n=bx.length,BIG=1<<20,C=[];
+  for(var i=0;i<=n;i++)C.push(new Array(n+1).fill(0));
+  for(var i2=0;i2<n;i2++)for(var j=0;j<n;j++){var v=L.pd[j][bx[i2]];C[i2+1][j+1]=v<0?BIG:v}
+  var u=new Array(n+1).fill(0),v2=new Array(n+1).fill(0),p=new Array(n+1).fill(0),way=new Array(n+1).fill(0);
+  for(var r=1;r<=n;r++){p[0]=r;var j0=0,minv=new Array(n+1).fill(1e9),used=new Array(n+1).fill(false);
+    do{used[j0]=true;var i0=p[j0],dl=1e9,j1=0;
+      for(var j3=1;j3<=n;j3++)if(!used[j3]){var cur=C[i0][j3]-u[i0]-v2[j3];if(cur<minv[j3]){minv[j3]=cur;way[j3]=j0}if(minv[j3]<dl){dl=minv[j3];j1=j3}}
+      for(var j4=0;j4<=n;j4++){if(used[j4]){u[p[j4]]+=dl;v2[j4]-=dl}else minv[j4]-=dl}
+      j0=j1}while(p[j0]!==0);
+    do{var j5=way[j0];p[j0]=p[j5];j0=j5}while(j0)}
+  var tot=0;for(var jj=1;jj<=n;jj++)tot+=C[p[jj]][jj];return tot>=BIG?-1:tot}
+// BFS from p with boxes as walls. Returns min reachable cell; if out is given, marks reachable cells in it.
+function region(bx,p,out){var g=scratch(),off=[-L.w,L.w,-1,1];
+  for(var i=0;i<bx.length;i++)g.occ[bx[i]]=1;
+  var st2=++g.stamp,qh=0,qt=0,mn=p;g.q[qt++]=p;g.seen[p]=st2;if(out)out.fill(0);
+  while(qh<qt){var c=g.q[qh++];if(c<mn)mn=c;if(out)out[c]=1;
+    for(var j=0;j<4;j++){var m=c+off[j];if(g.seen[m]!==st2&&!L.wall[m]&&!g.occ[m]){g.seen[m]=st2;g.q[qt++]=m}}}
+  for(var k=0;k<bx.length;k++)g.occ[bx[k]]=0;return mn}
+function aStar(startBoxes,startP,cap,deadline){
+  pushTables();var g=scratch(),off=[-L.w,L.w,-1,1];
+  var bx0=startBoxes.slice().sort(function(a,b){return a-b}),h0=hOf(bx0);if(h0<0)return null;
+  var nodes=[{b:bx0,p:startP,par:-1,from:-1,dir:-1,g:0}],open=[[h0,h0,0]],best={};
+  function hpush(e){open.push(e);var i=open.length-1;while(i>0){var pa=(i-1)>>1;if(open[pa][0]<=e[0])break;open[i]=open[pa];i=pa}open[i]=e}
+  function hpop(){var top=open[0],last=open.pop();if(open.length){var i=0;for(;;){var l=2*i+1;if(l>=open.length)break;var r=l+1,c=(r<open.length&&open[r][0]<open[l][0])?r:l;if(open[c][0]>=last[0])break;open[i]=open[c];i=c}open[i]=last}return top}
+  best[bx0.join(",")+"|"+region(bx0,startP,null)]=0;var exp=0;
+  while(open.length){var e=hpop(),nd=nodes[e[2]];
+    if(e[1]===0){var path=[];for(var id=e[2];nodes[id].par>=0;id=nodes[id].par)path.push(id);return {nodes:nodes,path:path.reverse(),expanded:exp}}
+    if(++exp>cap||((exp&255)===0&&deadline&&performance.now()>deadline))return null;
+    region(nd.b,nd.p,g.reach);var occ={};nd.b.forEach(function(x){occ[x]=1});
+    for(var i=0;i<nd.b.length;i++){var b=nd.b[i];for(var d=0;d<4;d++){var pl=b-off[d],tg=b+off[d];
+      if(!g.reach[pl]||L.wall[tg]||occ[tg])continue;
+      var nb=nd.b.slice();nb[i]=tg;nb.sort(function(a,c){return a-c});
+      var bo={};nb.forEach(function(x){bo[x]=1});if(freezeDead(bo,tg))continue;
+      var h=hOf(nb);if(h<0)continue;var key=nb.join(",")+"|"+region(nb,b,null),gg=nd.g+1;
+      if(best[key]!==undefined&&best[key]<=gg)continue;best[key]=gg;nodes.push({b:nb,p:b,par:e[2],from:b,dir:d,g:gg});
+      hpush([gg+h,h,nodes.length-1])}}}
+  return null}
+function walkTo(from,to,occ){var n=L.w*L.h,prev=new Int32Array(n).fill(-2),mv=new Array(n),off=[-L.w,L.w,-1,1],DN=["u","d","l","r"];prev[from]=-1;var q=[from];
+  for(var h=0;h<q.length&&prev[to]===-2;h++)for(var j=0;j<4;j++){var m=q[h]+off[j];if(prev[m]===-2&&!L.wall[m]&&!occ[m]){prev[m]=q[h];mv[m]=DN[j];q.push(m)}}
+  var out=[];for(var c=to;c!==from;c=prev[c])out.push(mv[c]);return out.reverse()}
+function hint(){
+  if(playing||solved())return;
+  var bxs=Object.keys(st.boxes).map(Number);
+  $("msg").textContent="Thinking…";
+  setTimeout(function(){
+    var res=aStar(bxs,st.p,1e9,performance.now()+8000);
+    if(!res){$("msg").textContent="No hint within 8 s: this position is either unsolvable or too deep to search here. Try Undo.";return}
+    var e=res.nodes[res.path[0]],steps=walkTo(st.p,e.from-[-L.w,L.w,-1,1][e.dir],st.boxes);
+    steps.push(["u","d","l","r"][e.dir]);peeked=true;var i=0;playing=true;
+    (function step(){if(i>=steps.length){playing=null;updateUI();$("msg").textContent="Hint: "+res.path.length+" push(es) left from here.";return}
+      move(steps[i++]);playing=setTimeout(step,1000/(+$("spd").value))})()},20)}
+$("bHint").onclick=hint;
+
 var tx=0,ty=0;
 cv.addEventListener("touchstart",function(e){tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
 cv.addEventListener("touchend",function(e){var t=e.changedTouches[0],dx=t.clientX-tx,dy=t.clientY-ty;
@@ -208,5 +271,5 @@ cv.addEventListener("touchend",function(e){var t=e.changedTouches[0],dx=t.client
   move(Math.abs(dx)>Math.abs(dy)?(dx>0?"r":"l"):(dy>0?"d":"u"))});
 window.addEventListener("resize",function(){size();render()});
 if(LEVELS.length)load(0);else{$("msg").textContent="No levels."}
-window.__shove={load:load,move:move,undo:undo,state:function(){return st},solved:solved,deadlocked:deadlocked,levels:LEVELS,play:startPlay};
+window.__shove={hint:hint,aStar:aStar,load:load,move:move,undo:undo,state:function(){return st},solved:solved,deadlocked:deadlocked,levels:LEVELS,play:startPlay};
 </script></body></html>`
