@@ -25,3 +25,27 @@ All items below were **reproduced first**, then fixed (status column = state aft
 After the fixes the same probe script (`tests/probe_hostile.py`, kept in the repo) shows **zero**
 uncaught non-`TempoError` exceptions, the 4.4 s query takes milliseconds, and both fuzzers
 still agree with the reference libraries.
+
+---
+
+## Addendum — defects found *after* Phase 3 (Phases 4–5) and fixed
+
+The stretch features and the test suite were themselves reviewed adversarially; they found:
+
+| # | Sev | Finding | Found by | Fix |
+|---|-----|---------|----------|-----|
+| 14 | HIGH | Month view rendered only Mon–Fri: `1fr` columns grew to the min-content of `nowrap` event text, pushing Sat/Sun out of the clipped grid | screenshot review | `minmax(0,1fr)` + `min-width:0`; regression test asserts it |
+| 15 | HIGH | Meeting view bars were drawn from the first slot's start time instead of local midnight, so every bar was shifted ~17 h | screenshot review (bars contradicted the text) | window always starts at local midnight of the display zone; test pins `left:37.50%;width:33.33%` |
+| 16 | MED | ICS override instances (`RECURRENCE-ID` moved events) came back as *naive* datetimes while master instances were aware | probe of the sample file | all zoned occurrences are resolved to real instants (`_aware`) |
+| 17 | MED | `Schedule.to_recurrence` forced DTSTART as first instance (RFC mode), so "every tuesday" starting on a Monday produced a Monday | CLI demo | `rfc_dtstart=False` for human phrases; test added |
+| 18 | MED | English parser error for "every blorp" underlined `every` instead of the unknown word | new unit test | vocabulary-aware caret placement |
+| 19 | LOW | English output said "every week on weekdays" / "every month on Monday, Tuesday, … and Friday" | reading output | "every weekday" / "on weekdays" |
+| 20 | LOW | Stretch hours were invisible in the meeting view, so "(stretch)" slots looked out of hours | screenshot review | amber stretch band |
+
+**Honest note on my own test mistakes:** six times a *test expectation* was wrong rather than the
+engine (e.g. I mislabelled Dec 31 2026 as a Wednesday; Nov 2026 needs six calendar rows; the last
+ISO week's Sunday of 2026 is in 2027). Each time the engine's answer was cross-checked against
+`dateutil`/the calendar before the expectation was changed — never the other way round.
+
+## Final gate
+`./demo.sh <oracle-path>` → **ALL GREEN, 29 checks** (117 unit/property/differential tests included).

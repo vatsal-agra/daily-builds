@@ -223,12 +223,21 @@ def english_to_rrule(text, default_year=None):
         return finish("YEARLY", bymonth=(_MONTHS[m[2]],), bymonthday=(int(m[1]),))
     if not b and times:
         return finish("DAILY")   # "at 9am"
-    # unreadable: underline the first word we could not place
-    word = re.search(r"\S+", b)
-    pos = src.lower().find(word[0]) if word else 0
+    # unreadable: underline the first word that is not part of the vocabulary
+    known = ({"every", "each", "on", "the", "of", "and", "at", "month", "months", "year", "years", "week", "weeks",
+              "day", "days", "hour", "hours", "minute", "minutes", "second", "seconds", "other", "last", "in",
+              "weekday", "weekdays", "weekend", "weekends", "repeat", "repeats", "daily", "weekly", "monthly",
+              "yearly", "annually", "hourly"} | set(_DAYS) | set(_MONTHS) | set(_ORD) | set(_NUMW))
+    pos = 0
+    for w in re.finditer(r"[a-z0-9:.-]+", src.lower()):
+        tok = w[0]
+        if tok.rstrip("s") in known or tok in known or re.fullmatch(r"\d+(st|nd|rd|th)?", tok):
+            continue
+        pos = w.start()
+        break
     raise NLError("could not understand this schedule; try forms like 'every other tuesday at 9am', "
                   "'the last friday of every month', 'monthly on the 1st and 15th', "
-                  "'every 3 days until dec 31'", src, max(pos, 0))
+                  "'every 3 days until dec 31'", src, pos)
 
 
 def _month_days(txt, src):
@@ -269,7 +278,7 @@ def rrule_to_english(rule):
             "HOURLY": "hour", "MINUTELY": "minute", "SECONDLY": "second"}[r.freq]
     plain0 = sorted(w for o, w in r.byday if o == 0)
     nat = None
-    if r.freq == "WEEKLY" and r.interval == 1 and plain0 and len(plain0) == len(r.byday):
+    if r.freq in ("WEEKLY", "DAILY") and r.interval == 1 and plain0 and len(plain0) == len(r.byday):
         nat = ("every weekday" if plain0 == [0, 1, 2, 3, 4] else "every weekend" if plain0 == [5, 6]
                else "every " + _join(DAY_NAMES[w] for w in plain0))
     if nat:
@@ -285,9 +294,9 @@ def rrule_to_english(rule):
     days = r.byday
     plain = [] if nat else sorted(w for o, w in days if o == 0)
     if plain:
-        if plain == [0, 1, 2, 3, 4] and r.freq in ("WEEKLY", "DAILY"):
+        if plain == [0, 1, 2, 3, 4]:
             parts.append("on weekdays")
-        elif plain == [5, 6] and r.freq in ("WEEKLY", "DAILY"):
+        elif plain == [5, 6]:
             parts.append("on weekends")
         else:
             parts.append("on " + _join(DAY_NAMES[w] for w in plain))
