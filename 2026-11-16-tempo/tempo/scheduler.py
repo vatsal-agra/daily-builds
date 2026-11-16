@@ -8,12 +8,15 @@ candidate slots ranked by how kind they are to everyone's local clock.
 import re
 from bisect import bisect_right
 from dataclasses import dataclass, field
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, timedelta
 
 from .dates import DAY_CODES, DAY_NAMES
 from .errors import TempoError
 from .recur import Recurrence
 from .tz import UTC, get_zone, resolve, fmt_offset
+
+__all__ = ["Interval", "merge", "intersect", "subtract", "complement", "WorkHours", "Busy",
+           "Attendee", "Slot", "find_slots", "explain_no_slots", "timeline"]
 
 
 # ------------------------------------------------------------------ interval algebra
@@ -335,7 +338,7 @@ def find_slots(attendees, window_start, window_end, duration, step=timedelta(min
             pen += dist
             if a.optional:
                 ofree.append(a.name)
-                score -= 8
+                score -= 8 if in_core else 2
             else:
                 score += pen
                 worst = max(worst, pen)

@@ -28,6 +28,7 @@ _DAY_IDX = {c: i for i, c in enumerate(DAY_CODES)}
 _EMPTY_LIMIT = {"YEARLY": 9000, "MONTHLY": 110000, "WEEKLY": 480000, "DAILY": 3_300_000,
                 "HOURLY": 3_000_000, "MINUTELY": 3_000_000, "SECONDLY": 3_000_000}
 MAX_YEAR = 9990  # expansion stops here (keeps week-number math clear of date.max)
+_MONTH_MAX = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 
 @dataclass(frozen=True)
@@ -114,7 +115,8 @@ def _ints(val, name, lo, hi, source, pos, allow_neg=False, allow_zero=True):
             raise RRuleError(f"{name} does not allow negative values ({n})", source, off)
         if (n == 0 and not allow_zero) or not (lo <= abs(n) <= hi or (n == 0 and allow_zero and lo == 0)):
             rng = f"{lo}..{hi}" + (" (or negated)" if allow_neg else "")
-            raise RRuleError(f"{name} value {n} out of range {rng}", source, off)
+            hint = " (leap seconds are not supported)" if (name == "BYSECOND" and n == 60) else ""
+            raise RRuleError(f"{name} value {n} out of range {rng}{hint}", source, off)
         out.append(n)
         off += len(tok) + 1
     return tuple(sorted(set(out)))
@@ -219,6 +221,14 @@ def _validate(r, src, kv):
         raise RRuleError("BYDAY ordinals (e.g. 2TU) need FREQ=MONTHLY or YEARLY", src, at("BYDAY"))
     if ordinals and r.freq == "YEARLY" and r.byweekno:
         raise RRuleError("BYDAY ordinals cannot be combined with BYWEEKNO", src, at("BYDAY"))
+    if r.bymonthday and all(m > 0 for m in r.bymonthday):
+        months = r.bymonth or tuple(range(1, 13))
+        longest = max(_MONTH_MAX[m - 1] for m in months)
+        if min(r.bymonthday) > longest:
+            raise RRuleError(
+                f"BYMONTHDAY={','.join(map(str, r.bymonthday))} can never match"
+                + (f" in BYMONTH={','.join(map(str, r.bymonth))}" if r.bymonth else ""),
+                src, at("BYMONTHDAY"))
     if r.bysetpos and not any((r.bysecond, r.byminute, r.byhour, r.byday, r.bymonthday,
                                r.byyearday, r.byweekno, r.bymonth)):
         raise RRuleError("BYSETPOS requires another BYxxx part", src, at("BYSETPOS"))
@@ -278,7 +288,7 @@ def _make_date_filter(r, dt):
     return ok
 
 
-def expand_wall(rule, dtstart, until=None, include_dtstart=False):
+def expand_wall(rule, dtstart, until=None, include_dtstart=False, skip_to=None):
     """Lazily yield naive wall-clock datetimes for `rule` starting at naive `dtstart`.
 
     `until` (naive datetime) overrides rule.until; it is inclusive.  Occurrences before
@@ -297,6 +307,8 @@ def expand_wall(rule, dtstart, until=None, include_dtstart=False):
     count = r.count
     emitted = 0
     if include_dtstart:
+        if until is not None and dtstart > until:
+            return
         first = dtstart
         yield first
         emitted += 1
@@ -309,10 +321,13 @@ def expand_wall(rule, dtstart, until=None, include_dtstart=False):
     freq, iv = r.freq, r.interval
     empty = 0
     limit = _EMPTY_LIMIT[freq]
-    k = 0
+    k = _first_period(r, dtstart, skip_to) if (skip_to is not None and count is None) else 0
     last = None
     while True:
-        cands = _period(r, freq, iv, k, dtstart, flt, hours, minutes, seconds)
+        try:
+            cands = _period(r, freq, iv, k, dtstart, flt, hours, minutes, seconds)
+        except (OverflowError, ValueError):
+            return  # ran off the end of the representable calendar
         if cands is None:
             return
         k += 1
@@ -343,6 +358,27 @@ def expand_wall(rule, dtstart, until=None, include_dtstart=False):
         empty = 0 if produced else empty + 1
         if empty > limit:
             return
+
+
+def _first_period(r, dt, target):
+    """Index of a period at or just before the one containing `target` (never after it)."""
+    iv, f = r.interval, r.freq
+    if target <= dt:
+        return 0
+    if f == "YEARLY":
+        n = (target.year - dt.year) // iv
+    elif f == "MONTHLY":
+        n = ((target.year * 12 + target.month) - (dt.year * 12 + dt.month)) // iv
+    elif f == "WEEKLY":
+        n = (target.date() - week_start(dt.date(), r.wkst)).days // (7 * iv)
+    elif f == "DAILY":
+        n = (target.date() - dt.date()).days // iv
+    else:
+        unit = {"HOURLY": 3600, "MINUTELY": 60, "SECONDLY": 1}[f]
+        base = dt.replace(minute=0, second=0, microsecond=0) if f == "HOURLY" else \
+            dt.replace(second=0, microsecond=0) if f == "MINUTELY" else dt.replace(microsecond=0)
+        n = int((target - base).total_seconds() // unit) // iv
+    return max(0, n - 1)
 
 
 def _period(r, freq, iv, k, dt, flt, hours, minutes, seconds):

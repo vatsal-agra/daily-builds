@@ -71,8 +71,8 @@ class Recurrence:
         if isinstance(u, datetime):
             if u.tzinfo is None:
                 w = u
-                inst = self._res(w) if not self.floating else w
-                return w, inst
+                inst = resolve(w, self.zone, "forward") if not self.floating else w
+                return w, (inst if self.floating else inst.astimezone(UTC))
             if self.floating:
                 raise TempoError("UNTIL is in UTC but the series is floating (no zone)")
             w = wall(u, self.zone)
@@ -82,10 +82,10 @@ class Recurrence:
         return w, (w if self.floating else resolve(w, self.zone, "forward").astimezone(UTC))
 
     # -- iteration
-    def _main(self):
+    def _main(self, hint=None):
         loose, exact = self._until_limits()
         walls = expand_wall(self.rule, self.dtstart_wall, until=loose,
-                            include_dtstart=self.rfc_dtstart)
+                            include_dtstart=self.rfc_dtstart, skip_to=hint)
         if self.floating:
             for w in walls:
                 if exact is not None and w > exact:
@@ -112,7 +112,16 @@ class Recurrence:
             yield r
 
     def __iter__(self):
-        main = self._main()
+        return self._iter()
+
+    def _hint(self, dt):
+        """Naive wall time a day before `dt`: where it is safe to start expanding."""
+        if self.floating:
+            return dt - timedelta(days=2)
+        return wall(self._cmp(dt), self.zone) - timedelta(days=2)
+
+    def _iter(self, hint=None):
+        main = self._main(hint)
         if not self.rdates:
             merged = ((self._key(x), x) for x in main)
         else:
@@ -150,7 +159,7 @@ class Recurrence:
     def between(self, start, end, inclusive=True):
         a, b = self._cmp(start), self._cmp(end)
         out = []
-        for x in self:
+        for x in self._iter(self._hint(start)):
             k = self._key(x)
             if k > b or (k == b and not inclusive):
                 break
@@ -160,7 +169,7 @@ class Recurrence:
 
     def after(self, dt, inclusive=False):
         a = self._cmp(dt)
-        for x in self:
+        for x in self._iter(self._hint(dt)):
             k = self._key(x)
             if k > a or (inclusive and k == a):
                 return x

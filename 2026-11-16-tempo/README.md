@@ -1,6 +1,8 @@
 # Tempo
 
-Status: **Phase 2 (core build) complete.** Required features 1–4 implemented and exercised:
+Status: **Phase 3 (adversarial review) complete** — 13 findings in [REVIEW.md](REVIEW.md), all fixed or documented; core features 1–4 implemented and exercised.
+
+(Phase 2 summary:) Required features 1–4 implemented and exercised:
 
 | # | Feature | State |
 |---|---------|-------|

@@ -15,6 +15,16 @@ from .cron import Cron
 from .tz import UTC, get_zone, resolve, fmt_offset
 
 
+def positive_int(text):
+    try:
+        n = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number")
+    if n < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return n
+
+
 def parse_dt(s, zone=None):
     try:
         d = datetime.fromisoformat(s.replace("Z", "+00:00"))
@@ -64,19 +74,38 @@ def cmd_cron(a):
 
 def cmd_meet(a):
     from .scheduler import Attendee, Busy, find_slots, explain_no_slots, timeline
-    with open(a.people) as f:
-        spec = json.load(f)
+    try:
+        with open(a.people, encoding="utf-8") as f:
+            spec = json.load(f)
+    except OSError as e:
+        raise TempoError(f"cannot read {a.people}: {e.strerror or e}")
+    except json.JSONDecodeError as e:
+        raise TempoError(f"{a.people} is not valid JSON: {e}")
+    if not isinstance(spec, list) or not spec:
+        raise TempoError("people file must be a non-empty JSON list of attendee objects")
+
+    def need(obj, key, where):
+        if not isinstance(obj, dict) or key not in obj:
+            raise TempoError(f"{where}: missing required field {key!r}")
+        return obj[key]
     people = []
-    for p in spec:
+    for i, p in enumerate(spec):
+        where = f"attendee #{i + 1}"
+        name = need(p, "name", where)
+        where = f"attendee {name!r}"
+        z = get_zone(p.get("tz", "UTC"))
         busy = []
-        for b in p.get("busy", []):
-            z = get_zone(p.get("tz", "UTC"))
-            s = parse_dt(b["start"])
+        for j, b in enumerate(p.get("busy", [])):
+            bw = f"{where} busy #{j + 1}"
+            s = parse_dt(need(b, "start", bw))
+            mins = need(b, "minutes", bw)
+            if not isinstance(mins, (int, float)) or mins <= 0:
+                raise TempoError(f"{bw}: 'minutes' must be a positive number")
             rec = Recurrence(b["rrule"], s, z) if b.get("rrule") else None
-            busy.append(Busy(start=s if s.tzinfo else resolve(s, z), duration=timedelta(minutes=b["minutes"]),
+            busy.append(Busy(start=s if s.tzinfo else resolve(s, z), duration=timedelta(minutes=mins),
                              recurrence=rec, title=b.get("title", "")))
-        people.append(Attendee(p["name"], p.get("tz", "UTC"), p.get("hours"), p.get("stretch"),
-                               busy, p.get("optional", False)))
+        people.append(Attendee(name, z, p.get("hours"), p.get("stretch"), busy,
+                               bool(p.get("optional", False))))
     lo, hi = parse_dt(a.start), parse_dt(a.end)
     lo = lo if lo.tzinfo else lo.replace(tzinfo=UTC)
     hi = hi if hi.tzinfo else hi.replace(tzinfo=UTC)
@@ -101,7 +130,7 @@ def build_parser():
     r.add_argument("rule")
     r.add_argument("--start", required=True)
     r.add_argument("--tz")
-    r.add_argument("-n", type=int, default=10)
+    r.add_argument("-n", type=positive_int, default=10)
     r.add_argument("--exdate", action="append")
     r.add_argument("--rdate", action="append")
     r.add_argument("--gap", choices=["forward", "skip"], default="forward")
@@ -111,16 +140,16 @@ def build_parser():
     c.add_argument("expr")
     c.add_argument("--tz", default="UTC")
     c.add_argument("--from", dest="start")
-    c.add_argument("-n", type=int, default=5)
+    c.add_argument("-n", type=positive_int, default=5)
     c.add_argument("--prev", action="store_true")
     c.set_defaults(fn=cmd_cron)
     m = sub.add_parser("meet", help="find meeting slots")
     m.add_argument("--people", required=True)
     m.add_argument("--from", dest="start", required=True)
     m.add_argument("--to", dest="end", required=True)
-    m.add_argument("--minutes", type=int, default=30)
+    m.add_argument("--minutes", type=positive_int, default=30)
     m.add_argument("--buffer", type=int, default=0)
-    m.add_argument("--limit", type=int, default=5)
+    m.add_argument("--limit", type=positive_int, default=5)
     m.add_argument("--stretch", action="store_true")
     m.set_defaults(fn=cmd_meet)
     return p

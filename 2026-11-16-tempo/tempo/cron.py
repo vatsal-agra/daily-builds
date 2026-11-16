@@ -116,7 +116,7 @@ class Cron:
     def _day_ok(self, d):
         dom_ok = d.day in self.dom or any(
             s[0] == "L" and d.day == days_in_month(d.year, d.month) - s[1] for s in self.dom_sp)
-        dow_ok = d.weekday() == 6 and 0 in self.dow or (d.weekday() + 1) % 7 in self.dow
+        dow_ok = (d.weekday() + 1) % 7 in self.dow  # cron: 0=Sunday (7 was folded onto 0)
         if not dow_ok:
             for s in self.dow_sp:
                 n, m = nth_weekday_in(d, "month")
