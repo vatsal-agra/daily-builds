@@ -2,7 +2,10 @@
 
   rrule  RULE --start 2026-01-31T09:00 [--tz Europe/Paris] [-n 10] [--exdate ...]
   cron   EXPR [--tz ZONE] [--from ISO] [-n 5] [--prev]
-  meet   --people people.json --from ISO --to ISO --minutes 45
+  meet   --people people.json --from ISO --to ISO --minutes 45 [--html out.html]
+  say    "every other tuesday at 9am" [--tz ZONE] [--start DATE] [-n 5]
+  explain RULE                       RRULE -> English
+  ics    FILE.ics [--from ISO --to ISO] [--month YYYY-MM --html out.html]
 """
 import argparse
 import json
@@ -112,6 +115,12 @@ def cmd_meet(a):
     dur = timedelta(minutes=a.minutes)
     slots = find_slots(people, lo, hi, dur, allow_stretch=a.stretch, limit=a.limit,
                        buffer=timedelta(minutes=a.buffer))
+    if a.html:
+        from .render import render_meeting
+        day = (slots[0].start if slots else lo)
+        with open(a.html, "w", encoding="utf-8") as f:
+            f.write(render_meeting(people, day, slots))
+        print(f"wrote {a.html}")
     if not slots:
         print("No slot found.")
         for line in explain_no_slots(people, lo, hi, dur, timedelta(minutes=a.buffer), a.stretch):
@@ -120,6 +129,63 @@ def cmd_meet(a):
     for s in slots:
         print(s.render())
         print()
+    return 0
+
+
+def cmd_say(a):
+    from .nlp import english_to_rrule, rrule_to_english
+    sch = english_to_rrule(" ".join(a.phrase))
+    print(f"rule  : {sch.rule}")
+    print(f"means : {rrule_to_english(sch.rule)}")
+    default = datetime.fromisoformat(a.start).date() if a.start else None
+    rec = sch.to_recurrence(a.tz, default)
+    for i, x in enumerate(rec.take(a.n), 1):
+        print(f"{i:>4}  {show(x)}")
+    return 0
+
+
+def cmd_explain(a):
+    from .nlp import rrule_to_english
+    print(rrule_to_english(a.rule))
+    return 0
+
+
+def cmd_ics(a):
+    from .ics import parse_ics
+    try:
+        with open(a.file, encoding="utf-8") as f:
+            cal = parse_ics(f.read())
+    except OSError as e:
+        raise TempoError(f"cannot read {a.file}: {e.strerror or e}")
+    except UnicodeDecodeError:
+        raise TempoError(f"{a.file} is not UTF-8 text")
+    for w in cal.warnings:
+        print(f"warning: {w}", file=sys.stderr)
+    if a.month:
+        from .render import render_month
+        try:
+            y, m = (int(x) for x in a.month.split("-"))
+            html = render_month(cal, y, m, today=datetime.now().date(), zone=a.tz)
+        except ValueError:
+            raise TempoError("--month must look like 2026-11")
+        if a.html:
+            with open(a.html, "w", encoding="utf-8") as f:
+                f.write(html)
+            print(f"wrote {a.html}")
+        else:
+            print(html)
+        return 0
+    lo = parse_dt(a.start) if a.start else datetime.now(UTC)
+    hi = parse_dt(a.end) if a.end else lo + timedelta(days=14)
+    occ = cal.occurrences(lo, hi)
+    if not occ:
+        print("(no events in range)")
+    z = get_zone(a.tz)
+    for o in occ:
+        s = o.start
+        when = s.astimezone(z).strftime("%a %Y-%m-%d %H:%M") if isinstance(s, datetime) and s.tzinfo else \
+            (s.strftime("%a %Y-%m-%d") + (" " + s.strftime("%H:%M") if isinstance(s, datetime) else " all-day"))
+        print(f"{when}  {o.summary or '(no title)'}{'  [moved]' if o.override else ''}")
     return 0
 
 
@@ -151,7 +217,25 @@ def build_parser():
     m.add_argument("--buffer", type=int, default=0)
     m.add_argument("--limit", type=positive_int, default=5)
     m.add_argument("--stretch", action="store_true")
+    m.add_argument("--html", help="also write an HTML view of the first day with the proposals")
     m.set_defaults(fn=cmd_meet)
+    sy = sub.add_parser("say", help="English phrase -> RRULE + next occurrences")
+    sy.add_argument("phrase", nargs="+")
+    sy.add_argument("--tz", default="UTC")
+    sy.add_argument("--start")
+    sy.add_argument("-n", type=positive_int, default=5)
+    sy.set_defaults(fn=cmd_say)
+    ex = sub.add_parser("explain", help="RRULE -> English")
+    ex.add_argument("rule")
+    ex.set_defaults(fn=cmd_explain)
+    ic = sub.add_parser("ics", help="list or render events of an .ics file")
+    ic.add_argument("file")
+    ic.add_argument("--from", dest="start")
+    ic.add_argument("--to", dest="end")
+    ic.add_argument("--tz", default="UTC")
+    ic.add_argument("--month")
+    ic.add_argument("--html")
+    ic.set_defaults(fn=cmd_ics)
     return p
 
 

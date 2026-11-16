@@ -1,6 +1,6 @@
 # Tempo
 
-Status: **Phase 3 (adversarial review) complete** — 13 findings in [REVIEW.md](REVIEW.md), all fixed or documented; core features 1–4 implemented and exercised.
+Status: **Phase 4 (stretch + polish) complete** — ICS import/export with overrides, English⇄RRULE, HTML renderers (month view, meeting view) and a 6-command CLI added on top of the required core. Earlier: **Phase 3 (adversarial review) complete** — 13 findings in [REVIEW.md](REVIEW.md), all fixed or documented; core features 1–4 implemented and exercised.
 
 (Phase 2 summary:) Required features 1–4 implemented and exercised:
 

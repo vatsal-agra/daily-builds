@@ -1,0 +1,8 @@
+[
+  {"name": "Ava", "tz": "America/Los_Angeles", "hours": "Mon-Fri 09:00-17:00", "stretch": "Mon-Fri 07:00-20:00",
+   "busy": [{"title": "standup", "start": "2026-11-02T10:00", "minutes": 30, "rrule": "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"},
+            {"title": "1:1", "start": "2026-11-17T13:00", "minutes": 60}]},
+  {"name": "Ben", "tz": "Europe/London", "hours": "Mon-Fri 09:00-17:30", "stretch": "Mon-Fri 08:00-19:00",
+   "busy": [{"title": "planning", "start": "2026-11-16T14:00", "minutes": 90, "rrule": "FREQ=WEEKLY;BYDAY=MO"}]},
+  {"name": "Chi", "tz": "Asia/Tokyo", "hours": "Mon-Fri 09:00-18:00", "stretch": "Mon-Fri 07:00-22:00", "optional": true}
+]
