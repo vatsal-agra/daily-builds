@@ -46,16 +46,17 @@ func main() {
 }
 
 type opts struct {
-	method   string
-	dt, T    float64
-	theta    float64
-	thetaSet bool
-	n        int
-	seed     int64
-	tol      float64
-	out      string
-	samples  int
-	args     []string
+	method    string
+	dt, T     float64
+	theta     float64
+	thetaSet  bool
+	methodSet bool
+	n         int
+	seed      int64
+	tol       float64
+	out       string
+	samples   int
+	args      []string
 }
 
 func parse(name string, args []string) (*opts, error) {
@@ -85,8 +86,11 @@ func parse(name string, args []string) (*opts, error) {
 		args = rest[1:]
 	}
 	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "theta" {
+		switch f.Name {
+		case "theta":
 			o.thetaSet = true
+		case "m":
+			o.methodSet = true
 		}
 	})
 	o.args = pos
