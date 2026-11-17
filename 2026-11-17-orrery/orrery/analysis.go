@@ -148,13 +148,18 @@ func BHError(sys *System, theta float64) (BHReport, error) {
 	}
 	ex, ap := make([]Vec3, n), make([]Vec3, n)
 	c := sys.Clone()
-	t0 := time.Now()
-	c.accelDirect(pos, ex)
-	td := time.Since(t0)
 	c.Theta = theta
-	t1 := time.Now()
-	c.accelTree(pos, ap)
-	tt := time.Since(t1)
+	timeIt := func(f func()) time.Duration {
+		reps := 0
+		t0 := time.Now()
+		for time.Since(t0) < 20*time.Millisecond || reps == 0 {
+			f()
+			reps++
+		}
+		return time.Since(t0) / time.Duration(reps)
+	}
+	td := timeIt(func() { c.accelDirect(pos, ex) })
+	tt := timeIt(func() { c.accelTree(pos, ap) })
 	var sum, mx float64
 	for i := range ex {
 		en := ex[i].Norm()

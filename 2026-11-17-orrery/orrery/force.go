@@ -41,18 +41,22 @@ func (s *System) accelDirect(pos []Vec3, out []Vec3) {
 
 // ---------------------------------------------------------------- Barnes–Hut
 
+// node is one octree cell. Leaves hold a singly linked list of bodies
+// (first/next) so that coincident bodies beyond maxDepth need no allocation.
 type node struct {
-	cx, cy, cz float64 // cell centre
-	half       float64 // half-width
-	mass       float64
-	com        Vec3
-	child      [8]int32 // 0 = none (index 0 is the root and never a child)
-	bodies     []int32  // leaf contents (nil for internal nodes)
-	internal   bool
+	cx, cy, cz       float64 // cell centre
+	half             float64 // half-width
+	size2            float64 // (2*half)², cached for the opening test
+	mass             float64
+	comx, comy, comz float64
+	child            [8]int32 // 0 = none (index 0 is the root and never a child)
+	first            int32    // first body of a leaf, -1 if none
+	internal         bool
 }
 
 type tree struct {
 	nodes []node
+	next  []int32 // next[b] = next body in the same leaf, -1 at end
 	mass  []float64
 	pos   []Vec3
 }
@@ -60,14 +64,14 @@ type tree struct {
 const maxDepth = 60
 
 func buildTree(pos []Vec3, mass []float64) *tree {
-	t := &tree{mass: mass, pos: pos, nodes: make([]node, 0, 2*len(pos)+1)}
+	t := &tree{mass: mass, pos: pos, nodes: make([]node, 0, 2*len(pos)+1), next: make([]int32, len(pos))}
 	lo, hi := pos[0], pos[0]
 	for _, p := range pos {
 		lo = Vec3{math.Min(lo.X, p.X), math.Min(lo.Y, p.Y), math.Min(lo.Z, p.Z)}
 		hi = Vec3{math.Max(hi.X, p.X), math.Max(hi.Y, p.Y), math.Max(hi.Z, p.Z)}
 	}
 	half := math.Max(hi.X-lo.X, math.Max(hi.Y-lo.Y, hi.Z-lo.Z))/2*1.000001 + 1e-300
-	t.nodes = append(t.nodes, node{cx: (lo.X + hi.X) / 2, cy: (lo.Y + hi.Y) / 2, cz: (lo.Z + hi.Z) / 2, half: half})
+	t.nodes = append(t.nodes, node{cx: (lo.X + hi.X) / 2, cy: (lo.Y + hi.Y) / 2, cz: (lo.Z + hi.Z) / 2, half: half, size2: 4 * half * half, first: -1})
 	for i := range pos {
 		t.insert(0, int32(i), 0)
 	}
@@ -75,7 +79,7 @@ func buildTree(pos []Vec3, mass []float64) *tree {
 	return t
 }
 
-func (t *tree) octant(n *node, p Vec3) int {
+func octant(n *node, p Vec3) int {
 	o := 0
 	if p.X >= n.cx {
 		o |= 1
@@ -92,7 +96,7 @@ func (t *tree) octant(n *node, p Vec3) int {
 func (t *tree) newChild(parent int32, oct int) int32 {
 	p := &t.nodes[parent]
 	h := p.half / 2
-	c := node{cx: p.cx - h, cy: p.cy - h, cz: p.cz - h, half: h}
+	c := node{cx: p.cx - h, cy: p.cy - h, cz: p.cz - h, half: h, size2: p.size2 / 4, first: -1}
 	if oct&1 != 0 {
 		c.cx = p.cx + h
 	}
@@ -111,23 +115,26 @@ func (t *tree) newChild(parent int32, oct int) int32 {
 func (t *tree) insert(ni int32, b int32, depth int) {
 	n := &t.nodes[ni]
 	if !n.internal {
-		if len(n.bodies) == 0 || depth >= maxDepth {
-			n.bodies = append(n.bodies, b)
+		if n.first < 0 || depth >= maxDepth {
+			t.next[b] = n.first
+			n.first = b
 			return
 		}
-		// split leaf
-		old := n.bodies
-		n.bodies = nil
+		// split a leaf: push its bodies down one level
+		old := n.first
+		n.first = -1
 		n.internal = true
-		for _, ob := range old {
+		for ob := old; ob >= 0; {
+			nx := t.next[ob]
 			t.insertChild(ni, ob, depth)
+			ob = nx
 		}
 	}
 	t.insertChild(ni, b, depth)
 }
 
 func (t *tree) insertChild(ni int32, b int32, depth int) {
-	oct := t.octant(&t.nodes[ni], t.pos[b])
+	oct := octant(&t.nodes[ni], t.pos[b])
 	c := t.nodes[ni].child[oct]
 	if c == 0 {
 		c = t.newChild(ni, oct)
@@ -137,10 +144,14 @@ func (t *tree) insertChild(ni int32, b int32, depth int) {
 
 func (t *tree) summarize(ni int32) {
 	n := &t.nodes[ni]
+	var mx, my, mz, m float64
 	if !n.internal {
-		for _, b := range n.bodies {
-			n.mass += t.mass[b]
-			n.com = n.com.AddScaled(t.pos[b], t.mass[b])
+		for b := n.first; b >= 0; b = t.next[b] {
+			bm := t.mass[b]
+			m += bm
+			mx += bm * t.pos[b].X
+			my += bm * t.pos[b].Y
+			mz += bm * t.pos[b].Z
 		}
 	} else {
 		for _, c := range n.child {
@@ -149,11 +160,32 @@ func (t *tree) summarize(ni int32) {
 			}
 			t.summarize(c)
 			cn := &t.nodes[c]
-			n.mass += cn.mass
-			n.com = n.com.AddScaled(cn.com, cn.mass)
+			m += cn.mass
+			mx += cn.mass * cn.comx
+			my += cn.mass * cn.comy
+			mz += cn.mass * cn.comz
 		}
 	}
-	n.com = n.com.Scale(1 / n.mass)
+	n.mass = m
+	n.comx, n.comy, n.comz = mx/m, my/m, mz/m
+}
+
+// order lists bodies in depth-first tree order; walking targets in this order
+// keeps successive traversals in cache.
+func (t *tree) order(ni int32, out []int32) []int32 {
+	n := &t.nodes[ni]
+	if !n.internal {
+		for b := n.first; b >= 0; b = t.next[b] {
+			out = append(out, b)
+		}
+		return out
+	}
+	for _, c := range n.child {
+		if c != 0 {
+			out = t.order(c, out)
+		}
+	}
+	return out
 }
 
 func (s *System) accelTree(pos []Vec3, out []Vec3) {
@@ -164,33 +196,41 @@ func (s *System) accelTree(pos []Vec3, out []Vec3) {
 	t := buildTree(pos, mass)
 	e2 := s.Eps * s.Eps
 	th2 := s.Theta * s.Theta
-	stack := make([]int32, 0, 128)
-	for i := range pos {
-		p := pos[i]
-		var a Vec3
+	G := s.G
+	stack := make([]int32, 0, 256)
+	for _, ti := range t.order(0, make([]int32, 0, len(pos))) {
+		i := int(ti)
+		px, py, pz := pos[i].X, pos[i].Y, pos[i].Z
+		var ax, ay, az float64
 		stack = append(stack[:0], 0)
 		for len(stack) > 0 {
 			ni := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			n := &t.nodes[ni]
 			if !n.internal {
-				for _, b := range n.bodies {
+				for b := n.first; b >= 0; b = t.next[b] {
 					if int(b) == i {
 						continue
 					}
-					d := pos[b].Sub(p)
-					r2 := d.Norm2() + e2
-					a = a.AddScaled(d, s.G*mass[b]/(r2*math.Sqrt(r2)))
+					dx, dy, dz := pos[b].X-px, pos[b].Y-py, pos[b].Z-pz
+					r2 := dx*dx + dy*dy + dz*dz + e2
+					f := G * mass[b] / (r2 * math.Sqrt(r2))
+					ax += dx * f
+					ay += dy * f
+					az += dz * f
 				}
 				continue
 			}
-			d := n.com.Sub(p)
-			r2 := d.Norm2()
-			size := 2 * n.half
-			inside := math.Abs(p.X-n.cx) <= n.half && math.Abs(p.Y-n.cy) <= n.half && math.Abs(p.Z-n.cz) <= n.half
-			if !inside && size*size < th2*r2 {
+			dx, dy, dz := n.comx-px, n.comy-py, n.comz-pz
+			r2 := dx*dx + dy*dy + dz*dz
+			// cheap far-field test first; a target inside the cell is never "far"
+			if n.size2 < th2*r2 &&
+				!(math.Abs(px-n.cx) <= n.half && math.Abs(py-n.cy) <= n.half && math.Abs(pz-n.cz) <= n.half) {
 				r2 += e2
-				a = a.AddScaled(d, s.G*n.mass/(r2*math.Sqrt(r2)))
+				f := G * n.mass / (r2 * math.Sqrt(r2))
+				ax += dx * f
+				ay += dy * f
+				az += dz * f
 				continue
 			}
 			for _, c := range n.child {
@@ -199,6 +239,6 @@ func (s *System) accelTree(pos []Vec3, out []Vec3) {
 				}
 			}
 		}
-		out[i] = a
+		out[i] = Vec3{ax, ay, az}
 	}
 }

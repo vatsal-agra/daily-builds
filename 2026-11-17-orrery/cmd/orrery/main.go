@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"time"
 
 	"orrery/orrery"
 )
@@ -89,6 +90,12 @@ func parse(name string, args []string) (*opts, error) {
 		}
 	})
 	o.args = pos
+	if !(o.tol > 0) {
+		return nil, fmt.Errorf("-tol must be positive, got %v", o.tol)
+	}
+	if o.samples < 2 {
+		return nil, fmt.Errorf("-samples must be at least 2, got %d", o.samples)
+	}
 	return o, nil
 }
 
@@ -189,10 +196,37 @@ func cmdRun(o *opts, w io.Writer) error {
 		fmt.Fprintf(w, "%10.4f %14.3e %14.3e %14.3e %10.4f\n", res.Times[k], res.EnergyErr[k], res.LErr[k], res.PDrift[k], res.Virial[k])
 	}
 	fmt.Fprintf(w, "steps=%d force-evals=%d elapsed=%v E0=%.10g\n", res.Steps, res.Evals, res.Elapsed.Round(1e3), res.E0)
+	warnIfBad(w, m, res)
 	if res.Err != nil {
 		return fmt.Errorf("integration stopped early: %w", res.Err)
 	}
 	return nil
+}
+
+// warnIfBad shouts when a run's energy error says the numbers are not trustworthy.
+func warnIfBad(w io.Writer, m orrery.Method, res *orrery.Result) {
+	if res.Err != nil {
+		return
+	}
+	if e := res.MaxAbsEnergyErr(); e > 0.01 || math.IsNaN(e) {
+		hint := "reduce -dt"
+		if m != orrery.DOPRI5 {
+			hint += " or use -m dopri5 (adaptive steps handle close encounters)"
+		}
+		fmt.Fprintf(w, "WARNING: max |dE/E0| = %.3g — this trajectory is not physically trustworthy; %s.\n", e, hint)
+	}
+}
+
+func fmtDur(d time.Duration) string {
+	switch {
+	case d < time.Microsecond:
+		return fmt.Sprintf("%dns", d.Nanoseconds())
+	case d < time.Millisecond:
+		return fmt.Sprintf("%.1fµs", float64(d)/1e3)
+	case d < time.Second:
+		return fmt.Sprintf("%.1fms", float64(d)/1e6)
+	}
+	return fmt.Sprintf("%.2fs", d.Seconds())
 }
 
 func titleOf(s *orrery.System) string {
@@ -222,6 +256,9 @@ func cmdBench(o *opts, w io.Writer) error {
 		status := ""
 		if res.Err != nil {
 			status = "  FAILED: " + res.Err.Error()
+		}
+		if status == "" && res.MaxAbsEnergyErr() > 0.01 {
+			status = "  WARNING: untrustworthy (energy error > 1%)"
 		}
 		fmt.Fprintf(w, "%-10s %-4s %14.3e %14.3e %10d %12v%s\n", m, sym, res.MaxAbsEnergyErr(), res.MaxLErr(), res.Evals, res.Elapsed.Round(1e3), status)
 	}
@@ -262,7 +299,11 @@ func cmdBH(o *opts, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(w, "%8.2f %12.3e %12.3e %12v %12v %8.1fx\n", th, r.RMSRel, r.MaxRel, r.Tree.Round(1e3), r.Direct.Round(1e3), float64(r.Direct)/float64(r.Tree))
+		sp := "n/a"
+		if r.Tree > 0 {
+			sp = fmt.Sprintf("%.1fx", float64(r.Direct)/float64(r.Tree))
+		}
+		fmt.Fprintf(w, "%8.2f %12.3e %12.3e %12v %12v %9s\n", th, r.RMSRel, r.MaxRel, fmtDur(r.Tree), fmtDur(r.Direct), sp)
 	}
 	return nil
 }

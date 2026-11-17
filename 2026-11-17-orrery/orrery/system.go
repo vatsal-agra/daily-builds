@@ -48,6 +48,16 @@ func (s *System) Validate() error {
 	if s.Theta < 0 || math.IsNaN(s.Theta) {
 		return fmt.Errorf("theta must be >= 0, got %v", s.Theta)
 	}
+	if s.Eps == 0 {
+		for i := 0; i < len(s.Bodies); i++ {
+			for j := i + 1; j < len(s.Bodies); j++ {
+				if s.Bodies[i].Pos == s.Bodies[j].Pos {
+					return fmt.Errorf("bodies %d (%s) and %d (%s) occupy the same point; the potential is infinite (use eps > 0 or move one)",
+						i, s.Bodies[i].Name, j, s.Bodies[j].Name)
+				}
+			}
+		}
+	}
 	seen := map[string]bool{}
 	for i, b := range s.Bodies {
 		if !(b.M > 0) || math.IsInf(b.M, 0) {

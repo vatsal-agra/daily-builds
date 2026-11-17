@@ -24,6 +24,7 @@ import (
 // Errors carry the line number.
 func ParseScenario(text string) (*System, error) {
 	s := &System{G: 1}
+	text = strings.TrimPrefix(text, "\ufeff")
 	bary := false
 	sc := bufio.NewScanner(strings.NewReader(text))
 	sc.Buffer(make([]byte, 1<<20), 1<<26)
@@ -222,6 +223,9 @@ func FormatScenario(s *System) string {
 	return sb.String()
 }
 
+// MaxGenerated bounds generator sizes (diagnostics are O(N²)).
+const MaxGenerated = 20000
+
 // BuiltinInfo describes a built-in scenario.
 type BuiltinInfo struct{ Name, Desc string }
 
@@ -278,13 +282,19 @@ func Builtin(name string, n int, seed int64) (*System, error) {
 		s.Bodies = append(s.Bodies, Body{Name: "Trojan", M: 1e-12, Pos: rot(r), Vel: rot(v)})
 		s.ToBarycentric()
 	case "plummer":
-		if n < 2 {
+		if n == 0 {
 			n = 200
+		}
+		if n < 2 || n > MaxGenerated {
+			return nil, fmt.Errorf("plummer needs 2 <= n <= %d, got %d", MaxGenerated, n)
 		}
 		s = plummer(n, seed)
 	case "disc":
-		if n < 1 {
+		if n == 0 {
 			n = 300
+		}
+		if n < 1 || n > MaxGenerated {
+			return nil, fmt.Errorf("disc needs 1 <= n <= %d, got %d", MaxGenerated, n)
 		}
 		s = disc(n, seed)
 	default:

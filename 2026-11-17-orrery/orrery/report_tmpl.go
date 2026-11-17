@@ -44,7 +44,7 @@ td.num{font-family:ui-monospace,Menlo,monospace}
 <header><h1>Orrery<small id="ttl"></small></h1><div class="params" id="params"></div></header>
 <main>
 <section class="card"><h2>Orbits <span id="viewm" style="text-transform:none;letter-spacing:0"></span></h2>
-<canvas id="orbit"></canvas>
+<canvas id="orbit" role="img" aria-label="Animated orbits of the bodies, viewed from above"></canvas>
 <div class="controls">
 <button id="play" aria-label="play or pause">❚❚ pause</button>
 <input id="scrub" type="range" min="0" value="0" step="1" aria-label="time">
@@ -56,8 +56,8 @@ td.num{font-family:ui-monospace,Menlo,monospace}
 </section>
 <div class="right">
 <section class="card"><h2>Relative energy error |ΔE/E₀| (log scale)</h2>
-<canvas id="chart"></canvas>
-<div class="note" id="hover">Symplectic schemes wobble but stay bounded; non-symplectic ones drift away secularly.</div></section>
+<canvas id="chart" role="img" aria-label="Log-scale plot of relative energy error against time for each integrator"></canvas>
+<div class="note" id="hover" aria-live="polite">Symplectic schemes wobble but stay bounded; non-symplectic ones drift away secularly.</div></section>
 <section class="card"><h2>Integrator comparison</h2><div class="tablewrap"><table id="tbl"></table></div></section>
 </div>
 </main>
@@ -89,7 +89,10 @@ var scrub=document.getElementById('scrub');scrub.max=K-1;
 var frame=0,playing=true,sq=false,trails=true,W=0,H2=0;
 var R=1;
 (function(){var rs=[];for(var k=0;k<K;k++){for(var i=0;i<N;i++){var x=F[k][3*i],y=F[k][3*i+1];rs.push(Math.hypot(x,y))}}
- rs.sort(function(a,b){return a-b});R=rs[Math.floor(rs.length*0.97)]||1;if(!(R>0))R=1;R*=1.15})();
+ rs.sort(function(a,b){return a-b});R=rs[Math.floor(rs.length*0.97)]||1;if(!(R>0))R=1;R*=1.15;
+ var med=[];for(var i=0;i<N;i++){var q=[];for(var k=0;k<K;k+=Math.max(1,K>>4))q.push(Math.hypot(F[k][3*i],F[k][3*i+1]));q.sort(function(a,b){return a-b});med.push(q[q.length>>1])}
+ med=med.filter(function(v){return v>0}).sort(function(a,b){return a-b});
+ if(N<=40&&med.length>1&&med[med.length-1]/med[0]>8){sq=true}})();
 function resize(){var r=window.devicePixelRatio||1;var b=cv.getBoundingClientRect();W=Math.max(10,b.width);H2=Math.max(10,b.height);cv.width=W*r;cv.height=H2*r;cx.setTransform(r,0,0,r,0,0);draw()}
 function map(x,y){var s=Math.min(W,H2)/2*0.94;if(sq){var r=Math.hypot(x,y);if(r>0){var k=Math.sqrt(r/R)*R/r;x*=k;y*=k}}return [W/2+x/R*s,H2/2-y/R*s]}
 var maxm=Math.max.apply(null,D.mass);
@@ -110,7 +113,7 @@ function draw(){
 var last=0;function tick(ts){if(playing&&ts-last>33){last=ts;frame=(frame+1)%K;draw()}requestAnimationFrame(tick)}
 document.getElementById('play').onclick=function(){playing=!playing;this.textContent=playing?'❚❚ pause':'▶ play'};
 scrub.oninput=function(){frame=+this.value;draw()};
-document.getElementById('scale').onclick=function(){sq=!sq;this.setAttribute('aria-pressed',sq);draw()};
+document.getElementById('scale').setAttribute('aria-pressed',sq);document.getElementById('scale').onclick=function(){sq=!sq;this.setAttribute('aria-pressed',sq);draw()};
 document.getElementById('trails').onclick=function(){trails=!trails;this.setAttribute('aria-pressed',trails);draw()};
 // ---- chart
 var ch=document.getElementById('chart'),cc=ch.getContext('2d'),CW=0,CH=0,hoverX=null;
@@ -121,7 +124,7 @@ function drawChart(){
  var tmax=0;D.series.forEach(function(s){if(s.t.length)tmax=Math.max(tmax,s.t[s.t.length-1])});if(!(tmax>0))tmax=1;
  cc.font='11px ui-monospace,Menlo,monospace';cc.textBaseline='middle';
  for(var e=LO;e<=HI;e+=3){var y=T+hh*(1-(e-LO)/(HI-LO));cc.strokeStyle=css('--grid');cc.beginPath();cc.moveTo(L,y);cc.lineTo(L+w,y);cc.stroke();cc.fillStyle=css('--mute');cc.textAlign='right';cc.fillText('1e'+e,L-6,y)}
- cc.textAlign='center';cc.textBaseline='top';for(var k=0;k<=4;k++){var x=L+w*k/4;cc.fillText((tmax*k/4).toPrecision(3),x,T+hh+6)}
+ cc.textBaseline='top';for(var k=0;k<=4;k++){var x=L+w*k/4;cc.textAlign=k===4?'right':'center';cc.fillText((tmax*k/4).toPrecision(3),x,T+hh+6)}
  D.series.forEach(function(s,i){cc.strokeStyle=css(pal[i%7]);cc.lineWidth=1.8;cc.beginPath();var started=false;
   for(var k=0;k<s.t.length;k++){var v=Math.log10(Math.max(s.e[k],1e-300));v=Math.max(LO,Math.min(HI,v));var x=L+w*s.t[k]/tmax,y=T+hh*(1-(v-LO)/(HI-LO));if(!started){cc.moveTo(x,y);started=true}else cc.lineTo(x,y)}cc.stroke()});
  if(hoverX!==null){cc.strokeStyle=css('--mute');cc.setLineDash([3,3]);cc.beginPath();cc.moveTo(hoverX,T);cc.lineTo(hoverX,T+hh);cc.stroke();cc.setLineDash([])}
