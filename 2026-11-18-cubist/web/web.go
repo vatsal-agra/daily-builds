@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +26,7 @@ type Solution struct {
 	Phase1   int      `json:"phase1"`
 	Ms       float64  `json:"ms"`
 	Final    string   `json:"final"`
+	Method   string   `json:"method"` // "two-phase" or "inverse-of-scramble"
 }
 
 // BuildSolution solves c (reached from scramble text, if known) and packages the result.
@@ -33,15 +35,24 @@ func BuildSolution(c cube.Cube, scramble string, opt cube.Options) (Solution, er
 	if err != nil {
 		return Solution{}, err
 	}
-	names := make([]string, len(res.Moves))
-	for i, m := range res.Moves {
+	moves, phase1, method := res.Moves, res.Phase1, "two-phase"
+	// A short known scramble is often undone more cheaply by simply reversing it.
+	if scramble != "" {
+		if sm, perr := cube.ParseMoves(scramble); perr == nil {
+			if inv := cube.Simplify(cube.InvertSeq(sm)); len(inv) < len(moves) && c.ApplySeq(inv).IsSolved() {
+				moves, phase1, method = inv, -1, "inverse-of-scramble"
+			}
+		}
+	}
+	names := make([]string, len(moves))
+	for i, m := range moves {
 		names[i] = m.String()
 	}
 	start := c.Facelets()
 	return Solution{
-		Start: start, Scramble: scramble, Moves: names, Phase1: res.Phase1,
+		Start: start, Scramble: scramble, Moves: names, Phase1: phase1, Method: method,
 		Ms:    float64(res.Elapsed.Microseconds()) / 1000,
-		Final: cube.PhysicalFaceletsFrom(start, res.Moves),
+		Final: cube.PhysicalFaceletsFrom(start, moves),
 	}, nil
 }
 
@@ -68,6 +79,7 @@ type solveReq struct {
 func Handler(opt cube.Options) http.Handler {
 	mux := http.NewServeMux()
 	var mu sync.Mutex
+	slots := make(chan struct{}, runtime.NumCPU())
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -96,6 +108,13 @@ func Handler(opt cube.Options) http.Handler {
 		var req solveReq
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			fail(400, "bad JSON: "+err.Error())
+			return
+		}
+		select {
+		case slots <- struct{}{}:
+			defer func() { <-slots }()
+		default:
+			fail(503, "server busy — try again in a moment")
 			return
 		}
 		var c cube.Cube

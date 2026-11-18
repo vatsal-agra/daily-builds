@@ -11,6 +11,7 @@ type Options struct {
 	Target    int           // stop as soon as a solution this short is found (default 20)
 	MaxLen    int           // never return anything longer (default 30)
 	TimeLimit time.Duration // keep improving until this long (default 2s); a first solution is always returned
+	HardLimit time.Duration // give up if no solution at all after this long (default 20s)
 }
 
 // Result is a solved cube's answer.
@@ -31,13 +32,21 @@ func (o *Options) defaults() {
 	if o.TimeLimit <= 0 {
 		o.TimeLimit = 2 * time.Second
 	}
+	if o.HardLimit <= 0 {
+		o.HardLimit = 20 * time.Second
+	}
 }
+
+// ErrGaveUp is returned when no solution within MaxLen was found before HardLimit.
+var ErrGaveUp = errors.New("gave up: no solution within the move limit found in time (raise MaxLen)")
 
 type search struct {
 	t        *Tables
 	start    Cube
 	opt      Options
 	deadline time.Time
+	hard     time.Time
+	gaveUp   bool
 	path     [48]int
 	path2    [48]int
 	best     []Move
@@ -62,7 +71,7 @@ func Solve(c Cube, opt Options) (Result, error) {
 	opt.defaults()
 	tb := GetTables() // built once; not counted in the solve time
 	begin := time.Now()
-	s := &search{t: tb, start: c, opt: opt, deadline: begin.Add(opt.TimeLimit)}
+	s := &search{t: tb, start: c, opt: opt, deadline: begin.Add(opt.TimeLimit), hard: begin.Add(opt.HardLimit)}
 	twist, flip, slc := c.twist(), c.flip(), c.slice()
 	for d := 0; d <= opt.MaxLen && !s.done; d++ {
 		if s.best != nil && d >= len(s.best) {
@@ -71,7 +80,10 @@ func Solve(c Cube, opt Options) (Result, error) {
 		s.p1(twist, flip, slc, d, d, -1)
 	}
 	if s.best == nil {
-		return Result{}, errors.New("no solution within MaxLen")
+		if s.gaveUp {
+			return Result{}, ErrGaveUp
+		}
+		return Result{}, fmt.Errorf("no solution of at most %d moves exists in the search space explored", opt.MaxLen)
 	}
 	out := Simplify(s.best)
 	if !c.ApplySeq(out).IsSolved() {
@@ -89,9 +101,16 @@ func (s *search) p1(twist, flip, slc, togo, depth, lastFace int) {
 		return
 	}
 	s.nodes++
-	if s.nodes&0x3fff == 0 && s.best != nil && time.Now().After(s.deadline) {
-		s.done = true
-		return
+	if s.nodes&0x3fff == 0 {
+		now := time.Now()
+		if s.best != nil && now.After(s.deadline) {
+			s.done = true
+			return
+		}
+		if s.best == nil && now.After(s.hard) {
+			s.done, s.gaveUp = true, true
+			return
+		}
 	}
 	t := s.t
 	h := t.pruneTS[twist*nSlice+slc]

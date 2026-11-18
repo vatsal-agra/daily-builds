@@ -74,23 +74,51 @@ func main() {
 
 type inputFlags struct {
 	scramble, facelets *string
+	fs                 *flag.FlagSet
+}
+
+// looksLikeFacelets: 54 letters, exactly nine of each of U R F D L B. A real 54-move scramble
+// written without spaces *and* with that exact letter census is vanishingly unlikely.
+func looksLikeFacelets(s string) bool {
+	s = strings.ToUpper(s)
+	if len(s) != 54 {
+		return false
+	}
+	for _, f := range "URFDLB" {
+		if strings.Count(s, string(f)) != 9 {
+			return false
+		}
+	}
+	return true
 }
 
 func addInput(fs *flag.FlagSet) inputFlags {
 	return inputFlags{
 		scramble: fs.String("scramble", "", "scramble in face-turn notation"),
 		facelets: fs.String("facelets", "", "54-letter facelet string (U R F D L B)"),
+		fs:       fs,
 	}
 }
 
 // cubeFrom builds the cube from flags, positional args, or errors out helpfully.
 func cubeFrom(in inputFlags, rest []string) (cube.Cube, string) {
 	scr := *in.scramble
-	if scr == "" && *in.facelets == "" && len(rest) > 0 {
-		scr = strings.Join(rest, " ")
+	given := false
+	in.fs.Visit(func(f *flag.Flag) {
+		if f.Name == "scramble" {
+			given = true
+		}
+	})
+	if !given && *in.facelets == "" && len(rest) > 0 {
+		joined := strings.Join(rest, " ")
+		if looksLikeFacelets(joined) {
+			*in.facelets = joined
+		} else {
+			scr, given = joined, true
+		}
 	}
 	switch {
-	case *in.facelets != "" && scr != "":
+	case *in.facelets != "" && given:
 		die("give either --scramble or --facelets, not both")
 	case *in.facelets != "":
 		c, err := cube.ParseFacelets(*in.facelets)
@@ -98,7 +126,7 @@ func cubeFrom(in inputFlags, rest []string) (cube.Cube, string) {
 			die("%v", err)
 		}
 		return c, ""
-	case scr != "":
+	case given:
 		ms, err := cube.ParseMoves(scr)
 		if err != nil {
 			die("%v", err)
@@ -109,18 +137,25 @@ func cubeFrom(in inputFlags, rest []string) (cube.Cube, string) {
 	return cube.Cube{}, ""
 }
 
-func solveFlags(fs *flag.FlagSet) (*int, *int, *time.Duration) {
+func solveFlags(fs *flag.FlagSet, defTime time.Duration) (*int, *int, *time.Duration) {
 	return fs.Int("target", 20, "stop once a solution this short is found"),
 		fs.Int("max", 30, "never return more moves than this"),
-		fs.Duration("time", 2*time.Second, "keep searching for shorter solutions this long")
+		fs.Duration("time", defTime, "keep searching for shorter solutions this long")
+}
+
+func checkSolveFlags(target, maxl int, tl time.Duration) {
+	if target < 1 || maxl < 1 || tl <= 0 {
+		die("--target and --max must be >= 1 and --time must be positive")
+	}
 }
 
 func cmdSolve(args []string) {
 	fs := flag.NewFlagSet("solve", flag.ExitOnError)
 	in := addInput(fs)
-	target, maxl, tl := solveFlags(fs)
+	target, maxl, tl := solveFlags(fs, 2*time.Second)
 	asJSON := fs.Bool("json", false, "machine-readable output")
 	fs.Parse(args)
+	checkSolveFlags(*target, *maxl, *tl)
 	c, scr := cubeFrom(in, fs.Args())
 	sol, err := web.BuildSolution(c, scr, cube.Options{Target: *target, MaxLen: *maxl, TimeLimit: *tl})
 	if err != nil {
@@ -137,8 +172,13 @@ func cmdSolve(args []string) {
 		fmt.Println("already solved (0 moves)")
 		return
 	}
-	fmt.Printf("solution (%d moves; phase 1: %d, phase 2: %d; %.1f ms):\n", len(sol.Moves), sol.Phase1, len(sol.Moves)-sol.Phase1, sol.Ms)
-	fmt.Println(strings.Join(sol.Moves[:sol.Phase1], " ") + "  .  " + strings.Join(sol.Moves[sol.Phase1:], " "))
+	if sol.Phase1 < 0 {
+		fmt.Printf("solution (%d moves; the scramble reversed is shorter than the solver's answer):\n", len(sol.Moves))
+		fmt.Println(strings.Join(sol.Moves, " "))
+	} else {
+		fmt.Printf("solution (%d moves; phase 1: %d, phase 2: %d; %.1f ms):\n", len(sol.Moves), sol.Phase1, len(sol.Moves)-sol.Phase1, sol.Ms)
+		fmt.Println(strings.Join(sol.Moves[:sol.Phase1], " ") + "  .  " + strings.Join(sol.Moves[sol.Phase1:], " "))
+	}
 	fmt.Println("verified by independent 3-D sticker simulation: solved ✔")
 }
 
@@ -254,9 +294,10 @@ func cmdSeq(cmd string, args []string) {
 func cmdRender(args []string) {
 	fs := flag.NewFlagSet("render", flag.ExitOnError)
 	in := addInput(fs)
-	target, maxl, tl := solveFlags(fs)
+	target, maxl, tl := solveFlags(fs, 2*time.Second)
 	out := fs.String("o", "cubist.html", "output HTML file")
 	fs.Parse(args)
+	checkSolveFlags(*target, *maxl, *tl)
 	c, scr := cubeFrom(in, fs.Args())
 	sol, err := web.BuildSolution(c, scr, cube.Options{Target: *target, MaxLen: *maxl, TimeLimit: *tl})
 	if err != nil {
@@ -276,8 +317,9 @@ func cmdBench(args []string) {
 	fs := flag.NewFlagSet("bench", flag.ExitOnError)
 	n := fs.Int("n", 100, "number of random states")
 	seed := fs.Int64("seed", 1, "random seed")
-	target, maxl, tl := solveFlags(fs)
+	target, maxl, tl := solveFlags(fs, 150*time.Millisecond)
 	fs.Parse(args)
+	checkSolveFlags(*target, *maxl, *tl)
 	if *n < 1 || *n > 100000 {
 		die("-n must be 1..100000")
 	}
@@ -321,10 +363,11 @@ func cmdBench(args []string) {
 func cmdServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	addr := fs.String("addr", ":8080", "listen address")
-	target, maxl, tl := solveFlags(fs)
+	target, maxl, tl := solveFlags(fs, 2*time.Second)
 	fs.Parse(args)
+	checkSolveFlags(*target, *maxl, *tl)
 	cube.GetTables()
 	fmt.Printf("cubist serving on http://localhost%s\n", *addr)
-	srv := &http.Server{Addr: *addr, Handler: web.Handler(cube.Options{Target: *target, MaxLen: *maxl, TimeLimit: *tl}), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Addr: *addr, Handler: web.Handler(cube.Options{Target: *target, MaxLen: *maxl, TimeLimit: *tl}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	die("%v", srv.ListenAndServe())
 }

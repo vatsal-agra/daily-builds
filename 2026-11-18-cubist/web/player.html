@@ -22,6 +22,7 @@ canvas:active{cursor:grabbing}
 button{background:#262d5c;color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font:inherit;cursor:pointer;transition:.15s}
 button:hover:not(:disabled){background:#313a76;border-color:var(--acc)}
 button:disabled{opacity:.4;cursor:default}
+button.primary:hover:not(:disabled){background:linear-gradient(90deg,#7482ff,#6ae6d6);border:none}
 button.primary{background:linear-gradient(90deg,#5b6bff,#3fd0c0);border:none;color:#08101a;font-weight:700}
 input[type=range]{accent-color:var(--acc)}
 #scrub{flex:1;min-width:140px}
@@ -69,7 +70,7 @@ kbd{background:#10142c;border:1px solid var(--line);border-radius:5px;padding:0 
       <div class="card">
         <div class="stats">
           <div class="stat"><b id="sLen">–</b><small>moves</small></div>
-          <div class="stat"><b id="sP1">–</b><small>phase 1 / phase 2</small></div>
+          <div class="stat"><b id="sP1">–</b><small id="sP1l">phase 1 / phase 2</small></div>
           <div class="stat"><b id="sMs">–</b><small>solve time</small></div>
         </div>
         <h3>Scramble</h3>
@@ -141,15 +142,18 @@ function load(d){
   startFacelets=d.start; moves=d.moves.map(parseMove); phase1=d.phase1||0; ms=d.ms||0; scramble=d.scramble||"";
   stickers=makeStickers(startFacelets); idx=0; anim=null; playing=false;
   $("bPlay").textContent="▶ Play";
-  $("sLen").textContent=moves.length; $("sP1").textContent=phase1+" / "+(moves.length-phase1);
+  $("sLen").textContent=moves.length; $("sP1").textContent=phase1<0?"inverse":phase1+" / "+(moves.length-phase1);
   $("sMs").textContent=ms<1?"<1 ms":Math.round(ms)+" ms";
+  $("sP1l").textContent=phase1<0?"scramble reversed":"phase 1 / phase 2";
   $("scr").textContent=scramble||"(custom facelet state)";
   $("scrub").max=moves.length; $("scrub").value=0;
   const box=$("moves"); box.innerHTML="";
   if(!moves.length){box.innerHTML='<span class="sub">Already solved — nothing to do.</span>';}
+  const split=phase1>=0;
+  if(!split&&moves.length){const s=document.createElement("div");s.className="sep";s.textContent="The scramble reversed — shorter than the two-phase answer";box.appendChild(s);}
   moves.forEach((m,i)=>{
-    if(i===0&&phase1>0){const s=document.createElement("div");s.className="sep";s.textContent="Phase 1 — reach the <U,D,R2,L2,F2,B2> subgroup";box.appendChild(s);}
-    if(i===phase1&&phase1>0||(i===0&&phase1===0)){const s=document.createElement("div");s.className="sep";s.textContent="Phase 2 — finish inside the subgroup";box.appendChild(s);}
+    if(split&&i===0&&phase1>0){const s=document.createElement("div");s.className="sep";s.textContent="Phase 1 — reach the <U,D,R2,L2,F2,B2> subgroup";box.appendChild(s);}
+    if(split&&(i===phase1&&phase1>0||(i===0&&phase1===0))){const s=document.createElement("div");s.className="sep";s.textContent="Phase 2 — finish inside the subgroup";box.appendChild(s);}
     const c=document.createElement("span");c.className="chip"+(i>=phase1?" p2":"");c.textContent=m.name;c.dataset.i=i;
     c.onclick=()=>seek(i+1);box.appendChild(c);});
   verify(); refreshUI(); draw();
@@ -186,7 +190,7 @@ function tick(now){
 
 // ---------- rendering ----------
 const D=9.5;
-function proj(v){const W=cv.width,H=cv.height,S=W/5.2,k=D/(D-v[2]);return[W/2+v[0]*S*k*0.62,H/2-v[1]*S*k*0.62];}
+function proj(v){const W=cv.width,H=cv.height,S=W/5.2,k=D/(D-v[2]);return[W/2+v[0]*S*k*0.74,H/2-v[1]*S*k*0.74];}
 function ease(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}
 function draw(p){
   const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H);
