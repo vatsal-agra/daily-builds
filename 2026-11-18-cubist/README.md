@@ -1,15 +1,21 @@
 # Cubist
 
 A Rubik's Cube toolkit in Go: Kociemba two-phase solver, facelet validator, algorithm analyzer,
-and an animated 3-D HTML player that re-verifies every solution with an independent simulation.
+an animated 3-D HTML player that re-verifies every solution with an independent simulation,
+and a small web UI/API.
 
-**Status: Phase 2 (core build) complete.** Required features implemented and working end to end:
+**Status: Phase 4 (stretch + polish) complete.**
 
-1. Cubie model + notation parser, inverse, simplifier
-2. Facelet I/O with validation and plain-language diagnoses
-3. Two-phase solver (`cubist solve`)
-4. Animated 3-D HTML player (`cubist render`)
+- Phase 2 required features: cubie model + notation, facelet validation, two-phase solver, 3-D HTML player.
+- Phase 3: adversarial review — 11 findings fixed (see REVIEW.md).
+- Phase 4: stretch features shipped — algorithm analyzer, random-state generator + `bench`, `serve` web UI/API;
+  polish: busy states, localhost-by-default server, helpful errors everywhere.
 
-Try it: `go build -o cubist . && ./cubist solve "R U R' U' F2 D L' B2" && ./cubist render -o out.html --scramble "R U F"`
-
+Quick try:
+```
+go build -o cubist . 
+./cubist solve "R U R' U' F2 D L' B2"
+./cubist analyze "R U R' U'"
+./cubist serve            # http://127.0.0.1:8080
+```
 See PLAN.md for the architecture. (Full README arrives in Phase 6.)

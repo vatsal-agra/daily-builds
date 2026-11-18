@@ -29,7 +29,7 @@ usage: cubist <command> [flags] [args]
   invert    invert an algorithm:  cubist invert "R U R' U'"
   render    write a self-contained animated 3-D HTML player: -o file.html
   bench     solve N random states and print length / time statistics
-  serve     interactive web UI + JSON API on --addr (default :8080)
+  serve     interactive web UI + JSON API on --addr (default 127.0.0.1:8080)
 
 run "cubist <command> -h" for flags.
 `
@@ -362,12 +362,12 @@ func cmdBench(args []string) {
 
 func cmdServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	addr := fs.String("addr", ":8080", "listen address")
+	addr := fs.String("addr", "127.0.0.1:8080", "listen address (use :8080 to expose on all interfaces)")
 	target, maxl, tl := solveFlags(fs, 2*time.Second)
 	fs.Parse(args)
 	checkSolveFlags(*target, *maxl, *tl)
 	cube.GetTables()
-	fmt.Printf("cubist serving on http://localhost%s\n", *addr)
+	fmt.Printf("cubist serving on http://%s\n", strings.TrimPrefix(*addr, "0.0.0.0"))
 	srv := &http.Server{Addr: *addr, Handler: web.Handler(cube.Options{Target: *target, MaxLen: *maxl, TimeLimit: *tl}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	die("%v", srv.ListenAndServe())
 }

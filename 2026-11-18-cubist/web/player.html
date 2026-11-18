@@ -259,19 +259,24 @@ addEventListener("keydown",e=>{if(e.target.tagName==="TEXTAREA"||e.target.tagNam
 // ---------- serve mode ----------
 async function solve(body){
   $("err").textContent="";
+  const btns=["bSolveScr","bSolveFace","bRand"].map($);
+  btns.forEach(b=>b.disabled=true);$("err").style.color="var(--mut)";$("err").textContent="Solving…";
   try{
     const r=await fetch("/api/solve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const j=await r.json();
+    $("err").style.color="";
     if(!r.ok){$("err").textContent=j.error||"error";return;}
+    $("err").textContent="";
     load(j);
-  }catch(e){$("err").textContent="Request failed: "+e.message;}
+  }catch(e){$("err").style.color="";$("err").textContent="Request failed: "+e.message;}
+  finally{btns.forEach(b=>b.disabled=false);}
 }
 if(SERVE){
   $("serveCard").classList.remove("hide");
   $("subtitle").textContent="Interactive solver — type a scramble or paste a facelet string";
   $("bSolveScr").onclick=()=>solve({scramble:$("inScr").value});
   $("bSolveFace").onclick=()=>solve({facelets:$("inFace").value});
-  $("bRand").onclick=()=>solve({random:true}).then(()=>{});
+  $("bRand").onclick=()=>solve({random:true});
 }
 load(DATA||{start:SOLVED,moves:[],phase1:0,ms:0,scramble:""});
 </script>
