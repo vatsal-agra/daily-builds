@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cubist — solution player</title>
+<style>
+:root{--bg:#0d1020;--panel:#161a30;--panel2:#1d2240;--line:#2a3058;--fg:#e8ebff;--mut:#8a92c4;--acc:#7c8cff;--acc2:#5eead4;--bad:#ff7a90;--ok:#5eead4}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(1200px 700px at 70% -10%,#252c66 0%,var(--bg) 60%);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:20px 16px 40px}
+header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+h1{margin:0;font-size:26px;letter-spacing:.5px;font-weight:700}
+h1 span{background:linear-gradient(90deg,var(--acc),var(--acc2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mut)}
+.grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+.card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+canvas{width:100%;aspect-ratio:1/1;display:block;border-radius:12px;background:radial-gradient(circle at 50% 40%,#232a58,#10132a);cursor:grab;touch-action:none}
+canvas:active{cursor:grabbing}
+.ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+button{background:#262d5c;color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font:inherit;cursor:pointer;transition:.15s}
+button:hover:not(:disabled){background:#313a76;border-color:var(--acc)}
+button:disabled{opacity:.4;cursor:default}
+button.primary{background:linear-gradient(90deg,#5b6bff,#3fd0c0);border:none;color:#08101a;font-weight:700}
+input[type=range]{accent-color:var(--acc)}
+#scrub{flex:1;min-width:140px}
+label{color:var(--mut);font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.stat{background:#10142c;border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.stat b{display:block;font-size:20px}
+.stat small{color:var(--mut)}
+.moves{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px;max-height:200px;overflow:auto;padding:2px}
+.chip{min-width:38px;text-align:center;padding:4px 8px;border-radius:8px;background:#10142c;border:1px solid var(--line);font:600 14px ui-monospace,Menlo,Consolas,monospace;cursor:pointer;color:var(--mut)}
+.chip.p2{border-color:#3b5b66}
+.chip.done{color:var(--fg);background:#232b5a}
+.chip.cur{color:#08101a;background:var(--acc2);border-color:var(--acc2)}
+.sep{width:100%;font-size:12px;color:var(--mut);margin-top:2px}
+.verdict{padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:#10142c;font-size:14px}
+.verdict.ok{border-color:#2f8f84;color:var(--ok)}
+.verdict.bad{border-color:#a04456;color:var(--bad)}
+textarea,input[type=text]{width:100%;background:#10142c;color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:14px ui-monospace,Menlo,Consolas,monospace}
+textarea{resize:vertical;min-height:58px}
+.err{color:var(--bad);font-size:13px;min-height:20px;margin-top:6px}
+h3{margin:12px 0 6px;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
+kbd{background:#10142c;border:1px solid var(--line);border-radius:5px;padding:0 5px;font-size:12px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Cub<span>ist</span></h1><div class="sub" id="subtitle">Kociemba two-phase solution player</div></header>
+  <div class="grid">
+    <div class="card">
+      <canvas id="cv" width="760" height="760"></canvas>
+      <div class="ctl">
+        <button id="bReset" title="Back to scrambled state (Home)">⏮</button>
+        <button id="bPrev" title="Step back (←)">◀</button>
+        <button id="bPlay" class="primary" title="Play / pause (Space)">▶ Play</button>
+        <button id="bNext" title="Step forward (→)">▶|</button>
+        <button id="bEnd" title="Jump to solved (End)">⏭</button>
+        <input id="scrub" type="range" min="0" max="0" value="0" aria-label="position">
+      </div>
+      <div class="ctl"><label for="speed">speed</label><input id="speed" type="range" min="1" max="10" value="5" style="width:140px">
+        <label><input type="checkbox" id="loop"> loop</label>
+        <span class="sub" style="font-size:12px">drag to orbit · <kbd>Space</kbd> <kbd>←</kbd> <kbd>→</kbd></span></div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="stats">
+          <div class="stat"><b id="sLen">–</b><small>moves</small></div>
+          <div class="stat"><b id="sP1">–</b><small>phase 1 / phase 2</small></div>
+          <div class="stat"><b id="sMs">–</b><small>solve time</small></div>
+        </div>
+        <h3>Scramble</h3>
+        <div id="scr" class="sub" style="font:13px ui-monospace,Menlo,Consolas,monospace;word-break:break-word">–</div>
+        <h3>Solution</h3>
+        <div class="moves" id="moves"></div>
+        <div class="verdict" id="verdict">Waiting…</div>
+      </div>
+      <div class="card hide" id="serveCard" style="margin-top:16px">
+        <h3 style="margin-top:0">Solve something</h3>
+        <label for="inScr">Scramble (U R F D L B, ' and 2)</label>
+        <textarea id="inScr" spellcheck="false" placeholder="R U R' U' F2 D L' B2 …"></textarea>
+        <div class="ctl"><button id="bSolveScr" class="primary">Solve scramble</button><button id="bRand">Random state</button></div>
+        <h3>…or paste a facelet string (54 letters, U R F D L B)</h3>
+        <input type="text" id="inFace" spellcheck="false" placeholder="UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB">
+        <div class="ctl"><button id="bSolveFace">Solve facelets</button></div>
+        <div class="err" id="err"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+"use strict";
+const DATA = /*__DATA__*/null;
+const SERVE = /*__SERVE__*/false;
+// ---------- physical cube simulation (independent of the Go solver) ----------
+const FACES = "URFDLB";
+const COLORS = {U:"#f6f6f2",R:"#d8262f",F:"#18a448",D:"#f4c71b",L:"#f27d1c",B:"#2260d0"};
+const NORMALS = {U:[0,1,0],R:[1,0,0],F:[0,0,1],D:[0,-1,0],L:[-1,0,0],B:[0,0,-1]};
+const FACE_AXIS = {U:[1,1,-1],R:[0,1,-1],F:[2,1,-1],D:[1,-1,1],L:[0,-1,1],B:[2,-1,1]}; // axis, layer, sign
+const SOLVED = "UUUUUUUUURRRRRRRRRFFFFFFFFFDDDDDDDDDLLLLLLLLLBBBBBBBBB";
+function faceletIndex(p,n){const[x,y,z]=p;
+  if(n[1]===1)return 0*9+(z+1)*3+(x+1);
+  if(n[0]===1)return 1*9+(1-y)*3+(1-z);
+  if(n[2]===1)return 2*9+(1-y)*3+(x+1);
+  if(n[1]===-1)return 3*9+(1-z)*3+(x+1);
+  if(n[0]===-1)return 4*9+(1-y)*3+(z+1);
+  return 5*9+(1-y)*3+(1-x);}
+function rot90(v,axis,q){q=((q%4)+4)%4;let[x,y,z]=v;
+  for(;q>0;q--){ if(axis===0)[y,z]=[-z,y]; else if(axis===1)[x,z]=[z,-x]; else [x,y]=[-y,x]; }
+  return [x,y,z];}
+function rotAngle(v,axis,a){const c=Math.cos(a),s=Math.sin(a);const[x,y,z]=v;
+  if(axis===0)return[x,y*c-z*s,y*s+z*c];
+  if(axis===1)return[x*c+z*s,y,-x*s+z*c];
+  return[x*c-y*s,x*s+y*c,z];}
+function makeStickers(facelets){
+  const st=[];
+  for(const f of FACES){const n=NORMALS[f];
+    for(let x=-1;x<=1;x++)for(let y=-1;y<=1;y++)for(let z=-1;z<=1;z++){
+      if(x*n[0]+y*n[1]+z*n[2]!==1)continue;
+      const pos=[x,y,z];st.push({pos,n:[...n],color:facelets[faceletIndex(pos,n)]});}}
+  return st;}
+function readFacelets(st){const out=Array(54).fill("?");for(const s of st)out[faceletIndex(s.pos,s.n)]=s.color;return out.join("");}
+function parseMove(m){const f=m[0];const t=m.length===1?1:(m[1]==="2"?2:3);return{f,t,name:m};}
+function applyMove(st,m){const[ax,layer,sg]=FACE_AXIS[m.f];const q=sg*m.t;
+  for(const s of st){if(s.pos[ax]===layer){s.pos=rot90(s.pos,ax,q);s.n=rot90(s.n,ax,q);}}}
+function undoMove(st,m){applyMove(st,{f:m.f,t:4-m.t,name:m.name});}
+
+// ---------- state ----------
+let startFacelets=SOLVED, moves=[], phase1=0, ms=0, scramble="";
+let stickers=makeStickers(SOLVED);
+let idx=0;              // number of moves applied
+let anim=null;          // {move, dir, t0, dur}
+let playing=false, yaw=-0.6, pitch=0.5;
+const $=id=>document.getElementById(id);
+const cv=$("cv"), ctx=cv.getContext("2d");
+
+function load(d){
+  startFacelets=d.start; moves=d.moves.map(parseMove); phase1=d.phase1||0; ms=d.ms||0; scramble=d.scramble||"";
+  stickers=makeStickers(startFacelets); idx=0; anim=null; playing=false;
+  $("bPlay").textContent="▶ Play";
+  $("sLen").textContent=moves.length; $("sP1").textContent=phase1+" / "+(moves.length-phase1);
+  $("sMs").textContent=ms<1?"<1 ms":Math.round(ms)+" ms";
+  $("scr").textContent=scramble||"(custom facelet state)";
+  $("scrub").max=moves.length; $("scrub").value=0;
+  const box=$("moves"); box.innerHTML="";
+  if(!moves.length){box.innerHTML='<span class="sub">Already solved — nothing to do.</span>';}
+  moves.forEach((m,i)=>{
+    if(i===0&&phase1>0){const s=document.createElement("div");s.className="sep";s.textContent="Phase 1 — reach the <U,D,R2,L2,F2,B2> subgroup";box.appendChild(s);}
+    if(i===phase1&&phase1>0||(i===0&&phase1===0)){const s=document.createElement("div");s.className="sep";s.textContent="Phase 2 — finish inside the subgroup";box.appendChild(s);}
+    const c=document.createElement("span");c.className="chip"+(i>=phase1?" p2":"");c.textContent=m.name;c.dataset.i=i;
+    c.onclick=()=>seek(i+1);box.appendChild(c);});
+  verify(); refreshUI(); draw();
+}
+function expectedEnd(){const st=makeStickers(startFacelets);for(const m of moves)applyMove(st,m);return readFacelets(st);}
+function verify(){
+  const v=$("verdict"); const end=expectedEnd();
+  if(end===SOLVED){v.className="verdict ok";v.textContent="✔ Verified in your browser: replaying all "+moves.length+" moves on a separate 3-D sticker simulation leaves every face one color.";}
+  else{v.className="verdict bad";v.textContent="✘ Replaying this solution does NOT solve the cube. Final state: "+end;}
+}
+function refreshUI(){
+  $("scrub").value=idx;
+  document.querySelectorAll(".chip").forEach(c=>{const i=+c.dataset.i;c.classList.toggle("done",i<idx);c.classList.toggle("cur",i===idx-1);});
+  $("bPrev").disabled=idx===0&&!anim; $("bReset").disabled=idx===0;
+  $("bNext").disabled=idx===moves.length; $("bEnd").disabled=idx===moves.length;
+  const cur=document.querySelector(".chip.cur"); if(cur&&cur.scrollIntoView)cur.scrollIntoView({block:"nearest"});
+}
+function seek(n){anim=null;n=Math.max(0,Math.min(moves.length,n));
+  stickers=makeStickers(startFacelets);for(let i=0;i<n;i++)applyMove(stickers,moves[i]);idx=n;refreshUI();draw();}
+function duration(){return 520-45*(+$("speed").value);}
+function step(dir){ // dir +1 forward, -1 backward
+  if(anim)finish();
+  if(dir>0&&idx<moves.length)anim={m:moves[idx],dir:1,t0:performance.now(),dur:duration()};
+  else if(dir<0&&idx>0)anim={m:moves[idx-1],dir:-1,t0:performance.now(),dur:duration()};
+  if(anim)requestAnimationFrame(tick);
+}
+function finish(){ if(!anim)return; if(anim.dir>0){applyMove(stickers,anim.m);idx++;}else{undoMove(stickers,anim.m);idx--;} anim=null; refreshUI(); }
+function tick(now){
+  if(!anim)return;
+  const p=(now-anim.t0)/anim.dur;
+  if(p>=1){finish();draw(); if(playing){ if(idx<moves.length)step(1); else if($("loop").checked){setTimeout(()=>{seek(0);if(playing)step(1);},700);} else {playing=false;$("bPlay").textContent="↻ Replay";} } return;}
+  draw(p); requestAnimationFrame(tick);
+}
+
+// ---------- rendering ----------
+const D=9.5;
+function proj(v){const W=cv.width,H=cv.height,S=W/5.2,k=D/(D-v[2]);return[W/2+v[0]*S*k*0.62,H/2-v[1]*S*k*0.62];}
+function ease(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}
+function draw(p){
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H);
+  let ax=-1,layer=0,ang=0;
+  if(anim){const[a,l,sg]=FACE_AXIS[anim.m.f];ax=a;layer=l;
+    const full=sg*anim.m.t*Math.PI/2; const e=ease(Math.min(1,p||0));
+    // forward: rotate 0 -> full; backward: the state already has the move applied, rotate 0 -> -full
+    ang = anim.dir>0 ? full*e : -full*e;
+  }
+  const quads=[];
+  const cy=Math.cos(yaw),sy=Math.sin(yaw),cx=Math.cos(pitch),sx=Math.sin(pitch);
+  function view(v){let[x,y,z]=v;let X=x*cy+z*sy,Z=-x*sy+z*cy;let Y=y*cx-Z*sx,Z2=y*sx+Z*cx;return[X,Y,Z2];}
+  for(const s of stickers){
+    const inLayer = anim && s.pos[ax]===layer;
+    const n=s.n; let u,v;
+    if(n[0]!==0){u=[0,1,0];v=[0,0,1];}else if(n[1]!==0){u=[1,0,0];v=[0,0,1];}else{u=[1,0,0];v=[0,1,0];}
+    const c=[s.pos[0]+n[0]*.5,s.pos[1]+n[1]*.5,s.pos[2]+n[2]*.5];
+    function corners(h,lift){const base=[c[0]+n[0]*lift,c[1]+n[1]*lift,c[2]+n[2]*lift];
+      return [[-1,-1],[1,-1],[1,1],[-1,1]].map(([a,b])=>{let q=[base[0]+u[0]*a*h+v[0]*b*h,base[1]+u[1]*a*h+v[1]*b*h,base[2]+u[2]*a*h+v[2]*b*h];
+        if(inLayer)q=rotAngle(q,ax,ang);return view(q);});}
+    let nn=n; if(inLayer)nn=rotAngle(n,ax,ang); const nv=view(nn);
+    let cc=c; if(inLayer)cc=rotAngle(c,ax,ang); const cv_=view(cc);
+    // visibility: camera at (0,0,D)
+    const toCam=[0-cv_[0],0-cv_[1],D-cv_[2]];
+    if(nv[0]*toCam[0]+nv[1]*toCam[1]+nv[2]*toCam[2]<=0)continue;
+    quads.push({z:cv_[2],body:corners(.5,0),face:corners(.43,.004),color:COLORS[s.color],shade:.78+.22*Math.max(0,(nv[1]*.6+nv[2]*.8))});
+  }
+  quads.sort((a,b)=>a.z-b.z);
+  for(const q of quads){
+    path(q.body,"#0b0c14"); path(q.face,q.color,q.shade);
+  }
+}
+function path(pts,color,shade){
+  ctx.beginPath();const P=pts.map(proj);
+  // rounded corners via quadratic joins
+  const r=0.16;
+  for(let i=0;i<4;i++){const a=P[i],b=P[(i+1)%4],c=P[(i+2)%4];
+    const p1=[b[0]+(a[0]-b[0])*r*2,b[1]+(a[1]-b[1])*r*2],p2=[b[0]+(c[0]-b[0])*r*2,b[1]+(c[1]-b[1])*r*2];
+    if(i===0)ctx.moveTo(p1[0],p1[1]);else ctx.lineTo(p1[0],p1[1]);
+    ctx.quadraticCurveTo(b[0],b[1],p2[0],p2[1]);}
+  ctx.closePath();
+  if(shade){ctx.fillStyle=color;ctx.fill();ctx.fillStyle="rgba(0,0,0,"+(1-shade)+")";ctx.fill();}
+  else{ctx.fillStyle=color;ctx.fill();}
+}
+
+// ---------- interaction ----------
+let drag=null;
+cv.addEventListener("pointerdown",e=>{drag={x:e.clientX,y:e.clientY};cv.setPointerCapture(e.pointerId);});
+cv.addEventListener("pointermove",e=>{if(!drag)return;yaw+=(e.clientX-drag.x)*0.01;pitch=Math.max(-1.4,Math.min(1.4,pitch+(e.clientY-drag.y)*0.01));drag={x:e.clientX,y:e.clientY};draw(anim?(performance.now()-anim.t0)/anim.dur:0);});
+cv.addEventListener("pointerup",()=>drag=null);
+$("bNext").onclick=()=>{playing=false;$("bPlay").textContent="▶ Play";step(1);};
+$("bPrev").onclick=()=>{playing=false;$("bPlay").textContent="▶ Play";step(-1);};
+$("bReset").onclick=()=>{playing=false;$("bPlay").textContent="▶ Play";seek(0);};
+$("bEnd").onclick=()=>{playing=false;$("bPlay").textContent="▶ Play";seek(moves.length);};
+$("bPlay").onclick=()=>{
+  if(playing){playing=false;$("bPlay").textContent="▶ Play";return;}
+  if(idx>=moves.length)seek(0);
+  if(!moves.length)return;
+  playing=true;$("bPlay").textContent="⏸ Pause";step(1);};
+$("scrub").oninput=e=>{playing=false;$("bPlay").textContent="▶ Play";seek(+e.target.value);};
+addEventListener("keydown",e=>{if(e.target.tagName==="TEXTAREA"||e.target.tagName==="INPUT"&&e.target.type==="text")return;
+  if(e.code==="Space"){e.preventDefault();$("bPlay").click();}
+  else if(e.key==="ArrowRight")$("bNext").click();else if(e.key==="ArrowLeft")$("bPrev").click();
+  else if(e.key==="Home")$("bReset").click();else if(e.key==="End")$("bEnd").click();});
+
+// ---------- serve mode ----------
+async function solve(body){
+  $("err").textContent="";
+  try{
+    const r=await fetch("/api/solve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const j=await r.json();
+    if(!r.ok){$("err").textContent=j.error||"error";return;}
+    load(j);
+  }catch(e){$("err").textContent="Request failed: "+e.message;}
+}
+if(SERVE){
+  $("serveCard").classList.remove("hide");
+  $("subtitle").textContent="Interactive solver — type a scramble or paste a facelet string";
+  $("bSolveScr").onclick=()=>solve({scramble:$("inScr").value});
+  $("bSolveFace").onclick=()=>solve({facelets:$("inFace").value});
+  $("bRand").onclick=()=>solve({random:true}).then(()=>{});
+}
+load(DATA||{start:SOLVED,moves:[],phase1:0,ms:0,scramble:""});
+</script>
+</body>
+</html>
