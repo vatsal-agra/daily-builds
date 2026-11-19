@@ -104,6 +104,8 @@ type EdgeRoute struct {
 	Points   []Pt
 	Reversed bool
 	SelfLoop bool
+	HasLabel bool
+	LabelPos Pt // centre of the label text when HasLabel
 }
 
 // Metrics quantify layout quality.
@@ -125,6 +127,7 @@ type Result struct {
 	Edges   []EdgeRoute
 	Width   float64
 	Height  float64
+	Rows    int // component rows in the final packing (1 = single band structure)
 	Metrics Metrics
 	Opts    Options
 }

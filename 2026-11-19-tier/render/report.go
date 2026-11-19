@@ -3,6 +3,7 @@ package render
 import (
 	"fmt"
 	"html"
+	"path/filepath"
 	"strings"
 
 	"tier/dot"
@@ -39,13 +40,16 @@ func Report(dg *dot.Graph, lg layout.Graph, base layout.Options, title string) (
 			baseline = &m
 		}
 		svg := SVG(res, render0(dg, i))
+		note := v.desc
+		if i > 0 && sameMetrics(m, *baseline) {
+			note += " — identical to the full pipeline on this graph"
+		}
 		fmt.Fprintf(&cards, `<section class="card%s"><header><h2>%s</h2><p>%s</p></header><div class="view">%s</div></section>`+"\n",
-			map[bool]string{true: " main", false: ""}[i == 0], html.EscapeString(v.name), html.EscapeString(v.desc), svg)
+			map[bool]string{true: " main", false: ""}[i == 0], html.EscapeString(v.name), html.EscapeString(note), svg)
 		fmt.Fprintf(&rows, "<tr><th scope=row>%s</th><td>%d</td><td>%.0f</td><td>%d</td><td>%d</td><td>%d</td><td>%.0f × %.0f</td></tr>\n",
 			html.EscapeString(v.name), m.Crossings, m.EdgeLength, m.Bends, m.Dummies, m.Reversed, m.Width, m.Height)
 	}
-	_ = baseline
-	return fmt.Sprintf(reportTmpl, html.EscapeString(title), len(lg.Nodes), len(lg.Edges), rows.String(), cards.String(), SVGStyle), nil
+	return fmt.Sprintf(reportTmpl, html.EscapeString(filepath.Base(title)), len(lg.Nodes), len(lg.Edges), rows.String(), cards.String(), SVGStyle), nil
 }
 
 func render0(dg *dot.Graph, i int) Options {
@@ -96,3 +100,8 @@ document.querySelectorAll('svg.tier').forEach(function(svg){
 </script>
 </main></body></html>
 `
+
+func sameMetrics(a, b layout.Metrics) bool {
+	return a.Crossings == b.Crossings && a.EdgeLength == b.EdgeLength && a.Bends == b.Bends &&
+		a.Width == b.Width && a.Height == b.Height && a.Reversed == b.Reversed
+}

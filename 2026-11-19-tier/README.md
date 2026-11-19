@@ -1,7 +1,7 @@
 # Tier
 Layered (Sugiyama) graph-drawing engine in Go — DOT in, SVG/HTML out.
 
-**Status: Phase 2 — core build done.** Required features implemented and exercised:
+**Status: Phase 3 — adversarial review done (see REVIEW.md: 11 findings, all fixed with regression tests).** Core features:
 1. DOT-subset parser with positioned errors (`dot/`)
 2. Cycle removal: Eades–Lin–Smyth greedy FAS + DFS baseline (`layout/acyclic.go`)
 3. Network-simplex optimal layering, verified against brute force (`layout/rank.go`)

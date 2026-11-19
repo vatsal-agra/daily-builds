@@ -31,7 +31,7 @@ func DOT(kind string, n int, seed int64, density float64) (string, error) {
 	switch kind {
 	case "tree":
 		for i := 1; i < n; i++ {
-			add((i-1)/2+r.Intn(1+i/8)%max(1, i), i)
+			add(r.Intn(i), i)
 		}
 	case "dag":
 		for i := 0; i < m; i++ {

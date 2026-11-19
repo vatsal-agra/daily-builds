@@ -7,10 +7,11 @@ import (
 )
 
 type chain struct {
-	edge     int   // index into Graph.Edges
-	comp     int   // component id
-	path     []int // pg node ids, top (low rank) to bottom
-	reversed bool
+	edge      int   // index into Graph.Edges
+	comp      int   // component id
+	path      []int // pg node ids, top (low rank) to bottom
+	reversed  bool
+	labelNode int // pg id of the label dummy, or -1
 }
 
 type component struct {
@@ -19,20 +20,30 @@ type component struct {
 }
 
 type prepared struct {
-	g      Graph
-	o      Options
-	rev    []bool
-	comps  []*component
-	chains []chain
-	loops  []int // self-loop edge indices
+	g        Graph
+	o        Options
+	rev      []bool
+	comps    []*component
+	chains   []chain
+	loops    []int     // self-loop edge indices
+	loopCnt  []int     // self-loops per node
+	pad      []float64 // symmetric padding reserved for loops, per node
+	anyLabel bool
 }
 
-const loopExtra = 22.0
+const (
+	loopExtra  = 22.0
+	maxSize    = 4000.0
+	labelCharW = 6.4
+	labelH     = 16.0
+)
+
+func labelW(s string) float64 { return float64(len([]rune(s)))*labelCharW + 10 }
 
 func validate(g *Graph) error {
 	for _, n := range g.Nodes {
-		if n.W < 0 || n.H < 0 || math.IsNaN(n.W) || math.IsNaN(n.H) {
-			return fmt.Errorf("node %q has invalid size %gx%g", n.ID, n.W, n.H)
+		if n.W < 0 || n.H < 0 || math.IsNaN(n.W) || math.IsNaN(n.H) || n.W > maxSize || n.H > maxSize {
+			return fmt.Errorf("node %q has invalid size %gx%g (limit %g)", n.ID, n.W, n.H, maxSize)
 		}
 	}
 	for i, e := range g.Edges {
@@ -42,6 +53,9 @@ func validate(g *Graph) error {
 	}
 	return nil
 }
+
+// loopGeom returns the protrusion of the k-th (0-based) self-loop.
+func loopGeom(k int) float64 { return loopExtra * 1.4 * (1 + 0.55*float64(k)) }
 
 // prepare runs cycle removal, layering, virtual-node insertion and the initial
 // ordering for every connected component (no crossing minimisation yet).
@@ -53,18 +67,27 @@ func prepare(in Graph, o Options) (*prepared, error) {
 		return nil, err
 	}
 	g := Graph{Nodes: append([]InNode(nil), in.Nodes...), Edges: append([]InEdge(nil), in.Edges...)}
+	n := len(g.Nodes)
+	pr := &prepared{g: g, o: o, loopCnt: make([]int, n), pad: make([]float64, n)}
 	for i := range g.Edges {
-		if g.Edges[i].Weight < 1 {
-			g.Edges[i].Weight = 1
+		e := &g.Edges[i]
+		if e.Weight < 1 {
+			e.Weight = 1
 		}
-		if g.Edges[i].MinLen < 1 {
-			g.Edges[i].MinLen = 1
+		if e.MinLen < 1 {
+			e.MinLen = 1
+		}
+		if e.Label != "" && e.From != e.To {
+			pr.anyLabel = true
 		}
 	}
-	n := len(g.Nodes)
-	pr := &prepared{g: g, o: o}
+	// Labelled edges need a rank to hold their label: double every minimum
+	// length so each labelled edge spans >= 2 ranks (Graphviz does the same).
+	mult := 1
+	if pr.anyLabel {
+		mult = 2
+	}
 	pr.rev = feedbackSet(n, g.Edges, o.Acyclic)
-	// components over non-loop edges
 	uf := make([]int, n)
 	for i := range uf {
 		uf[i] = i
@@ -77,11 +100,22 @@ func prepare(in Graph, o Options) (*prepared, error) {
 		}
 		return x
 	}
-	hasLoop := make([]bool, n)
 	for i, e := range g.Edges {
 		if e.From == e.To {
 			pr.loops = append(pr.loops, i)
-			hasLoop[e.From] = true
+			k := pr.loopCnt[e.From]
+			pr.loopCnt[e.From]++
+			ext := loopGeom(k)
+			if e.Label != "" {
+				if o.RankDir == "LR" {
+					ext += labelH + 4
+				} else {
+					ext += labelW(e.Label) + 4
+				}
+			}
+			if ext > pr.pad[e.From] {
+				pr.pad[e.From] = ext
+			}
 			continue
 		}
 		a, b := find(e.From), find(e.To)
@@ -117,7 +151,7 @@ func prepare(in Graph, o Options) (*prepared, error) {
 			if pr.rev[ei] {
 				u, v = v, u
 			}
-			re = append(re, rankEdge{u, v, e.Weight, e.MinLen})
+			re = append(re, rankEdge{u, v, e.Weight, e.MinLen * mult})
 		}
 		var ranks []int
 		var err error
@@ -135,10 +169,7 @@ func prepare(in Graph, o Options) (*prepared, error) {
 			if o.RankDir == "LR" {
 				w, h = h, w
 			}
-			if hasLoop[gv] {
-				w += 2 * loopExtra
-			}
-			p.addNode(ranks[li], false, w, h, gv)
+			p.addNode(ranks[li], false, w+2*pr.pad[gv], h, gv)
 		}
 		for k, ei := range compEdges[ci] {
 			r := re[k]
@@ -152,7 +183,17 @@ func prepare(in Graph, o Options) (*prepared, error) {
 			}
 			p.addArc(prev, r.v, r.w)
 			path = append(path, r.v)
-			pr.chains = append(pr.chains, chain{edge: ei, comp: ci, path: path, reversed: pr.rev[ei]})
+			ch := chain{edge: ei, comp: ci, path: path, reversed: pr.rev[ei], labelNode: -1}
+			if lb := g.Edges[ei].Label; lb != "" && len(path) >= 3 {
+				d := path[len(path)/2]
+				ch.labelNode = d
+				if o.RankDir == "LR" {
+					p.w[d], p.h[d] = labelH, labelW(lb)
+				} else {
+					p.w[d], p.h[d] = labelW(lb), labelH
+				}
+			}
+			pr.chains = append(pr.chains, ch)
 		}
 		p.initialOrder()
 		c.p = p
@@ -168,13 +209,13 @@ func Layout(in Graph, o Options) (*Result, error) {
 	}
 	o = pr.o
 	g := pr.g
-	res := &Result{Opts: o}
+	res := &Result{Opts: o, Rows: 1}
 	if len(g.Nodes) == 0 {
 		return res, nil
 	}
 	m := Metrics{}
 	xs := make([][]float64, len(pr.comps))
-	ys := make([][]float64, len(pr.comps))
+	maxRank := 0
 	for ci, c := range pr.comps {
 		p := c.p
 		if o.Order == "sweep" {
@@ -187,30 +228,13 @@ func Layout(in Graph, o Options) (*Result, error) {
 			xs[ci] = p.packedCoords(o.NodeSep)
 		}
 		p.enforceSeparation(xs[ci], o.NodeSep)
-		// y by layer
-		lh := make([]float64, len(p.layers))
-		for r, l := range p.layers {
-			for _, v := range l {
-				if p.h[v] > lh[r] {
-					lh[r] = p.h[v]
-				}
-			}
+		for _, l := range p.layers {
 			if len(l) > m.MaxLayer {
 				m.MaxLayer = len(l)
 			}
 		}
-		if len(p.layers) > m.Layers {
-			m.Layers = len(p.layers)
-		}
-		ly := make([]float64, len(p.layers))
-		cur := 0.0
-		for r := range ly {
-			ly[r] = cur + lh[r]/2
-			cur += lh[r] + o.RankSep
-		}
-		ys[ci] = make([]float64, p.n)
-		for v := 0; v < p.n; v++ {
-			ys[ci][v] = ly[p.rank[v]]
+		if len(p.layers) > maxRank {
+			maxRank = len(p.layers)
 		}
 		for v := 0; v < p.n; v++ {
 			if p.virtual[v] {
@@ -218,20 +242,64 @@ func Layout(in Graph, o Options) (*Result, error) {
 			}
 		}
 	}
-	// pack components side by side (TB frame)
-	off := make([]float64, len(pr.comps))
-	cursor := 0.0
+	m.Layers = maxRank
+	// global layer geometry so equal ranks line up across components
+	rankSep := o.RankSep
+	if pr.anyLabel {
+		rankSep /= 2
+	}
+	lh := make([]float64, maxRank)
+	for _, c := range pr.comps {
+		for v := 0; v < c.p.n; v++ {
+			if c.p.h[v] > lh[c.p.rank[v]] {
+				lh[c.p.rank[v]] = c.p.h[v]
+			}
+		}
+	}
+	ly := make([]float64, maxRank)
+	cur := 0.0
+	for r := range ly {
+		ly[r] = cur + lh[r]/2
+		cur += lh[r] + rankSep
+	}
+	// shelf-pack components into rows aiming at a ~3:2 canvas
+	type ext struct{ lo, hi, top, bot float64 }
+	exts := make([]ext, len(pr.comps))
+	area, widest := 0.0, 0.0
 	for ci, c := range pr.comps {
 		p := c.p
-		lo, hi := math.Inf(1), math.Inf(-1)
+		e := ext{math.Inf(1), math.Inf(-1), math.Inf(1), math.Inf(-1)}
 		for v := 0; v < p.n; v++ {
-			lo = math.Min(lo, xs[ci][v]-p.w[v]/2)
-			hi = math.Max(hi, xs[ci][v]+p.w[v]/2)
+			e.lo = math.Min(e.lo, xs[ci][v]-p.w[v]/2)
+			e.hi = math.Max(e.hi, xs[ci][v]+p.w[v]/2)
+			e.top = math.Min(e.top, ly[p.rank[v]]-p.h[v]/2)
+			e.bot = math.Max(e.bot, ly[p.rank[v]]+p.h[v]/2)
 		}
-		off[ci] = cursor - lo
-		cursor += hi - lo + 2*o.NodeSep
+		exts[ci] = e
+		w, h := e.hi-e.lo+2*o.NodeSep, e.bot-e.top+rankSep
+		area += w * h
+		widest = math.Max(widest, w)
 	}
-	// final point transform (TB frame -> output frame)
+	target := math.Max(widest, math.Sqrt(area)*1.5)
+	offX := make([]float64, len(pr.comps))
+	offY := make([]float64, len(pr.comps))
+	cx, rowY, rowH := 0.0, 0.0, 0.0
+	rows, inRow := 1, 0
+	for ci := range pr.comps {
+		e := exts[ci]
+		w, h := e.hi-e.lo+2*o.NodeSep, e.bot-e.top+rankSep
+		if inRow > 0 && cx+w > target {
+			rows++
+			rowY += rowH
+			cx, rowH, inRow = 0, 0, 0
+		}
+		offX[ci] = cx - e.lo
+		offY[ci] = rowY
+		cx += w
+		rowH = math.Max(rowH, h)
+		inRow++
+	}
+	res.Rows = rows
 	tf := func(x, y float64) Pt {
 		if o.RankDir == "LR" {
 			return Pt{y, x}
@@ -241,9 +309,15 @@ func Layout(in Graph, o Options) (*Result, error) {
 	nodePos := make([]Pt, len(g.Nodes))
 	rankOf := make([]int, len(g.Nodes))
 	orderOf := make([]int, len(g.Nodes))
+	ys := make([][]float64, len(pr.comps))
 	for ci, c := range pr.comps {
+		ys[ci] = make([]float64, c.p.n)
+		for v := 0; v < c.p.n; v++ {
+			ys[ci][v] = ly[c.p.rank[v]] + offY[ci]
+			xs[ci][v] += offX[ci]
+		}
 		for li, gv := range c.nodes {
-			nodePos[gv] = tf(xs[ci][li]+off[ci], ys[ci][li])
+			nodePos[gv] = tf(xs[ci][li], ys[ci][li])
 			rankOf[gv] = c.p.rank[li]
 			orderOf[gv] = c.p.pos[li]
 		}
@@ -256,26 +330,13 @@ func Layout(in Graph, o Options) (*Result, error) {
 	for i, e := range g.Edges {
 		res.Edges[i] = EdgeRoute{InEdge: e, Reversed: pr.rev[i]}
 	}
-	pr.route(res, xs, ys, off, tf)
-	for _, ei := range pr.loops {
-		e := g.Edges[ei]
-		nb := res.Nodes[e.From]
-		w, h := nb.W, nb.H
-		x, y := nb.X, nb.Y
-		// loop on the right side (output frame), cubic control points
-		res.Edges[ei].SelfLoop = true
-		res.Edges[ei].Points = []Pt{
-			{x + w/2, y - h/4}, {x + w/2 + loopExtra*1.4, y - h/2 - 4},
-			{x + w/2 + loopExtra*1.4, y + h/2 + 4}, {x + w/2, y + h/4},
-		}
-		if pr.o.RankDir == "LR" { // loop below the node instead, keeps clear of rank axis
-			res.Edges[ei].Points = []Pt{
-				{x - w/4, y + h/2}, {x - w/2 - 4, y + h/2 + loopExtra*1.4},
-				{x + w/2 + 4, y + h/2 + loopExtra*1.4}, {x + w/4, y + h/2},
-			}
-		}
-	}
+	pr.route(res, xs, ys, tf)
+	pr.routeLoops(res)
 	// metrics
+	div := float64(1)
+	if pr.anyLabel {
+		div = 2
+	}
 	for i, e := range g.Edges {
 		if e.From == e.To {
 			continue
@@ -284,13 +345,12 @@ func Layout(in Graph, o Options) (*Result, error) {
 		if span < 0 {
 			span = -span
 		}
-		m.EdgeLength += float64(e.Weight * span)
+		m.EdgeLength += float64(e.Weight*span) / div
 		if pr.rev[i] {
 			m.Reversed++
 		}
 	}
 	for _, ch := range pr.chains {
-		p := pr.comps[ch.comp].p
 		x := xs[ch.comp]
 		for k := 1; k+1 < len(ch.path); k++ {
 			a, b, c := x[ch.path[k-1]], x[ch.path[k]], x[ch.path[k+1]]
@@ -298,9 +358,8 @@ func Layout(in Graph, o Options) (*Result, error) {
 				m.Bends++
 			}
 		}
-		_ = p
 	}
-	// extents
+	// canvas
 	minX, minY := math.Inf(1), math.Inf(1)
 	maxX, maxY := math.Inf(-1), math.Inf(-1)
 	grow := func(x, y float64) {
@@ -315,6 +374,11 @@ func Layout(in Graph, o Options) (*Result, error) {
 		for _, pt := range er.Points {
 			grow(pt.X, pt.Y)
 		}
+		if er.HasLabel {
+			lw := labelW(er.Label)
+			grow(er.LabelPos.X-lw/2, er.LabelPos.Y-labelH/2)
+			grow(er.LabelPos.X+lw/2, er.LabelPos.Y+labelH/2)
+		}
 	}
 	const margin = 24.0
 	dx, dy := margin-minX, margin-minY
@@ -327,6 +391,8 @@ func Layout(in Graph, o Options) (*Result, error) {
 			res.Edges[i].Points[k].X += dx
 			res.Edges[i].Points[k].Y += dy
 		}
+		res.Edges[i].LabelPos.X += dx
+		res.Edges[i].LabelPos.Y += dy
 	}
 	res.Width, res.Height = maxX-minX+2*margin, maxY-minY+2*margin
 	m.Width, m.Height = res.Width, res.Height
@@ -334,15 +400,39 @@ func Layout(in Graph, o Options) (*Result, error) {
 	return res, nil
 }
 
+func (pr *prepared) routeLoops(res *Result) {
+	seen := make([]int, len(pr.g.Nodes))
+	for _, ei := range pr.loops {
+		e := pr.g.Edges[ei]
+		nb := res.Nodes[e.From]
+		k := seen[e.From]
+		seen[e.From]++
+		ext := loopGeom(k)
+		w, h, x, y := nb.W, nb.H, nb.X, nb.Y
+		er := &res.Edges[ei]
+		er.SelfLoop = true
+		if pr.o.RankDir == "LR" { // loop below the node, clear of the rank axis
+			er.Points = []Pt{{x - w/4, y + h/2}, {x - w/2 - 4, y + h/2 + ext}, {x + w/2 + 4, y + h/2 + ext}, {x + w/4, y + h/2}}
+			if e.Label != "" {
+				er.HasLabel, er.LabelPos = true, Pt{x, y + h/2 + ext*0.75 + labelH/2 + 2}
+			}
+		} else {
+			er.Points = []Pt{{x + w/2, y - h/4}, {x + w/2 + ext, y - h/2 - 4}, {x + w/2 + ext, y + h/2 + 4}, {x + w/2, y + h/4}}
+			if e.Label != "" {
+				er.HasLabel, er.LabelPos = true, Pt{x + w/2 + ext*0.75 + labelW(e.Label)/2 + 2, y}
+			}
+		}
+	}
+}
+
 // route builds polyline points for every non-loop edge. Attachment points are
 // spread along the node border ordered by where the edge heads next.
-func (pr *prepared) route(res *Result, xs, ys [][]float64, off []float64, tf func(x, y float64) Pt) {
+func (pr *prepared) route(res *Result, xs, ys [][]float64, tf func(x, y float64) Pt) {
 	type end struct {
 		ch   int
 		out  bool // leaves its node (bottom side) vs arrives (top side)
 		peer float64
 	}
-	// per (comp, pg node) lists of ends
 	ends := map[[2]int][]end{}
 	for k, ch := range pr.chains {
 		x := xs[ch.comp]
@@ -353,6 +443,7 @@ func (pr *prepared) route(res *Result, xs, ys [][]float64, off []float64, tf fun
 	portX := make([][2]float64, len(pr.chains)) // [start dx, end dx]
 	for key, list := range ends {
 		p := pr.comps[key[0]].p
+		inner := p.w[key[1]] - 2*pr.pad[p.real[key[1]]] // visible box width
 		for _, side := range []bool{true, false} {
 			var sel []end
 			for _, e := range list {
@@ -366,13 +457,6 @@ func (pr *prepared) route(res *Result, xs, ys [][]float64, off []float64, tf fun
 				}
 				return sel[a].ch < sel[b].ch
 			})
-			inner := p.w[key[1]]
-			if pr.g.Nodes[p.real[key[1]]].ID != "" && inner > 0 {
-				// remove loop padding so ports stay on the visible box
-				if hasLoopNode(pr, p.real[key[1]]) {
-					inner -= 2 * loopExtra
-				}
-			}
 			usable := inner * 0.7
 			for i, e := range sel {
 				d := 0.0
@@ -390,17 +474,16 @@ func (pr *prepared) route(res *Result, xs, ys [][]float64, off []float64, tf fun
 	for k, ch := range pr.chains {
 		p := pr.comps[ch.comp].p
 		x, y := xs[ch.comp], ys[ch.comp]
-		o := off[ch.comp]
 		var pts []Pt
 		for i, v := range ch.path {
-			px, py := x[v]+o, y[v]
+			px, py := x[v], y[v]
 			if i == 0 {
 				px += portX[k][0]
-				py += borderDY(pr, p, v, portX[k][0]) // bottom side
+				py += pr.borderDY(p, v, portX[k][0])
 			}
 			if i == len(ch.path)-1 {
 				px += portX[k][1]
-				py -= borderDY(pr, p, v, portX[k][1]) // top side
+				py -= pr.borderDY(p, v, portX[k][1])
 			}
 			pts = append(pts, tf(px, py))
 		}
@@ -409,40 +492,31 @@ func (pr *prepared) route(res *Result, xs, ys [][]float64, off []float64, tf fun
 				pts[a], pts[b] = pts[b], pts[a]
 			}
 		}
-		res.Edges[ch.edge].Points = pts
-		_ = k
-	}
-}
-
-func hasLoopNode(pr *prepared, gv int) bool {
-	for _, ei := range pr.loops {
-		if pr.g.Edges[ei].From == gv {
-			return true
+		er := &res.Edges[ch.edge]
+		er.Points = pts
+		if ch.labelNode >= 0 {
+			er.HasLabel = true
+			er.LabelPos = tf(x[ch.labelNode], y[ch.labelNode])
 		}
 	}
-	return false
 }
 
 // borderDY is the vertical distance from node centre to its border at a given
 // horizontal offset (half the height for boxes; elliptical for ellipses).
-func borderDY(pr *prepared, p *pg, v int, dx float64) float64 {
-	h := p.h[v] / 2
+func (pr *prepared) borderDY(p *pg, v int, dx float64) float64 {
 	gv := p.real[v]
-	if gv >= 0 && pr.g.Nodes[gv].Shape == "ellipse" {
-		w := p.w[v] / 2
-		if hasLoopNode(pr, gv) {
-			w -= loopExtra
-		}
+	if gv < 0 {
+		return 0
+	}
+	h := p.h[v] / 2
+	if pr.g.Nodes[gv].Shape == "ellipse" {
+		w := p.w[v]/2 - pr.pad[gv]
 		if w > 0 {
-			r := dx / w
-			if r < 1 && r > -1 {
+			if r := dx / w; r > -1 && r < 1 {
 				return h * math.Sqrt(1-r*r)
 			}
 			return 0
 		}
-	}
-	if gv < 0 {
-		return 0
 	}
 	return h
 }

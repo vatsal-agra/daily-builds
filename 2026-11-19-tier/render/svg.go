@@ -108,40 +108,33 @@ func SVG(r *layout.Result, o Options) string {
 	p := o.IDPrefix
 	fmt.Fprintf(&sb, `<defs><marker id="%sa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr" d="M0,1 L10,5 L0,9 z"/></marker><marker id="%sar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr-rev" d="M0,1 L10,5 L0,9 z"/></marker></defs>`+"\n", p, p)
 	fmt.Fprintf(&sb, `<rect class="bg" width="%s" height="%s"/>`+"\n", f(w), f(h))
-	if o.Bands && len(r.Nodes) > 0 {
+	if o.Bands && r.Rows == 1 && len(r.Nodes) > 0 {
 		type band struct{ lo, hi float64 }
 		bands := map[int]*band{}
+		maxRank := 0
 		for _, n := range r.Nodes {
 			c, half := n.Y, n.H/2
 			if r.Opts.RankDir == "LR" {
 				c, half = n.X, n.W/2
 			}
-			b := bands[n.Rank]
-			if b == nil {
-				bands[n.Rank] = &band{c - half, c + half}
-				continue
+			if n.Rank > maxRank {
+				maxRank = n.Rank
 			}
-			b.lo, b.hi = math.Min(b.lo, c-half), math.Max(b.hi, c+half)
+			if b := bands[n.Rank]; b == nil {
+				bands[n.Rank] = &band{c - half, c + half}
+			} else {
+				b.lo, b.hi = math.Min(b.lo, c-half), math.Max(b.hi, c+half)
+			}
 		}
-		for rk := 0; rk < len(bands)+1000 && len(bands) > 0; rk++ {
+		for rk := 0; rk <= maxRank; rk++ {
 			b, ok := bands[rk]
 			if !ok {
-				if rk > 4096 {
-					break
-				}
 				continue
 			}
-			if rk%2 == 0 {
-				if r.Opts.RankDir == "LR" {
-					fmt.Fprintf(&sb, `<rect class="band" x="%s" y="0" width="%s" height="%s"/>`, f(b.lo-8), f(b.hi-b.lo+16), f(h))
-				} else {
-					fmt.Fprintf(&sb, `<rect class="band" x="0" y="%s" width="%s" height="%s"/>`, f(b.lo-8), f(w), f(b.hi-b.lo+16))
-				}
-			}
 			if r.Opts.RankDir == "LR" {
-				fmt.Fprintf(&sb, `<text class="rk" x="%s" y="12" text-anchor="middle">%d</text>`, f((b.lo+b.hi)/2), rk)
+				fmt.Fprintf(&sb, `<rect class="band" x="%s" y="0" width="%s" height="%s"/><text class="rk" x="%s" y="12" text-anchor="middle">%d</text>`, f(b.lo-8), f(b.hi-b.lo+16), f(h), f((b.lo+b.hi)/2), rk)
 			} else {
-				fmt.Fprintf(&sb, `<text class="rk" x="6" y="%s">%d</text>`, f((b.lo+b.hi)/2+3), rk)
+				fmt.Fprintf(&sb, `<rect class="band" x="0" y="%s" width="%s" height="%s"/><text class="rk" x="6" y="%s">%d</text>`, f(b.lo-8), f(w), f(b.hi-b.lo+16), f((b.lo+b.hi)/2+3), rk)
 			}
 		}
 		sb.WriteString("\n")
@@ -160,16 +153,8 @@ func SVG(r *layout.Result, o Options) string {
 			marker = fmt.Sprintf(` marker-end="url(#%s)"`, mk)
 		}
 		fmt.Fprintf(&sb, `<g class="%s" data-from="%s" data-to="%s"><path d="%s"%s/>`, cls, html.EscapeString(from), html.EscapeString(to), EdgePath(e, !o.Polyline), marker)
-		if e.Label != "" {
-			mp := e.Points[len(e.Points)/2]
-			if len(e.Points)%2 == 0 {
-				a, b := e.Points[len(e.Points)/2-1], e.Points[len(e.Points)/2]
-				mp = layout.Pt{X: (a.X + b.X) / 2, Y: (a.Y + b.Y) / 2}
-			}
-			if e.SelfLoop {
-				mp = layout.Pt{X: (e.Points[1].X + e.Points[2].X) / 2, Y: (e.Points[1].Y + e.Points[2].Y) / 2}
-			}
-			fmt.Fprintf(&sb, `<text x="%s" y="%s">%s</text>`, f(mp.X), f(mp.Y-3), html.EscapeString(e.Label))
+		if e.HasLabel {
+			fmt.Fprintf(&sb, `<text x="%s" y="%s">%s</text>`, f(e.LabelPos.X), f(e.LabelPos.Y+4), html.EscapeString(e.Label))
 		}
 		sb.WriteString("</g>\n")
 	}

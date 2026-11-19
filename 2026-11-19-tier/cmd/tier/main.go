@@ -66,6 +66,9 @@ func loadGraph(path string, stdin io.Reader, c *common) (*dot.Graph, layout.Grap
 	if err != nil {
 		return nil, layout.Graph{}, layout.Options{}, err
 	}
+	if path == "-" {
+		path = "<stdin>"
+	}
 	dg, err := dot.Parse(src)
 	if err != nil {
 		return nil, layout.Graph{}, layout.Options{}, fmt.Errorf("%s: %w", path, err)

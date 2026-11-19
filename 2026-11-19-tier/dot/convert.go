@@ -73,7 +73,7 @@ func (g *Graph) ToLayout(base layout.Options) (layout.Graph, layout.Options, err
 		idx[n.ID] = i
 		label := n.ID
 		if l, ok := n.Attrs["label"]; ok {
-			label = l
+			label = strings.ReplaceAll(l, `\N`, n.ID)
 		}
 		shape := strings.ToLower(n.Attrs["shape"])
 		switch shape {
