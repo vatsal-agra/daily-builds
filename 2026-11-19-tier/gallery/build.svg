@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" class="tier" viewBox="0 0 414.1 514" width="414.1" height="514" role="img" aria-label="layered graph drawing">
+<style>
+.tier{--bg:#fbfaf7;--node:#ffffff;--stroke:#3b4252;--edge:#6b7488;--text:#1d2330;--rev:#d9480f;--band:#f0ede6;--hl:#2563eb;--halo:#fbfaf7}
+@media (prefers-color-scheme:dark){.tier{--bg:#161a22;--node:#222836;--stroke:#aab3c5;--edge:#7f8aa3;--text:#e8ecf4;--rev:#ff8a4c;--band:#1c212c;--hl:#6aa3ff;--halo:#161a22}}
+.tier .bg{fill:var(--bg)}.tier .band{fill:var(--band)}
+.tier .n rect,.tier .n ellipse{fill:var(--node);stroke:var(--stroke);stroke-width:1.3}
+.tier .n text{fill:var(--text);font:13px ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;text-anchor:middle}
+.tier .e path{fill:none;stroke:var(--edge);stroke-width:1.4}
+.tier .e.rev path{stroke:var(--rev);stroke-dasharray:5 3}
+.tier .e text{fill:var(--text);font:11px ui-sans-serif,system-ui,sans-serif;text-anchor:middle;paint-order:stroke;stroke:var(--halo);stroke-width:4px}
+.tier .arr{fill:var(--edge)}.tier .arr-rev{fill:var(--rev)}
+.tier .rk{fill:var(--edge);font:10px ui-monospace,monospace;opacity:.7}
+.tier .n{cursor:default}.tier .n:hover rect,.tier .n:hover ellipse,.tier .n.hl rect,.tier .n.hl ellipse{stroke:var(--hl);stroke-width:2.4}
+.tier .e.hl path{stroke:var(--hl);stroke-width:2.4}
+</style>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr" d="M0,1 L10,5 L0,9 z"/></marker><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr-rev" d="M0,1 L10,5 L0,9 z"/></marker></defs>
+<rect class="bg" width="414.1" height="514"/>
+<rect class="band" x="0" y="16" width="414.1" height="47"/><text class="rk" x="6" y="42.5">0</text><rect class="band" x="0" y="103" width="414.1" height="47"/><text class="rk" x="6" y="129.5">1</text><rect class="band" x="0" y="190" width="414.1" height="47"/><text class="rk" x="6" y="216.5">2</text><rect class="band" x="0" y="277" width="414.1" height="47"/><text class="rk" x="6" y="303.5">3</text><rect class="band" x="0" y="364" width="414.1" height="47"/><text class="rk" x="6" y="390.5">4</text><rect class="band" x="0" y="451" width="414.1" height="47"/><text class="rk" x="6" y="477.5">5</text>
+<g class="e" data-from="app" data-to="ui"><path d="M262.3,55C225.8,66.9 79.9,102.7 43.4,126.5C6.9,150.3 43.4,186.1 43.4,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="app" data-to="api"><path d="M268.8,55L222.3,111" marker-end="url(#a)"/></g>
+<g class="e" data-from="app" data-to="core"><path d="M275.2,55C289.9,66.9 348.7,100.1 363.3,126.5C378,152.9 373.2,187.1 363.3,213.5C353.5,239.9 314.1,273.1 304.3,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="ui" data-to="core"><path d="M52.5,229L279.3,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="ui" data-to="utils"><path d="M34.3,229C32.8,240.9 26.4,274.1 24.8,300.5C23.2,326.9 2.5,361.1 24.8,387.5C47.1,413.9 136.2,447.1 158.5,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="ui" data-to="log"><path d="M43.4,229C44.2,240.9 27,276.7 48.4,300.5C69.8,324.3 151.2,360.1 171.7,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="api" data-to="auth"><path d="M210.2,142L130.1,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="api" data-to="net"><path d="M218.3,142C218.2,153.9 218,189.7 217.9,213.5C217.8,237.3 217.9,273.1 217.9,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="api" data-to="core"><path d="M226.3,142C237.3,153.9 280.9,189.7 291.8,213.5C302.7,237.3 291.8,273.1 291.8,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="api" data-to="cache"><path d="M234.4,142C252.1,153.9 322.7,187.1 340.3,213.5C357.9,239.9 340.3,274.1 340.3,300.5C340.3,326.9 340.3,360.1 340.3,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="auth" data-to="crypto"><path d="M117.6,229C112,240.9 90.5,276.7 83.5,300.5C76.5,324.3 77,360.1 75.7,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="auth" data-to="db"><path d="M130.1,229L135.7,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="auth" data-to="log"><path d="M142.7,229C148.3,240.9 170.2,276.7 176.8,300.5C183.4,324.3 181.6,360.1 182.5,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="net" data-to="utils"><path d="M217.9,316C219.8,327.9 234.9,363.7 229.1,387.5C223.3,411.3 190.6,447.1 182.9,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="net" data-to="log"><path d="M207.1,316L187.9,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="net" data-to="cfg"><path d="M228.7,316C233,327.9 247.5,363.7 254.8,387.5C262.2,411.3 269.9,447.1 272.9,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="db" data-to="utils"><path d="M126.6,316C126,327.9 115.6,363.7 122.9,387.5C130.2,411.3 162.7,447.1 170.7,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="db" data-to="cfg"><path d="M135.7,316C135.2,327.9 111.8,363.7 132.9,387.5C154,411.3 240.6,447.1 262.1,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="db" data-to="log"><path d="M144.8,316L177.1,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="cache" data-to="utils"><path d="M329.6,403L195.1,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="cache" data-to="cfg"><path d="M351,403L283.7,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="core" data-to="utils"><path d="M291.8,316C291,327.9 303.9,363.7 286.8,387.5C269.7,411.3 205.3,447.1 189,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="core" data-to="log"><path d="M279.3,316L193.3,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="core" data-to="cfg"><path d="M304.3,316C303.1,327.9 301.1,363.7 296.8,387.5C292.5,411.3 281.4,447.1 278.3,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="crypto" data-to="utils"><path d="M75.7,403L164.6,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="log" data-to="utils"><path d="M177.1,403L176.8,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="log" data-to="cfg"><path d="M193.3,403L267.5,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="app" data-to="cfg"><path d="M288.2,55C305.2,66.9 373.1,100.1 390.1,126.5C407.1,152.9 390.1,184.5 390.1,213.5C390.1,242.5 390.1,271.5 390.1,300.5C390.1,329.5 406.9,361.1 390.1,387.5C373.3,413.9 305.9,447.1 289.1,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="app" data-to="log"><path d="M281.7,55C297,66.9 358.1,100.1 373.3,126.5C388.6,152.9 373.3,184.5 373.3,213.5C373.3,242.5 402.5,274.1 373.3,300.5C344.2,326.9 227.8,360.1 198.7,372" marker-end="url(#a)"/></g>
+<g class="n" data-id="app"><title>app (rank 0)</title><rect x="252.1" y="24" width="46.2" height="31" rx="5"/><text x="275.2" y="44">app</text></g>
+<g class="n" data-id="ui"><title>ui (rank 2)</title><rect x="24" y="198" width="38.8" height="31" rx="5"/><text x="43.4" y="218">ui</text></g>
+<g class="n" data-id="core"><title>core (rank 3)</title><rect x="265" y="285" width="53.6" height="31" rx="5"/><text x="291.8" y="305">core</text></g>
+<g class="n" data-id="net"><title>net (rank 3)</title><rect x="194.8" y="285" width="46.2" height="31" rx="5"/><text x="217.9" y="305">net</text></g>
+<g class="n" data-id="db"><title>db (rank 3)</title><rect x="116.3" y="285" width="38.8" height="31" rx="5"/><text x="135.7" y="305">db</text></g>
+<g class="n" data-id="log"><title>log (rank 4)</title><rect x="162.1" y="372" width="46.2" height="31" rx="5"/><text x="185.2" y="392">log</text></g>
+<g class="n" data-id="cfg"><title>cfg (rank 5)</title><rect x="252.5" y="459" width="46.2" height="31" rx="5"/><text x="275.6" y="479">cfg</text></g>
+<g class="n" data-id="utils"><title>utils (rank 5)</title><rect x="146.3" y="459" width="61" height="31" rx="5"/><text x="176.8" y="479">utils</text></g>
+<g class="n" data-id="crypto"><title>crypto (rank 4)</title><rect x="41.5" y="372" width="68.4" height="31" rx="5"/><text x="75.7" y="392">crypto</text></g>
+<g class="n" data-id="cache"><title>cache (rank 4)</title><rect x="309.8" y="372" width="61" height="31" rx="5"/><text x="340.3" y="392">cache</text></g>
+<g class="n" data-id="auth"><title>auth (rank 2)</title><rect x="103.3" y="198" width="53.6" height="31" rx="5"/><text x="130.1" y="218">auth</text></g>
+<g class="n" data-id="api"><title>api (rank 1)</title><rect x="199.2" y="111" width="46.2" height="31" rx="5"/><text x="222.3" y="131">api</text></g>
+</svg>

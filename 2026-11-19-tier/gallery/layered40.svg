@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" class="tier" viewBox="0 0 1049.3 514" width="1049.3" height="514" role="img" aria-label="layered graph drawing">
+<style>
+.tier{--bg:#fbfaf7;--node:#ffffff;--stroke:#3b4252;--edge:#6b7488;--text:#1d2330;--rev:#d9480f;--band:#f0ede6;--hl:#2563eb;--halo:#fbfaf7}
+@media (prefers-color-scheme:dark){.tier{--bg:#161a22;--node:#222836;--stroke:#aab3c5;--edge:#7f8aa3;--text:#e8ecf4;--rev:#ff8a4c;--band:#1c212c;--hl:#6aa3ff;--halo:#161a22}}
+.tier .bg{fill:var(--bg)}.tier .band{fill:var(--band)}
+.tier .n rect,.tier .n ellipse{fill:var(--node);stroke:var(--stroke);stroke-width:1.3}
+.tier .n text{fill:var(--text);font:13px ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;text-anchor:middle}
+.tier .e path{fill:none;stroke:var(--edge);stroke-width:1.4}
+.tier .e.rev path{stroke:var(--rev);stroke-dasharray:5 3}
+.tier .e text{fill:var(--text);font:11px ui-sans-serif,system-ui,sans-serif;text-anchor:middle;paint-order:stroke;stroke:var(--halo);stroke-width:4px}
+.tier .arr{fill:var(--edge)}.tier .arr-rev{fill:var(--rev)}
+.tier .rk{fill:var(--edge);font:10px ui-monospace,monospace;opacity:.7}
+.tier .n{cursor:default}.tier .n:hover rect,.tier .n:hover ellipse,.tier .n.hl rect,.tier .n.hl ellipse{stroke:var(--hl);stroke-width:2.4}
+.tier .e.hl path{stroke:var(--hl);stroke-width:2.4}
+</style>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr" d="M0,1 L10,5 L0,9 z"/></marker><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr-rev" d="M0,1 L10,5 L0,9 z"/></marker></defs>
+<rect class="bg" width="1049.3" height="514"/>
+<rect class="band" x="0" y="16" width="1049.3" height="47"/><text class="rk" x="6" y="42.5">0</text><rect class="band" x="0" y="103" width="1049.3" height="47"/><text class="rk" x="6" y="129.5">1</text><rect class="band" x="0" y="190" width="1049.3" height="47"/><text class="rk" x="6" y="216.5">2</text><rect class="band" x="0" y="277" width="1049.3" height="47"/><text class="rk" x="6" y="303.5">3</text><rect class="band" x="0" y="364" width="1049.3" height="47"/><text class="rk" x="6" y="390.5">4</text><rect class="band" x="0" y="451" width="1049.3" height="47"/><text class="rk" x="6" y="477.5">5</text>
+<g class="e" data-from="n2" data-to="n5"><path d="M849.8,55L737.5,111" marker-end="url(#a)"/></g>
+<g class="e" data-from="n2" data-to="n6"><path d="M856.6,55L859.8,111" marker-end="url(#a)"/></g>
+<g class="e" data-from="n6" data-to="n10"><path d="M853,142L859.8,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="n0" data-to="n11"><path d="M441.4,142L345.3,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="n1" data-to="n12"><path d="M144.1,55L47.1,111" marker-end="url(#a)"/></g>
+<g class="e" data-from="n8" data-to="n13"><path d="M600.8,142L673.2,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="n2" data-to="n14"><path d="M843,55L381.7,111" marker-end="url(#a)"/></g>
+<g class="e" data-from="n1" data-to="n15"><path d="M162.2,55C177.2,66.9 237.1,102.7 252.4,126.5C267.6,150.3 253.4,186.1 253.6,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="n8" data-to="n16"><path d="M591.8,142L603,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="n2" data-to="n17"><path d="M863.4,55C882.5,66.9 959.1,100.1 978.3,126.5C997.4,152.9 984.2,187.1 978.3,213.5C972.3,239.9 948.7,273.1 942.7,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n12" data-to="n18"><path d="M47.1,142L47.1,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="n8" data-to="n19"><path d="M582.7,142L415.5,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="n10" data-to="n20"><path d="M859.8,229L859.8,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n9" data-to="n21"><path d="M649.2,142L163.5,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="n16" data-to="n22"><path d="M598.9,229L478.6,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n9" data-to="n23"><path d="M667.3,142C723.1,153.9 946.3,189.7 1002.2,213.5C1058,237.3 1002.2,273.1 1002.2,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n10" data-to="n25"><path d="M849,229L353.3,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n17" data-to="n26"><path d="M932,316L937.5,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n16" data-to="n27"><path d="M615.1,229C639.4,240.9 728.9,276.7 760.9,300.5C792.8,324.3 798.9,360.1 806.6,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n1" data-to="n28"><path d="M153.1,55L119.3,111" marker-end="url(#a)"/></g>
+<g class="e" data-from="n19" data-to="n29"><path d="M415.5,229C415.5,240.9 427,276.7 415.5,300.5C403.9,324.3 357.7,360.1 346.2,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n1" data-to="n30"><path d="M157.7,55C163.3,66.9 185.9,100.1 191.5,126.5C197.1,152.9 192.8,187.1 191.5,213.5C190.2,239.9 184.8,273.1 183.4,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n14" data-to="n31"><path d="M389.8,142C416.3,153.9 522.3,187.1 548.8,213.5C575.3,239.9 548.8,274.1 548.8,300.5C548.8,326.9 548.8,360.1 548.8,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n21" data-to="n32"><path d="M155.4,229C155.4,240.9 156.7,276.7 155.4,300.5C154.1,324.3 148.7,360.1 147.3,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n13" data-to="n33"><path d="M665.1,229L640.3,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n1" data-to="n34"><path d="M148.6,55C137.7,66.9 94.1,100.1 83.2,126.5C72.3,152.9 83.2,184.5 83.2,213.5C83.2,242.5 83.2,271.5 83.2,300.5C83.2,329.5 84.5,361.1 83.2,387.5C81.9,413.9 76.5,447.1 75.1,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="n31" data-to="n35"><path d="M540.7,403L284,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="n29" data-to="n36"><path d="M358.3,403L361.5,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="n31" data-to="n37"><path d="M556.9,403L758.1,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="n5" data-to="n38"><path d="M737.5,142C737.5,153.9 737.5,187.1 737.5,213.5C737.5,239.9 745.1,274.1 737.5,300.5C729.9,326.9 699.5,360.1 691.9,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n22" data-to="n39"><path d="M478.6,316L478.6,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n11" data-to="n25"><path d="M345.3,229L337.2,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n0" data-to="n13"><path d="M455,142L662.4,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="n29" data-to="n34"><path d="M342.2,403L91.3,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="n7" data-to="n17"><path d="M932,229L932,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n6" data-to="n23"><path d="M866.5,142C890.8,153.9 987.8,189.7 1012.2,213.5C1036.5,237.3 1012.8,273.1 1012.9,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n13" data-to="n17"><path d="M681.2,229L921.2,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n24" data-to="n32"><path d="M250.9,316L163.5,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n32" data-to="n35"><path d="M155.4,403L262.4,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="n22" data-to="n29"><path d="M467.8,316L362.4,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n1" data-to="n9"><path d="M166.7,55L658.3,111" marker-end="url(#a)"/></g>
+<g class="e" data-from="n23" data-to="n37"><path d="M1002.2,316C1002.2,327.9 1038.8,363.7 1002.2,387.5C965.5,411.3 819,447.1 782.3,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="n4" data-to="n27"><path d="M793.3,316L814.6,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n22" data-to="n27"><path d="M489.4,316L798.5,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n24" data-to="n29"><path d="M261.7,316L338.1,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n19" data-to="n26"><path d="M426.2,229C504.5,240.9 813.3,276.7 895.9,300.5C978.4,324.3 917.1,360.1 921.3,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n25" data-to="n35"><path d="M345.3,316C333.6,327.9 287.1,363.7 275.1,387.5C263,411.3 273.5,447.1 273.2,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="n15" data-to="n24"><path d="M261.7,229L261.7,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n33" data-to="n38"><path d="M632.2,316L675.7,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n10" data-to="n23"><path d="M870.5,229L991.4,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n9" data-to="n13"><path d="M658.3,142L683.9,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="n16" data-to="n33"><path d="M607,229L624.1,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n19" data-to="n30"><path d="M404.7,229L199.6,285" marker-end="url(#a)"/></g>
+<g class="e" data-from="n16" data-to="n29"><path d="M590.8,229C563.3,240.9 464.9,276.7 425.5,300.5C386,324.3 366.2,360.1 354.3,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n20" data-to="n27"><path d="M859.8,316L822.7,372" marker-end="url(#a)"/></g>
+<g class="e" data-from="n24" data-to="n37"><path d="M272.5,316C326.4,327.9 513.8,363.7 596.1,387.5C678.4,411.3 737.8,447.1 766.2,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="n3" data-to="n21"><path d="M378.6,55C341.4,66.9 193.9,102.7 155.4,126.5C116.9,150.3 148.7,186.1 147.3,198" marker-end="url(#a)"/></g>
+<g class="e" data-from="n26" data-to="n37"><path d="M929.4,403L774.2,459" marker-end="url(#a)"/></g>
+<g class="e" data-from="n3" data-to="n8"><path d="M392.1,55L591.8,111" marker-end="url(#a)"/></g>
+<g class="e" data-from="n14" data-to="n15"><path d="M373.6,142L269.8,198" marker-end="url(#a)"/></g>
+<g class="n" data-id="n0"><title>n0 (rank 1)</title><rect x="428.8" y="111" width="38.8" height="31" rx="5"/><text x="448.2" y="131">n0</text></g>
+<g class="n" data-id="n1"><title>n1 (rank 0)</title><rect x="136" y="24" width="38.8" height="31" rx="5"/><text x="155.4" y="44">n1</text></g>
+<g class="n" data-id="n2"><title>n2 (rank 0)</title><rect x="833.8" y="24" width="38.8" height="31" rx="5"/><text x="853.2" y="44">n2</text></g>
+<g class="n" data-id="n3"><title>n3 (rank 0)</title><rect x="366" y="24" width="38.8" height="31" rx="5"/><text x="385.4" y="44">n3</text></g>
+<g class="n" data-id="n4"><title>n4 (rank 3)</title><rect x="773.9" y="285" width="38.8" height="31" rx="5"/><text x="793.3" y="305">n4</text></g>
+<g class="n" data-id="n5"><title>n5 (rank 1)</title><rect x="718.1" y="111" width="38.8" height="31" rx="5"/><text x="737.5" y="131">n5</text></g>
+<g class="n" data-id="n6"><title>n6 (rank 1)</title><rect x="840.4" y="111" width="38.8" height="31" rx="5"/><text x="859.8" y="131">n6</text></g>
+<g class="n" data-id="n7"><title>n7 (rank 2)</title><rect x="912.6" y="198" width="38.8" height="31" rx="5"/><text x="932" y="218">n7</text></g>
+<g class="n" data-id="n8"><title>n8 (rank 1)</title><rect x="572.4" y="111" width="38.8" height="31" rx="5"/><text x="591.8" y="131">n8</text></g>
+<g class="n" data-id="n9"><title>n9 (rank 1)</title><rect x="638.9" y="111" width="38.8" height="31" rx="5"/><text x="658.3" y="131">n9</text></g>
+<g class="n" data-id="n10"><title>n10 (rank 2)</title><rect x="836.7" y="198" width="46.2" height="31" rx="5"/><text x="859.8" y="218">n10</text></g>
+<g class="n" data-id="n11"><title>n11 (rank 2)</title><rect x="322.2" y="198" width="46.2" height="31" rx="5"/><text x="345.3" y="218">n11</text></g>
+<g class="n" data-id="n12"><title>n12 (rank 1)</title><rect x="24" y="111" width="46.2" height="31" rx="5"/><text x="47.1" y="131">n12</text></g>
+<g class="n" data-id="n13"><title>n13 (rank 2)</title><rect x="650.1" y="198" width="46.2" height="31" rx="5"/><text x="673.2" y="218">n13</text></g>
+<g class="n" data-id="n14"><title>n14 (rank 1)</title><rect x="358.6" y="111" width="46.2" height="31" rx="5"/><text x="381.7" y="131">n14</text></g>
+<g class="n" data-id="n15"><title>n15 (rank 2)</title><rect x="238.6" y="198" width="46.2" height="31" rx="5"/><text x="261.7" y="218">n15</text></g>
+<g class="n" data-id="n16"><title>n16 (rank 2)</title><rect x="579.9" y="198" width="46.2" height="31" rx="5"/><text x="603" y="218">n16</text></g>
+<g class="n" data-id="n17"><title>n17 (rank 3)</title><rect x="908.9" y="285" width="46.2" height="31" rx="5"/><text x="932" y="305">n17</text></g>
+<g class="n" data-id="n18"><title>n18 (rank 2)</title><rect x="24" y="198" width="46.2" height="31" rx="5"/><text x="47.1" y="218">n18</text></g>
+<g class="n" data-id="n19"><title>n19 (rank 2)</title><rect x="392.4" y="198" width="46.2" height="31" rx="5"/><text x="415.5" y="218">n19</text></g>
+<g class="n" data-id="n20"><title>n20 (rank 3)</title><rect x="836.7" y="285" width="46.2" height="31" rx="5"/><text x="859.8" y="305">n20</text></g>
+<g class="n" data-id="n21"><title>n21 (rank 2)</title><rect x="132.3" y="198" width="46.2" height="31" rx="5"/><text x="155.4" y="218">n21</text></g>
+<g class="n" data-id="n22"><title>n22 (rank 3)</title><rect x="455.5" y="285" width="46.2" height="31" rx="5"/><text x="478.6" y="305">n22</text></g>
+<g class="n" data-id="n23"><title>n23 (rank 3)</title><rect x="979.1" y="285" width="46.2" height="31" rx="5"/><text x="1002.2" y="305">n23</text></g>
+<g class="n" data-id="n24"><title>n24 (rank 3)</title><rect x="238.6" y="285" width="46.2" height="31" rx="5"/><text x="261.7" y="305">n24</text></g>
+<g class="n" data-id="n25"><title>n25 (rank 3)</title><rect x="322.2" y="285" width="46.2" height="31" rx="5"/><text x="345.3" y="305">n25</text></g>
+<g class="n" data-id="n26"><title>n26 (rank 4)</title><rect x="906.3" y="372" width="46.2" height="31" rx="5"/><text x="929.4" y="392">n26</text></g>
+<g class="n" data-id="n27"><title>n27 (rank 4)</title><rect x="787.5" y="372" width="46.2" height="31" rx="5"/><text x="810.6" y="392">n27</text></g>
+<g class="n" data-id="n28"><title>n28 (rank 1)</title><rect x="96.2" y="111" width="46.2" height="31" rx="5"/><text x="119.3" y="131">n28</text></g>
+<g class="n" data-id="n29"><title>n29 (rank 4)</title><rect x="327.2" y="372" width="46.2" height="31" rx="5"/><text x="350.3" y="392">n29</text></g>
+<g class="n" data-id="n30"><title>n30 (rank 3)</title><rect x="168.4" y="285" width="46.2" height="31" rx="5"/><text x="191.5" y="305">n30</text></g>
+<g class="n" data-id="n31"><title>n31 (rank 4)</title><rect x="525.7" y="372" width="46.2" height="31" rx="5"/><text x="548.8" y="392">n31</text></g>
+<g class="n" data-id="n32"><title>n32 (rank 4)</title><rect x="132.3" y="372" width="46.2" height="31" rx="5"/><text x="155.4" y="392">n32</text></g>
+<g class="n" data-id="n33"><title>n33 (rank 3)</title><rect x="609.1" y="285" width="46.2" height="31" rx="5"/><text x="632.2" y="305">n33</text></g>
+<g class="n" data-id="n34"><title>n34 (rank 5)</title><rect x="60.1" y="459" width="46.2" height="31" rx="5"/><text x="83.2" y="479">n34</text></g>
+<g class="n" data-id="n35"><title>n35 (rank 5)</title><rect x="250.1" y="459" width="46.2" height="31" rx="5"/><text x="273.2" y="479">n35</text></g>
+<g class="n" data-id="n36"><title>n36 (rank 5)</title><rect x="338.4" y="459" width="46.2" height="31" rx="5"/><text x="361.5" y="479">n36</text></g>
+<g class="n" data-id="n37"><title>n37 (rank 5)</title><rect x="747.1" y="459" width="46.2" height="31" rx="5"/><text x="770.2" y="479">n37</text></g>
+<g class="n" data-id="n38"><title>n38 (rank 4)</title><rect x="660.7" y="372" width="46.2" height="31" rx="5"/><text x="683.8" y="392">n38</text></g>
+<g class="n" data-id="n39"><title>n39 (rank 4)</title><rect x="455.5" y="372" width="46.2" height="31" rx="5"/><text x="478.6" y="392">n39</text></g>
+</svg>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" class="tier" viewBox="0 0 1504.2 348.9" width="1504.2" height="348.9" role="img" aria-label="layered graph drawing">
+<style>
+.tier{--bg:#fbfaf7;--node:#ffffff;--stroke:#3b4252;--edge:#6b7488;--text:#1d2330;--rev:#d9480f;--band:#f0ede6;--hl:#2563eb;--halo:#fbfaf7}
+@media (prefers-color-scheme:dark){.tier{--bg:#161a22;--node:#222836;--stroke:#aab3c5;--edge:#7f8aa3;--text:#e8ecf4;--rev:#ff8a4c;--band:#1c212c;--hl:#6aa3ff;--halo:#161a22}}
+.tier .bg{fill:var(--bg)}.tier .band{fill:var(--band)}
+.tier .n rect,.tier .n ellipse{fill:var(--node);stroke:var(--stroke);stroke-width:1.3}
+.tier .n text{fill:var(--text);font:13px ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;text-anchor:middle}
+.tier .e path{fill:none;stroke:var(--edge);stroke-width:1.4}
+.tier .e.rev path{stroke:var(--rev);stroke-dasharray:5 3}
+.tier .e text{fill:var(--text);font:11px ui-sans-serif,system-ui,sans-serif;text-anchor:middle;paint-order:stroke;stroke:var(--halo);stroke-width:4px}
+.tier .arr{fill:var(--edge)}.tier .arr-rev{fill:var(--rev)}
+.tier .rk{fill:var(--edge);font:10px ui-monospace,monospace;opacity:.7}
+.tier .n{cursor:default}.tier .n:hover rect,.tier .n:hover ellipse,.tier .n.hl rect,.tier .n.hl ellipse{stroke:var(--hl);stroke-width:2.4}
+.tier .e.hl path{stroke:var(--hl);stroke-width:2.4}
+</style>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr" d="M0,1 L10,5 L0,9 z"/></marker><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr-rev" d="M0,1 L10,5 L0,9 z"/></marker></defs>
+<rect class="bg" width="1504.2" height="348.9"/>
+<rect class="band" x="16" y="0" width="104.9" height="348.9"/><text class="rk" x="68.5" y="12" text-anchor="middle">0</text><rect class="band" x="190.1" y="0" width="124.2" height="348.9"/><text class="rk" x="252.2" y="12" text-anchor="middle">2</text><rect class="band" x="409.1" y="0" width="153" height="348.9"/><text class="rk" x="485.6" y="12" text-anchor="middle">4</text><rect class="band" x="644.1" y="0" width="143.4" height="348.9"/><text class="rk" x="715.8" y="12" text-anchor="middle">6</text><rect class="band" x="882.3" y="0" width="143.4" height="348.9"/><text class="rk" x="954" y="12" text-anchor="middle">8</text><rect class="band" x="1037.7" y="0" width="124.2" height="348.9"/><text class="rk" x="1099.8" y="12" text-anchor="middle">9</text><rect class="band" x="1173.9" y="0" width="133.8" height="348.9"/><text class="rk" x="1240.8" y="12" text-anchor="middle">10</text><rect class="band" x="1383.2" y="0" width="104.9" height="348.9"/><text class="rk" x="1435.7" y="12" text-anchor="middle">12</text>
+<g class="e rev" data-from="CLOSED" data-to="LISTEN"><path d="M1399.6,218C1390.6,187 1371.9,63 1345.4,32C1319,1 1281.7,32 1240.8,32C1199.8,32 1147.6,32 1099.8,32C1052,32 998.1,32 954,32C909.9,32 874.6,32 834.9,32C795.2,32 754.4,32 715.8,32C677.2,32 641.5,32 603.1,32C564.7,32 525.8,32 485.6,32C445.4,32 400.6,32 361.7,32C322.8,32 286.6,32 252.2,32C217.8,32 179.6,17.1 155.5,32C131.5,46.9 115.7,106.7 107.8,121.6" marker-end="url(#ar)"/><text x="715.8" y="36">listen</text></g>
+<g class="e rev" data-from="CLOSED" data-to="SYN_SENT"><path d="M1394.1,236.1C1386,245.5 1371,283.4 1345.4,292.9C1319.9,302.4 1281.7,292.9 1240.8,292.9C1199.8,292.9 1147.6,292.9 1099.8,292.9C1052,292.9 998.1,292.9 954,292.9C909.9,292.9 874.6,292.9 834.9,292.9C795.2,292.9 754.4,292.9 715.8,292.9C677.2,292.9 641.5,292.9 603.1,292.9C564.7,292.9 525.8,292.9 485.6,292.9C445.4,292.9 391.6,292.1 361.7,292.9C331.8,293.7 315.5,297 306.3,297.8" marker-end="url(#ar)"/><text x="834.9" y="296.9">connect</text></g>
+<g class="e" data-from="LISTEN" data-to="SYN_RCVD"><path d="M112.9,130.6C120,130.6 141.3,130.6 155.5,130.6C169.7,130.6 191,130.6 198.1,130.6" marker-end="url(#a)"/><text x="155.5" y="134.6">SYN</text></g>
+<g class="e" data-from="LISTEN" data-to="CLOSED"><path d="M107.8,139.7C115.7,159.5 131.5,239 155.5,258.9C179.6,278.8 217.8,258.9 252.2,258.9C286.6,258.9 322.8,258.9 361.7,258.9C400.6,258.9 445.4,258.9 485.6,258.9C525.8,258.9 564.7,258.9 603.1,258.9C641.5,258.9 677.2,258.9 715.8,258.9C754.4,258.9 795.2,258.9 834.9,258.9C874.6,258.9 909.9,258.9 954,258.9C998.1,258.9 1052,258.9 1099.8,258.9C1147.6,258.9 1199.8,258.9 1240.8,258.9C1281.7,258.9 1320.3,263.4 1345.4,258.9C1370.6,254.3 1383.9,236.1 1391.5,231.6" marker-end="url(#a)"/><text x="715.8" y="262.9">close</text></g>
+<g class="e" data-from="SYN_SENT" data-to="ESTABLISHED"><path d="M300,288.7C310.3,286.6 341.4,293.6 361.7,275.9C381.9,258.2 411.5,198.1 421.4,182.5" marker-end="url(#a)"/><text x="361.7" y="279.9">SYN+ACK</text></g>
+<g class="e" data-from="SYN_SENT" data-to="CLOSED"><path d="M300,306.8C310.3,308.5 330.8,315.2 361.7,316.9C392.6,318.6 445.4,316.9 485.6,316.9C525.8,316.9 564.7,316.9 603.1,316.9C641.5,316.9 677.2,316.9 715.8,316.9C754.4,316.9 795.2,316.9 834.9,316.9C874.6,316.9 909.9,316.9 954,316.9C998.1,316.9 1052,316.9 1099.8,316.9C1147.6,316.9 1199.8,316.9 1240.8,316.9C1281.7,316.9 1319,329.6 1345.4,316.9C1371.9,304.2 1390.6,253.3 1399.6,240.6" marker-end="url(#a)"/><text x="834.9" y="320.9">timeout</text></g>
+<g class="e" data-from="SYN_RCVD" data-to="ESTABLISHED"><path d="M302.9,137.4C312.7,143.8 341.9,170.5 361.7,175.7C381.4,181 411.5,170.1 421.4,168.9" marker-end="url(#a)"/><text x="361.7" y="179.7">ACK</text></g>
+<g class="e" data-from="SYN_RCVD" data-to="FIN_WAIT_1"><path d="M302.9,123.8C312.7,117.5 331.2,91.9 361.7,85.5C392.1,79.2 445.4,85.5 485.6,85.5C525.8,85.5 574.7,84.4 603.1,85.5C631.5,86.7 647.3,91.3 656.1,92.5" marker-end="url(#a)"/><text x="485.6" y="89.5">close</text></g>
+<g class="e" data-from="ESTABLISHED" data-to="FIN_WAIT_1"><path d="M549.8,168.9C558.7,164.8 585.4,154.8 603.1,144.3C620.8,133.9 647.3,112.4 656.1,106" marker-end="url(#a)"/><text x="603.1" y="148.3">close</text></g>
+<g class="e" data-from="ESTABLISHED" data-to="CLOSE_WAIT"><path d="M549.8,182.5C558.7,183.4 586,186.8 603.1,187.7C620.2,188.6 643.9,187.7 652.1,187.7" marker-end="url(#a)"/><text x="603.1" y="191.7">FIN</text></g>
+<g class="e" data-from="FIN_WAIT_1" data-to="FIN_WAIT_2"><path d="M775.5,92.5C785.4,88.4 815.8,72 834.9,67.9C854,63.8 881.1,67.9 890.3,67.9" marker-end="url(#a)"/><text x="834.9" y="71.9">ACK</text></g>
+<g class="e" data-from="FIN_WAIT_1" data-to="CLOSING"><path d="M775.5,106C785.4,110.1 813.4,126.5 834.9,130.6C856.4,134.7 893.1,130.6 904.7,130.6" marker-end="url(#a)"/><text x="834.9" y="134.6">FIN</text></g>
+<g class="e" data-from="FIN_WAIT_2" data-to="TIME_WAIT"><path d="M1017.7,67.9C1031.4,67.9 1071.8,63.8 1099.8,67.9C1127.8,72 1171.3,88.4 1185.6,92.5" marker-end="url(#a)"/><text x="1099.8" y="71.9">FIN</text></g>
+<g class="e" data-from="CLOSING" data-to="TIME_WAIT"><path d="M1003.3,130.6C1019.4,130.6 1069.4,134.7 1099.8,130.6C1130.2,126.5 1171.3,110.1 1185.6,106" marker-end="url(#a)"/><text x="1099.8" y="134.6">ACK</text></g>
+<g class="e" data-from="CLOSE_WAIT" data-to="LAST_ACK"><path d="M779.5,187.7C788.7,187.7 805.8,187.7 834.9,187.7C864,187.7 918.9,187.7 954,187.7C989.1,187.7 1030.4,187.7 1045.7,187.7" marker-end="url(#a)"/><text x="954" y="191.7">close</text></g>
+<g class="e" data-from="LAST_ACK" data-to="CLOSED"><path d="M1153.9,187.7C1168.3,187.7 1208.8,187.7 1240.8,187.7C1272.7,187.7 1320.3,181.2 1345.4,187.7C1370.6,194.3 1383.9,220.5 1391.5,227" marker-end="url(#a)"/><text x="1345.4" y="191.7">ACK</text></g>
+<g class="e" data-from="TIME_WAIT" data-to="CLOSED"><path d="M1299.6,99.2C1307.3,99.2 1329.7,78.7 1345.4,99.2C1361.2,119.8 1386,202 1394.1,222.5" marker-end="url(#a)"/><text x="1345.4" y="103.2">2MSL</text></g>
+<g class="e" data-from="ESTABLISHED" data-to="ESTABLISHED"><path d="M451.3,195.1 C413.1,225.9 558.1,225.9 519.8,195.1" marker-end="url(#a)"/><text x="485.6" y="232.2">data</text></g>
+<g class="n" data-id="CLOSED"><title>CLOSED (rank 12)</title><ellipse cx="1435.7" cy="229.3" rx="44.5" ry="19.4"/><text x="1435.7" y="233.8">CLOSED</text></g>
+<g class="n" data-id="LISTEN"><title>LISTEN (rank 0)</title><ellipse cx="68.5" cy="130.6" rx="44.5" ry="19.4"/><text x="68.5" y="135.1">LISTEN</text></g>
+<g class="n" data-id="SYN_SENT"><title>SYN_SENT (rank 2)</title><ellipse cx="252.2" cy="297.8" rx="54.1" ry="19.4"/><text x="252.2" y="302.3">SYN_SENT</text></g>
+<g class="n" data-id="SYN_RCVD"><title>SYN_RCVD (rank 2)</title><ellipse cx="252.2" cy="130.6" rx="54.1" ry="19.4"/><text x="252.2" y="135.1">SYN_RCVD</text></g>
+<g class="n" data-id="ESTABLISHED"><title>ESTABLISHED (rank 4)</title><ellipse cx="485.6" cy="175.7" rx="68.5" ry="19.4"/><text x="485.6" y="180.2">ESTABLISHED</text></g>
+<g class="n" data-id="FIN_WAIT_1"><title>FIN_WAIT_1 (rank 6)</title><ellipse cx="715.8" cy="99.2" rx="63.7" ry="19.4"/><text x="715.8" y="103.8">FIN_WAIT_1</text></g>
+<g class="n" data-id="CLOSE_WAIT"><title>CLOSE_WAIT (rank 6)</title><ellipse cx="715.8" cy="187.7" rx="63.7" ry="19.4"/><text x="715.8" y="192.2">CLOSE_WAIT</text></g>
+<g class="n" data-id="FIN_WAIT_2"><title>FIN_WAIT_2 (rank 8)</title><ellipse cx="954" cy="67.9" rx="63.7" ry="19.4"/><text x="954" y="72.4">FIN_WAIT_2</text></g>
+<g class="n" data-id="CLOSING"><title>CLOSING (rank 8)</title><ellipse cx="954" cy="130.6" rx="49.3" ry="19.4"/><text x="954" y="135.1">CLOSING</text></g>
+<g class="n" data-id="TIME_WAIT"><title>TIME_WAIT (rank 10)</title><ellipse cx="1240.8" cy="99.2" rx="58.9" ry="19.4"/><text x="1240.8" y="103.8">TIME_WAIT</text></g>
+<g class="n" data-id="LAST_ACK"><title>LAST_ACK (rank 9)</title><ellipse cx="1099.8" cy="187.7" rx="54.1" ry="19.4"/><text x="1099.8" y="192.2">LAST_ACK</text></g>
+</svg>

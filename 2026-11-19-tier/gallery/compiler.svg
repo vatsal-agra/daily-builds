@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" class="tier" viewBox="0 0 495.7 978" width="495.7" height="978" role="img" aria-label="layered graph drawing">
+<style>
+.tier{--bg:#fbfaf7;--node:#ffffff;--stroke:#3b4252;--edge:#6b7488;--text:#1d2330;--rev:#d9480f;--band:#f0ede6;--hl:#2563eb;--halo:#fbfaf7}
+@media (prefers-color-scheme:dark){.tier{--bg:#161a22;--node:#222836;--stroke:#aab3c5;--edge:#7f8aa3;--text:#e8ecf4;--rev:#ff8a4c;--band:#1c212c;--hl:#6aa3ff;--halo:#161a22}}
+.tier .bg{fill:var(--bg)}.tier .band{fill:var(--band)}
+.tier .n rect,.tier .n ellipse{fill:var(--node);stroke:var(--stroke);stroke-width:1.3}
+.tier .n text{fill:var(--text);font:13px ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;text-anchor:middle}
+.tier .e path{fill:none;stroke:var(--edge);stroke-width:1.4}
+.tier .e.rev path{stroke:var(--rev);stroke-dasharray:5 3}
+.tier .e text{fill:var(--text);font:11px ui-sans-serif,system-ui,sans-serif;text-anchor:middle;paint-order:stroke;stroke:var(--halo);stroke-width:4px}
+.tier .arr{fill:var(--edge)}.tier .arr-rev{fill:var(--rev)}
+.tier .rk{fill:var(--edge);font:10px ui-monospace,monospace;opacity:.7}
+.tier .n{cursor:default}.tier .n:hover rect,.tier .n:hover ellipse,.tier .n.hl rect,.tier .n.hl ellipse{stroke:var(--hl);stroke-width:2.4}
+.tier .e.hl path{stroke:var(--hl);stroke-width:2.4}
+</style>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr" d="M0,1 L10,5 L0,9 z"/></marker><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr-rev" d="M0,1 L10,5 L0,9 z"/></marker></defs>
+<rect class="bg" width="495.7" height="978"/>
+<rect class="band" x="0" y="16" width="495.7" height="47"/><text class="rk" x="6" y="42.5">0</text><rect class="band" x="0" y="119" width="495.7" height="47"/><text class="rk" x="6" y="145.5">2</text><rect class="band" x="0" y="222" width="495.7" height="47"/><text class="rk" x="6" y="248.5">4</text><rect class="band" x="0" y="325" width="495.7" height="47"/><text class="rk" x="6" y="351.5">6</text><rect class="band" x="0" y="428" width="495.7" height="47"/><text class="rk" x="6" y="454.5">8</text><rect class="band" x="0" y="531" width="495.7" height="47"/><text class="rk" x="6" y="557.5">10</text><rect class="band" x="0" y="620" width="495.7" height="47"/><text class="rk" x="6" y="646.5">12</text><rect class="band" x="0" y="723" width="495.7" height="47"/><text class="rk" x="6" y="749.5">14</text><rect class="band" x="0" y="826" width="495.7" height="47"/><text class="rk" x="6" y="852.5">16</text><rect class="band" x="0" y="915" width="495.7" height="47"/><text class="rk" x="6" y="941.5">18</text>
+<g class="e" data-from="Source" data-to="Lexer"><path d="M271,55C271,61 271,79 271,91C271,103 271,121 271,127" marker-end="url(#a)"/><text x="271" y="95">chars</text></g>
+<g class="e" data-from="Lexer" data-to="Parser"><path d="M260.4,158C258.2,164 249.6,182 247.4,194C245.3,206 247.4,224 247.4,230" marker-end="url(#a)"/><text x="247.4" y="198">tokens</text></g>
+<g class="e" data-from="Parser" data-to="Sema"><path d="M235.5,261C229,267 203.1,285 196.6,297C190.1,309 196.6,327 196.6,333" marker-end="url(#a)"/><text x="196.6" y="301">AST</text></g>
+<g class="e" data-from="Sema" data-to="IR"><path d="M184.1,364C165.6,370 91.7,388 73.2,400C54.7,412 73.2,430 73.2,436" marker-end="url(#a)"/><text x="73.2" y="404">typed AST</text></g>
+<g class="e" data-from="IR" data-to="Optimiser"><path d="M66.4,467C61.8,473 40.1,491 38.6,503C37.1,515 54.2,533 57.3,539" marker-end="url(#a)"/><text x="38.6" y="507">SSA</text></g>
+<g class="e rev" data-from="Optimiser" data-to="IR"><path d="M89.1,539C92.2,533 109.3,515 107.8,503C106.3,491 84.6,473 80,467" marker-end="url(#ar)"/><text x="107.8" y="507">rewritten SSA</text></g>
+<g class="e" data-from="Optimiser" data-to="Codegen"><path d="M73.2,570C73.2,574.8 69.5,589.3 73.2,599C76.9,608.7 91.8,623.2 95.5,628" marker-end="url(#a)"/></g>
+<g class="e" data-from="Codegen" data-to="Asm"><path d="M108.7,659C108.7,665 108.7,683 108.7,695C108.7,707 108.7,725 108.7,731" marker-end="url(#a)"/><text x="108.7" y="699">machine IR</text></g>
+<g class="e" data-from="Asm" data-to="Linker"><path d="M108.7,762C108.7,768 106.5,786 108.7,798C111,810 120,828 122.2,834" marker-end="url(#a)"/><text x="108.7" y="802">objects</text></g>
+<g class="e" data-from="Sema" data-to="Diagnostics"><path d="M209.1,364C223.8,370 278.4,388 297,400C315.6,412 316.9,430 320.9,436" marker-end="url(#a)"/></g>
+<g class="e" data-from="Parser" data-to="Diagnostics"><path d="M259.4,261C273.8,267 331.2,282.4 345.5,297C359.8,311.6 345.5,331.3 345.5,348.5C345.5,365.7 345.5,385.4 345.5,400C345.5,414.6 345.5,430 345.5,436" marker-end="url(#a)"/></g>
+<g class="e" data-from="Lexer" data-to="Diagnostics"><path d="M281.7,158C294.9,164 347.4,179.4 360.5,194C373.6,208.6 360.5,228.3 360.5,245.5C360.5,262.7 360.5,279.8 360.5,297C360.5,314.2 360.5,331.3 360.5,348.5C360.5,365.7 358.9,385.4 360.5,400C362.1,414.6 368.5,430 370.1,436" marker-end="url(#a)"/></g>
+<g class="e" data-from="Linker" data-to="Binary"><path d="M134.2,865C134.2,869.8 134.2,884.3 134.2,894C134.2,903.7 134.2,918.2 134.2,923" marker-end="url(#a)"/></g>
+<g class="e" data-from="Sema" data-to="SymbolTable"><path d="M196.6,364C196.6,370 196.6,385.4 196.6,400C196.6,414.6 196.6,434.3 196.6,451.5C196.6,468.7 196.6,488.4 196.6,503C196.6,517.6 196.6,533 196.6,539" marker-end="url(#a)"/></g>
+<g class="e" data-from="SymbolTable" data-to="Codegen"><path d="M178.2,570C177,574.8 180.5,589.3 171.1,599C161.8,608.7 130.2,623.2 122,628" marker-end="url(#a)"/></g>
+<g class="e" data-from="SymbolTable" data-to="Linker"><path d="M215,570C212.8,574.8 203.8,586.8 201.6,599C199.4,611.2 201.6,627.5 201.6,643.5C201.6,659.5 201.6,677.8 201.6,695C201.6,712.2 201.6,729.3 201.6,746.5C201.6,763.7 210.8,783.4 201.6,798C192.4,812.6 155.4,828 146.2,834" marker-end="url(#a)"/></g>
+<g class="e" data-from="Diagnostics" data-to="Diagnostics"><path d="M398.2,443.8 C429,432 429,471 398.2,459.2" marker-end="url(#a)"/><text x="447.5" y="455.5">dedupe</text></g>
+<g class="n" data-id="Source"><title>Source (rank 0)</title><rect x="236.8" y="24" width="68.4" height="31" rx="5"/><text x="271" y="44">Source</text></g>
+<g class="n" data-id="Lexer"><title>Lexer (rank 2)</title><rect x="240.5" y="127" width="61" height="31" rx="5"/><text x="271" y="147">Lexer</text></g>
+<g class="n" data-id="Parser"><title>Parser (rank 4)</title><rect x="213.2" y="230" width="68.4" height="31" rx="5"/><text x="247.4" y="250">Parser</text></g>
+<g class="n" data-id="Sema"><title>Sema (rank 6)</title><rect x="169.8" y="333" width="53.6" height="31" rx="5"/><text x="196.6" y="353">Sema</text></g>
+<g class="n" data-id="IR"><title>IR (rank 8)</title><rect x="53.8" y="436" width="38.8" height="31" rx="5"/><text x="73.2" y="456">IR</text></g>
+<g class="n" data-id="Optimiser"><title>Optimiser (rank 10)</title><rect x="27.9" y="539" width="90.6" height="31" rx="5"/><text x="73.2" y="559">Optimiser</text></g>
+<g class="n" data-id="Codegen"><title>Codegen (rank 12)</title><rect x="70.8" y="628" width="75.8" height="31" rx="5"/><text x="108.7" y="648">Codegen</text></g>
+<g class="n" data-id="Asm"><title>Asm (rank 14)</title><rect x="85.6" y="731" width="46.2" height="31" rx="5"/><text x="108.7" y="751">Asm</text></g>
+<g class="n" data-id="Linker"><title>Linker (rank 16)</title><rect x="100" y="834" width="68.4" height="31" rx="5"/><text x="134.2" y="854">Linker</text></g>
+<g class="n" data-id="Diagnostics"><title>Diagnostics (rank 8)</title><rect x="292.8" y="436" width="105.4" height="31" rx="5"/><text x="345.5" y="456">Diagnostics</text></g>
+<g class="n" data-id="Binary"><title>Binary (rank 18)</title><rect x="100" y="923" width="68.4" height="31" rx="5"/><text x="134.2" y="943">Binary</text></g>
+<g class="n" data-id="SymbolTable"><title>SymbolTable (rank 10)</title><rect x="143.9" y="539" width="105.4" height="31" rx="5"/><text x="196.6" y="559">SymbolTable</text></g>
+</svg>

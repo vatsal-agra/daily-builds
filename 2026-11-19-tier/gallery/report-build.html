@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tier layout report</title>
+<style>
+:root{--bg:#f4f1ea;--panel:#fffdf8;--ink:#1d2330;--mute:#666d80;--line:#e2dccf;--accent:#2563eb}
+@media (prefers-color-scheme:dark){:root{--bg:#10131a;--panel:#171b24;--ink:#e8ecf4;--mute:#8d96ab;--line:#272d3b;--accent:#6aa3ff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1200px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:28px;margin:0 0 4px;letter-spacing:-.02em}h1 span{color:var(--accent)}
+.sub{color:var(--mute);margin:0 0 24px}
+table{border-collapse:collapse;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:28px;font-variant-numeric:tabular-nums}
+th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--line)}th[scope=row],thead th:first-child{text-align:left}
+thead th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);font-weight:600}
+tbody tr:first-child{font-weight:600}tbody tr:last-child th,tbody tr:last-child td{border-bottom:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.card.main{grid-column:1/-1;border-color:var(--accent)}
+.card header{padding:12px 16px 4px}.card h2{font-size:16px;margin:0}.card p{margin:2px 0 8px;color:var(--mute);font-size:13px}
+.view{overflow:auto;max-height:640px;padding:0 8px 8px}.view svg{display:block;margin:0 auto;max-width:100%;height:auto}
+.table-wrap{overflow-x:auto}
+</style></head><body><main>
+<h1>Tier <span>layout report</span></h1>
+<p class="sub">build.dot · 12 nodes · 29 edges. Hover a node to highlight its edges. Dashed orange edges were reversed to break cycles.</p>
+<div class="table-wrap"><table><thead><tr><th>Strategy</th><th>Crossings</th><th>Edge length</th><th>Bends</th><th>Dummies</th><th>Reversed</th><th>Size</th></tr></thead><tbody>
+<tr><th scope=row>Tier (full pipeline)</th><td>25</td><td>54</td><td>21</td><td>25</td><td>0</td><td>414 × 514</td></tr>
+<tr><th scope=row>Longest-path layering</th><td>23</td><td>60</td><td>27</td><td>31</td><td>0</td><td>471 × 514</td></tr>
+<tr><th scope=row>No crossing minimisation</th><td>50</td><td>54</td><td>20</td><td>25</td><td>0</td><td>438 × 514</td></tr>
+<tr><th scope=row>Packed coordinates</th><td>25</td><td>54</td><td>25</td><td>25</td><td>0</td><td>342 × 514</td></tr>
+<tr><th scope=row>DFS cycle removal</th><td>25</td><td>54</td><td>21</td><td>25</td><td>0</td><td>414 × 514</td></tr>
+</tbody></table></div>
+<div class="grid">
+<section class="card main"><header><h2>Tier (full pipeline)</h2><p>network simplex · median sweeps + transpose · Brandes–Köpf</p></header><div class="view"><svg xmlns="http://www.w3.org/2000/svg" class="tier" viewBox="0 0 414.1 514" width="414.1" height="514" role="img" aria-label="layered graph drawing">
+<defs><marker id="v0a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr" d="M0,1 L10,5 L0,9 z"/></marker><marker id="v0ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr-rev" d="M0,1 L10,5 L0,9 z"/></marker></defs>
+<rect class="bg" width="414.1" height="514"/>
+<rect class="band" x="0" y="16" width="414.1" height="47"/><text class="rk" x="6" y="42.5">0</text><rect class="band" x="0" y="103" width="414.1" height="47"/><text class="rk" x="6" y="129.5">1</text><rect class="band" x="0" y="190" width="414.1" height="47"/><text class="rk" x="6" y="216.5">2</text><rect class="band" x="0" y="277" width="414.1" height="47"/><text class="rk" x="6" y="303.5">3</text><rect class="band" x="0" y="364" width="414.1" height="47"/><text class="rk" x="6" y="390.5">4</text><rect class="band" x="0" y="451" width="414.1" height="47"/><text class="rk" x="6" y="477.5">5</text>
+<g class="e" data-from="app" data-to="ui"><path d="M262.3,55C225.8,66.9 79.9,102.7 43.4,126.5C6.9,150.3 43.4,186.1 43.4,198" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="app" data-to="api"><path d="M268.8,55L222.3,111" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="app" data-to="core"><path d="M275.2,55C289.9,66.9 348.7,100.1 363.3,126.5C378,152.9 373.2,187.1 363.3,213.5C353.5,239.9 314.1,273.1 304.3,285" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="ui" data-to="core"><path d="M52.5,229L279.3,285" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="ui" data-to="utils"><path d="M34.3,229C32.8,240.9 26.4,274.1 24.8,300.5C23.2,326.9 2.5,361.1 24.8,387.5C47.1,413.9 136.2,447.1 158.5,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="ui" data-to="log"><path d="M43.4,229C44.2,240.9 27,276.7 48.4,300.5C69.8,324.3 151.2,360.1 171.7,372" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="api" data-to="auth"><path d="M210.2,142L130.1,198" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="api" data-to="net"><path d="M218.3,142C218.2,153.9 218,189.7 217.9,213.5C217.8,237.3 217.9,273.1 217.9,285" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="api" data-to="core"><path d="M226.3,142C237.3,153.9 280.9,189.7 291.8,213.5C302.7,237.3 291.8,273.1 291.8,285" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="api" data-to="cache"><path d="M234.4,142C252.1,153.9 322.7,187.1 340.3,213.5C357.9,239.9 340.3,274.1 340.3,300.5C340.3,326.9 340.3,360.1 340.3,372" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="auth" data-to="crypto"><path d="M117.6,229C112,240.9 90.5,276.7 83.5,300.5C76.5,324.3 77,360.1 75.7,372" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="auth" data-to="db"><path d="M130.1,229L135.7,285" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="auth" data-to="log"><path d="M142.7,229C148.3,240.9 170.2,276.7 176.8,300.5C183.4,324.3 181.6,360.1 182.5,372" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="net" data-to="utils"><path d="M217.9,316C219.8,327.9 234.9,363.7 229.1,387.5C223.3,411.3 190.6,447.1 182.9,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="net" data-to="log"><path d="M207.1,316L187.9,372" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="net" data-to="cfg"><path d="M228.7,316C233,327.9 247.5,363.7 254.8,387.5C262.2,411.3 269.9,447.1 272.9,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="db" data-to="utils"><path d="M126.6,316C126,327.9 115.6,363.7 122.9,387.5C130.2,411.3 162.7,447.1 170.7,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="db" data-to="cfg"><path d="M135.7,316C135.2,327.9 111.8,363.7 132.9,387.5C154,411.3 240.6,447.1 262.1,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="db" data-to="log"><path d="M144.8,316L177.1,372" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="cache" data-to="utils"><path d="M329.6,403L195.1,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="cache" data-to="cfg"><path d="M351,403L283.7,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="core" data-to="utils"><path d="M291.8,316C291,327.9 303.9,363.7 286.8,387.5C269.7,411.3 205.3,447.1 189,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="core" data-to="log"><path d="M279.3,316L193.3,372" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="core" data-to="cfg"><path d="M304.3,316C303.1,327.9 301.1,363.7 296.8,387.5C292.5,411.3 281.4,447.1 278.3,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="crypto" data-to="utils"><path d="M75.7,403L164.6,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="log" data-to="utils"><path d="M177.1,403L176.8,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="log" data-to="cfg"><path d="M193.3,403L267.5,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="app" data-to="cfg"><path d="M288.2,55C305.2,66.9 373.1,100.1 390.1,126.5C407.1,152.9 390.1,184.5 390.1,213.5C390.1,242.5 390.1,271.5 390.1,300.5C390.1,329.5 406.9,361.1 390.1,387.5C373.3,413.9 305.9,447.1 289.1,459" marker-end="url(#v0a)"/></g>
+<g class="e" data-from="app" data-to="log"><path d="M281.7,55C297,66.9 358.1,100.1 373.3,126.5C388.6,152.9 373.3,184.5 373.3,213.5C373.3,242.5 402.5,274.1 373.3,300.5C344.2,326.9 227.8,360.1 198.7,372" marker-end="url(#v0a)"/></g>
+<g class="n" data-id="app"><title>app (rank 0)</title><rect x="252.1" y="24" width="46.2" height="31" rx="5"/><text x="275.2" y="44">app</text></g>
+<g class="n" data-id="ui"><title>ui (rank 2)</title><rect x="24" y="198" width="38.8" height="31" rx="5"/><text x="43.4" y="218">ui</text></g>
+<g class="n" data-id="core"><title>core (rank 3)</title><rect x="265" y="285" width="53.6" height="31" rx="5"/><text x="291.8" y="305">core</text></g>
+<g class="n" data-id="net"><title>net (rank 3)</title><rect x="194.8" y="285" width="46.2" height="31" rx="5"/><text x="217.9" y="305">net</text></g>
+<g class="n" data-id="db"><title>db (rank 3)</title><rect x="116.3" y="285" width="38.8" height="31" rx="5"/><text x="135.7" y="305">db</text></g>
+<g class="n" data-id="log"><title>log (rank 4)</title><rect x="162.1" y="372" width="46.2" height="31" rx="5"/><text x="185.2" y="392">log</text></g>
+<g class="n" data-id="cfg"><title>cfg (rank 5)</title><rect x="252.5" y="459" width="46.2" height="31" rx="5"/><text x="275.6" y="479">cfg</text></g>
+<g class="n" data-id="utils"><title>utils (rank 5)</title><rect x="146.3" y="459" width="61" height="31" rx="5"/><text x="176.8" y="479">utils</text></g>
+<g class="n" data-id="crypto"><title>crypto (rank 4)</title><rect x="41.5" y="372" width="68.4" height="31" rx="5"/><text x="75.7" y="392">crypto</text></g>
+<g class="n" data-id="cache"><title>cache (rank 4)</title><rect x="309.8" y="372" width="61" height="31" rx="5"/><text x="340.3" y="392">cache</text></g>
+<g class="n" data-id="auth"><title>auth (rank 2)</title><rect x="103.3" y="198" width="53.6" height="31" rx="5"/><text x="130.1" y="218">auth</text></g>
+<g class="n" data-id="api"><title>api (rank 1)</title><rect x="199.2" y="111" width="46.2" height="31" rx="5"/><text x="222.3" y="131">api</text></g>
+</svg>
+</div></section>
+<section class="card"><header><h2>Longest-path layering</h2><p>same, but layers by longest path instead of network simplex</p></header><div class="view"><svg xmlns="http://www.w3.org/2000/svg" class="tier" viewBox="0 0 471.4 514" width="471.4" height="514" role="img" aria-label="layered graph drawing">
+<defs><marker id="v1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr" d="M0,1 L10,5 L0,9 z"/></marker><marker id="v1ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr-rev" d="M0,1 L10,5 L0,9 z"/></marker></defs>
+<rect class="bg" width="471.4" height="514"/>
+<rect class="band" x="0" y="16" width="471.4" height="47"/><text class="rk" x="6" y="42.5">0</text><rect class="band" x="0" y="103" width="471.4" height="47"/><text class="rk" x="6" y="129.5">1</text><rect class="band" x="0" y="190" width="471.4" height="47"/><text class="rk" x="6" y="216.5">2</text><rect class="band" x="0" y="277" width="471.4" height="47"/><text class="rk" x="6" y="303.5">3</text><rect class="band" x="0" y="364" width="471.4" height="47"/><text class="rk" x="6" y="390.5">4</text><rect class="band" x="0" y="451" width="471.4" height="47"/><text class="rk" x="6" y="477.5">5</text>
+<g class="e" data-from="app" data-to="ui"><path d="M295,55L43.4,111" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="app" data-to="api"><path d="M307.9,55L307.9,111" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="app" data-to="core"><path d="M301.4,55C265.9,66.9 123.7,102.7 88.2,126.5C52.7,150.3 88.2,186.1 88.2,198" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="ui" data-to="core"><path d="M52.5,142L75.7,198" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="ui" data-to="utils"><path d="M34.3,142C35,153.9 37.7,187.1 38.4,213.5C39.1,239.9 38.4,271.5 38.4,300.5C38.4,329.5 12.4,361.1 38.4,387.5C64.4,413.9 168.2,447.1 194.2,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="ui" data-to="log"><path d="M43.4,142C44.2,153.9 47.6,187.1 48.4,213.5C49.2,239.9 18.8,274.1 48.4,300.5C78,326.9 196.5,360.1 226.2,372" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="api" data-to="auth"><path d="M303.9,142L218.4,198" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="api" data-to="net"><path d="M311.9,142L316.2,198" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="api" data-to="core"><path d="M295.8,142L100.7,198" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="api" data-to="cache"><path d="M320,142L393.9,198" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="auth" data-to="crypto"><path d="M205.9,229L155.6,285" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="auth" data-to="db"><path d="M218.4,229L233.2,285" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="auth" data-to="log"><path d="M231,229C240.5,240.9 286.3,276.7 288.2,300.5C290.1,324.3 250,360.1 242.3,372" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="net" data-to="utils"><path d="M316.2,229C318.4,240.9 327.1,274.1 329.3,300.5C331.5,326.9 346.7,361.1 329.3,387.5C311.9,413.9 242.1,447.1 224.7,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="net" data-to="log"><path d="M305.5,229C305.6,240.9 315.9,276.7 306.2,300.5C296.6,324.3 257.5,360.1 247.7,372" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="net" data-to="cfg"><path d="M327,229C331.9,240.9 351.2,274.1 356.1,300.5C360.9,326.9 363.1,361.1 356.1,387.5C349,413.9 321,447.1 313.9,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="db" data-to="utils"><path d="M224.1,316C218.5,327.9 192.3,363.7 190.4,387.5C188.5,411.3 208.8,447.1 212.5,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="db" data-to="cfg"><path d="M233.2,316C227.7,327.9 188.7,363.7 200.4,387.5C212.1,411.3 286,447.1 303.2,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="db" data-to="log"><path d="M242.3,316L237,372" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="cache" data-to="utils"><path d="M383.2,229C384.1,240.9 387.9,274.1 388.9,300.5C389.8,326.9 415.2,361.1 388.9,387.5C362.5,413.9 257.1,447.1 230.8,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="cache" data-to="cfg"><path d="M404.5,229C403.6,240.9 399.8,274.1 398.9,300.5C397.9,326.9 412.1,361.1 398.9,387.5C385.6,413.9 332.6,447.1 319.3,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="core" data-to="utils"><path d="M75.7,229C75.1,240.9 72.6,274.1 72,300.5C71.4,326.9 50.6,361.1 72,387.5C93.4,413.9 178.9,447.1 200.3,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="core" data-to="log"><path d="M100.7,229C101.1,240.9 81.4,276.7 103.2,300.5C125,324.3 210.2,360.1 231.6,372" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="core" data-to="cfg"><path d="M88.2,229C89,240.9 92.4,274.1 93.2,300.5C94,326.9 59.1,361.1 93.2,387.5C127.3,413.9 263.7,447.1 297.8,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="crypto" data-to="utils"><path d="M155.6,316C152.9,327.9 130.9,363.7 139.4,387.5C147.9,411.3 195.2,447.1 206.4,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="log" data-to="utils"><path d="M231.6,403L218.6,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="log" data-to="cfg"><path d="M247.7,403L308.6,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="app" data-to="cfg"><path d="M320.8,55C341.9,66.9 426.3,100.1 447.4,126.5C468.4,152.9 447.4,184.5 447.4,213.5C447.4,242.5 447.4,271.5 447.4,300.5C447.4,329.5 467.8,361.1 447.4,387.5C426.9,413.9 345.2,447.1 324.7,459" marker-end="url(#v1a)"/></g>
+<g class="e" data-from="app" data-to="log"><path d="M314.4,55C334.9,66.9 416.9,100.1 437.4,126.5C457.8,152.9 437.4,184.5 437.4,213.5C437.4,242.5 468.1,274.1 437.4,300.5C406.6,326.9 283.8,360.1 253.1,372" marker-end="url(#v1a)"/></g>
+<g class="n" data-id="app"><title>app (rank 0)</title><rect x="284.8" y="24" width="46.2" height="31" rx="5"/><text x="307.9" y="44">app</text></g>
+<g class="n" data-id="ui"><title>ui (rank 1)</title><rect x="24" y="111" width="38.8" height="31" rx="5"/><text x="43.4" y="131">ui</text></g>
+<g class="n" data-id="core"><title>core (rank 2)</title><rect x="61.4" y="198" width="53.6" height="31" rx="5"/><text x="88.2" y="218">core</text></g>
+<g class="n" data-id="net"><title>net (rank 2)</title><rect x="293.1" y="198" width="46.2" height="31" rx="5"/><text x="316.2" y="218">net</text></g>
+<g class="n" data-id="db"><title>db (rank 3)</title><rect x="213.8" y="285" width="38.8" height="31" rx="5"/><text x="233.2" y="305">db</text></g>
+<g class="n" data-id="log"><title>log (rank 4)</title><rect x="216.5" y="372" width="46.2" height="31" rx="5"/><text x="239.6" y="392">log</text></g>
+<g class="n" data-id="cfg"><title>cfg (rank 5)</title><rect x="288.1" y="459" width="46.2" height="31" rx="5"/><text x="311.2" y="479">cfg</text></g>
+<g class="n" data-id="utils"><title>utils (rank 5)</title><rect x="182" y="459" width="61" height="31" rx="5"/><text x="212.5" y="479">utils</text></g>
+<g class="n" data-id="crypto"><title>crypto (rank 3)</title><rect x="121.4" y="285" width="68.4" height="31" rx="5"/><text x="155.6" y="305">crypto</text></g>
+<g class="n" data-id="cache"><title>cache (rank 2)</title><rect x="363.4" y="198" width="61" height="31" rx="5"/><text x="393.9" y="218">cache</text></g>
+<g class="n" data-id="auth"><title>auth (rank 2)</title><rect x="191.6" y="198" width="53.6" height="31" rx="5"/><text x="218.4" y="218">auth</text></g>
+<g class="n" data-id="api"><title>api (rank 1)</title><rect x="284.8" y="111" width="46.2" height="31" rx="5"/><text x="307.9" y="131">api</text></g>
+</svg>
+</div></section>
+<section class="card"><header><h2>No crossing minimisation</h2><p>keeps the initial DFS order</p></header><div class="view"><svg xmlns="http://www.w3.org/2000/svg" class="tier" viewBox="0 0 437.9 514" width="437.9" height="514" role="img" aria-label="layered graph drawing">
+<defs><marker id="v2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr" d="M0,1 L10,5 L0,9 z"/></marker><marker id="v2ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr-rev" d="M0,1 L10,5 L0,9 z"/></marker></defs>
+<rect class="bg" width="437.9" height="514"/>
+<rect class="band" x="0" y="16" width="437.9" height="47"/><text class="rk" x="6" y="42.5">0</text><rect class="band" x="0" y="103" width="437.9" height="47"/><text class="rk" x="6" y="129.5">1</text><rect class="band" x="0" y="190" width="437.9" height="47"/><text class="rk" x="6" y="216.5">2</text><rect class="band" x="0" y="277" width="437.9" height="47"/><text class="rk" x="6" y="303.5">3</text><rect class="band" x="0" y="364" width="437.9" height="47"/><text class="rk" x="6" y="390.5">4</text><rect class="band" x="0" y="451" width="437.9" height="47"/><text class="rk" x="6" y="477.5">5</text>
+<g class="e" data-from="app" data-to="ui"><path d="M369.2,55C322.5,66.9 135.6,102.7 88.9,126.5C42.2,150.3 88.9,186.1 88.9,198" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="app" data-to="api"><path d="M375.7,55L207.4,111" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="app" data-to="core"><path d="M382.1,55C382.1,66.9 382.1,100.1 382.1,126.5C382.1,152.9 428.3,187.1 382.1,213.5C336,239.9 151.5,273.1 105.4,285" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="ui" data-to="core"><path d="M79.8,229L80.4,285" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="ui" data-to="utils"><path d="M88.9,229C96.7,240.9 128,274.1 135.9,300.5C143.7,326.9 123.1,361.1 135.9,387.5C148.6,413.9 199.7,447.1 212.5,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="ui" data-to="log"><path d="M98,229C108.2,240.9 163.6,276.7 159.5,300.5C155.3,324.3 87.2,360.1 72.8,372" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="api" data-to="auth"><path d="M195.3,142L173.2,198" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="api" data-to="net"><path d="M203.4,142C205.1,153.9 196.6,189.7 213.6,213.5C230.6,237.3 290.3,273.1 305.6,285" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="api" data-to="core"><path d="M211.5,142C215.5,153.9 255.1,189.7 235.4,213.5C215.6,237.3 116.6,273.1 92.9,285" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="api" data-to="cache"><path d="M219.6,142C242,153.9 331.7,187.1 354.1,213.5C376.5,239.9 354.1,274.1 354.1,300.5C354.1,326.9 354.1,360.1 354.1,372" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="auth" data-to="crypto"><path d="M160.7,229C164.4,240.9 179.3,276.7 183.1,300.5C186.8,324.3 183.1,360.1 183.1,372" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="auth" data-to="db"><path d="M173.2,229L235.2,285" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="auth" data-to="log"><path d="M185.7,229C199.4,240.9 284.7,276.7 267.7,300.5C250.6,324.3 114.2,360.1 83.5,372" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="net" data-to="utils"><path d="M305.6,316C304.8,327.9 313.1,363.7 300.6,387.5C288.1,411.3 242.4,447.1 230.8,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="net" data-to="log"><path d="M294.8,316L88.9,372" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="net" data-to="cfg"><path d="M316.4,316C315.4,327.9 309.2,363.7 310.6,387.5C312,411.3 322.4,447.1 324.8,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="db" data-to="utils"><path d="M235.2,316C234.4,327.9 232,363.7 230.2,387.5C228.5,411.3 225.6,447.1 224.7,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="db" data-to="cfg"><path d="M244.3,316C246.2,327.9 243.1,363.7 255.6,387.5C268.1,411.3 308.8,447.1 319.4,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="db" data-to="log"><path d="M226.2,316L78.2,372" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="cache" data-to="utils"><path d="M343.4,403L236.9,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="cache" data-to="cfg"><path d="M364.8,403L330.2,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="core" data-to="utils"><path d="M80.4,316C71,327.9 4,363.7 24,387.5C44,411.3 170.9,447.1 200.3,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="core" data-to="log"><path d="M92.9,316L67.4,372" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="core" data-to="cfg"><path d="M105.4,316C107.3,327.9 82.2,363.7 117,387.5C151.7,411.3 281.2,447.1 314,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="crypto" data-to="utils"><path d="M183.1,403L218.6,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="log" data-to="utils"><path d="M72.8,403L206.4,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="log" data-to="cfg"><path d="M88.9,403L308.6,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="app" data-to="cfg"><path d="M388.6,55C391.2,66.9 401.4,100.1 403.9,126.5C406.4,152.9 403.9,184.5 403.9,213.5C403.9,242.5 403.9,271.5 403.9,300.5C403.9,329.5 415.3,361.1 403.9,387.5C392.5,413.9 347,447.1 335.6,459" marker-end="url(#v2a)"/></g>
+<g class="e" data-from="app" data-to="log"><path d="M395.1,55C398.2,66.9 410.8,100.1 413.9,126.5C417,152.9 413.9,184.5 413.9,213.5C413.9,242.5 467.2,274.1 413.9,300.5C360.6,326.9 147.6,360.1 94.3,372" marker-end="url(#v2a)"/></g>
+<g class="n" data-id="app"><title>app (rank 0)</title><rect x="359" y="24" width="46.2" height="31" rx="5"/><text x="382.1" y="44">app</text></g>
+<g class="n" data-id="ui"><title>ui (rank 2)</title><rect x="69.5" y="198" width="38.8" height="31" rx="5"/><text x="88.9" y="218">ui</text></g>
+<g class="n" data-id="core"><title>core (rank 3)</title><rect x="66.1" y="285" width="53.6" height="31" rx="5"/><text x="92.9" y="305">core</text></g>
+<g class="n" data-id="net"><title>net (rank 3)</title><rect x="282.5" y="285" width="46.2" height="31" rx="5"/><text x="305.6" y="305">net</text></g>
+<g class="n" data-id="db"><title>db (rank 3)</title><rect x="215.8" y="285" width="38.8" height="31" rx="5"/><text x="235.2" y="305">db</text></g>
+<g class="n" data-id="log"><title>log (rank 4)</title><rect x="57.8" y="372" width="46.2" height="31" rx="5"/><text x="80.9" y="392">log</text></g>
+<g class="n" data-id="cfg"><title>cfg (rank 5)</title><rect x="299" y="459" width="46.2" height="31" rx="5"/><text x="322.1" y="479">cfg</text></g>
+<g class="n" data-id="utils"><title>utils (rank 5)</title><rect x="188.1" y="459" width="61" height="31" rx="5"/><text x="218.6" y="479">utils</text></g>
+<g class="n" data-id="crypto"><title>crypto (rank 4)</title><rect x="148.9" y="372" width="68.4" height="31" rx="5"/><text x="183.1" y="392">crypto</text></g>
+<g class="n" data-id="cache"><title>cache (rank 4)</title><rect x="323.6" y="372" width="61" height="31" rx="5"/><text x="354.1" y="392">cache</text></g>
+<g class="n" data-id="auth"><title>auth (rank 2)</title><rect x="146.4" y="198" width="53.6" height="31" rx="5"/><text x="173.2" y="218">auth</text></g>
+<g class="n" data-id="api"><title>api (rank 1)</title><rect x="184.3" y="111" width="46.2" height="31" rx="5"/><text x="207.4" y="131">api</text></g>
+</svg>
+</div></section>
+<section class="card"><header><h2>Packed coordinates</h2><p>ignores edges when assigning x (no Brandes–Köpf)</p></header><div class="view"><svg xmlns="http://www.w3.org/2000/svg" class="tier" viewBox="0 0 341.6 514" width="341.6" height="514" role="img" aria-label="layered graph drawing">
+<defs><marker id="v3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr" d="M0,1 L10,5 L0,9 z"/></marker><marker id="v3ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr-rev" d="M0,1 L10,5 L0,9 z"/></marker></defs>
+<rect class="bg" width="341.6" height="514"/>
+<rect class="band" x="0" y="16" width="341.6" height="47"/><text class="rk" x="6" y="42.5">0</text><rect class="band" x="0" y="103" width="341.6" height="47"/><text class="rk" x="6" y="129.5">1</text><rect class="band" x="0" y="190" width="341.6" height="47"/><text class="rk" x="6" y="216.5">2</text><rect class="band" x="0" y="277" width="341.6" height="47"/><text class="rk" x="6" y="303.5">3</text><rect class="band" x="0" y="364" width="341.6" height="47"/><text class="rk" x="6" y="390.5">4</text><rect class="band" x="0" y="451" width="341.6" height="47"/><text class="rk" x="6" y="477.5">5</text>
+<g class="e" data-from="app" data-to="ui"><path d="M157.9,55C152.3,66.9 135.9,102.7 124.7,126.5C113.5,150.3 96.5,186.1 90.8,198" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="app" data-to="api"><path d="M164.3,55L160.8,111" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="app" data-to="core"><path d="M170.8,55C175.2,66.9 186.9,100.1 196.9,126.5C206.9,152.9 221.8,187.1 230.8,213.5C239.8,239.9 247.5,273.1 250.8,285" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="ui" data-to="core"><path d="M99.9,229L225.8,285" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="ui" data-to="utils"><path d="M81.7,229C75.4,240.9 53.1,274.1 43.5,300.5C33.9,326.9 12.3,361.1 24,387.5C35.7,413.9 98.8,447.1 113.7,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="ui" data-to="log"><path d="M90.8,229C84.6,240.9 43.5,276.7 53.5,300.5C63.5,324.3 134.8,360.1 151,372" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="api" data-to="auth"><path d="M148.7,142L161,198" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="api" data-to="net"><path d="M156.8,142C164.1,153.9 199.5,189.7 200.8,213.5C202.1,237.3 170.5,273.1 164.4,285" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="api" data-to="core"><path d="M164.8,142C172.5,153.9 198.6,189.7 210.8,213.5C223,237.3 233.7,273.1 238.3,285" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="api" data-to="cache"><path d="M172.9,142C180.9,153.9 203.3,187.1 220.8,213.5C238.3,239.9 269.2,274.1 278.1,300.5C287,326.9 274.8,360.1 274.1,372" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="auth" data-to="crypto"><path d="M148.5,229C134.3,240.9 76.4,276.7 63.5,300.5C50.6,324.3 69.9,360.1 71.2,372" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="auth" data-to="db"><path d="M161,229L95.9,285" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="auth" data-to="log"><path d="M173.5,229C166,240.9 130.3,276.7 128.3,300.5C126.3,324.3 156.2,360.1 161.8,372" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="net" data-to="utils"><path d="M164.4,316C170.4,327.9 205,363.7 200.6,387.5C196.2,411.3 148.5,447.1 138.1,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="net" data-to="log"><path d="M153.6,316L167.2,372" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="net" data-to="cfg"><path d="M175.2,316C181.1,327.9 205.3,363.7 210.6,387.5C215.9,411.3 207.5,447.1 206.9,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="db" data-to="utils"><path d="M86.8,316C92.1,327.9 111.9,363.7 118.4,387.5C124.9,411.3 124.7,447.1 125.9,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="db" data-to="cfg"><path d="M95.9,316C101.3,327.9 111.7,363.7 128.4,387.5C145.1,411.3 184.8,447.1 196.1,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="db" data-to="log"><path d="M105,316L156.4,372" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="cache" data-to="utils"><path d="M263.4,403L150.3,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="cache" data-to="cfg"><path d="M284.8,403L217.7,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="core" data-to="utils"><path d="M238.3,316C235.4,327.9 236.3,363.7 220.6,387.5C204.9,411.3 156.9,447.1 144.2,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="core" data-to="log"><path d="M225.8,316L172.6,372" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="core" data-to="cfg"><path d="M250.8,316C247.4,327.9 237,363.7 230.6,387.5C224.2,411.3 215.3,447.1 212.3,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="crypto" data-to="utils"><path d="M71.2,403L119.8,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="log" data-to="utils"><path d="M156.4,403L132,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="log" data-to="cfg"><path d="M172.6,403L201.5,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="app" data-to="cfg"><path d="M183.7,55C189.3,66.9 205.7,100.1 216.9,126.5C228.1,152.9 237.3,184.5 250.8,213.5C264.3,242.5 287,271.5 298.1,300.5C309.2,329.5 330.1,361.1 317.6,387.5C305.1,413.9 238.8,447.1 223.1,459" marker-end="url(#v3a)"/></g>
+<g class="e" data-from="app" data-to="log"><path d="M177.3,55C182.2,66.9 196.3,100.1 206.9,126.5C217.5,152.9 227.3,184.5 240.8,213.5C254.3,242.5 298.6,274.1 288.1,300.5C277.6,326.9 196.3,360.1 178,372" marker-end="url(#v3a)"/></g>
+<g class="n" data-id="app"><title>app (rank 0)</title><rect x="147.7" y="24" width="46.2" height="31" rx="5"/><text x="170.8" y="44">app</text></g>
+<g class="n" data-id="ui"><title>ui (rank 2)</title><rect x="71.4" y="198" width="38.8" height="31" rx="5"/><text x="90.8" y="218">ui</text></g>
+<g class="n" data-id="core"><title>core (rank 3)</title><rect x="211.5" y="285" width="53.6" height="31" rx="5"/><text x="238.3" y="305">core</text></g>
+<g class="n" data-id="net"><title>net (rank 3)</title><rect x="141.3" y="285" width="46.2" height="31" rx="5"/><text x="164.4" y="305">net</text></g>
+<g class="n" data-id="db"><title>db (rank 3)</title><rect x="76.5" y="285" width="38.8" height="31" rx="5"/><text x="95.9" y="305">db</text></g>
+<g class="n" data-id="log"><title>log (rank 4)</title><rect x="141.4" y="372" width="46.2" height="31" rx="5"/><text x="164.5" y="392">log</text></g>
+<g class="n" data-id="cfg"><title>cfg (rank 5)</title><rect x="186.5" y="459" width="46.2" height="31" rx="5"/><text x="209.6" y="479">cfg</text></g>
+<g class="n" data-id="utils"><title>utils (rank 5)</title><rect x="101.5" y="459" width="61" height="31" rx="5"/><text x="132" y="479">utils</text></g>
+<g class="n" data-id="crypto"><title>crypto (rank 4)</title><rect x="37" y="372" width="68.4" height="31" rx="5"/><text x="71.2" y="392">crypto</text></g>
+<g class="n" data-id="cache"><title>cache (rank 4)</title><rect x="243.6" y="372" width="61" height="31" rx="5"/><text x="274.1" y="392">cache</text></g>
+<g class="n" data-id="auth"><title>auth (rank 2)</title><rect x="134.2" y="198" width="53.6" height="31" rx="5"/><text x="161" y="218">auth</text></g>
+<g class="n" data-id="api"><title>api (rank 1)</title><rect x="137.7" y="111" width="46.2" height="31" rx="5"/><text x="160.8" y="131">api</text></g>
+</svg>
+</div></section>
+<section class="card"><header><h2>DFS cycle removal</h2><p>back-edge reversal instead of the greedy FAS heuristic — identical to the full pipeline on this graph</p></header><div class="view"><svg xmlns="http://www.w3.org/2000/svg" class="tier" viewBox="0 0 414.1 514" width="414.1" height="514" role="img" aria-label="layered graph drawing">
+<defs><marker id="v4a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr" d="M0,1 L10,5 L0,9 z"/></marker><marker id="v4ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="arr-rev" d="M0,1 L10,5 L0,9 z"/></marker></defs>
+<rect class="bg" width="414.1" height="514"/>
+<rect class="band" x="0" y="16" width="414.1" height="47"/><text class="rk" x="6" y="42.5">0</text><rect class="band" x="0" y="103" width="414.1" height="47"/><text class="rk" x="6" y="129.5">1</text><rect class="band" x="0" y="190" width="414.1" height="47"/><text class="rk" x="6" y="216.5">2</text><rect class="band" x="0" y="277" width="414.1" height="47"/><text class="rk" x="6" y="303.5">3</text><rect class="band" x="0" y="364" width="414.1" height="47"/><text class="rk" x="6" y="390.5">4</text><rect class="band" x="0" y="451" width="414.1" height="47"/><text class="rk" x="6" y="477.5">5</text>
+<g class="e" data-from="app" data-to="ui"><path d="M262.3,55C225.8,66.9 79.9,102.7 43.4,126.5C6.9,150.3 43.4,186.1 43.4,198" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="app" data-to="api"><path d="M268.8,55L222.3,111" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="app" data-to="core"><path d="M275.2,55C289.9,66.9 348.7,100.1 363.3,126.5C378,152.9 373.2,187.1 363.3,213.5C353.5,239.9 314.1,273.1 304.3,285" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="ui" data-to="core"><path d="M52.5,229L279.3,285" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="ui" data-to="utils"><path d="M34.3,229C32.8,240.9 26.4,274.1 24.8,300.5C23.2,326.9 2.5,361.1 24.8,387.5C47.1,413.9 136.2,447.1 158.5,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="ui" data-to="log"><path d="M43.4,229C44.2,240.9 27,276.7 48.4,300.5C69.8,324.3 151.2,360.1 171.7,372" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="api" data-to="auth"><path d="M210.2,142L130.1,198" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="api" data-to="net"><path d="M218.3,142C218.2,153.9 218,189.7 217.9,213.5C217.8,237.3 217.9,273.1 217.9,285" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="api" data-to="core"><path d="M226.3,142C237.3,153.9 280.9,189.7 291.8,213.5C302.7,237.3 291.8,273.1 291.8,285" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="api" data-to="cache"><path d="M234.4,142C252.1,153.9 322.7,187.1 340.3,213.5C357.9,239.9 340.3,274.1 340.3,300.5C340.3,326.9 340.3,360.1 340.3,372" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="auth" data-to="crypto"><path d="M117.6,229C112,240.9 90.5,276.7 83.5,300.5C76.5,324.3 77,360.1 75.7,372" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="auth" data-to="db"><path d="M130.1,229L135.7,285" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="auth" data-to="log"><path d="M142.7,229C148.3,240.9 170.2,276.7 176.8,300.5C183.4,324.3 181.6,360.1 182.5,372" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="net" data-to="utils"><path d="M217.9,316C219.8,327.9 234.9,363.7 229.1,387.5C223.3,411.3 190.6,447.1 182.9,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="net" data-to="log"><path d="M207.1,316L187.9,372" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="net" data-to="cfg"><path d="M228.7,316C233,327.9 247.5,363.7 254.8,387.5C262.2,411.3 269.9,447.1 272.9,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="db" data-to="utils"><path d="M126.6,316C126,327.9 115.6,363.7 122.9,387.5C130.2,411.3 162.7,447.1 170.7,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="db" data-to="cfg"><path d="M135.7,316C135.2,327.9 111.8,363.7 132.9,387.5C154,411.3 240.6,447.1 262.1,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="db" data-to="log"><path d="M144.8,316L177.1,372" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="cache" data-to="utils"><path d="M329.6,403L195.1,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="cache" data-to="cfg"><path d="M351,403L283.7,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="core" data-to="utils"><path d="M291.8,316C291,327.9 303.9,363.7 286.8,387.5C269.7,411.3 205.3,447.1 189,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="core" data-to="log"><path d="M279.3,316L193.3,372" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="core" data-to="cfg"><path d="M304.3,316C303.1,327.9 301.1,363.7 296.8,387.5C292.5,411.3 281.4,447.1 278.3,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="crypto" data-to="utils"><path d="M75.7,403L164.6,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="log" data-to="utils"><path d="M177.1,403L176.8,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="log" data-to="cfg"><path d="M193.3,403L267.5,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="app" data-to="cfg"><path d="M288.2,55C305.2,66.9 373.1,100.1 390.1,126.5C407.1,152.9 390.1,184.5 390.1,213.5C390.1,242.5 390.1,271.5 390.1,300.5C390.1,329.5 406.9,361.1 390.1,387.5C373.3,413.9 305.9,447.1 289.1,459" marker-end="url(#v4a)"/></g>
+<g class="e" data-from="app" data-to="log"><path d="M281.7,55C297,66.9 358.1,100.1 373.3,126.5C388.6,152.9 373.3,184.5 373.3,213.5C373.3,242.5 402.5,274.1 373.3,300.5C344.2,326.9 227.8,360.1 198.7,372" marker-end="url(#v4a)"/></g>
+<g class="n" data-id="app"><title>app (rank 0)</title><rect x="252.1" y="24" width="46.2" height="31" rx="5"/><text x="275.2" y="44">app</text></g>
+<g class="n" data-id="ui"><title>ui (rank 2)</title><rect x="24" y="198" width="38.8" height="31" rx="5"/><text x="43.4" y="218">ui</text></g>
+<g class="n" data-id="core"><title>core (rank 3)</title><rect x="265" y="285" width="53.6" height="31" rx="5"/><text x="291.8" y="305">core</text></g>
+<g class="n" data-id="net"><title>net (rank 3)</title><rect x="194.8" y="285" width="46.2" height="31" rx="5"/><text x="217.9" y="305">net</text></g>
+<g class="n" data-id="db"><title>db (rank 3)</title><rect x="116.3" y="285" width="38.8" height="31" rx="5"/><text x="135.7" y="305">db</text></g>
+<g class="n" data-id="log"><title>log (rank 4)</title><rect x="162.1" y="372" width="46.2" height="31" rx="5"/><text x="185.2" y="392">log</text></g>
+<g class="n" data-id="cfg"><title>cfg (rank 5)</title><rect x="252.5" y="459" width="46.2" height="31" rx="5"/><text x="275.6" y="479">cfg</text></g>
+<g class="n" data-id="utils"><title>utils (rank 5)</title><rect x="146.3" y="459" width="61" height="31" rx="5"/><text x="176.8" y="479">utils</text></g>
+<g class="n" data-id="crypto"><title>crypto (rank 4)</title><rect x="41.5" y="372" width="68.4" height="31" rx="5"/><text x="75.7" y="392">crypto</text></g>
+<g class="n" data-id="cache"><title>cache (rank 4)</title><rect x="309.8" y="372" width="61" height="31" rx="5"/><text x="340.3" y="392">cache</text></g>
+<g class="n" data-id="auth"><title>auth (rank 2)</title><rect x="103.3" y="198" width="53.6" height="31" rx="5"/><text x="130.1" y="218">auth</text></g>
+<g class="n" data-id="api"><title>api (rank 1)</title><rect x="199.2" y="111" width="46.2" height="31" rx="5"/><text x="222.3" y="131">api</text></g>
+</svg>
+</div></section>
+</div>
+<style>
+.tier{--bg:#fbfaf7;--node:#ffffff;--stroke:#3b4252;--edge:#6b7488;--text:#1d2330;--rev:#d9480f;--band:#f0ede6;--hl:#2563eb;--halo:#fbfaf7}
+@media (prefers-color-scheme:dark){.tier{--bg:#161a22;--node:#222836;--stroke:#aab3c5;--edge:#7f8aa3;--text:#e8ecf4;--rev:#ff8a4c;--band:#1c212c;--hl:#6aa3ff;--halo:#161a22}}
+.tier .bg{fill:var(--bg)}.tier .band{fill:var(--band)}
+.tier .n rect,.tier .n ellipse{fill:var(--node);stroke:var(--stroke);stroke-width:1.3}
+.tier .n text{fill:var(--text);font:13px ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;text-anchor:middle}
+.tier .e path{fill:none;stroke:var(--edge);stroke-width:1.4}
+.tier .e.rev path{stroke:var(--rev);stroke-dasharray:5 3}
+.tier .e text{fill:var(--text);font:11px ui-sans-serif,system-ui,sans-serif;text-anchor:middle;paint-order:stroke;stroke:var(--halo);stroke-width:4px}
+.tier .arr{fill:var(--edge)}.tier .arr-rev{fill:var(--rev)}
+.tier .rk{fill:var(--edge);font:10px ui-monospace,monospace;opacity:.7}
+.tier .n{cursor:default}.tier .n:hover rect,.tier .n:hover ellipse,.tier .n.hl rect,.tier .n.hl ellipse{stroke:var(--hl);stroke-width:2.4}
+.tier .e.hl path{stroke:var(--hl);stroke-width:2.4}
+</style>
+<script>
+document.querySelectorAll('svg.tier').forEach(function(svg){
+  svg.querySelectorAll('.n').forEach(function(n){
+    var id=n.getAttribute('data-id');
+    n.addEventListener('mouseenter',function(){
+      svg.querySelectorAll('.e').forEach(function(e){
+        if(e.getAttribute('data-from')===id||e.getAttribute('data-to')===id){e.classList.add('hl');
+          svg.querySelectorAll('.n').forEach(function(m){var k=m.getAttribute('data-id');if(k===e.getAttribute('data-from')||k===e.getAttribute('data-to'))m.classList.add('hl');});}
+      });
+    });
+    n.addEventListener('mouseleave',function(){svg.querySelectorAll('.hl').forEach(function(x){x.classList.remove('hl');});});
+  });
+});
+</script>
+</main></body></html>
