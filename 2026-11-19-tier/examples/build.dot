@@ -1,0 +1,16 @@
+// A realistic build/dependency graph with a few long edges.
+digraph build {
+  node [shape=box];
+  app; ui; core; net; db; log; cfg; utils; crypto; cache; auth; api;
+  app -> ui; app -> api; app -> core;
+  ui -> core; ui -> utils; ui -> log;
+  api -> auth; api -> net; api -> core; api -> cache;
+  auth -> crypto; auth -> db; auth -> log;
+  net -> utils; net -> log; net -> cfg;
+  db -> utils; db -> cfg; db -> log;
+  cache -> utils; cache -> cfg;
+  core -> utils; core -> log; core -> cfg;
+  crypto -> utils;
+  log -> utils; log -> cfg;
+  app -> cfg; app -> log;
+}

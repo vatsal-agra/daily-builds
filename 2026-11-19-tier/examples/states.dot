@@ -1,0 +1,23 @@
+// A protocol state machine: cycles, self-loops, labelled edges, left-to-right.
+digraph tcp {
+  rankdir=LR;
+  node [shape=ellipse];
+  CLOSED -> LISTEN [label="listen"];
+  CLOSED -> SYN_SENT [label="connect"];
+  LISTEN -> SYN_RCVD [label="SYN"];
+  LISTEN -> CLOSED [label="close"];
+  SYN_SENT -> ESTABLISHED [label="SYN+ACK"];
+  SYN_SENT -> CLOSED [label="timeout"];
+  SYN_RCVD -> ESTABLISHED [label="ACK"];
+  SYN_RCVD -> FIN_WAIT_1 [label="close"];
+  ESTABLISHED -> FIN_WAIT_1 [label="close"];
+  ESTABLISHED -> CLOSE_WAIT [label="FIN"];
+  FIN_WAIT_1 -> FIN_WAIT_2 [label="ACK"];
+  FIN_WAIT_1 -> CLOSING [label="FIN"];
+  FIN_WAIT_2 -> TIME_WAIT [label="FIN"];
+  CLOSING -> TIME_WAIT [label="ACK"];
+  CLOSE_WAIT -> LAST_ACK [label="close"];
+  LAST_ACK -> CLOSED [label="ACK"];
+  TIME_WAIT -> CLOSED [label="2MSL"];
+  ESTABLISHED -> ESTABLISHED [label="data"];
+}
