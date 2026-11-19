@@ -1,0 +1,21 @@
+// Compiler pipeline with feedback (optimisation loop) and labelled stages.
+digraph compiler {
+  node [shape=box];
+  Source -> Lexer [label="chars"];
+  Lexer -> Parser [label="tokens"];
+  Parser -> Sema [label="AST"];
+  Sema -> IR [label="typed AST"];
+  IR -> Optimiser [label="SSA"];
+  Optimiser -> IR [label="rewritten SSA"];
+  Optimiser -> Codegen;
+  Codegen -> Asm [label="machine IR"];
+  Asm -> Linker [label="objects"];
+  Sema -> Diagnostics;
+  Parser -> Diagnostics;
+  Lexer -> Diagnostics;
+  Linker -> Binary;
+  Sema -> SymbolTable;
+  SymbolTable -> Codegen;
+  SymbolTable -> Linker;
+  Diagnostics -> Diagnostics [label="dedupe"];
+}
