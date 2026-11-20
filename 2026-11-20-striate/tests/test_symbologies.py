@@ -132,7 +132,7 @@ class ItfTests(unittest.TestCase):
         with self.assertRaises(EncodeError):
             encode("itf", "123")
         self.assertEqual(encode("itf", "123", check=True).text, "1236")
-        self.assertEqual(itf.mod10("00012345678"), "5")
+        self.assertEqual(itf.mod10("00012345678"), "4")   # 8*3+7+6*3+5+4*3+3+2*3+1 = 76
 
     def test_digits_only(self):
         with self.assertRaises(EncodeError):
