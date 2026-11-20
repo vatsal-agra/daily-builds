@@ -3,6 +3,7 @@ per-symbology decoders (both directions) -> checksum validation -> multi-scanlin
 import math
 from dataclasses import dataclass, field
 
+from . import gs1
 from .symbologies import code128, code39, ean, itf
 from .symbologies.common import match_char, fit_gain
 
@@ -497,6 +498,11 @@ def scan_image(img, max_lines=48, rotate=True, angles=None, min_votes=None):
                     continue
                 xs = [p[0] for p in h["pts"]]; ys = [p[1] for p in h["pts"]]
                 ex = _extra(sym, text)
+                if sym == "Code 128" and text.startswith(code128.FNC1):
+                    try:
+                        ex["gs1_fields"] = [(f.ai, f.name, f.value, f.meaning) for f in gs1.parse(text)]
+                    except gs1.GS1Error as e:
+                        ex["gs1_error"] = str(e)
                 if invert:
                     ex["inverted"] = True
                 found.append(Detection(sym, text, h["votes"], angle,

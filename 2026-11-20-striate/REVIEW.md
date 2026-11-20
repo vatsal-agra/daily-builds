@@ -31,3 +31,7 @@ streaked / tiny / blank / garbage inputs, plus a brute-force optimality check of
 - Modules narrower than ~1.5 px with blur are unreadable (information is gone). Barcodes <16 px tall in tall images may get <2 votes; pass `min_votes=1`.
 - Code 39 / ITF carry no mandatory check digit: a defect that is *identical on every row* can produce a plausible wrong read. Use mod-43 / mod-10 check characters.
 - Inverted polarity is only tried for horizontal scans; Code 128 FNC4 (extended ASCII) is not supported.
+
+## Phase 4/5 addendum
+- 12. (Low) SVG `aria-label` embedded raw barcode text → control characters / quotes made invalid XML. Found by the new `test_svg_wellformed_and_escaped`; text is now sanitised once and quotes are escaped.
+- Gallery badge said "-20°" for a 27°-rotated image (coarse 5° scan step); relabelled "scan angle".
