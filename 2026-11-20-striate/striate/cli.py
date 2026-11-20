@@ -10,11 +10,12 @@ from .symbologies import NAMES, EncodeError
 def _cmd_encode(a):
     b = _encode(a.symbology, a.text, mod43=a.mod43, check=a.check)
     if a.out.endswith(".svg"):
-        open(a.out, "w").write(svg.to_svg(b, module=a.module, height=a.height))
+        with open(a.out, "w") as f:
+            f.write(svg.to_svg(b, module=a.module, height=a.height))
     elif a.out.endswith(".png"):
         raster.render(b, module=a.module, height=a.height).save(a.out)
     else:
-        raise SystemExit("error: --out must end in .svg or .png")
+        raise EncodeError("--out must end in .svg or .png")
     print(f"{b.symbology}  {b.text!r}  {len(b.modules)} modules -> {a.out}")
 
 

@@ -9,4 +9,6 @@ symbol matching, checksum validation, multi-scanline voting).
 - Phase 2 (core build): done — 4 required features working end-to-end
   (Code128 w/ optimal subsets, EAN/UPC, Code39+ITF, raster scanner); `python3 -m unittest discover -s tests`
 
+- Phase 3 (adversarial review): done — 11 findings fixed, see `REVIEW.md`; regression tests in `tests/test_review.py`
+
 Full README arrives in Phase 6.

@@ -40,7 +40,7 @@ class Detection:
 
 
 # ------------------------------------------------------------------ line -> runs
-def edges_from_samples(samples, min_grad=10.0):
+def edges_from_samples(samples, min_grad=10.0, smooth=True):
     """Sub-pixel edge positions from gradient extrema. Returns list of (pos, to_dark).
 
     A threshold/binarization approach fails on blurred narrow spaces (their peak never reaches the
@@ -51,10 +51,20 @@ def edges_from_samples(samples, min_grad=10.0):
     n = len(samples)
     if n < 8:
         return []
-    s = [samples[0]] + [(samples[i - 1] + 2 * samples[i] + samples[i + 1]) / 4.0 for i in range(1, n - 1)] + [samples[-1]]
+    if smooth:
+        s = [samples[0]] + [(samples[i - 1] + 2 * samples[i] + samples[i + 1]) / 4.0 for i in range(1, n - 1)] + [samples[-1]]
+    else:
+        s = list(samples)
     d = [0.0] * n
-    for i in range(1, n - 1):
-        d[i] = (s[i + 1] - s[i - 1]) / 2.0
+    off = 0.0
+    if smooth:
+        for i in range(1, n - 1):
+            d[i] = (s[i + 1] - s[i - 1]) / 2.0
+    else:
+        # forward differences: a central difference is blind to a 1-px pulse (0,255,0 -> 0)
+        off = 0.5
+        for i in range(1, n - 1):
+            d[i] = s[i + 1] - s[i]
     # local gradient scale (max |d| over a wide neighbourhood, block based)
     B = 16
     nb = (n + B - 1) // B
@@ -79,7 +89,7 @@ def edges_from_samples(samples, min_grad=10.0):
         w1 = a
         w2 = max(0.0, d[i + 1] * (1 if sign else -1))
         tot = w0 + w1 + w2
-        pos = (i - 1) * w0 / tot + i * w1 / tot + (i + 1) * w2 / tot
+        pos = (i - 1) * w0 / tot + i * w1 / tot + (i + 1) * w2 / tot + off
         item = [pos, not sign, a]
         if edges and edges[-1][1] == item[1]:
             if item[2] > edges[-1][2]:
@@ -141,11 +151,11 @@ def find_code128(w, par):
     out = []
     n = len(w)
     for i in range(par, n - 8, 2):
-        idx, err, G = fit_gain(w[i:i + 6], _C128_CHARS[103:106], 11, 1)
-        if idx < 0 or err > MAXERR_128:
-            continue
         module = sum(w[i:i + 6]) / 11.0
-        if abs(G) > 0.9 * module or not _quiet_ok(w, i, module, 4.5):
+        if not _quiet_ok(w, i, module, 4.5):          # cheap reject first: needs a quiet zone
+            continue
+        idx, err, G = fit_gain(w[i:i + 6], _C128_CHARS[103:106], 11, 1)
+        if idx < 0 or err > MAXERR_128 or abs(G) > 0.9 * module:
             continue
         vals, errs, j, done = [103 + idx], [err], i + 6, False
         while j + 6 <= n:
@@ -183,6 +193,9 @@ def find_ean(w, par):
     out = []
     n = len(w)
     for i in range(par, n - 42, 2):
+        m0 = (w[i] + w[i + 1] + w[i + 2]) / 3.0
+        if not _quiet_ok(w, i, m0, 3.0) or max(w[i:i + 3]) > 2.6 * min(w[i:i + 3]):
+            continue
         for kind in (13, 8):
             half = 6 if kind == 13 else 4
             total = 3 + 4 * half + 5 + 4 * half + 3
@@ -413,7 +426,9 @@ def scanlines(img, angle, max_lines=48):
     cx, cy = (img.w - 1) / 2, (img.h - 1) / 2
     extent = abs(img.w * nx) + abs(img.h * ny)
     if angle % 180 == 0:
-        ys = range(img.h) if img.h <= max_lines else [int(round(k * (img.h - 1) / (max_lines - 1))) for k in range(max_lines)]
+        # at least one scanline per 8 px of height so any barcode >= 16 px tall gets >= 2 votes
+        want = min(img.h, max(max_lines, -(-img.h // 8)), 220)
+        ys = range(img.h) if want >= img.h else [int(round(k * (img.h - 1) / (want - 1))) for k in range(want)]
         for y in ys:
             yield (0.0, float(y)), (float(img.w - 1), float(y))
         return
@@ -425,7 +440,10 @@ def scanlines(img, angle, max_lines=48):
             yield seg
 
 
-def _scan_angle(img, angle, max_lines):
+PAD = 8
+
+
+def _scan_angle(img, angle, max_lines, invert=False, smooth=True):
     hits = {}
     nlines = 0
     for p0, p1 in scanlines(img, angle, max_lines):
@@ -434,11 +452,17 @@ def _scan_angle(img, angle, max_lines):
             continue
         samples, (ox, oy, dx, dy) = got
         nlines += 1
-        edges = edges_from_samples(samples)
+        if invert:
+            samples = [255 - v for v in samples]
+        # padding with the local background level lets a symbol that touches the image border still show
+        # its first/last edge (padding a fixed 255 would invent an edge on unevenly lit images)
+        samples = [max(samples[:32])] * PAD + list(samples) + [max(samples[-32:])] * PAD
+        edges = edges_from_samples(samples, smooth=smooth)
         if len(edges) < 12:
             continue
         b, w = runs_from_edges(edges)
         for cand, ts, te, _rev in decode_line(b, w):
+            ts -= PAD; te -= PAD
             key = (cand.symbology, cand.text)
             h = hits.setdefault(key, {"votes": 0, "pts": [], "mod": [], "err": []})
             h["votes"] += 1
@@ -450,8 +474,9 @@ def _scan_angle(img, angle, max_lines):
 def scan_image(img, max_lines=48, rotate=True, angles=None, min_votes=None):
     """Find and decode every 1D barcode in a grayscale Image. Returns list[Detection], best first.
 
-    Tries horizontal scanlines first; if nothing is found and `rotate` is true, tries other
-    angles (including vertical) until some angle yields a decode.
+    Horizontal scanlines are tried first (dark-on-light, then light-on-dark, then without
+    smoothing for 1-px modules). If nothing is found and `rotate` is true, other angles
+    (including vertical) are tried until one yields a decode.
     """
     if angles is None:
         angles = [0.0]
@@ -460,20 +485,26 @@ def scan_image(img, max_lines=48, rotate=True, angles=None, min_votes=None):
                 angles.extend([float(a), float(-a)] if a != 90 else [90.0])
     found = []
     for angle in angles:
-        hits, nlines = _scan_angle(img, angle, max_lines)
-        need_unchecked = 2 if nlines >= 4 else 1
-        for (sym, text), h in hits.items():
-            need = min_votes if min_votes is not None else (1 if sym in CHECKED else need_unchecked)
-            if angle % 180 != 0 and min_votes is None:
-                need = max(need, 2)
-            if h["votes"] < need:
-                continue
-            xs = [p[0] for p in h["pts"]]; ys = [p[1] for p in h["pts"]]
-            found.append(Detection(sym, text, h["votes"], angle,
-                                   (round(min(xs), 1), round(min(ys), 1), round(max(xs), 1), round(max(ys), 1)),
-                                   _median(h["mod"]), sum(h["err"]) / len(h["err"]),
-                                   gs1=(sym == "Code 128" and text.startswith(code128.FNC1)),
-                                   extra=_extra(sym, text)))
+        modes = [(False, True), (True, True), (False, False)] if angle == 0.0 else [(False, True)]
+        for invert, smooth in modes:
+            lines = max_lines if angle == 0.0 else min(max_lines, 36)
+            hits, nlines = _scan_angle(img, angle, lines, invert, smooth)
+            # a real barcode is many rows tall: demand two agreeing scanlines (kills chance decodes in
+            # noise — a single noisy row decoding to a valid EAN-13 does happen). 1 vote only for 1-3 line images.
+            for (sym, text), h in hits.items():
+                need = min_votes if min_votes is not None else (2 if nlines >= 4 else 1)
+                if h["votes"] < need:
+                    continue
+                xs = [p[0] for p in h["pts"]]; ys = [p[1] for p in h["pts"]]
+                ex = _extra(sym, text)
+                if invert:
+                    ex["inverted"] = True
+                found.append(Detection(sym, text, h["votes"], angle,
+                                       (round(min(xs), 1), round(min(ys), 1), round(max(xs), 1), round(max(ys), 1)),
+                                       _median(h["mod"]), sum(h["err"]) / len(h["err"]),
+                                       gs1=(sym == "Code 128" and text.startswith(code128.FNC1)), extra=ex))
+            if found:
+                break
         if found:
             break
     found.sort(key=lambda d: (-d.votes, d.quality))
@@ -481,6 +512,8 @@ def scan_image(img, max_lines=48, rotate=True, angles=None, min_votes=None):
 
 
 def _extra(sym, text):
+    if sym == "UPC-A":
+        return {"ean13": "0" + text}
     if sym == "Code 39":
         return {"mod43_valid": len(text) > 1 and code39.check_char(text[:-1]) == text[-1]}
     if sym == "ITF":
