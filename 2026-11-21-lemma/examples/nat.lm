@@ -1,0 +1,21 @@
+-- Arithmetic on the natural numbers, proved from scratch with tactics.
+
+theorem add_zero_r : forall (n : Nat), n + 0 = n := by
+  intro n. induction n as zero | succ k ih.
+  { refl. }
+  { simp [ih]. }
+
+theorem add_succ_r : forall (m n : Nat), m + succ n = succ (m + n) := by
+  intro m n. induction m as zero | succ k ih.
+  { refl. }
+  { simp [ih]. }
+
+theorem add_comm : forall (m n : Nat), m + n = n + m := by
+  intro m n. induction m as zero | succ k ih.
+  { rewrite add_zero_r. refl. }
+  { rewrite add.eq_succ. rewrite add_succ_r. rewrite ih. }
+
+theorem add_assoc : forall (a b c : Nat), (a + b) + c = a + (b + c) := by
+  intro a b c. induction a as zero | succ k ih.
+  { refl. }
+  { simp [ih]. }

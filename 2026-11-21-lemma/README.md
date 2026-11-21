@@ -1,4 +1,10 @@
 # Lemma
 
-*Work in progress — Phase 1 (plan) done.* See [PLAN.md](PLAN.md): a from-scratch dependent-type
-proof assistant (kernel with NbE, inductive families with generated recursors, tactics, independent auditor).
+A from-scratch **dependent-type proof assistant** (Python, stdlib only).
+
+*Status: Phase 2 done — kernel, inductive families, surface language/elaborator and tactic prover all working.
+Stretch features, review, tests and full docs follow.* See [PLAN.md](PLAN.md).
+
+```
+python -m lemma check examples/nat.lm examples/lists_logic.lm
+```

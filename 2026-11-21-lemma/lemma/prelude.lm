@@ -1,0 +1,97 @@
+-- Lemma standard library.  Everything below is checked by the kernel at every start-up.
+
+inductive False : Type where
+
+inductive True : Type where
+| triv : True
+
+inductive Bool : Type where
+| true : Bool
+| false : Bool
+
+inductive Nat : Type where
+| zero : Nat
+| succ : Nat -> Nat
+
+inductive Eq (A : Type) (a : A) : A -> Type where
+| refl : Eq A a a
+
+inductive And (A B : Type) : Type where
+| conj : A -> B -> And A B
+
+inductive Or (A B : Type) : Type where
+| inl : A -> Or A B
+| inr : B -> Or A B
+
+inductive Exists (A : Type) (P : A -> Type) : Type where
+| intro : (a : A) -> P a -> Exists A P
+
+inductive Prod (A B : Type) : Type where
+| pair : A -> B -> Prod A B
+
+inductive Option (A : Type) : Type where
+| none : Option A
+| some : A -> Option A
+
+inductive List (A : Type) : Type where
+| nil : List A
+| cons : A -> List A -> List A
+
+inductive Vec (A : Type) : Nat -> Type where
+| vnil : Vec A zero
+| vcons : (n : Nat) -> A -> Vec A n -> Vec A (succ n)
+
+inductive Fin : Nat -> Type where
+| fzero : (n : Nat) -> Fin (succ n)
+| fsucc : (n : Nat) -> Fin n -> Fin (succ n)
+
+def Not (A : Type) : Type := A -> False
+
+infixr 35 "/\" => And
+infixr 30 "\/" => Or
+prefix 40 "¬" => Not
+
+-- ---------------------------------------------------------------- equality
+theorem Eq.subst (A : Type) (a b : A) (h : Eq A a b) (P : A -> Type) (pa : P a) : P b :=
+  Eq.rec A a (fun (b : A) (h : Eq A a b) => P b) pa b h
+
+theorem Eq.symm (A : Type) (a b : A) (h : Eq A a b) : Eq A b a :=
+  Eq.subst A a b h (fun (x : A) => Eq A x a) (refl A a)
+
+theorem Eq.trans (A : Type) (a b c : A) (h1 : Eq A a b) (h2 : Eq A b c) : Eq A a c :=
+  Eq.subst A b c h2 (fun (x : A) => Eq A a x) h1
+
+theorem Eq.cong (A B : Type) (f : A -> B) (a b : A) (h : Eq A a b) : Eq B (f a) (f b) :=
+  Eq.subst A a b h (fun (x : A) => Eq B (f a) (f x)) (refl B (f a))
+
+theorem False.elim (A : Type) (h : False) : A := False.rec (fun (_ : False) => A) h
+
+-- ---------------------------------------------------------------- natural numbers
+def pred (n : Nat) : Nat := elim n with | zero => zero | succ k ih => k end
+
+def add (m n : Nat) : Nat :=
+  elim m with
+  | zero => n
+  | succ k ih => succ (add k n)
+  end
+
+def mul (m n : Nat) : Nat :=
+  elim m with
+  | zero => zero
+  | succ k ih => add n (mul k n)
+  end
+
+def sub (m n : Nat) : Nat :=
+  elim n with
+  | zero => m
+  | succ k ih => pred (sub m k)
+  end
+
+def le (m n : Nat) : Type := Exists Nat (fun (k : Nat) => add m k = n)
+def lt (m n : Nat) : Type := le (succ m) n
+
+infixl 65 "+" => add
+infixl 70 "*" => mul
+infix 50 "≤" => le
+infix 50 "<=" => le
+infix 50 "<" => lt
