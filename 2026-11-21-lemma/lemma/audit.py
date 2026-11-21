@@ -384,6 +384,11 @@ def to_named(j):
 
 
 def audit_certificate(cert):
+    return build_auditor(cert)[1]
+
+
+def build_auditor(cert):
+    """Verify a certificate; returns (auditor-with-environment, result)."""
     res = Result()
     a = Auditor()
     decls = cert["decls"]
@@ -424,11 +429,11 @@ def audit_certificate(cert):
                 raise AuditError(f"unexpected declaration kind {kind}")
         except AuditError as e:
             res.fail(name, str(e))
-            return res
+            return a, res
         except RecursionError:
             res.fail(name, "recursion limit while checking")
-            return res
-    return res
+            return a, res
+    return a, res
 
 
 # ---------------------------------------------------------------- export / import

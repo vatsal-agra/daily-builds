@@ -1,0 +1,19 @@
+-- A deliberately broken file: Lemma reports every error with a source position and keeps going,
+-- so the good declarations around the bad ones are still checked.  (`python -m lemma check` exits 1.)
+
+theorem good_one (a b : Nat) : a + b = b + a := add_comm a b
+
+theorem wrong_refl : 2 + 2 = 5 := by refl.
+
+inductive Bad : Type where
+| mk : (Bad -> Nat) -> Bad
+
+def loops (n : Nat) : Nat := loops n
+
+theorem unfinished (a b : Nat) (h : a = b) : a = b /\ b = a := by
+  split.
+  { exact h. }
+
+theorem good_two : 3 * 3 = 9 := by refl.
+
+def typo : Nat := sucs zero
