@@ -2,7 +2,7 @@
 
 Method: I attacked the build as a hostile user in four ways — (1) **soundness attacks** (can I prove
 something false or sneak a paradox in?), (2) **~90 probe snippets** covering every command/tactic with
-valid, invalid and borderline input (`/tmp/adv*.py`, now `tests/test_probes.py`), (3) **mutation fuzzing**
+valid, invalid and borderline input (44 of them kept as the table in `tests/test_probes.py`, the rest folded into `test_surface.py` / `test_tactics.py`), (3) **mutation fuzzing**
 (random token deletion/duplication/swap/junk on the example files and the prelude, 600 sessions, looking
 for crashes and hangs), (4) **proving real theorems** (the whole prelude library: add_comm, mul_comm,
 reverse_reverse …) because real proofs hit things toy tests don't.
@@ -45,3 +45,5 @@ reverse_reverse …) because real proofs hit things toy tests don't.
 
 ## Re-run
 A fresh run of every probe, the examples, and the fuzzer now hits none of the above (`tests/` + `verify.sh`, Phase 5).
+Phase 5 also added a *differential* check — kernel vs. auditor on 1,500 random terms and 400 mutated proofs — which found no
+disagreement, and a "lying tactic" test (a `refl` that skips its check) which the kernel correctly refuses.
