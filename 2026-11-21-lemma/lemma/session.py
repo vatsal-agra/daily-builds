@@ -21,6 +21,7 @@ class Session:
         self.errors = []         # rendered error strings
         self.results = []        # per-command records (for reports)
         self.trace = None        # tactic trace collector for the current theorem
+        self.n_prelude = 0
         self.equations = []      # auto-generated equation lemma names (the default simp set)
         self.filename = "<input>"
         self.src = ""
@@ -30,6 +31,7 @@ class Session:
             self.run(src, "prelude.lm", quiet=True)
             if self.errors:
                 raise RuntimeError("prelude failed to load:\n" + "\n".join(self.errors))
+        self.n_prelude = len(self.results)       # results beyond this index belong to the user's file
 
     # ------------------------------------------------------------ running
     def run(self, src, filename="<input>", quiet=False):
@@ -157,7 +159,8 @@ class Session:
             raise LemmaError(f"inductive type '{c.name}' rejected: {e}", pos)
         if not quiet:
             self.say(f"inductive {c.name}  ({', '.join(cn for cn, _, _ in ctors)}; recursors {c.name}.rec, {c.name}.rec_1, {c.name}.rec_2)")
-        return dict(kind="inductive", name=c.name, ok=True)
+        return dict(kind="inductive", name=c.name, ok=True, pos=c.pos,
+                    stmt=show(ind_ty, [], k) + "  where  " + ", ".join(cn for cn, _, _ in ctors))
 
     def exec_axiom(self, c, quiet):
         params, scope = self.binders_to_fvs(c.binders, {})
@@ -168,7 +171,7 @@ class Session:
             raise LemmaError(str(e), c.pos)
         if not quiet:
             self.say(f"axiom {c.name}")
-        return dict(kind="axiom", name=c.name, ok=True)
+        return dict(kind="axiom", name=c.name, ok=True, pos=c.pos, stmt=show(pi_over(params, ty), [], self.k))
 
     def exec_def(self, c, quiet):
         k, el = self.k, self.el
@@ -232,7 +235,8 @@ class Session:
         if not quiet:
             self.say(f"{c.kind} {name} : {show(ty, [], k)}" + (f"   [+{neqs} equation lemma(s)]" if neqs else "")
                      + (f"   [uses axiom(s): {', '.join(axs)}]" if axs else ""))
-        return dict(kind=c.kind, name=name, ok=True, size=size(value), steps=self.trace, ty=ty)
+        return dict(kind=c.kind, name=name, ok=True, size=size(value), steps=self.trace, stmt=show(ty, [], k),
+                    pos=c.pos, axioms=axs, equations=neqs)
 
     def add_equations(self, fname, params, T, rec):
         k = self.k

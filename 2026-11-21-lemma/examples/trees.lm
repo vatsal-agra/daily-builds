@@ -1,0 +1,41 @@
+-- Declaring your own inductive types, recursing over them, and proving things by induction.
+
+inductive Tree (A : Type) : Type where
+| leaf : Tree A
+| node : Tree A -> A -> Tree A -> Tree A
+
+def size (A : Type) (t : Tree A) : Nat :=
+  elim t with
+  | leaf => 0
+  | node l x r ihl ihr => succ (size A l + size A r)
+  end
+
+def mirror (A : Type) (t : Tree A) : Tree A :=
+  elim t with
+  | leaf => leaf A
+  | node l x r ihl ihr => node A (mirror A r) x (mirror A l)
+  end
+
+def flatten (A : Type) (t : Tree A) : List A :=
+  elim t with
+  | leaf => nil A
+  | node l x r ihl ihr => append A (flatten A l) (cons A x (flatten A r))
+  end
+
+theorem mirror_mirror (A : Type) (t : Tree A) : mirror A (mirror A t) = t := by
+  induction t as leaf | node l x r ihl ihr.
+  { refl. }
+  { simp [ihl, ihr]. }
+
+theorem size_mirror (A : Type) (t : Tree A) : size A (mirror A t) = size A t := by
+  induction t as leaf | node l x r ihl ihr.
+  { refl. }
+  { simp [ihl, ihr]. congr. exact add_comm (size A r) (size A l). }
+
+theorem length_flatten (A : Type) (t : Tree A) : length A (flatten A t) = size A t := by
+  induction t as leaf | node l x r ihl ihr.
+  { refl. }
+  { simp [length_append, ihl, ihr, add_succ_r]. }
+
+#eval size Nat (node Nat (node Nat (leaf Nat) 1 (leaf Nat)) 2 (leaf Nat))
+#eval flatten Nat (node Nat (node Nat (leaf Nat) 1 (leaf Nat)) 2 (node Nat (leaf Nat) 3 (leaf Nat)))

@@ -526,9 +526,18 @@ class Parser:
     def tactic(self):
         p0 = self.p
         tac = self._tactic()
-        tac.text = " ".join(("\"" + x.text + "\"") if x.kind == "str" else x.text
-                            for x in self.toks[p0:self.p]).replace(" .", ".").replace("( ", "(").replace(" )", ")")
+        first, last = self.toks[p0], self.toks[self.p - 1]
+        a, b = self._offset(first), self._offset(last) + len(last.text) + (2 if last.kind == "str" else 0)
+        tac.text = " ".join(self.src[a:b].split())
         return tac
+
+    def _offset(self, tok):
+        if not hasattr(self, "_line_starts"):
+            self._line_starts = [0]
+            for i, ch in enumerate(self.src):
+                if ch == "\n":
+                    self._line_starts.append(i + 1)
+        return self._line_starts[tok.line - 1] + tok.col - 1
 
     def _tactic(self):
         t = self.tok

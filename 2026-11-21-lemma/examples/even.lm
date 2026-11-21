@@ -1,0 +1,33 @@
+-- An *indexed* inductive family: evidence that a number is even.  Induction over the evidence
+-- itself (not over the number) is where dependent elimination earns its keep.
+
+inductive Even : Nat -> Type where
+| even_zero : Even 0
+| even_ss : (n : Nat) -> Even n -> Even (succ (succ n))
+
+theorem even_four : Even 4 := even_ss 2 (even_ss 0 even_zero)
+
+theorem even_add (n m : Nat) (h1 : Even n) (h2 : Even m) : Even (n + m) := by
+  induction h1 as even_zero | even_ss k hk ih.
+  { exact h2. }
+  { exact even_ss (k + m) ih. }
+
+theorem even_double (n : Nat) : Even (n + n) := by
+  induction n as zero | succ k ih.
+  { exact even_zero. }
+  { rewrite add_succ_r. exact even_ss (k + k) ih. }
+
+-- One is not even.  `cases` can't do this (the index `succ 0` isn't a variable), so we do what a
+-- dependent pattern match compiles to: eliminate the evidence into a type that is True for 0 and
+-- for every `succ (succ k)`, but False for 1.
+def NotOne (n : Nat) : Type :=
+  elim n return (fun (_ : Nat) => Type) with
+  | zero => True
+  | succ k ih => elim k return (fun (_ : Nat) => Type) with | zero => False | succ j ih2 => True end
+  end
+
+theorem not_even_one : ¬ Even 1 :=
+  fun (h : Even 1) => Even.rec (fun (m : Nat) (e : Even m) => NotOne m) triv
+                               (fun (k : Nat) (hk : Even k) (ih : NotOne k) => triv) 1 h
+
+#check even_add

@@ -36,7 +36,7 @@ def cmd_check(args):
         for line in sess.out:
             print(line)
         for err in sess.errors[e0:]:
-            print(err, file=sys.stderr)
+            print(("\033[31m" + err + "\033[0m") if sys.stderr.isatty() else err, file=sys.stderr)
         new = sess.results[n0:]
         proved = sum(1 for r in new if r.get("ok") and r["kind"] == "theorem")
         defs = sum(1 for r in new if r.get("ok") and r["kind"] == "def")
@@ -75,7 +75,7 @@ def cmd_report(args):
     html = build_report(sess, args.file, src)
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(html)
-    print(f"report written to {args.out} ({len(sess.results)} command(s), {len(sess.errors)} error(s))")
+    print(f"report written to {args.out} ({len(sess.results) - sess.n_prelude} command(s), {len(sess.errors)} error(s))")
     return 0 if not sess.errors else 1
 
 
