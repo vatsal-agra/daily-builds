@@ -107,7 +107,7 @@ def lex(src, extra_symbols=()):
             toks.append(Tok("num", m.group(0), line, col)); adv(len(m.group(0))); continue
         # symbols first when they cannot start an identifier (longest match)
         matched = None
-        if not (c.isalpha() or c == "_"):
+        if c in "λ∀" or not (c.isalpha() or c == "_"):
             for s in syms:
                 if src.startswith(s, i):
                     matched = s; break
@@ -231,6 +231,7 @@ class CEval(S):
 @dataclass
 class CPrint(S):
     name: str
+    axioms: bool = False
 
 @dataclass
 class CNotation(S):
@@ -501,8 +502,6 @@ class Parser:
             self.expect_sym("=>")
             body = self.term()
             branches.append((cname, names, body, cpos))
-        if not branches:
-            self.err("expected at least one '| constructor names => body' branch")
         self.expect_kw("end")
         return SElim(scrut, motive, branches, pos=start.pos)
 
@@ -603,7 +602,7 @@ class Parser:
             a.append(self.tactic())
             return Tac(name, a, pos=t.pos)
         elif name in ("assumption", "refl", "symm", "constructor", "left", "right", "split", "exfalso",
-                      "contradiction", "norm", "trivial", "reflexivity", "intro_all", "admit"):
+                      "contradiction", "norm", "trivial", "reflexivity", "congr"):
             pass
         else:
             raise LemmaError(f"unknown tactic '{name}'", t.pos, self.src)
@@ -650,6 +649,9 @@ class Parser:
             e = self.term()
             return CCheck(e, pos=t.pos) if kw == "#check" else CEval(e, pos=t.pos)
         if kw == "#print":
+            if self.is_kw("axioms") and self.peek().kind == "ident":
+                self.p += 1
+                return CPrint(self.ident("a name"), pos=t.pos, axioms=True)
             return CPrint(self.ident("a name"), pos=t.pos)
         if kw in ("infixl", "infixr", "infix", "prefix"):
             if self.tok.kind != "num":

@@ -3,7 +3,7 @@
 A tactic never produces a trusted fact — it only builds a proof *term*, which the kernel then checks.
 """
 from .terms import (Var, Sort, Const, App, Pi, Lam, Fv, Meta, BindF, apps, unapps, instantiate, abstract,
-                    subst_fv, pi_over, lam_over, bind, has_meta, free_fvs, occurs_fv, size)
+                    subst_fv, pi_over, lam_over, bind, has_meta, free_fvs, occurs_fv, size, beta)
 from .kernel import KernelError, Ctx, VPi, VNe, VSort, MAX_ELIM
 from .pretty import show
 from .syntax import LemmaError, Tac
@@ -45,6 +45,8 @@ class State:
         self.k = sess.k
         self.el = sess.el
         self.assign = {}
+        self.use_defeq = True
+        self.auto_closed = False
         self.goals = []
         self.fresh_counter = 0
 
@@ -82,9 +84,14 @@ class State:
             return self.occurs(m, t.dom) or self.occurs(m, t.cod if isinstance(t, Pi) else t.body)
         return False
 
-    def unify(self, a, b):
+    def unify(self, a, b, defeq=True):
         snap = dict(self.assign)
-        if self._unify(a, b):
+        self.use_defeq = defeq
+        try:
+            ok = self._unify(a, b)
+        finally:
+            self.use_defeq = True
+        if ok:
             return True
         self.assign = snap
         return False
@@ -107,6 +114,11 @@ class State:
             hb, ab = unapps(b)
             if len(aa) == len(ab) and self._unify(ha, hb) and all(self._unify(x, y) for x, y in zip(aa, ab)):
                 return True
+            if isinstance(self.zk(ha), Meta) or isinstance(self.zk(hb), Meta):      # `?f ?a` against `g x y`
+                snap = dict(self.assign)
+                if self._unify(a.f, b.f) and self._unify(a.a, b.a):
+                    return True
+                self.assign = snap
         elif isinstance(a, Pi) and isinstance(b, Pi):
             if self._unify(a.dom, b.dom):
                 fv = Fv(a.name, a.dom)
@@ -120,7 +132,7 @@ class State:
         elif a == b:
             return True
         # fallback: definitional equality when no metavariables remain
-        if not has_meta(a) and not has_meta(b):
+        if self.use_defeq and not has_meta(a) and not has_meta(b):
             try:
                 return self.k.def_eq(a, b)
             except KernelError:
@@ -167,7 +179,7 @@ class State:
         raise LemmaError(txt, tac.pos)
 
     def new_goal(self, hyps, target, name=""):
-        return Goal(hyps, self.zk(target), name)
+        return Goal(hyps, beta(self.zk(target)), name)
 
     def uniq_name(self, base, hyps):
         names = {h.name for h in hyps}
@@ -195,7 +207,9 @@ class State:
             self.goals = rest
             return
         if not self.goals:
-            raise LemmaError(f"no goals left, but the tactic '{tac.name}' was given (the proof is already complete)", tac.pos)
+            hint = (" — the previous rewrite/simp closed the goal automatically (a goal that becomes `x = x` is closed "
+                    "with refl), so the extra tactic is not needed") if self.auto_closed else ""
+            raise LemmaError(f"no goals left, but the tactic '{tac.name}' was given (the proof is already complete){hint}", tac.pos)
         before = self.render_goals() if self.s.trace is not None else None
         fn = getattr(self, "t_" + tac.name, None)
         if fn is None:
@@ -207,7 +221,7 @@ class State:
             self.fail(tac, f"kernel error while building the step: {e}", goal)
         if new is None:
             new = []
-        self.goals = list(new) + self.goals[1:]
+        self.goals = [g for g in list(new) + self.goals[1:] if g.meta.id not in self.assign]
         if self.s.trace is not None:
             self.s.trace.append(dict(tac=tac.text or tac.name, before=before, after=self.render_goals()))
 
@@ -262,14 +276,44 @@ class State:
             t = instantiate(t.cod, m)
         return metas, t
 
+    def propagate_types(self, metas):
+        """If ?m := v was solved by unification, the type of v must also fix the metas in ?m's type
+        (e.g. solving `?f := succ` determines `?A := Nat` in `?f : ?A -> ?B`)."""
+        for _ in range(3):
+            changed = False
+            for m in metas:
+                v = self.zk(m)
+                if isinstance(v, Meta) or has_meta(v) or m.ty is None:
+                    continue
+                mt = self.zk(m.ty)
+                if not has_meta(mt):
+                    continue
+                try:
+                    ty = self.k.infer_term(v)
+                except KernelError:
+                    continue
+                before = repr(mt)
+                self.unify(mt, ty)
+                changed = changed or repr(self.zk(m.ty)) != before
+            if not changed:
+                break
+
     def leftover_goals(self, goal, metas):
+        """Unassigned metavariables become new goals; ones that other goals depend on (like the
+        middle term of `Eq.trans`) go last, as in Lean."""
+        pend = [m for m in metas if m.id not in self.assign]
+        tys = {m.id: self.zk(m.ty) for m in pend}
+
+        def mentioned(m):
+            return any(o.id != m.id and self.occurs(m, tys[o.id]) for o in pend)
+        order = [m for m in pend if not mentioned(m)] + [m for m in pend if mentioned(m)]
         out = []
-        for m in metas:
-            if m.id not in self.assign:
-                g = Goal(goal.hyps, self.zk(m.ty), name=m.name if m.name not in ("_", "?") else "")
-                self.assign[m.id] = g.meta
-                out.append(g)
-        return out
+        for m in order:
+            g = Goal(goal.hyps, beta(tys[m.id]), name=m.name if m.name not in ("_", "?") else "")
+            out.append((m, g))
+        for m, g in out:
+            self.assign[m.id] = g.meta
+        return [g for _, g in out]
 
     def level_of(self, t):
         return self.k.sort_level(self.zk(t))
@@ -285,7 +329,7 @@ class State:
                 self.fail(tac, "the goal is not a function, ∀ or implication", goal)
             base = nm or (t.name if t.name not in ("_", "") else "h")
             name = nm if nm else self.uniq_name(base, hyps)
-            fv = Fv(name, t.dom)
+            fv = Fv(name, beta(t.dom))
             fvs.append(fv)
             hyps.append(fv)
             cur = instantiate(t.cod, fv)
@@ -305,7 +349,7 @@ class State:
             if not isinstance(t, Pi):
                 break
             base = t.name if t.name not in ("_", "") else "h"
-            fv = Fv(self.uniq_name(base, hyps), t.dom)
+            fv = Fv(self.uniq_name(base, hyps), beta(t.dom))
             fvs.append(fv); hyps.append(fv)
             cur = instantiate(t.cod, fv)
         if not fvs:
@@ -319,6 +363,13 @@ class State:
 
     def t_exact(self, tac, goal, term, *more):
         tgt = self.zk(goal.target)
+        if has_meta(tgt):                      # a pending metavariable (e.g. the middle term of Eq.trans)
+            tm = self.elab_infer(term, goal)
+            if not self.unify(self.type_of(tm), tgt):
+                self.fail(tac, f"type mismatch: '{show(tm, [], self.k)}' has type "
+                               f"{show(self.type_of(tm), [], self.k)} but the goal is {show(tgt, [], self.k)}", goal)
+            self.solve(goal, tm)
+            return []
         try:
             t = self.elab_check(term, goal, tgt)
         except LemmaError as e:
@@ -346,6 +397,7 @@ class State:
             metas.append(m)
             t = instantiate(t.cod, m)
             concl = t
+        self.propagate_types(metas)
         self.solve(goal, apps(tm, *metas))
         return self.leftover_goals(goal, metas)
 
@@ -360,7 +412,11 @@ class State:
     def t_assumption(self, tac, goal):
         tgt = self.zk(goal.target)
         for h in reversed(goal.hyps):
-            if self.k.def_eq(self.zk(h.ty), tgt):
+            if has_meta(tgt):
+                if self.unify(self.zk(h.ty), tgt):
+                    self.solve(goal, h)
+                    return []
+            elif self.k.def_eq(self.zk(h.ty), tgt):
                 self.solve(goal, h)
                 return []
         self.fail(tac, "no hypothesis matches the goal", goal)
@@ -382,6 +438,11 @@ class State:
         if parts is None:
             self.fail(tac, "the goal is not an equation 'a = b'", goal)
         A, a, b = parts
+        if has_meta(self.zk(a)) or has_meta(self.zk(b)):
+            if not self.unify(a, b):
+                self.fail(tac, "the two sides cannot be unified", goal)
+            self.solve(goal, apps(Const("refl"), A, a))
+            return []
         if not self.k.def_eq(a, b):
             self.fail(tac, f"the two sides are not definitionally equal:\n  {show(self.k.normalize(a), [], self.k)}\n  {show(self.k.normalize(b), [], self.k)}", goal)
         self.solve(goal, apps(Const("refl"), A, a))
@@ -393,6 +454,13 @@ class State:
         if name not in self.k.decls:
             raise LemmaError(f"tactic '{tac.name}' needs the library lemma '{name}' (not defined)", tac.pos)
         return Const(name)
+
+    def t_congr(self, tac, goal):
+        """`f a = f b`  ⟶  `a = b` (via Eq.cong)."""
+        r = self._apply_term(tac, goal, self.lemma(tac, "Eq.cong"))
+        if r is None:
+            self.fail(tac, "the goal is not of the form 'f a = f b' with the same function on both sides", goal)
+        return r
 
     def t_symm(self, tac, goal):
         parts = self.eq_parts(goal.target)
@@ -452,7 +520,8 @@ class State:
             if hc is not None and head_const(sub) != hc:
                 continue
             snap = dict(self.assign)
-            if self.unify(pat, sub):
+            if self.unify(pat, sub, defeq=False):
+                self.propagate_types(metas)
                 inst = self.zk(pat)
                 return A, inst, self.zk(r), pf, metas
             self.assign = snap
@@ -469,7 +538,8 @@ class State:
             x = Fv("x", self.zk(A))
             body = self.replace_all(tgt, a, x)
             P = Lam("x", self.zk(A), abstract(body, x))
-            new_tgt = self.zk(self.replace_all(tgt, a, b)) if False else instantiate(abstract(body, x), b)
+            self.check_motive(tac, goal, P, a)
+            new_tgt = instantiate(abstract(body, x), b)
             g = self.new_goal(goal.hyps, new_tgt, goal.name)
             sym = apps(self.lemma(tac, "Eq.symm"), A, a, b, pf)
             self.solve(goal, apps(self.lemma(tac, "Eq.subst"), A, b, a, sym, P, g.meta))
@@ -488,6 +558,7 @@ class State:
         x = Fv("x", self.zk(A))
         body = self.replace_all(hty, a, x)
         P = Lam("x", self.zk(A), abstract(body, x))
+        self.check_motive(tac, goal, P, a)
         new_ty = instantiate(abstract(body, x), b)
         h2 = Fv(h.name, new_ty)
         hyps = [h2 if y.id == h.id else y for y in goal.hyps]
@@ -495,6 +566,13 @@ class State:
         transported = apps(self.lemma(tac, "Eq.subst"), A, a, b, pf, P, h)
         self.solve(goal, App(BindF("lam", h2, g.meta), transported))
         return [g] + self.leftover_goals(goal, metas)
+
+    def check_motive(self, tac, goal, P, a):
+        try:
+            self.k.infer_term(P)
+        except KernelError as e:
+            self.fail(tac, f"rewriting '{show(a, [], self.k)}' would make the goal ill-typed (the motive is not type-correct; "
+                           f"some other term's type depends on it):\n{e}", goal)
 
     def pattern_of(self, tm, rev):
         metas, concl = self.peel(self.type_of(tm))
@@ -509,6 +587,7 @@ class State:
         if parts and parts[1] == parts[2]:
             self.solve(g, apps(Const("refl"), parts[0], parts[1]))
             g.closed = True
+            self.auto_closed = True
 
     def t_rewrite(self, tac, goal, items, at):
         goals = [goal]
@@ -526,16 +605,8 @@ class State:
         return out
 
     def t_simp(self, tac, goal, lemmas, at):
-        cands = []
-        for name in self.k.order:
-            if ".eq_" in name:
-                cands.append((False, Const(name)))
-        for rev, term in lemmas:
-            cands.append((rev, self.elab_infer(term, goal)))
-        cands = [(r, t) for r, t in cands]
-        # user lemmas first
-        user = cands[len([1 for n in self.k.order if ".eq_" in n]):]
-        cands = user + cands[:len(cands) - len(user)]
+        user = [(rev, self.elab_infer(term, goal)) for rev, term in lemmas]
+        cands = user + [(False, Const(n)) for n in self.s.equations]       # given lemmas first
         cur = goal
         steps = 0
         seen = set()
@@ -581,6 +652,9 @@ class State:
             self.assign = snap
             return None
         main = res[0]
+        if not main.closed and at is None and repr(self.zk(main.target)) == repr(self.zk(goal.target)):
+            self.assign = snap                       # matched only up to δ/ι: nothing actually changed
+            return None
         # reject rewrites that leave side goals (simp only uses fully-instantiated lemmas)
         if len(res) > 1:
             self.assign = snap
@@ -671,7 +745,7 @@ class State:
                     raw = ct.name if ct.name not in ("_", "") else (
                         hd0.name[0].lower() if isinstance(hd0, Const) and hd0.name[:1].isalpha() else "a")
                     nm = self.uniq_name(raw, hyps + binders)
-                fv = Fv(nm, ct.dom)
+                fv = Fv(nm, beta(ct.dom))
                 xs, c = [], ct.dom
                 while isinstance(c, Pi):
                     xv = Fv(c.name, c.dom); xs.append(xv); c = instantiate(c.cod, xv)

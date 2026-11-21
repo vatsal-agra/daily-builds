@@ -243,8 +243,14 @@ class Elaborator:
         if s.motive is not None:
             M, mty = self.infer(s.motive, scope)
             t = k.quote(0, mty)
+            arity = 0
             while isinstance(t, Pi):
                 t = t.cod
+                arity += 1
+            if arity != info.nindices + 1:
+                self.err(f"the 'return' motive for a value of type '{ind.name}' must be a function of "
+                         f"{info.nindices + 1} argument(s) ({'the ' + str(info.nindices) + ' index(es) and ' if info.nindices else ''}"
+                         f"the value being eliminated), e.g. 'return (fun (x : {ind.name}) => …)'; yours takes {arity}", s.motive)
             if not isinstance(t, Sort):
                 self.err("the 'return' motive must be a function ending in a type, e.g. fun n => Nat", s.motive)
             level = t.n

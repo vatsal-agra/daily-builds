@@ -256,3 +256,17 @@ def size(t):
     if isinstance(t, Lam):
         return 1 + size(t.dom) + size(t.body)
     return 1
+
+
+def beta(t):
+    """Contract β-redexes `(λx. b) a` everywhere (no δ/ι)."""
+    if isinstance(t, App):
+        f, a = beta(t.f), beta(t.a)
+        if isinstance(f, Lam):
+            return beta(instantiate(f.body, a))
+        return App(f, a)
+    if isinstance(t, Pi):
+        return Pi(t.name, beta(t.dom), beta(t.cod))
+    if isinstance(t, Lam):
+        return Lam(t.name, beta(t.dom), beta(t.body))
+    return t

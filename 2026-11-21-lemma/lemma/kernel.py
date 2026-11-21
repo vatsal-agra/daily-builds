@@ -342,6 +342,34 @@ class Kernel:
     def check_term(self, t, ty):
         self.check(Ctx(), t, self.eval([], ty))
 
+    def axioms_of(self, name):
+        """Axioms a declaration (transitively) depends on, sorted."""
+        seen, axs, stack = set(), set(), [name]
+        while stack:
+            n = stack.pop()
+            if n in seen or n not in self.decls:
+                continue
+            seen.add(n)
+            d = self.decls[n]
+            if d.kind == "axiom":
+                axs.add(n)
+            terms = [d.ty]
+            if d.kind in ("def", "theorem"):
+                terms.append(d.val)
+            if d.kind == "rec":
+                terms += [r for r, _ in d.info.rules.values()]
+            while terms:
+                t = terms.pop()
+                if isinstance(t, Const):
+                    stack.append(t.name)
+                elif isinstance(t, App):
+                    terms += [t.f, t.a]
+                elif isinstance(t, Pi):
+                    terms += [t.dom, t.cod]
+                elif isinstance(t, Lam):
+                    terms += [t.dom, t.body]
+        return sorted(axs)
+
     # ------------------------------------------------------------ adding declarations
     def _fresh(self, name):
         if name in self.decls:

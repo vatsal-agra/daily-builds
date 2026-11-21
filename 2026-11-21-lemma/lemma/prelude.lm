@@ -92,6 +92,119 @@ def lt (m n : Nat) : Type := le (succ m) n
 
 infixl 65 "+" => add
 infixl 70 "*" => mul
-infix 50 "≤" => le
 infix 50 "<=" => le
+infix 50 "≤" => le
 infix 50 "<" => lt
+
+-- ---------------------------------------------------------------- library (all proved here, at every start-up)
+theorem succ_inj (a b : Nat) (h : succ a = succ b) : a = b :=
+  Eq.cong Nat Nat pred (succ a) (succ b) h
+
+def isZero (n : Nat) : Type := elim n return (fun (_ : Nat) => Type) with | zero => True | succ k ih => False end
+
+theorem zero_ne_succ (n : Nat) : ¬ (0 = succ n) :=
+  fun (h : 0 = succ n) => Eq.subst Nat 0 (succ n) h isZero triv
+
+theorem add_zero_r : forall (n : Nat), n + 0 = n := by
+  intro n. induction n as zero | succ k ih.
+  { refl. }
+  { simp [ih]. }
+
+theorem add_succ_r : forall (m n : Nat), m + succ n = succ (m + n) := by
+  intro m n. induction m as zero | succ k ih.
+  { refl. }
+  { simp [ih]. }
+
+theorem add_comm : forall (m n : Nat), m + n = n + m := by
+  intro m n. induction m as zero | succ k ih.
+  { rewrite add_zero_r. refl. }
+  { rewrite add.eq_succ. rewrite add_succ_r. rewrite ih. }
+
+theorem add_assoc : forall (a b c : Nat), (a + b) + c = a + (b + c) := by
+  intro a b c. induction a as zero | succ k ih.
+  { refl. }
+  { simp [ih]. }
+
+theorem add_left_comm (a b c : Nat) : a + (b + c) = b + (a + c) := by
+  rewrite <- add_assoc. rewrite add_comm a b. rewrite add_assoc.
+
+theorem mul_zero_r : forall (n : Nat), n * 0 = 0 := by
+  intro n. induction n as zero | succ k ih.
+  { refl. }
+  { simp [ih]. }
+
+theorem mul_succ_r : forall (m n : Nat), m * succ n = m + m * n := by
+  intro m n. induction m as zero | succ k ih.
+  { refl. }
+  { simp [ih]. congr. rewrite add_left_comm. }
+
+theorem mul_comm : forall (m n : Nat), m * n = n * m := by
+  intro m n. induction m as zero | succ k ih.
+  { rewrite mul_zero_r. refl. }
+  { rewrite mul.eq_succ. rewrite mul_succ_r. rewrite ih. }
+
+theorem add_cancel_l (a b c : Nat) (h : a + b = a + c) : b = c := by
+  induction a as zero | succ k ih.
+  { exact h. }
+  { apply ih. apply succ_inj. exact h. }
+
+theorem le_refl (n : Nat) : n <= n := by
+  exists 0. exact add_zero_r n.
+
+theorem le_trans (a b c : Nat) (h1 : a <= b) (h2 : b <= c) : a <= c := by
+  cases h1 as intro x hx. cases h2 as intro y hy.
+  exists x + y. rewrite <- add_assoc. rewrite hx. exact hy.
+
+theorem zero_le (n : Nat) : 0 <= n := by
+  exists n. refl.
+
+def append (A : Type) (xs ys : List A) : List A :=
+  elim xs with | nil => ys | cons x t ih => cons A x (append A t ys) end
+
+def length (A : Type) (xs : List A) : Nat :=
+  elim xs with | nil => 0 | cons x t ih => succ (length A t) end
+
+def reverse (A : Type) (xs : List A) : List A :=
+  elim xs with | nil => nil A | cons x t ih => append A (reverse A t) (cons A x (nil A)) end
+
+def map (A B : Type) (f : A -> B) (xs : List A) : List B :=
+  elim xs with | nil => nil B | cons x t ih => cons B (f x) (map A B f t) end
+
+theorem append_nil (A : Type) (xs : List A) : append A xs (nil A) = xs := by
+  induction xs as nil | cons x t ih.
+  { refl. }
+  { simp [ih]. }
+
+theorem append_assoc (A : Type) (xs ys zs : List A) :
+    append A (append A xs ys) zs = append A xs (append A ys zs) := by
+  induction xs as nil | cons x t ih.
+  { refl. }
+  { simp [ih]. }
+
+theorem length_append (A : Type) (xs ys : List A) :
+    length A (append A xs ys) = length A xs + length A ys := by
+  induction xs as nil | cons x t ih.
+  { refl. }
+  { simp [ih]. }
+
+theorem reverse_append (A : Type) (xs ys : List A) :
+    reverse A (append A xs ys) = append A (reverse A ys) (reverse A xs) := by
+  induction xs as nil | cons x t ih.
+  { simp [append_nil]. }
+  { simp [ih, append_assoc]. }
+
+theorem reverse_reverse (A : Type) (xs : List A) : reverse A (reverse A xs) = xs := by
+  induction xs as nil | cons x t ih.
+  { refl. }
+  { simp [reverse_append, ih]. }
+
+theorem length_reverse (A : Type) (xs : List A) : length A (reverse A xs) = length A xs := by
+  induction xs as nil | cons x t ih.
+  { refl. }
+  { simp [length_append, ih]. rewrite add_comm. refl. }
+
+theorem map_append (A B : Type) (f : A -> B) (xs ys : List A) :
+    map A B f (append A xs ys) = append B (map A B f xs) (map A B f ys) := by
+  induction xs as nil | cons x t ih.
+  { refl. }
+  { simp [ih]. }

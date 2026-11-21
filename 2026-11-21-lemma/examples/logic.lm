@@ -1,34 +1,4 @@
-def append (A : Type) (xs ys : List A) : List A :=
-  elim xs with
-  | nil => ys
-  | cons x t ih => cons A x (append A t ys)
-  end
-
-def length (A : Type) (xs : List A) : Nat :=
-  elim xs with
-  | nil => 0
-  | cons x t ih => succ (length A t)
-  end
-
-#check append.eq_cons
-#eval length Nat (append Nat (cons Nat 1 (nil Nat)) (cons Nat 2 (cons Nat 3 (nil Nat))))
-
-theorem append_nil (A : Type) (xs : List A) : append A xs (nil A) = xs := by
-  induction xs as nil | cons x t ih.
-  { refl. }
-  { rewrite append.eq_cons. rewrite ih. }
-
-theorem append_assoc (A : Type) (xs ys zs : List A) :
-    append A (append A xs ys) zs = append A xs (append A ys zs) := by
-  induction xs as nil | cons x t ih.
-  { refl. }
-  { simp [ih]. }
-
-theorem length_append (A : Type) (xs ys : List A) :
-    length A (append A xs ys) = length A xs + length A ys := by
-  induction xs as nil | cons x t ih.
-  { refl. }
-  { simp [ih]. }
+-- Propositional logic, quantifiers and dependent vectors.
 
 -- logic
 theorem and_comm (A B : Type) : A /\ B -> B /\ A := by
@@ -59,7 +29,7 @@ theorem have_demo (a b c : Nat) (h1 : a = b) (h2 : b = c) : a = c := by
 
 theorem two_plus_two : 2 + 2 = 4 := by refl.
 
--- vectors
+-- vectors (an indexed family: the length is part of the type)
 def vhead (A : Type) (n : Nat) (v : Vec A (succ n)) : A :=
   elim v return (fun (m : Nat) (v : Vec A m) => elim m return (fun (_ : Nat) => Type) with | zero => True | succ k ih => A end) with
   | vnil => triv

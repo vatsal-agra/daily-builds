@@ -21,6 +21,7 @@ class Session:
         self.errors = []         # rendered error strings
         self.results = []        # per-command records (for reports)
         self.trace = None        # tactic trace collector for the current theorem
+        self.equations = []      # auto-generated equation lemma names (the default simp set)
         self.filename = "<input>"
         self.src = ""
         if load_prelude:
@@ -66,6 +67,11 @@ class Session:
             except RecursionError:
                 msg = "term too deeply nested (recursion limit)"
                 self.errors.append(LemmaError(msg, cmd.pos, src).render(filename, src))
+                self.results.append(dict(kind=type(cmd).__name__, name=getattr(cmd, "name", ""), ok=False, msg=msg, pos=cmd.pos))
+            except Exception as e:                      # never crash on user input
+                msg = f"internal error ({type(e).__name__}: {e}); this is a bug in Lemma, not in your file"
+                self.errors.append(LemmaError(msg, cmd.pos, src).render(filename, src))
+                self.results.append(dict(kind=type(cmd).__name__, name=getattr(cmd, "name", ""), ok=False, msg=msg, pos=cmd.pos))
         return len(self.errors) == n_err
 
     def _skip_to_command(self, parser):
@@ -222,8 +228,10 @@ class Session:
         except KernelError as e:
             raise LemmaError(f"kernel rejected '{name}': {e}", c.pos)
         neqs = self.add_equations(name, params, T, rec) if c.kind == "def" else 0
+        axs = k.axioms_of(name)
         if not quiet:
-            self.say(f"{c.kind} {name} : {show(ty, [], k)}" + (f"   [+{neqs} equation lemma(s)]" if neqs else ""))
+            self.say(f"{c.kind} {name} : {show(ty, [], k)}" + (f"   [+{neqs} equation lemma(s)]" if neqs else "")
+                     + (f"   [uses axiom(s): {', '.join(axs)}]" if axs else ""))
         return dict(kind=c.kind, name=name, ok=True, size=size(value), steps=self.trace, ty=ty)
 
     def add_equations(self, fname, params, T, rec):
@@ -244,6 +252,7 @@ class Session:
             proof = apps(Const("refl"), Teq, lhs)
             try:
                 k.add_def(f"{fname}.eq_{cname}", pi_over(binders, stmt), lam_over(binders, proof), opaque=True)
+                self.equations.append(f"{fname}.eq_{cname}")
                 n += 1
             except KernelError:
                 pass
@@ -254,6 +263,10 @@ class Session:
         d = k.decls.get(c.name)
         if d is None:
             raise LemmaError(f"unknown constant '{c.name}'", c.pos)
+        if c.axioms:
+            axs = k.axioms_of(c.name)
+            self.say(f"'{c.name}' depends on axioms: {', '.join(axs)}" if axs else f"'{c.name}' does not depend on any axioms")
+            return
         kinds = {"def": "def", "theorem": "theorem", "axiom": "axiom", "ind": "inductive", "ctor": "constructor", "rec": "recursor"}
         self.say(f"{kinds[d.kind]} {d.name} : {show(d.ty, [], k)}")
         if d.kind in ("def", "theorem"):
