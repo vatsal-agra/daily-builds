@@ -22,4 +22,8 @@ python3 -m unittest discover -s tests
 - **Phase 3 (adversarial review)** done — REVIEW.md lists 13 findings (non-planar PDs accepted,
   wrong link colorings, orientation-fragile link identification, ...); all fixed and pinned by
   `tests/test_review.py`.
-- Phases 4-6 (stretch + polish, verification, ship) pending.
+- **Phase 4 (stretch + polish)** done — all four stretch features shipped (simplifier / unknot
+  prover, SVG renderer, scrambler + invariance self-check, links with orientation-aware Jones),
+  plus an HTML gallery (`tangle gallery -o gallery.html`), uniform error handling (exit 1, no
+  tracebacks) and sane empty-input behaviour.
+- Phases 5-6 (verification, ship) pending.

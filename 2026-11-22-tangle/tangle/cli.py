@@ -95,6 +95,9 @@ def main(argv=None):
 
     sub.add_parser("catalog", help="list the built-in knots and links with their invariants")
 
+    g = sub.add_parser("gallery", help="write a self-contained HTML gallery of the whole catalog")
+    g.add_argument("-o", "--output", required=True)
+
     r = sub.add_parser("scramble", help="scramble a braid with random sound moves and prove nothing changed")
     add_source(r)
     r.add_argument("--steps", type=int, default=30)
@@ -150,6 +153,11 @@ def main(argv=None):
             print(f"{'name':<22}{'xings':>5}  {'det':>4}  Jones")
             for name, n, inv in __import__("tangle.identify", fromlist=["table"]).table():
                 print(f"{name:<22}{n:>5}  {inv['determinant']:>4}  {fmt_jones(inv['jones'])}")
+        elif args.cmd == "gallery":
+            from .gallery import build_gallery
+            with open(args.output, "w") as fh:
+                fh.write(build_gallery())
+            print(f"wrote {args.output}")
         elif args.cmd == "scramble":
             L = load(args)
             if not L.braid:
@@ -167,7 +175,7 @@ def main(argv=None):
     except LinkError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    except MemoryError as e:
+    except (MemoryError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     return 0

@@ -32,11 +32,13 @@ def _component_ids(n, word):
     return [[comp[s] for s in lv] for lv in levels], cid
 
 
-def render_svg(link, title=None, caption=None, theme="light"):
+def render_svg(link, title=None, caption=None, theme="light", bg=None):
     if not link.braid:
         raise LinkError("drawing needs a braid representation (use --braid, --name or --torus, not --pd)")
     n, word = link.braid
-    pal = PALETTES[theme]
+    pal = dict(PALETTES[theme])
+    if bg:
+        pal["bg"] = bg
     dx, dy, margin = 64, 58, 64
     lanes = n
     top = 78 + n * 18
