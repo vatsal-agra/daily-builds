@@ -45,6 +45,11 @@ def parse_braid(text, strands=None):
 
 def parse_pd(text):
     """'X[1,4,2,5] X[3,6,4,1]' or '[[1,4,2,5],[3,6,4,1]]' -> list of 4-tuples."""
+    bad = re.sub(r"[Xx\[\](),;\s]|-?\d+", "", text)
+    if bad:
+        raise LinkError(f"unexpected text {bad[:12]!r} in PD code (expected e.g. X[1,4,2,5] X[3,6,4,1] ...)")
+    if re.search(r"\d-", text):
+        raise LinkError("labels must be separated by commas or spaces (found 'digit-')")
     nums = [int(x) for x in re.findall(r"-?\d+", text)]
     if not nums:
         raise LinkError("empty PD code")
@@ -97,6 +102,12 @@ def _braid_crossings(word, strands):
 
 # ----------------------------------------------------------------- the Link class
 class Link:
+    """An oriented link diagram.
+
+    Orientation is encoded by the PD code (the under strand runs a -> c).  A component that is
+    over at every one of its crossings carries no orientation information in a *PD*; it is
+    then oriented arbitrarily (braid-built links always orient strands downward)."""
+
     def __init__(self, crossings, free_loops=0, braid=None, name=None):
         self.crossings = [tuple(c) for c in crossings]
         self.free_loops = free_loops
@@ -195,6 +206,44 @@ class Link:
             raise LinkError(f"edge {e} appears {k} time(s); in a valid PD code every edge appears exactly twice")
         if self.free_loops < 0:
             raise LinkError("free_loops must be >= 0")
+        self._check_planar()
+
+    def _check_planar(self):
+        """Euler characteristic of the surface the diagram lives on must be that of the sphere:
+        V - E + F = 2 per connected piece, with faces traced from the ccw rotation system."""
+        xs = self.crossings
+        if not xs:
+            return
+        occ = defaultdict(list)
+        for k, c in enumerate(xs):
+            for s_, e in enumerate(c):
+                occ[e].append((k, s_))
+        other = {}
+        for e, (d1, d2) in occ.items():
+            other[d1], other[d2] = d2, d1
+        seen, faces = set(), 0
+        for d in other:
+            if d in seen:
+                continue
+            faces += 1
+            while d not in seen:
+                seen.add(d)
+                k, s_ = other[d]
+                d = (k, (s_ + 1) % 4)
+        parent = list(range(len(xs)))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+        for (k1, _), (k2, _) in occ.values():
+            parent[find(k1)] = find(k2)
+        pieces = len({find(k) for k in range(len(xs))})
+        if len(xs) - 2 * len(xs) + faces != 2 * pieces:
+            raise LinkError("not a planar diagram: the PD code does not embed in the sphere "
+                            f"(Euler characteristic V-E+F = {len(xs) - 2 * len(xs) + faces}, expected {2 * pieces}); "
+                            "check the edge order around each crossing (counter-clockwise from the incoming under-strand)")
 
     # ---- orientation tracing
     def _trace(self):
@@ -299,8 +348,9 @@ class Link:
         return [tuple(ren[e] for e in c) for c in self.crossings]
 
     def pd_string(self):
-        s = " ".join("X[%d,%d,%d,%d]" % c for c in self.pd_code())
+        s = " ".join("X[%d,%d,%d,%d]" % c for c in self.pd_code()) or "(no crossings)"
         return s + (f"  (+{self.free_loops} free loop(s))" if self.free_loops else "")
 
     def summary(self):
-        return (f"{self.num_components} component(s), {self.n} crossing(s), writhe {self.writhe:+d}")
+        w = "0" if self.writhe == 0 else format(self.writhe, "+d")
+        return f"{self.num_components} component(s), {self.n} crossing(s), writhe {w}"

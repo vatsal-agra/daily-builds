@@ -26,6 +26,12 @@ def load(args):
     given = [x for x in (args.braid, args.pd, args.name, args.torus) if x is not None]
     if len(given) != 1:
         raise LinkError("give exactly one of --braid, --pd, --name, --torus")
+    if args.strands is not None and args.braid is None:
+        raise LinkError("--strands only applies to --braid")
+    if args.loops and args.pd is None:
+        raise LinkError("--loops only applies to --pd")
+    if args.loops < 0:
+        raise LinkError("--loops must be >= 0")
     if args.braid is not None:
         return Link.from_braid(args.braid, args.strands)
     if args.pd is not None:
@@ -52,7 +58,7 @@ def report(link):
               f"structure    : {link.summary()}"]
     lk = link.linking_numbers()
     if lk:
-        lines.append("linking nos. : " + ", ".join(f"lk({a+1},{b+1}) = {v:+d}" for (a, b), v in lk.items()))
+        lines.append("linking nos. : " + ", ".join(f"lk({a+1},{b+1}) = {v}" for (a, b), v in lk.items()))
     lines += [f"Jones  V(t)  : {fmt_jones(J)}",
               f"Alexander    : {P.fmt(A) if A else '0'}",
               f"determinant  : {i['determinant']}"]
@@ -63,8 +69,9 @@ def report(link):
         c = colorings(link, p)
         cols.append(f"p={p}: {c['nontrivial']} non-trivial" if c["colorable"] else f"p={p}: no")
     lines.append("Fox colorings: " + "; ".join(cols))
-    lines.append("chirality    : " + ("chiral (Jones differs from its mirror image)" if i["chiral"]
-                                       else "Jones is mirror-symmetric (amphichiral or achiral-looking)"))
+    lines.append("chirality    : " + ("chiral: the Jones polynomial differs from that of its mirror image"
+                                       if i["chiral"] else
+                                       "Jones polynomial equals its mirror image's (consistent with amphichiral)"))
     lines.append(f"VERDICT      : {inv['verdict']}")
     return "\n".join(lines)
 
@@ -118,15 +125,19 @@ def main(argv=None):
                 print("  " + st)
             print(f"end   : {fmt_word(res['word'])}  on {res['strands']} strands  ({len(res['word'])} crossings, "
                   f"{res['nodes']} states explored)")
+            J = jones(L)
             if res["proved_unknot"]:
                 print("PROVED: the closure is the unknot (explicit sequence of Reidemeister/Markov moves above).")
+            elif not res["word"]:
+                print(f"RESULT: reduced to the empty braid on {res['strands']} strands = the "
+                      f"{res['strands']}-component unlink.")
+            elif not L.is_knot():
+                print("Reduced as far as the search could. (A link: use `analyze` for its invariants.)")
+            elif J == {0: 1}:
+                print("NOT proved: Jones polynomial is trivial but the search could not reduce the diagram.")
             else:
-                J = jones(L)
-                if J == {0: 1} and L.is_knot():
-                    print("NOT proved: invariants are trivial but the search could not reduce the diagram.")
-                else:
-                    print("Reduced as far as the search could; this is NOT a proof of knottedness "
-                          "(see `analyze` for the invariants that do prove it)." if J != {0: 1} else "")
+                print(f"Reduced as far as the search could. Not the unknot: its Jones polynomial is "
+                      f"{fmt_jones(J)}, which differs from 1.")
         elif args.cmd == "draw":
             L = load(args)
             inv = identify(L)

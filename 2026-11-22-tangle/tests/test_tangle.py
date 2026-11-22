@@ -326,7 +326,7 @@ class TestSimplify(unittest.TestCase):
         for name in ("3_1", "4_1", "5_2", "6_3", "7_7", "Hopf link", "Borromean rings"):
             L = catalog.get(name)
             for _ in range(3):
-                n, w = scramble(*L.braid, steps=25, seed=rng.randint(0, 10 ** 6), max_len=26)
+                n, w = scramble(*L.braid, steps=25, seed=rng.randint(0, 10 ** 6))
                 L2 = Link.from_braid(w, n)
                 self.assertEqual(jones(L2), jones(L), name)
                 self.assertEqual(alexander(L2), alexander(L), name)
@@ -335,7 +335,7 @@ class TestSimplify(unittest.TestCase):
     def test_scrambled_diagram_is_still_identified(self):
         for seed in range(5):
             L = catalog.get("5_2")
-            n, w = scramble(*L.braid, steps=25, seed=seed, max_len=24)
+            n, w = scramble(*L.braid, steps=25, seed=seed)
             self.assertEqual(identify(Link.from_braid(w, n))["matches"][0][0], "5_2")
 
 

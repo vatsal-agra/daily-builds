@@ -59,7 +59,7 @@ def _connect(ends, x, y):
     return 0
 
 
-def kauffman_bracket(link, max_states=2_000_000):
+def kauffman_bracket(link, max_states=400_000):
     """Normalised bracket (<unknot> = 1) as {A-exponent: coeff}."""
     xs = link.crossings
     states = {(): {0: 1}}
@@ -85,21 +85,49 @@ def kauffman_bracket(link, max_states=2_000_000):
                 nxt[nk] = term if cur is None else P.add(cur, term)
         states = nxt
         if len(states) > max_states:
-            raise MemoryError("diagram too wide for the frontier DP")
+            raise MemoryError(f"diagram too wide for the frontier DP (> {max_states} connectivity states); "
+                              "simplify the diagram first, e.g. `tangle simplify`")
     total = states.get((), {})
     total = P.mul(total, d_power(link.free_loops))
     # unknot-normalise: divide by d = -A^-2 (A^4 + 1)
     return P.divide_exact(total, D)
 
 
-def jones(link):
-    """Jones polynomial as {q: coeff} meaning t^(q/4) (integers q; knots have 4|q)."""
-    br = kauffman_bracket(link)
-    w = link.writhe
-    f = P.shift(br, -3 * w)
-    if w % 2:
+def _jones_from_bracket(br, writhe, comps):
+    """V = (-A^3)^(-w) <K>, converted to t = A^-4 (key q means t^(q/4)); self-checked."""
+    f = P.shift(br, -3 * writhe)
+    if writhe % 2:
         f = P.scale(f, -1)
-    return {-e: c for e, c in f.items()}
+    out = {-e: c for e, c in f.items()}
+    bad = [q for q in out if (q - 2 * (comps - 1)) % 4]
+    if bad:
+        raise ArithmeticError(f"internal error: Jones exponent {bad[0]}/4 impossible for {comps} component(s)")
+    return out
+
+
+def jones(link, max_states=400_000):
+    """Jones polynomial as {q: coeff} meaning t^(q/4) (integers q; knots have 4|q)."""
+    return _jones_from_bracket(kauffman_bracket(link, max_states), link.writhe, link.num_components)
+
+
+def jones_orientations(link, max_states=400_000):
+    """Jones polynomial of every relative orientation of the components with crossings.
+
+    The bracket is orientation-free; only the writhe changes when a component is reversed,
+    so all 2^(c-1) variants cost a single bracket.  Returns [(flips, jones), ...] where
+    flips[i] is True if component i is reversed (component 0 is never flipped: reversing
+    everything leaves V unchanged)."""
+    br = kauffman_bracket(link, max_states)
+    nc = len(link._comps)
+    out = []
+    for mask in range(1 << max(nc - 1, 0)):
+        flips = [False] + [bool(mask >> i & 1) for i in range(nc - 1)] if nc else []
+        w = 0
+        for k, sg in enumerate(link.signs):
+            i, j = link._comp_of[(k, 0)], link._comp_of[(k, 1)]
+            w += -sg if flips[i] != flips[j] else sg
+        out.append((tuple(flips), _jones_from_bracket(br, w, link.num_components)))
+    return out
 
 
 def mirror_jones(j):

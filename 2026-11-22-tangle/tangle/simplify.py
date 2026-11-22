@@ -102,15 +102,23 @@ def fmt_word(w):
     return " ".join(f"s{g}" if g > 0 else f"s{-g}^-1" for g in w) or "(empty)"
 
 
-def scramble(n, word, steps=30, seed=0, max_len=40):
-    """Apply `steps` random sound moves (including expanding ones) -> (n', word')."""
+def scramble(n, word, steps=30, seed=0, max_growth=8):
+    """Apply up to `steps` random sound moves -> (n', word').
+
+    Expanding moves (insertion / stabilisation) are rare and the length is capped at the
+    starting length + max_growth, so the result stays readable."""
     import random
     rng = random.Random(seed)
     w = tuple(word)
+    cap = len(w) + max_growth
     for _ in range(steps):
-        opts = list(neighbours(n, w, expand=True))
-        opts = [o for o in opts if len(o[1]) <= max_len and o[0] <= n + 1]
-        if not opts:
+        pool = list(neighbours(n, w, expand=False))
+        if rng.random() < 0.25 or not pool:
+            pool = [o for o in neighbours(n, w, expand=True) if len(o[1]) > len(w) or o[0] > n]
+            pool = [o for o in pool if len(o[1]) <= cap and o[0] <= n + 1]
+        # prefer moves that do not shrink the word so the scramble does not simply undo itself
+        keep = [o for o in pool if len(o[1]) >= len(w)] or pool
+        if not keep:
             break
-        n, w, _ = rng.choice(opts)
+        n, w, _ = rng.choice(keep)
     return n, list(w)

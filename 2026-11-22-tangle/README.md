@@ -19,4 +19,7 @@ python3 -m unittest discover -s tests
 - **Phase 2 (core build)** done: diagram model (braid + PD, orientation, signs), Jones via
   frontier-DP Kauffman bracket, Alexander/determinant/Fox colorings, catalog + identification.
   Also already in: braid simplifier, SVG renderer, scrambler, Conway/plat constructor.
-- Phases 3-6 (adversarial review, polish, verification, ship) pending.
+- **Phase 3 (adversarial review)** done — REVIEW.md lists 13 findings (non-planar PDs accepted,
+  wrong link colorings, orientation-fragile link identification, ...); all fixed and pinned by
+  `tests/test_review.py`.
+- Phases 4-6 (stretch + polish, verification, ship) pending.

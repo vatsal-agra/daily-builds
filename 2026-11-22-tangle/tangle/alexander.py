@@ -63,28 +63,108 @@ def alexander_matrix_at(link, t0):
     return M, narcs
 
 
+_MERSENNE_BITS = (127, 521, 607, 1279, 2203, 2281, 3217, 4253, 4423, 9689, 9941, 11213, 19937)
+
+
+def _det_mod(rows, size, p):
+    """Determinant mod p of a sparse matrix given as a list of {col: val} dict rows."""
+    rows = [dict(r) for r in rows]
+    det = 1
+    for col in range(size):
+        best = None
+        for i in range(col, size):
+            if rows[i].get(col):
+                if best is None or len(rows[i]) < len(rows[best]):
+                    best = i
+        if best is None:
+            return 0
+        if best != col:
+            rows[col], rows[best] = rows[best], rows[col]
+            det = -det
+        piv = rows[col]
+        pv = piv[col]
+        det = det * pv % p
+        inv = pow(pv, -1, p)
+        for i in range(col + 1, size):
+            r = rows[i]
+            f = r.get(col)
+            if f:
+                f = f * inv % p
+                for c, v in piv.items():
+                    nv = (r.get(c, 0) - f * v) % p
+                    if nv:
+                        r[c] = nv
+                    else:
+                        r.pop(c, None)
+    return det % p
+
+
+def _interpolate_mod(xs, ys, p):
+    """Lagrange interpolation mod p -> coefficient list (low -> high)."""
+    n = len(xs)
+    full = [1]
+    for x in xs:                                   # prod (X - x)
+        nxt = [0] * (len(full) + 1)
+        for k, c in enumerate(full):
+            nxt[k + 1] = (nxt[k + 1] + c) % p
+            nxt[k] = (nxt[k] - c * x) % p
+        full = nxt
+    out = [0] * n
+    for xi, yi in zip(xs, ys):
+        q = [0] * n                                # full / (X - xi) by synthetic division
+        carry = 0
+        for k in range(n, 0, -1):
+            carry = (full[k] + carry * xi) % p
+            q[k - 1] = carry
+        denom = 0
+        for c in reversed(q):
+            denom = (denom * xi + c) % p
+        w = yi * pow(denom, -1, p) % p
+        for k in range(n):
+            out[k] = (out[k] + w * q[k]) % p
+    return out
+
+
 def alexander_raw(link):
-    """Alexander polynomial up to units: {exp>=0: int}, or {} if it vanishes."""
+    """Alexander polynomial up to units: {exp>=0: int}, or {} if it vanishes.
+
+    Computed as an (n-1)-minor of the n x n Wirtinger/Fox matrix, evaluated at n integer
+    points modulo a Mersenne prime and interpolated.  The prime is chosen above twice the
+    proved coefficient bound 4^(n-1) (each row's coefficients have absolute sum <= 4), so the
+    symmetric lift of the residues is the exact integer polynomial."""
     n = link.n
     if n == 0:
         return {0: 1} if link.num_components == 1 else {}
     if link.free_loops:
         return {}
-    narcs, _ = arcs(link)
+    narcs, arc_rows = arcs(link)
     if narcs != n:
         return {}                                 # an over-only component: split link
-    pts = [Fraction(i) for i in range(n + 1)]
-    vals = []
-    for t0 in pts:
-        M, _ = alexander_matrix_at(link, t0)
-        vals.append(_det([row[:-1] for row in M[:-1]]))
-    co = P.interpolate(pts, vals)
+    bits = next(b for b in _MERSENNE_BITS if b > 2 * n + 4)
+    p = (1 << bits) - 1
+    xs = list(range(n))
+    ys = []
+    last = n - 1
+    for t0 in xs:
+        rows = []
+        for (x, y, z), sg in list(zip(arc_rows, link.signs))[:-1]:
+            r = {}
+
+            def put(c, v):
+                if c != last:
+                    r[c] = (r.get(c, 0) + v) % p
+            if sg > 0:
+                put(z, 1 - t0); put(x, t0); put(y, -1)
+            else:
+                put(z, t0 - 1); put(x, 1); put(y, -t0)
+            rows.append({c: v for c, v in r.items() if v})
+        ys.append(_det_mod(rows, n - 1, p))
+    co = _interpolate_mod(xs, ys, p)
     out = {}
     for e, c in enumerate(co):
-        if c.denominator != 1:
-            raise ArithmeticError("non-integral Alexander coefficient (bug)")
+        c = c - p if c > p // 2 else c
         if c:
-            out[e] = int(c)
+            out[e] = c
     return out
 
 
@@ -150,6 +230,5 @@ def colorings(link, p):
         M.append(r)
     rank = _rank_mod(M, p) if M else 0
     total = p ** (narcs - rank) * p ** link.free_loops
-    trivial = p ** link.num_components if link.num_components else 1
-    # trivial colourings = constant on each component
+    trivial = p                                   # monochromatic colourings
     return {"p": p, "total": total, "nontrivial": total - trivial, "colorable": total > trivial}
