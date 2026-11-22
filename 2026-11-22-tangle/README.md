@@ -26,4 +26,6 @@ python3 -m unittest discover -s tests
   prover, SVG renderer, scrambler + invariance self-check, links with orientation-aware Jones),
   plus an HTML gallery (`tangle gallery -o gallery.html`), uniform error handling (exit 1, no
   tracebacks) and sane empty-input behaviour.
-- Phases 5-6 (verification, ship) pending.
+- **Phase 5 (verification)** done — 59 unit/regression tests + `tests/demo.py` (14 asserted
+  end-to-end checks covering all 8 features), all green.
+- Phase 6 (ship) pending.

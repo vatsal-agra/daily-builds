@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 382 616" width="382" height="616" font-family="Georgia, 'Times New Roman', serif">
+<rect width="100%" height="100%" fill="#fbf7ef"/>
+<text x="191.0" y="40" text-anchor="middle" font-size="26" fill="#2a2623" letter-spacing="1">6_3</text>
+<path d="M64,480 L64,528 Q64,542 78,542 L268,542 Q282,542 282,528 L282,84 Q282,70 268,70 L78,70 Q64,70 64,84 L64,132" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M128,480 L128,510 Q128,524 142,524 L246,524 Q260,524 260,510 L260,102 Q260,88 246,88 L142,88 Q128,88 128,102 L128,132" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M192,480 L192,492 Q192,506 206,506 L224,506 Q238,506 238,492 L238,120 Q238,106 224,106 L206,106 Q192,106 192,120 L192,132" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M192,132 L192,190" stroke="#c8452c" stroke-width="7" stroke-linecap="round" fill="none"/>
+<path d="M192,190 L192,248" stroke="#c8452c" stroke-width="7" stroke-linecap="round" fill="none"/>
+<path d="M64,248 L64,306" stroke="#c8452c" stroke-width="7" stroke-linecap="round" fill="none"/>
+<path d="M192,306 L192,364" stroke="#c8452c" stroke-width="7" stroke-linecap="round" fill="none"/>
+<path d="M64,364 L64,422" stroke="#c8452c" stroke-width="7" stroke-linecap="round" fill="none"/>
+<path d="M64,422 L64,480" stroke="#c8452c" stroke-width="7" stroke-linecap="round" fill="none"/>
+<path d="M64,132 C64,161.0 128,161.0 128,190" fill="none" stroke="#fbf7ef" stroke-width="14" stroke-linecap="butt"/><path d="M64,132 C64,161.0 128,161.0 128,190" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round"/>
+<path d="M128,132 C128,161.0 64,161.0 64,190" fill="none" stroke="#fbf7ef" stroke-width="14" stroke-linecap="butt"/><path d="M128,132 C128,161.0 64,161.0 64,190" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round"/>
+<path d="M64,190 C64,219.0 128,219.0 128,248" fill="none" stroke="#fbf7ef" stroke-width="14" stroke-linecap="butt"/><path d="M64,190 C64,219.0 128,219.0 128,248" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round"/>
+<path d="M128,190 C128,219.0 64,219.0 64,248" fill="none" stroke="#fbf7ef" stroke-width="14" stroke-linecap="butt"/><path d="M128,190 C128,219.0 64,219.0 64,248" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round"/>
+<path d="M192,248 C192,277.0 128,277.0 128,306" fill="none" stroke="#fbf7ef" stroke-width="14" stroke-linecap="butt"/><path d="M192,248 C192,277.0 128,277.0 128,306" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round"/>
+<path d="M128,248 C128,277.0 192,277.0 192,306" fill="none" stroke="#fbf7ef" stroke-width="14" stroke-linecap="butt"/><path d="M128,248 C128,277.0 192,277.0 192,306" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round"/>
+<path d="M64,306 C64,335.0 128,335.0 128,364" fill="none" stroke="#fbf7ef" stroke-width="14" stroke-linecap="butt"/><path d="M64,306 C64,335.0 128,335.0 128,364" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round"/>
+<path d="M128,306 C128,335.0 64,335.0 64,364" fill="none" stroke="#fbf7ef" stroke-width="14" stroke-linecap="butt"/><path d="M128,306 C128,335.0 64,335.0 64,364" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round"/>
+<path d="M192,364 C192,393.0 128,393.0 128,422" fill="none" stroke="#fbf7ef" stroke-width="14" stroke-linecap="butt"/><path d="M192,364 C192,393.0 128,393.0 128,422" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round"/>
+<path d="M128,364 C128,393.0 192,393.0 192,422" fill="none" stroke="#fbf7ef" stroke-width="14" stroke-linecap="butt"/><path d="M128,364 C128,393.0 192,393.0 192,422" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round"/>
+<path d="M192,422 C192,451.0 128,451.0 128,480" fill="none" stroke="#fbf7ef" stroke-width="14" stroke-linecap="butt"/><path d="M192,422 C192,451.0 128,451.0 128,480" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round"/>
+<path d="M128,422 C128,451.0 192,451.0 192,480" fill="none" stroke="#fbf7ef" stroke-width="14" stroke-linecap="butt"/><path d="M128,422 C128,451.0 192,451.0 192,480" fill="none" stroke="#c8452c" stroke-width="7" stroke-linecap="round"/>
+<text x="191.0" y="590" text-anchor="middle" font-size="15" fill="#8a7f72">Jones -t^-3 + 2t^-2 - 2t^-1 + 3 - 2t + 2t^2 - t^3</text>
+</svg>
