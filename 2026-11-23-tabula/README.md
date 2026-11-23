@@ -5,7 +5,7 @@ teachers, rooms, student groups and weekly lessons in JSON; Tabula builds a comp
 clashes**, then optimises how *pleasant* it is, and gives you an interactive HTML viewer, calendars
 (`.ics`) and an independent verifier. If no timetable can exist it tells you **why**.
 
-![status](https://img.shields.io/badge/tests-passing-brightgreen) ~3,000 lines of Go, 0 dependencies.
+~3,600 lines of Go including tests, 0 dependencies.
 
 ## Quick start
 ```bash
