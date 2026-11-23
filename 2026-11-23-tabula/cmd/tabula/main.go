@@ -166,8 +166,8 @@ func cmdSolve(args []string, resolve bool) {
 	}
 	sol := in.ToSolution(a)
 	if !*quiet {
-		fmt.Printf("feasible after %d search nodes (%d restarts); cost %d -> %d in %d annealing steps (%d moves, %d swaps accepted); %s\n",
-			rep.Construct.Nodes, rep.Construct.Restarts, rep.Initial, sol.Cost, rep.Anneal.Iters, rep.Anneal.Moves, rep.Anneal.Swaps, rep.Elapsed.Round(time.Millisecond))
+		fmt.Printf("feasible after %d search nodes (%d restarts); cost %d -> %d in %d annealing steps (accepted: %d moves, %d swaps, %d kempe chains); %s\n",
+			rep.Construct.Nodes, rep.Construct.Restarts, rep.Initial, sol.Cost, rep.Anneal.Iters, rep.Anneal.Moves, rep.Anneal.Swaps, rep.Anneal.Kempe, rep.Elapsed.Round(time.Millisecond))
 		for _, k := range tabula.CatNames {
 			if v := sol.Breakdown[k]; v != 0 {
 				fmt.Printf("    %-14s %d\n", k, v)

@@ -129,8 +129,8 @@ func (in *Instance) Cost(a *Assignment) (int, map[string]int) {
 // local evaluates the cost of everything touched by a set of events in the
 // current state; used for before/after deltas.
 type scratch struct {
-	tSeen, gSeen, lSeen []int
-	stamp               int
+	tSeen, gSeen, lSeen, eSeen []int
+	stamp                      int
 }
 
 func (in *Instance) newScratch() *scratch {

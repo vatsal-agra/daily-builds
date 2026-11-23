@@ -181,14 +181,16 @@ func WriteICS(dir string, p *Problem, s *Solution, start string) (int, error) {
 	}
 	build := func(match func(Lesson) bool, cal string) string {
 		var sb strings.Builder
-		w := func(l string) { // RFC 5545: fold lines at 75 octets
-			for len(l) > 75 {
-				cut := 75
+		w := func(l string) { // RFC 5545: lines are at most 75 octets, a fold adds a leading space
+			limit := 75
+			for len(l) > limit {
+				cut := limit
 				for cut > 0 && l[cut]&0xC0 == 0x80 { // do not split a UTF-8 sequence
 					cut--
 				}
 				sb.WriteString(l[:cut] + "\r\n ")
 				l = l[cut:]
+				limit = 74 // continuation lines carry the extra space
 			}
 			sb.WriteString(l + "\r\n")
 		}

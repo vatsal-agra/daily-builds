@@ -10,6 +10,7 @@ type State struct {
 	tm, gm  [][]uint32 // [teacher|group][day] busy periods
 	rm      [][]uint32 // [room][day]
 	lessonD []uint32   // [lesson] bitmask of days used
+	startAt [][]int    // [slot] events starting there (kept in sync by Place/Unplace)
 	placed  int
 }
 
@@ -24,6 +25,7 @@ func NewState(in *Instance) *State {
 	}
 	st.tm, st.gm, st.rm = mk(len(in.P.Teachers)), mk(len(in.P.Groups)), mk(len(in.P.Rooms))
 	st.lessonD = make([]uint32, len(in.P.Lessons))
+	st.startAt = make([][]int, in.D*in.N)
 	return st
 }
 
@@ -60,6 +62,7 @@ func (st *State) Place(e, s, r int) {
 	}
 	st.lessonD[ev.Lesson] |= 1 << uint(d)
 	st.A.Slot[e], st.A.Room[e] = s, r
+	st.startAt[s] = append(st.startAt[s], e)
 	st.placed++
 }
 
@@ -76,6 +79,14 @@ func (st *State) Unplace(e int) {
 	}
 	st.lessonD[ev.Lesson] &^= 1 << uint(d)
 	st.A.Slot[e], st.A.Room[e] = -1, -1
+	l := st.startAt[s]
+	for i, x := range l {
+		if x == e {
+			l[i] = l[len(l)-1]
+			st.startAt[s] = l[:len(l)-1]
+			break
+		}
+	}
 	st.placed--
 }
 

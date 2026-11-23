@@ -31,3 +31,14 @@ Every item below was **reproduced first, then fixed**; the "Re-test" column is w
 * Time-limited annealing is not bit-reproducible (only `-iters` mode is).
 
 **Gate:** after the fixes a fresh run-through of every item above reproduces none of them.
+
+## Addendum — found while writing the Phase 5 tests
+| # | Severity | Finding | Fix |
+|---|----------|---------|-----|
+| 12 | Medium | The unit test for `.ics` caught that my fix #9 was still wrong: folded continuation lines are emitted with a leading space, making them 76 octets. | Continuation chunks are limited to 74 octets + the space. Test asserts no line > 75. |
+| 13 | Low | Tests showed `Weights.Stability` trades off against other soft terms (re-solve moved 8 sessions, not the 2 forced ones) — correct per the cost definition but surprising. | Documented in README; test added showing `stability=1000` moves exactly the forced sessions. |
+
+## Addendum — found during the phase 4/5 benchmark pass
+| # | Severity | Finding | Fix |
+|---|----------|---------|-----|
+| 14 | High (quality) | On a dense 40-group instance **zero** single-event moves were ever accepted in 12 M annealing steps: I measured that only the event's *own* slot was feasible (random relocation hits a clash >99% of the time), so the optimiser was running on swaps alone. | Moves now probe up to 12 random targets for a feasible one, add room-only moves, and a new **Kempe-chain** move swaps two whole time slots for the closed set of clashing events (needs a slot→events index kept in sync by `Place`/`Unplace`). Cost on the 40-group benchmark 3273 → ~3050, on the small one 349 → ~300; `TestKempeChains…` asserts they fire and the incremental cost still equals the verifier's. |
