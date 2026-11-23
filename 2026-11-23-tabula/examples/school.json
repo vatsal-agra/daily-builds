@@ -1,0 +1,32 @@
+{
+  "name": "Oakfield Primary (hand-written)",
+  "days": 5, "periods": 6, "breaks_after": [2],
+  "period_starts": ["09:00","09:55","10:50","12:30","13:25","14:20"], "period_minutes": 50,
+  "teachers": [
+    {"id": "ames",  "name": "Ms Ames",  "max_per_day": 5},
+    {"id": "bose",  "name": "Mr Bose",  "unavailable": [[0,0],[0,1],[0,2],[0,3],[0,4],[0,5]]},
+    {"id": "chen",  "name": "Ms Chen",  "avoid": [[4,3],[4,4],[4,5]]},
+    {"id": "diaz",  "name": "Mr Diaz",  "unavailable": [[2,3],[2,4],[2,5]]},
+    {"id": "evans", "name": "Ms Evans"}
+  ],
+  "rooms": [
+    {"id": "A1", "capacity": 30}, {"id": "A2", "capacity": 30}, {"id": "A3", "capacity": 24}, {"id": "A4", "capacity": 60},
+    {"id": "SCI", "capacity": 60, "kind": "lab"}, {"id": "HALL", "capacity": 80, "kind": "gym"}
+  ],
+  "groups": [{"id": "Y4", "size": 28}, {"id": "Y5", "size": 26}, {"id": "Y6", "size": 22}],
+  "lessons": [
+    {"id": "maths4", "subject": "Maths",   "teacher": "ames",  "groups": ["Y4"], "sessions": 4, "duration": 1},
+    {"id": "maths5", "subject": "Maths",   "teacher": "ames",  "groups": ["Y5"], "sessions": 4, "duration": 1},
+    {"id": "maths6", "subject": "Maths",   "teacher": "chen",  "groups": ["Y6"], "sessions": 4, "duration": 1},
+    {"id": "eng4",   "subject": "English", "teacher": "chen",  "groups": ["Y4"], "sessions": 3, "duration": 1},
+    {"id": "eng5",   "subject": "English", "teacher": "diaz",  "groups": ["Y5"], "sessions": 3, "duration": 1},
+    {"id": "eng6",   "subject": "English", "teacher": "diaz",  "groups": ["Y6"], "sessions": 3, "duration": 1},
+    {"id": "sci45",  "subject": "Science", "teacher": "evans", "groups": ["Y4","Y5"], "sessions": 2, "duration": 2, "room_kind": "lab"},
+    {"id": "sci6",   "subject": "Science", "teacher": "evans", "groups": ["Y6"], "sessions": 2, "duration": 2, "room_kind": "lab"},
+    {"id": "pe4",    "subject": "PE",      "teacher": "bose",  "groups": ["Y4"], "sessions": 2, "duration": 1, "room_kind": "gym"},
+    {"id": "pe5",    "subject": "PE",      "teacher": "bose",  "groups": ["Y5"], "sessions": 2, "duration": 1, "room_kind": "gym"},
+    {"id": "pe6",    "subject": "PE",      "teacher": "bose",  "groups": ["Y6"], "sessions": 2, "duration": 1, "room_kind": "gym", "fixed": [[1,0]]},
+    {"id": "art",    "subject": "Art",     "teacher": "bose",  "groups": ["Y4","Y5"], "sessions": 1, "duration": 2, "room_kind": ""},
+    {"id": "assembly","subject": "Assembly","teacher": "ames", "groups": ["Y4","Y5","Y6"], "sessions": 1, "duration": 1, "room_kind": "gym", "fixed": [[0,0]]}
+  ]
+}

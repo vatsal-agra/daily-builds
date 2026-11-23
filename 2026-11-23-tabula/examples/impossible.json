@@ -1,0 +1,19 @@
+{
+  "name": "Doomed Academy",
+  "days": 5, "periods": 6,
+  "teachers": [
+    {"id": "grim", "unavailable": [[0,0],[0,1],[0,2],[0,3],[0,4],[0,5],[1,0],[1,1],[1,2],[1,3],[1,4],[1,5],[2,0],[2,1],[2,2],[2,3],[2,4],[2,5]]},
+    {"id": "fox"}, {"id": "ivy", "max_per_day": 2}
+  ],
+  "rooms": [{"id": "R1", "capacity": 30}, {"id": "LAB", "capacity": 20, "kind": "lab"}],
+  "groups": [{"id": "A", "size": 25}, {"id": "B", "size": 28}, {"id": "BIG", "size": 90}],
+  "lessons": [
+    {"id": "hist", "subject": "History", "teacher": "grim", "groups": ["A"], "sessions": 4, "duration": 2},
+    {"id": "chem", "subject": "Chemistry", "teacher": "fox", "groups": ["A"], "sessions": 2, "duration": 1, "room_kind": "lab"},
+    {"id": "assembly", "subject": "Assembly", "teacher": "fox", "groups": ["BIG"], "sessions": 1, "duration": 1},
+    {"id": "m1", "subject": "Maths", "teacher": "ivy", "groups": ["B"], "sessions": 5, "duration": 1},
+    {"id": "m2", "subject": "Maths", "teacher": "ivy", "groups": ["A"], "sessions": 4, "duration": 1},
+    {"id": "pa", "subject": "Pinned", "teacher": "fox", "groups": ["B"], "sessions": 1, "duration": 1, "fixed": [[3,2]]},
+    {"id": "pb", "subject": "Pinned", "teacher": "fox", "groups": ["A"], "sessions": 1, "duration": 1, "fixed": [[3,2]]}
+  ]
+}

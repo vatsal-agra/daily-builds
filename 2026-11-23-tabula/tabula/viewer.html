@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tabula timetable</title>
+<style>
+:root{--bg:#f6f4ef;--panel:#fffdf8;--ink:#1f2328;--mute:#6b7280;--line:#e2ded3;--accent:#0f766e;--cell-l:88%;--cell-s:55%;--cell-ink:#1f2328;--shadow:0 1px 2px rgba(0,0,0,.06),0 6px 20px rgba(0,0,0,.05)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14161a;--panel:#1b1e24;--ink:#e7e5e0;--mute:#9aa0a8;--line:#2c3038;--accent:#2dd4bf;--cell-l:26%;--cell-s:45%;--cell-ink:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.4)}}
+:root[data-theme=dark]{--bg:#14161a;--panel:#1b1e24;--ink:#e7e5e0;--mute:#9aa0a8;--line:#2c3038;--accent:#2dd4bf;--cell-l:26%;--cell-s:45%;--cell-ink:#f1efe9;--shadow:0 1px 2px rgba(0,0,0,.4)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:22px 24px 8px;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:baseline;justify-content:space-between}
+h1{margin:0;font-size:22px;letter-spacing:-.01em}h1 span{color:var(--accent)}
+.sub{color:var(--mute);font-size:13px}
+button,select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
+button:hover,select:hover{border-color:var(--accent)}
+main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;padding:12px 24px 40px;max-width:1400px;margin:0 auto}
+@media(max-width:960px){main{grid-template-columns:1fr;padding:12px 16px 32px}header{padding:18px 16px 4px}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+.tab{padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:transparent}
+.tab[aria-selected=true]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.chip{padding:3px 10px;font-size:13px;border-radius:999px}
+.chip[aria-pressed=true]{background:color-mix(in srgb,var(--accent) 18%,transparent);border-color:var(--accent)}
+.scroll{overflow-x:auto}
+table.grid{border-collapse:separate;border-spacing:4px;width:100%;min-width:640px;table-layout:fixed}
+.grid th{font-weight:600;font-size:13px;color:var(--mute);padding:4px}
+.grid th.p{width:64px;text-align:right;padding-right:8px;font-variant-numeric:tabular-nums}
+.grid td{height:74px;vertical-align:top;padding:0;border-radius:8px;background:color-mix(in srgb,var(--line) 35%,transparent)}
+.grid td.off{background:repeating-linear-gradient(135deg,transparent 0 6px,color-mix(in srgb,var(--mute) 22%,transparent) 6px 8px)}
+.grid td.brk{border-bottom:3px solid var(--accent)}
+.cell{height:100%;border-radius:8px;padding:6px 8px;color:var(--cell-ink);display:flex;flex-direction:column;gap:1px;overflow:hidden;border-left:4px solid hsl(var(--h) 60% 45%);background:hsl(var(--h) var(--cell-s) var(--cell-l))}
+.cell b{font-size:14px;line-height:1.2}.cell i{font-style:normal;font-size:12px;opacity:.78}
+.cell.tall{z-index:1}
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;font-size:12px;color:var(--mute)}
+.legend span{display:inline-flex;align-items:center;gap:5px}.legend em{width:10px;height:10px;border-radius:3px;display:inline-block}
+h2{font-size:14px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute)}
+.big{font-size:34px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.bar{display:grid;grid-template-columns:104px 1fr 34px;gap:8px;align-items:center;font-size:12.5px;margin:6px 0}
+.bar div.t{height:8px;border-radius:4px;background:color-mix(in srgb,var(--line) 70%,transparent);overflow:hidden}
+.bar div.t i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.bar span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.ok{color:var(--accent);font-weight:600}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.stats div{font-size:12px;color:var(--mute)}.stats b{display:block;font-size:18px;color:var(--ink)}
+aside .card+.card{margin-top:14px}
+.empty{padding:40px;text-align:center;color:var(--mute)}
+@media print{body{background:#fff}header button,.tabs,.chips,aside{display:none}main{display:block}.card{box-shadow:none;border:none}}
+</style>
+</head>
+<body>
+<header>
+  <div><h1><span>Tabula</span> · <span id="pname" style="color:inherit"></span></h1><div class="sub" id="psub"></div></div>
+  <button id="theme" title="Toggle light/dark">◐ theme</button>
+</header>
+<main>
+  <section class="card">
+    <div class="tabs" role="tablist" id="kinds"></div>
+    <div class="chips" id="ents"></div>
+    <div class="scroll"><table class="grid" id="grid"></table></div>
+    <div class="legend" id="legend"></div>
+  </section>
+  <aside>
+    <div class="card"><h2>Hard constraints</h2><div class="ok" id="hard"></div><div class="sub" id="hardsub"></div><div class="stats" id="stats"></div></div>
+    <div class="card"><h2>Soft cost</h2><div class="big" id="cost"></div><div id="bars"></div></div>
+  </aside>
+</main>
+<script>
+const DATA=/*DATA*/null;
+(function(){
+"use strict";
+const P=DATA.problem,S=DATA.solution;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dayName=d=>(P.day_names&&P.day_names[d])||["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][d]||"D"+(d+1);
+const lessons={};P.lessons.forEach(l=>lessons[l.id]=l);
+const subjects=[...new Set(P.lessons.map(l=>l.subject))].sort();
+const hue=s=>subjects.indexOf(s)*137.508%360;
+const teachers={};P.teachers.forEach(t=>teachers[t.id]=t);
+$("pname").textContent=P.name||"timetable";
+$("psub").textContent=`${P.days} days × ${P.periods} periods · ${P.groups.length} groups · ${P.teachers.length} teachers · ${P.rooms.length} rooms · ${S.placements.length} sessions`;
+const kinds={group:{label:"Groups",list:P.groups.map(g=>g.id)},teacher:{label:"Teachers",list:P.teachers.map(t=>t.id)},room:{label:"Rooms",list:P.rooms.map(r=>r.id)}};
+let kind="group",ent=kinds.group.list[0];
+function involved(pl,k,id){const l=lessons[pl.lesson];
+  return k==="group"?l.groups.includes(id):k==="teacher"?l.teacher===id:pl.room===id;}
+function times(p){const t=P.period_starts;return t&&t[p]?t[p]:"";}
+function renderKinds(){const el=$("kinds");el.innerHTML="";
+  Object.keys(kinds).forEach(k=>{const b=document.createElement("button");b.className="tab";b.setAttribute("role","tab");
+    b.setAttribute("aria-selected",k===kind);b.textContent=kinds[k].label+" ("+kinds[k].list.length+")";
+    b.onclick=()=>{kind=k;ent=kinds[k].list[0];render();};el.appendChild(b);});}
+function renderEnts(){const el=$("ents");el.innerHTML="";
+  kinds[kind].list.forEach(id=>{const b=document.createElement("button");b.className="chip";b.setAttribute("aria-pressed",id===ent);
+    b.textContent=id;b.onclick=()=>{ent=id;render();};el.appendChild(b);});}
+function renderGrid(){
+  const g=$("grid"),pls=S.placements.filter(p=>involved(p,kind,ent));
+  const cell={};pls.forEach(p=>{for(let k=0;k<p.duration;k++)cell[p.day+","+(p.period+k)]={p,k};});
+  const off=new Set();
+  if(kind==="teacher"){(teachers[ent].unavailable||[]).forEach(s=>off.add(s[0]+","+s[1]));}
+  const brk=new Set(P.breaks_after||[]);
+  let h="<thead><tr><th class=p></th>";
+  for(let d=0;d<P.days;d++)h+="<th>"+esc(dayName(d))+"</th>";h+="</tr></thead><tbody>";
+  const skip=new Set();
+  for(let p=0;p<P.periods;p++){
+    h+=`<tr><th class=p>${p+1}<br><span style="font-weight:400">${esc(times(p))}</span></th>`;
+    for(let d=0;d<P.days;d++){
+      const key=d+","+p,c=cell[key];
+      if(skip.has(key))continue;
+      const cls=(brk.has(p)?"brk ":"")+(off.has(key)?"off":"");
+      if(!c){h+=`<td class="${cls}"${off.has(key)?' title="unavailable"':''}></td>`;continue;}
+      const l=lessons[c.p.lesson];
+      for(let k=1;k<c.p.duration;k++)skip.add(d+","+(p+k));
+      const who=kind==="group"?l.teacher:l.groups.join("+");
+      const lines=[kind==="room"?l.groups.join("+")+" · "+l.teacher:who+" · "+(kind==="room"?"":c.p.room)];
+      h+=`<td rowspan="${c.p.duration}" class="${cls}"><div class="cell tall" style="--h:${hue(l.subject).toFixed(0)}" title="${esc(l.id+" session "+c.p.session)}"><b>${esc(l.subject)}</b><i>${esc(lines[0])}</i>${kind==="teacher"?"<i>"+esc(c.p.room)+"</i>":""}</div></td>`;
+    }
+    h+="</tr>";
+  }
+  g.innerHTML=h+"</tbody>";
+  const n=pls.reduce((a,p)=>a+p.duration,0);
+  if(!pls.length)g.innerHTML='<tbody><tr><td class="empty" style="height:auto">Nothing scheduled for '+esc(ent)+'.</td></tr></tbody>';
+  $("legend").innerHTML=subjects.map(s=>`<span><em style="background:hsl(${hue(s).toFixed(0)} 60% 50%)"></em>${esc(s)}</span>`).join("")+`<span>· ${esc(ent)}: ${n} periods/week</span>`;
+}
+function renderSide(){
+  $("cost").textContent=S.cost;
+  const bd=S.breakdown||{},max=Math.max(1,...Object.values(bd));
+  $("bars").innerHTML=Object.keys(bd).filter(k=>bd[k]>0).sort((a,b)=>bd[b]-bd[a]).map(k=>`<div class="bar"><span>${k.replace(/_/g," ")}</span><div class="t"><i style="width:${(bd[k]/max*100).toFixed(0)}%"></i></div><span>${bd[k]}</span></div>`).join("")||'<div class="sub">No soft penalties at all.</div>';
+  // independent in-browser re-check of double bookings
+  const seen={};let bad=0;
+  S.placements.forEach(p=>{const l=lessons[p.lesson];for(let k=0;k<p.duration;k++){
+    [["t",l.teacher],["r",p.room],...l.groups.map(g=>["g",g])].forEach(([a,id])=>{const key=a+id+"@"+p.day+","+(p.period+k);if(seen[key])bad++;seen[key]=1;});}});
+  $("hard").textContent=bad?bad+" double-bookings!":"✓ 0 clashes";
+  $("hard").className=bad?"":"ok";
+  $("hardsub").textContent="re-checked in your browser: no teacher, room or group is in two places at once";
+  const used=S.placements.reduce((a,p)=>a+p.duration,0);
+  $("stats").innerHTML=`<div><b>${S.placements.length}</b>sessions</div><div><b>${used}</b>room-periods</div><div><b>${(used/(P.rooms.length*P.days*P.periods)*100).toFixed(0)}%</b>room utilisation</div><div><b>${P.lessons.length}</b>lessons</div>`;
+}
+function render(){renderKinds();renderEnts();renderGrid();renderSide();}
+$("theme").onclick=()=>{const r=document.documentElement;const dark=getComputedStyle(r).getPropertyValue("--bg").trim()==="#14161a";r.setAttribute("data-theme",dark?"light":"dark");};
+render();
+})();
+</script>
+</body>
+</html>
