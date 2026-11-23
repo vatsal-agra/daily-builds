@@ -210,7 +210,8 @@ func Verify(p *Problem, s *Solution, prev *Solution) (violations []string, cost 
 		breakdown["room_waste"] += (r.Capacity - size) * w.RoomWaste / 10
 		if prev != nil {
 			for _, q := range prev.Placements {
-				if q.Lesson == pl.Lesson && q.Session == pl.Session && (q.Day != pl.Day || q.Period != pl.Period || q.Room != pl.Room) {
+				_, roomKnown := rIdx[q.Room]
+				if q.Lesson == pl.Lesson && q.Session == pl.Session && (q.Day != pl.Day || q.Period != pl.Period || (roomKnown && q.Room != pl.Room)) {
 					breakdown["instability"] += w.Stability
 				}
 			}

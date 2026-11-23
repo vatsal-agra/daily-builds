@@ -114,7 +114,7 @@ func (in *Instance) Diagnose() []Diagnostic {
 	}
 
 	// 4. group load
-	for gi, g := range p.Groups {
+	for _, g := range p.Groups {
 		need := 0
 		var lessons []string
 		for _, l := range p.Lessons {
@@ -125,7 +125,6 @@ func (in *Instance) Diagnose() []Diagnostic {
 				}
 			}
 		}
-		_ = gi
 		if need > total {
 			fatal("group %s must attend %d periods/week but the week has only %d (lessons: %s)", g.ID, need, total, strings.Join(lessons, ", "))
 		}

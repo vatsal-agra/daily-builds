@@ -24,7 +24,7 @@ func (in *Instance) PartialFromSolution(s *Solution) (*Assignment, error) {
 		}
 		ri, ok := in.RoomI[pl.Room]
 		if !ok {
-			continue
+			ri = -1 // room no longer exists: only the time slot is worth preserving
 		}
 		if pl.Day < 0 || pl.Day >= in.D || pl.Period < 0 || pl.Period >= in.N {
 			return nil, fmt.Errorf("placement of %s#%d is outside the %dx%d week", pl.Lesson, pl.Session, in.D, in.N)
@@ -39,7 +39,7 @@ func (in *Instance) PartialFromSolution(s *Solution) (*Assignment, error) {
 func (in *Instance) CountMoved(prev, a *Assignment) int {
 	n := 0
 	for e := range in.Events {
-		if prev.Slot[e] >= 0 && (prev.Slot[e] != a.Slot[e] || prev.Room[e] != a.Room[e]) {
+		if prev.Slot[e] >= 0 && (prev.Slot[e] != a.Slot[e] || (prev.Room[e] >= 0 && prev.Room[e] != a.Room[e])) {
 			n++
 		}
 	}
@@ -112,8 +112,8 @@ func WriteHTML(path string, p *Problem, s *Solution) error {
 	if err != nil {
 		return err
 	}
-	// "</" inside JSON in a <script> could end the tag early; escape it.
-	js := strings.ReplaceAll(string(b), "</", "<\\/")
+	// "<" escaped as \u003c so "</script>" or "<!--" inside data cannot break out of the script tag.
+	js := strings.ReplaceAll(string(b), "<", "\\u003c")
 	out := strings.Replace(viewerHTML, "/*DATA*/null", js, 1)
 	return os.WriteFile(path, []byte(out), 0o644)
 }
@@ -181,7 +181,17 @@ func WriteICS(dir string, p *Problem, s *Solution, start string) (int, error) {
 	}
 	build := func(match func(Lesson) bool, cal string) string {
 		var sb strings.Builder
-		w := func(l string) { sb.WriteString(l + "\r\n") }
+		w := func(l string) { // RFC 5545: fold lines at 75 octets
+			for len(l) > 75 {
+				cut := 75
+				for cut > 0 && l[cut]&0xC0 == 0x80 { // do not split a UTF-8 sequence
+					cut--
+				}
+				sb.WriteString(l[:cut] + "\r\n ")
+				l = l[cut:]
+			}
+			sb.WriteString(l + "\r\n")
+		}
 		w("BEGIN:VCALENDAR")
 		w("VERSION:2.0")
 		w("PRODID:-//Tabula//Timetable//EN")

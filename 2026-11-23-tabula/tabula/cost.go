@@ -1,9 +1,6 @@
 package tabula
 
-import (
-	"math/bits"
-	"sort"
-)
+import "math/bits"
 
 // Cost categories (stable names are used in JSON/HTML output).
 const (
@@ -80,7 +77,7 @@ func (in *Instance) eventCost(e, s, r int, prev *Assignment, acc *[nCat]int) int
 	ev := &in.Events[e]
 	waste := (in.P.Rooms[r].Capacity - ev.Size) * in.W.RoomWaste / 10
 	stab := 0
-	if prev != nil && prev.Slot[e] >= 0 && (prev.Slot[e] != s || prev.Room[e] != r) {
+	if prev != nil && prev.Slot[e] >= 0 && (prev.Slot[e] != s || (prev.Room[e] >= 0 && prev.Room[e] != r)) {
 		stab = in.W.Stability
 	}
 	if acc != nil {
@@ -171,16 +168,4 @@ func (st *State) localCost(sc *scratch, evs ...int) int {
 		}
 	}
 	return total
-}
-
-// SortedCats returns breakdown entries in a stable order.
-func SortedCats(b map[string]int) []string {
-	var k []string
-	for _, n := range CatNames {
-		if _, ok := b[n]; ok {
-			k = append(k, n)
-		}
-	}
-	sort.SliceStable(k, func(i, j int) bool { return false })
-	return k
 }

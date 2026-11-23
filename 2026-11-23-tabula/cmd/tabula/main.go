@@ -134,6 +134,7 @@ func cmdSolve(args []string, resolve bool) {
 	seed := fs.Int64("seed", 1, "random seed")
 	dur := fs.Duration("time", 5*time.Second, "optimisation time budget")
 	iters := fs.Int("iters", 0, "fixed annealing iterations (deterministic; overrides -time)")
+	cfor := fs.Duration("construct", 20*time.Second, "budget for finding a feasible timetable")
 	quiet := fs.Bool("q", false, "quiet")
 	want := 1
 	if resolve {
@@ -141,7 +142,7 @@ func cmdSolve(args []string, resolve bool) {
 	}
 	pos := parse(fs, args, want)
 	p, in := load(pos[0])
-	opt := tabula.Options{Seed: *seed, AnnealFor: *dur, AnnealIters: *iters}
+	opt := tabula.Options{Seed: *seed, AnnealFor: *dur, AnnealIters: *iters, ConstructFor: *cfor}
 	var prevSol *tabula.Solution
 	if resolve {
 		var err error

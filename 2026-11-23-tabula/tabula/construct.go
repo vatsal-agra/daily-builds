@@ -13,8 +13,9 @@ type ConstructResult struct {
 	Nodes    int
 	Restarts int
 	// Hardest lists events that most often hit a dead end (empty domain), for diagnostics.
-	Hardest []string
-	Reason  string
+	Hardest    []string
+	Reason     string
+	UsedRepair bool // feasibility came from the min-conflicts stage
 }
 
 type construct struct {
@@ -110,16 +111,18 @@ func (c *construct) search(prev *Assignment) bool {
 	}
 	c.nodes++
 	// MRV: smallest total domain; ties broken randomly, then by longer/more constrained events.
-	best, bestN, ties := -1, 1<<30, 0
+	// dom/wdeg: domain size divided by (1 + dead ends this event has caused so far,
+	// accumulated across restarts) - steers search towards the true bottleneck.
+	best, bestN, ties := -1, 1<<60, 0
 	for e := range in.Events {
 		if st.A.Slot[e] >= 0 {
 			continue
 		}
-		n := c.total[e]
-		if n == 0 {
+		if c.total[e] == 0 {
 			c.fails[e]++
 			return false
 		}
+		n := c.total[e] * 1024 / (1 + c.fails[e])
 		if n < bestN {
 			best, bestN, ties = e, n, 1
 		} else if n == bestN {
@@ -142,7 +145,7 @@ func (c *construct) search(prev *Assignment) bool {
 	c.rng.Shuffle(len(cands), func(i, j int) { cands[i], cands[j] = cands[j], cands[i] })
 	if prev != nil && prev.Slot[best] >= 0 { // try the previous placement first
 		for i, cd := range cands {
-			if cd.s == prev.Slot[best] && cd.r == prev.Room[best] {
+			if cd.s == prev.Slot[best] && (prev.Room[best] < 0 || cd.r == prev.Room[best]) {
 				cands[0], cands[i] = cands[i], cands[0]
 				break
 			}

@@ -2,6 +2,7 @@ package tabula
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -37,11 +38,22 @@ func (in *Instance) Solve(o Options) (*Assignment, *Report, error) {
 		o.ConstructFor = 20 * time.Second
 	}
 	in.prev = o.Previous
-	cr := in.Construct(o.Seed, o.ConstructFor, o.Previous)
+	// Stage 1: complete backtracking search (fast on easy/medium instances, and the only
+	// stage that can say "give up" cheaply). Stage 2: min-conflicts tabu repair for tight ones.
+	btBudget := o.ConstructFor / 4
+	if btBudget > time.Second {
+		btBudget = time.Second
+	}
+	cr := in.Construct(o.Seed, btBudget, o.Previous)
 	rep.Construct = cr
 	if cr.A == nil {
-		rep.Elapsed = time.Since(t0)
-		return nil, rep, fmt.Errorf("%s (hardest: %v)", cr.Reason, cr.Hardest)
+		a, left, conflicts := in.Repair(o.Seed, o.ConstructFor-btBudget, o.Previous)
+		if a == nil {
+			rep.Elapsed = time.Since(t0)
+			return nil, rep, fmt.Errorf("could not find a timetable without clashes in %s: best attempt still has %d hard violation(s) [%s]; hardest sessions: %v",
+				o.ConstructFor, left, strings.Join(conflicts, "; "), cr.Hardest)
+		}
+		cr.A, cr.UsedRepair = a, true
 	}
 	rep.Initial, _ = in.Cost(cr.A)
 	a := cr.A

@@ -13,6 +13,19 @@ import (
 // Slot is a (day, period) pair, JSON-encoded as [day, period], both 0-based.
 type Slot [2]int
 
+// UnmarshalJSON insists on exactly two integers: [day, period].
+func (s *Slot) UnmarshalJSON(b []byte) error {
+	var v []int
+	if err := json.Unmarshal(b, &v); err != nil {
+		return fmt.Errorf("slot must be [day, period] of two integers: %v", err)
+	}
+	if len(v) != 2 {
+		return fmt.Errorf("slot must be [day, period], got %d value(s): %s", len(v), b)
+	}
+	*s = Slot{v[0], v[1]}
+	return nil
+}
+
 type Teacher struct {
 	ID          string `json:"id"`
 	Name        string `json:"name,omitempty"`
@@ -244,8 +257,7 @@ func Compile(p *Problem) (*Instance, error) {
 			bad("duplicate lesson id %q", l.ID)
 		}
 		in.LessonI[l.ID] = li
-		ti, ok := in.TeacherI[l.Teacher]
-		if !ok {
+		if _, ok := in.TeacherI[l.Teacher]; !ok {
 			bad("lesson %s: unknown teacher %q", l.ID, l.Teacher)
 		}
 		var gs []int
@@ -283,7 +295,6 @@ func Compile(p *Problem) (*Instance, error) {
 				bad("lesson %s: fixed slot %v outside the week", l.ID, s)
 			}
 		}
-		_ = ti
 	}
 	if len(errs) > 0 {
 		return nil, &ValidationError{errs}
