@@ -20,6 +20,9 @@ usage:
   spillway compare <prog.ir> -k 6 [-args ...]            all allocators side by side
   spillway sweep   <prog.ir> [-kmin 3 -kmax 16]          cycles/spills as K grows
   spillway live    <prog.ir>                             liveness, loop depth, live intervals
+  spillway gen     [-seed 1 -vars 10 -depth 3 -shuffle]  print a random program
+  spillway fuzz    [-n 200 -seed 1 -vars 14]             differential fuzzing of every allocator
+  spillway report  <prog.ir> -o report.html [-k 6]       self-contained HTML report
   -args accepts several input vectors separated by ';' (e.g. -args "5;10;20").`
 
 func main() {
@@ -40,6 +43,12 @@ func main() {
 		err = cmdSweep(rest)
 	case "live":
 		err = cmdLive(rest)
+	case "gen":
+		err = cmdGen(rest)
+	case "fuzz":
+		err = cmdFuzz(rest)
+	case "report":
+		err = cmdReport(rest)
 	case "help", "-h", "--help":
 		fmt.Println(usage)
 	default:

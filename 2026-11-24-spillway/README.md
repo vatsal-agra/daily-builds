@@ -13,3 +13,5 @@ go build -o spillway ./cmd/spillway
 ./spillway live examples/sumsq.ir
 ```
 See PLAN.md for the plan.
+
+**Phase 4:** added `gen`, `fuzz`, `report` (self-contained HTML, light/dark), K-sweep chart.
