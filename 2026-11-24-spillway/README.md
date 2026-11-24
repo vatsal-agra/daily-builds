@@ -1,13 +1,9 @@
 # Spillway
 Register-allocation laboratory (Go, stdlib only).
 
-**Status: Phase 2 — core build done.**
+**Status: Phase 3 — adversarial review done** (see REVIEW.md; 9 findings fixed, 7/8 harness mutants killed, 1 proven equivalent).
 
-Implemented so far (required features 1–4):
-1. IR text parser/validator, CFG, bitset liveness, natural-loop depth, reference interpreter
-2. Chaitin–Briggs/Appel graph-colouring allocator with coalescing, freeze and optimistic spilling
-3. Poletto linear-scan allocator + naive spill-everything baseline
-4. K-register machine code generation, cost-model VM, differential verifier, independent interference checker
+Implemented so far: IR parser/validator/interpreter, liveness + loop depth, Chaitin–Briggs graph colouring with coalescing, Poletto linear scan, naive baseline, K-register VM with cost model, differential verifier, independent interference checker, post-allocation spill clean-up (forwarding / dead stores / slot sharing), random program generator and differential fuzzer (library).
 
 ```
 go build -o spillway ./cmd/spillway
@@ -16,4 +12,4 @@ go build -o spillway ./cmd/spillway
 ./spillway sweep examples/pressure.ir -kmax 14 -args 20
 ./spillway live examples/sumsq.ir
 ```
-See PLAN.md for the full plan.
+See PLAN.md for the plan.

@@ -171,7 +171,11 @@ func (f *Function) FormatInstr(in *Instr) string {
 	}
 	sb.WriteString(in.Op.String())
 	var parts []string
-	for _, a := range in.Args {
+	for ai, a := range in.Args {
+		if (in.Op == OpSpillLd || in.Op == OpSpillSt) && ai == 0 {
+			parts = append(parts, fmt.Sprintf("[slot%d]", a.Val))
+			continue
+		}
 		parts = append(parts, f.opnd(a))
 	}
 	for _, t := range in.Targets {
@@ -246,6 +250,8 @@ func Parse(src string) (*Function, error) {
 	var pends []pend
 	blockIdx := map[string]int{}
 	var cur *Block
+	var blockLine []int
+	var instLine [][]int
 	started, closed := false, false
 	lines := strings.Split(src, "\n")
 	for ln, raw := range lines {
@@ -294,6 +300,8 @@ func Parse(src string) (*Function, error) {
 				return nil, &ParseError{lineNo, "duplicate label " + name}
 			}
 			blockIdx[name] = len(f.Blocks)
+			blockLine = append(blockLine, lineNo)
+			instLine = append(instLine, nil)
 			cur = &Block{Name: name}
 			f.Blocks = append(f.Blocks, cur)
 			continue
@@ -383,6 +391,7 @@ func Parse(src string) (*Function, error) {
 			in.Dst = reg(dst)
 		}
 		cur.Instrs = append(cur.Instrs, in)
+		instLine[len(instLine)-1] = append(instLine[len(instLine)-1], lineNo)
 	}
 	if !started {
 		return nil, &ParseError{1, "empty program"}
@@ -397,12 +406,12 @@ func Parse(src string) (*Function, error) {
 	for bi, b := range f.Blocks {
 		for i := range b.Instrs {
 			if b.Instrs[i].IsTerm() && i != len(b.Instrs)-1 {
-				return nil, &ParseError{0, fmt.Sprintf("block %s: terminator %s is not last", b.Name, b.Instrs[i].Op)}
+				return nil, &ParseError{instLine[bi][i], fmt.Sprintf("block %s: instructions after terminator %s are unreachable (a block ends at its first jmp/br/ret)", b.Name, b.Instrs[i].Op)}
 			}
 		}
 		if len(b.Instrs) == 0 || !b.Instrs[len(b.Instrs)-1].IsTerm() {
 			if bi+1 >= len(f.Blocks) {
-				return nil, &ParseError{0, fmt.Sprintf("block %s falls off the end of the function (needs ret/jmp)", b.Name)}
+				return nil, &ParseError{blockLine[bi], fmt.Sprintf("block %s falls off the end of the function (needs ret/jmp)", b.Name)}
 			}
 			b.Instrs = append(b.Instrs, Instr{Op: OpJmp, Dst: -1, Targets: []int{bi + 1}})
 		}

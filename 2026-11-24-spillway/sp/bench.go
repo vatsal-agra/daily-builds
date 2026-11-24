@@ -19,6 +19,21 @@ type Row struct {
 	Verified  bool  // machine run matched the reference run
 }
 
+// CheckTerminates runs the reference interpreter on every input and reports a
+// clear error if any run exceeds the step budget (an infinite loop would
+// otherwise surface as a confusing per-allocator failure).
+func CheckTerminates(f *Function, inputs [][]int64) error {
+	for _, in := range inputs {
+		if _, err := Run(f, in, StepBudget); err != nil {
+			if err == ErrStepLimit {
+				return fmt.Errorf("program did not finish within %d steps on input %v (infinite loop?)", StepBudget, in)
+			}
+			return fmt.Errorf("input %v: %w", in, err)
+		}
+	}
+	return nil
+}
+
 // Verify runs the reference IR and the allocated machine code on every input
 // vector and demands identical return value, output and memory.
 func Verify(f *Function, a *Allocation, inputs [][]int64) (Stats, error) {
@@ -51,10 +66,15 @@ func Verify(f *Function, a *Allocation, inputs [][]int64) (Stats, error) {
 // Compare allocates f with every allocator at a given K and measures each.
 // Dynamic stats are totals over all input vectors.
 func Compare(f *Function, K int, inputs [][]int64, coalesce bool) []Row {
+	return CompareOpt(f, K, inputs, Options{Coalesce: coalesce})
+}
+
+// CompareOpt is Compare with full allocation options.
+func CompareOpt(f *Function, K int, inputs [][]int64, opt Options) []Row {
 	var rows []Row
 	for _, name := range Allocators {
 		r := Row{Allocator: name, K: K}
-		a, err := Allocate(f, name, K, Options{Coalesce: coalesce})
+		a, err := Allocate(f, name, K, opt)
 		if err != nil {
 			r.Err = err
 			rows = append(rows, r)

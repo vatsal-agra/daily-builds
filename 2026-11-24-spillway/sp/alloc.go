@@ -9,6 +9,7 @@ import (
 // Options tunes allocation.
 type Options struct {
 	Coalesce bool // graph colouring only: conservative (Briggs) coalescing
+	NoPost   bool // skip the post-allocation clean-up passes
 }
 
 // Allocation is the outcome of register allocation.
@@ -25,6 +26,7 @@ type Allocation struct {
 	MovesBefore int // static mov count in the source
 	MovesAfter  int // static mov count in the machine code
 	Coalesced   int // moves removed (coalescing + same-register elision)
+	Post        PostStats
 }
 
 // StaticStats are code-size counters of the machine code.
@@ -184,10 +186,16 @@ var Allocators = []string{"color", "linear", "naive"}
 // MinK is the smallest register file the spill-rewriting scheme supports.
 const MinK = 3
 
+// MaxK bounds the register file (the allocators keep per-register tables).
+const MaxK = 1024
+
 // Allocate compiles f for a K-register machine with the named allocator.
 func Allocate(f *Function, name string, K int, opt Options) (*Allocation, error) {
 	if K < MinK {
 		return nil, fmt.Errorf("K must be at least %d (an instruction can need two sources and a destination)", MinK)
+	}
+	if K > MaxK {
+		return nil, fmt.Errorf("K must be at most %d", MaxK)
 	}
 	if err := f.Validate(); err != nil {
 		return nil, err
@@ -201,6 +209,20 @@ func Allocate(f *Function, name string, K int, opt Options) (*Allocation, error)
 		var assign []int
 		var spills []int
 		var err error
+		// A value whose whole live range is at most one instruction long
+		// (defined and immediately consumed) gains nothing from spilling: its
+		// reload temporary would occupy a register at exactly the same point.
+		// Treating it as unspillable keeps the allocators from wasting spills
+		// on it while the genuinely long-lived values stay at K+ pressure.
+		ivs, _ := cur.Intervals(cur.Liveness())
+		for len(unsp) < cur.NumRegs {
+			unsp = append(unsp, false)
+		}
+		for _, iv := range ivs {
+			if iv.End-iv.Start <= 1 {
+				unsp[iv.Reg] = true
+			}
+		}
 		switch name {
 		case "color":
 			assign, spills = colorRound(cur, K, unsp, opt.Coalesce)
@@ -236,7 +258,11 @@ func Allocate(f *Function, name string, K int, opt Options) (*Allocation, error)
 			if err := CheckAssignment(cur, assign, K); err != nil {
 				return nil, fmt.Errorf("internal: %s produced an invalid assignment: %w", name, err)
 			}
-			return finalize(name, f, cur, assign, K, round, len(spilledOrig)), nil
+			a := finalize(name, f, cur, assign, K, round, len(spilledOrig))
+			if !opt.NoPost {
+				a.Optimize()
+			}
+			return a, nil
 		}
 		for _, r := range spills {
 			if r < origN {

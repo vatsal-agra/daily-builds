@@ -15,7 +15,7 @@ const usage = `spillway — register-allocation laboratory
 
 usage:
   spillway interp  <prog.ir> [-args 1,2]                 run the reference interpreter
-  spillway run     <prog.ir> -k 6 [-alloc color|linear|naive] [-args 1,2] [-nocoalesce]
+  spillway run     <prog.ir> -k 6 [-alloc color|linear|naive] [-args 1,2] [-nocoalesce] [-nopost]
                                                          allocate, print machine code, execute, verify
   spillway compare <prog.ir> -k 6 [-args ...]            all allocators side by side
   spillway sweep   <prog.ir> [-kmin 3 -kmax 16]          cycles/spills as K grows
@@ -154,6 +154,7 @@ func cmdRun(args []string) error {
 	al := fs.String("alloc", "color", "allocator: color, linear, naive")
 	a := fs.String("args", "", "input vector(s)")
 	noco := fs.Bool("nocoalesce", false, "disable coalescing (color only)")
+	nopost := fs.Bool("nopost", false, "skip post-allocation clean-up (forwarding, dead stores, slot sharing)")
 	file, err := parseFlags(fs, args, true)
 	if err != nil {
 		return err
@@ -166,15 +167,22 @@ func cmdRun(args []string) error {
 	if err != nil {
 		return err
 	}
-	al2, err := sp.Allocate(f, *al, *k, sp.Options{Coalesce: !*noco})
+	if err := sp.CheckTerminates(f, ins); err != nil {
+		return err
+	}
+	al2, err := sp.Allocate(f, *al, *k, sp.Options{Coalesce: !*noco, NoPost: *nopost})
 	if err != nil {
 		return err
 	}
-	fmt.Printf("; %s on %d registers — %d allocation round(s), %d variable(s) spilled, %d move(s) eliminated, %d stack slot(s)\n",
-		al2.Allocator, al2.K, al2.Rounds, al2.SpilledVars, al2.Coalesced, al2.Slots)
+	fmt.Printf("; %s on %d registers — %d allocation round(s), %d variable(s) spilled, %d move(s) eliminated\n",
+		al2.Allocator, al2.K, al2.Rounds, al2.SpilledVars, al2.Coalesced)
+	if !*nopost {
+		p := al2.Post
+		fmt.Printf("; post-pass: %d reload(s) dropped, %d turned into moves, %d dead store(s) removed, stack slots %d -> %d\n",
+			p.LoadsDropped, p.LoadsToMoves, p.DeadStores, p.SlotsBefore, p.SlotsAfter)
+	}
 	fmt.Print(sp.FormatMachine(al2.Machine))
-	st, err := sp.Verify(f, al2, ins)
-	if err != nil {
+	if _, err := sp.Verify(f, al2, ins); err != nil {
 		return err
 	}
 	for _, in := range ins {
@@ -183,7 +191,6 @@ func cmdRun(args []string) error {
 		fmt.Printf("; input %v: ret=%d output=%v (machine == reference ✓) cycles=%d (ref %d) spill ld/st=%d/%d\n",
 			in, got.Ret, got.Output, got.Stats.Cycles, ref.Stats.Cycles, got.Stats.SpillLoads, got.Stats.SpillStores)
 	}
-	_ = st
 	return nil
 }
 
@@ -192,6 +199,7 @@ func cmdCompare(args []string) error {
 	k := fs.Int("k", 6, "number of physical registers")
 	a := fs.String("args", "", "input vector(s)")
 	noco := fs.Bool("nocoalesce", false, "disable coalescing")
+	nopost := fs.Bool("nopost", false, "skip post-allocation clean-up")
 	file, err := parseFlags(fs, args, true)
 	if err != nil {
 		return err
@@ -204,8 +212,11 @@ func cmdCompare(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := sp.CheckTerminates(f, ins); err != nil {
+		return err
+	}
 	fmt.Printf("%s: %d vregs, %d blocks, %d instrs; K=%d\n", f.Name, f.NumRegs, len(f.Blocks), f.NumInstrs(), *k)
-	rows := sp.Compare(f, *k, ins, !*noco)
+	rows := sp.CompareOpt(f, *k, ins, sp.Options{Coalesce: !*noco, NoPost: *nopost})
 	fmt.Print(sp.FormatTable(rows))
 	for _, r := range rows {
 		if r.Err != nil {
@@ -233,6 +244,9 @@ func cmdSweep(args []string) error {
 	}
 	ins, err := parseInputs(*a)
 	if err != nil {
+		return err
+	}
+	if err := sp.CheckTerminates(f, ins); err != nil {
 		return err
 	}
 	fmt.Print(sp.FormatSweep(sp.Sweep(f, *kmin, *kmax, ins, true)))

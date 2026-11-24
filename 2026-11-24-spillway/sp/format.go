@@ -58,6 +58,12 @@ func FormatLiveness(f *Function) string {
 	for bi, b := range f.Blocks {
 		fmt.Fprintf(&sb, "%-8s depth=%d preds=%v succs=%v\n  live-in  %s\n  live-out %s\n", b.Name, depth[bi], b.Preds, b.Succs, names(lv.In[bi]), names(lv.Out[bi]))
 	}
+	rc := f.Reachable()
+	for bi, b := range f.Blocks {
+		if !rc[bi] {
+			fmt.Fprintf(&sb, "warning: block %s is unreachable from the entry\n", b.Name)
+		}
+	}
 	ivs, nm := f.Intervals(lv)
 	fmt.Fprintf(&sb, "\nlive intervals (doubled positions: use=2p, def=2p+1; %d instructions):\n", nm.Total)
 	for _, iv := range ivs {
