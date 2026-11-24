@@ -1,0 +1,24 @@
+; a chain of copies: a good coalescer removes almost every mov.
+func moves(1) {
+entry:
+  n = arg 0
+  a = mov n
+  b = mov a
+  c = mov b
+  i = const 0
+  acc = const 0
+  jmp head
+head:
+  t = lt i, n
+  br t, body, done
+body:
+  x = mov c
+  y = mov x
+  acc = add acc, y
+  c = add c, 1
+  i = add i, 1
+  jmp head
+done:
+  print acc
+  ret acc
+}

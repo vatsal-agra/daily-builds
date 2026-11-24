@@ -1,0 +1,46 @@
+; longest Collatz chain for starts in [1, n]; prints best start and its length.
+func collatz(1) {
+entry:
+  n = arg 0
+  start = const 1
+  best = const 0
+  bestlen = const 0
+  jmp outer
+outer:
+  c = le start, n
+  br c, init, done
+init:
+  x = mov start
+  len = const 1
+  jmp inner
+inner:
+  one = eq x, 1
+  br one, endinner, step
+step:
+  odd = and x, 1
+  br odd, up, down
+up:
+  t = mul x, 3
+  x = add t, 1
+  jmp bump
+down:
+  x = shr x, 1
+  jmp bump
+bump:
+  len = add len, 1
+  jmp inner
+endinner:
+  better = lt bestlen, len
+  br better, take, skip
+take:
+  bestlen = mov len
+  best = mov start
+  jmp skip
+skip:
+  start = add start, 1
+  jmp outer
+done:
+  print best
+  print bestlen
+  ret bestlen
+}

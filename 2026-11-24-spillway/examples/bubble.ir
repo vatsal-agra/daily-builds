@@ -1,0 +1,76 @@
+; fills memory[0..n) with a pseudo-random sequence, bubble-sorts it, prints a checksum
+; and whether it is sorted. Exercises nested loops, load/store, and branches.
+func bubble(1) {
+entry:
+  n = arg 0
+  i = const 0
+  seed = const 12345
+  jmp fill
+fill:
+  c = lt i, n
+  br c, fillbody, sorted0
+fillbody:
+  seed = mul seed, 1103515245
+  seed = add seed, 12345
+  v = shr seed, 16
+  v = and v, 1023
+  store i, v
+  i = add i, 1
+  jmp fill
+sorted0:
+  pass = const 0
+  jmp outer
+outer:
+  lim = sub n, 1
+  c = lt pass, lim
+  br c, inner0, check0
+inner0:
+  j = const 0
+  jmp inner
+inner:
+  lim2 = sub n, 1
+  lim2 = sub lim2, pass
+  c = lt j, lim2
+  br c, cmp, nextpass
+cmp:
+  a = load j
+  jn = add j, 1
+  b = load jn
+  gt = lt b, a
+  br gt, swap, noswap
+swap:
+  store j, b
+  store jn, a
+  jmp noswap
+noswap:
+  j = add j, 1
+  jmp inner
+nextpass:
+  pass = add pass, 1
+  jmp outer
+check0:
+  k = const 0
+  sum = const 0
+  ok = const 1
+  prev = const 0
+  jmp check
+check:
+  c = lt k, n
+  br c, checkbody, finish
+checkbody:
+  v = load k
+  sum = add sum, v
+  bad = lt v, prev
+  br bad, notok, cont
+notok:
+  ok = const 0
+  jmp cont
+cont:
+  prev = mov v
+  k = add k, 1
+  jmp check
+finish:
+  print sum
+  print ok
+  ret ok
+}

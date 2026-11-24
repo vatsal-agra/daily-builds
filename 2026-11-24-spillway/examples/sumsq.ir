@@ -1,0 +1,19 @@
+; sum of i*i for i in [0, n), then print it. Loop-carried values s, i, n.
+func sumsq(1) {
+entry:
+  n = arg 0
+  s = const 0
+  i = const 0
+  jmp head
+head:
+  c = lt i, n
+  br c, body, done
+body:
+  sq = mul i, i
+  s = add s, sq
+  i = add i, 1
+  jmp head
+done:
+  print s
+  ret s
+}

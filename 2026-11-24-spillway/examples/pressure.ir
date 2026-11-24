@@ -1,0 +1,49 @@
+; Eleven values live across a hot loop: far more than a small register file holds.
+func pressure(1) {
+entry:
+  n = arg 0
+  a = const 3
+  b = const 5
+  c = const 7
+  d = const 11
+  e = const 13
+  f = const 17
+  g = const 19
+  h = const 23
+  i = const 0
+  acc = const 0
+  jmp head
+head:
+  t = lt i, n
+  br t, body, done
+body:
+  x1 = add a, b
+  x2 = mul c, d
+  x3 = xor e, f
+  x4 = add g, h
+  s1 = add x1, x2
+  s2 = add x3, x4
+  s3 = xor s1, s2
+  acc = add acc, s3
+  a = add a, 1
+  b = add b, a
+  c = xor c, b
+  d = add d, c
+  e = add e, d
+  f = xor f, e
+  g = add g, f
+  h = add h, g
+  i = add i, 1
+  jmp head
+done:
+  r = add acc, a
+  r = add r, b
+  r = add r, c
+  r = add r, d
+  r = add r, e
+  r = add r, f
+  r = add r, g
+  r = add r, h
+  print r
+  ret r
+}

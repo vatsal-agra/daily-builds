@@ -1,0 +1,53 @@
+; evaluates six polynomials of degree 5 at x with Horner's rule; all coefficients and
+; partial results stay live together.
+func poly(1) {
+entry:
+  x = arg 0
+  c0 = const 3
+  c1 = const -2
+  c2 = const 7
+  c3 = const 1
+  c4 = const -5
+  c5 = const 4
+  d0 = const 9
+  d1 = const 6
+  d2 = const -1
+  d3 = const 2
+  d4 = const 8
+  d5 = const -3
+  i = const 0
+  tot = const 0
+  jmp head
+head:
+  t = lt i, 6
+  br t, body, done
+body:
+  p = mul c5, x
+  p = add p, c4
+  p = mul p, x
+  p = add p, c3
+  p = mul p, x
+  p = add p, c2
+  p = mul p, x
+  p = add p, c1
+  p = mul p, x
+  p = add p, c0
+  q = mul d5, x
+  q = add q, d4
+  q = mul q, x
+  q = add q, d3
+  q = mul q, x
+  q = add q, d2
+  q = mul q, x
+  q = add q, d1
+  q = mul q, x
+  q = add q, d0
+  r = xor p, q
+  tot = add tot, r
+  x = add x, 1
+  i = add i, 1
+  jmp head
+done:
+  print tot
+  ret tot
+}
