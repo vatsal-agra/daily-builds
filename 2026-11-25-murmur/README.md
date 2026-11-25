@@ -1,5 +1,5 @@
 # Murmur
-Flocking laboratory (JavaScript, no dependencies). **Status: Phase 4 — stretch features (GA tuner, snapshot replay, browser UI) + polish done.**
+Flocking laboratory (JavaScript, no dependencies). **Status: Phase 5 — verification green (30 unit/integration tests + 14-check demo.sh)
 
 Done: seeded boids engine with grid spatial hash (== brute force), metric/topological neighbourhoods, order-parameter instruments + noise sweep + density comparison CLI, predators and obstacles.
 
