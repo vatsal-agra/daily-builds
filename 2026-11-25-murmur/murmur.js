@@ -127,6 +127,7 @@ function cmdTune(args) {
     onGen: (h) => console.log(`gen ${String(h.gen).padEnd(3)} best=${f3(h.best)} mean=${f3(h.mean)}`) });
   console.log('baseline (engine defaults) fitness:', f3(res.baselineFitness));
   console.log('best fitness:', f3(res.bestFitness));
+  console.log(`held-out seeds: best ${f3(res.heldOut.best)} vs defaults ${f3(res.heldOut.baseline)}`);
   console.log('best genes:', JSON.stringify(Object.fromEntries(Object.entries(res.best).map(([k, v]) => [k, +v.toFixed(3)]))));
   const d = outDir(args);
   fs.writeFileSync(path.join(d, 'tuned.json'), JSON.stringify(res, null, 2));

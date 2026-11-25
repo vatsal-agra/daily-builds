@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Murmur — flocking lab</title>
+<style>
+  :root{--bg:#0b0f19;--panel:#121a2b;--panel2:#18223a;--line:#26324f;--text:#e6edf7;--mute:#8b9ab8;--accent:#5ec8ff;--good:#5ee6a8;--warn:#ffb454;--bad:#ff6b81}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+  header{display:flex;align-items:baseline;gap:14px;padding:14px 20px 6px}
+  h1{margin:0;font-size:22px;letter-spacing:.5px}
+  h1 span{color:var(--accent)}
+  header p{margin:0;color:var(--mute)}
+  main{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px;padding:10px 20px 24px;max-width:1500px;margin:0 auto}
+  @media (max-width:980px){main{grid-template-columns:1fr}}
+  .stage{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;position:relative}
+  canvas#c{width:100%;height:auto;aspect-ratio:900/560;display:block;border-radius:10px;background:#070b14;cursor:crosshair;touch-action:none}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+  button,select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button.on{background:var(--accent);color:#04121c;border-color:var(--accent);font-weight:600}
+  button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .seg{display:inline-flex}.seg button{border-radius:0}.seg button:first-child{border-radius:8px 0 0 8px}.seg button:last-child{border-radius:0 8px 8px 0}.seg button+button{border-left:0}
+  .hint{color:var(--mute);font-size:12px;margin-left:auto}
+  aside{display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .card h2{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--mute);font-weight:600}
+  .row{display:grid;grid-template-columns:92px 1fr 46px;align-items:center;gap:8px;margin:5px 0}
+  .row label{color:var(--mute);font-size:13px}
+  .row output{text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .stat{background:var(--panel2);border-radius:10px;padding:8px 10px}
+  .stat b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+  .stat small{color:var(--mute)}
+  canvas.spark{width:100%;height:56px;display:block;margin-top:6px;background:#0d1424;border-radius:8px}
+  #msg{min-height:18px;color:var(--warn);font-size:12px}
+  .legend{display:flex;gap:12px;color:var(--mute);font-size:12px;margin-top:6px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}
+</style>
+</head>
+<body>
+<header><h1>Mur<span>mur</span></h1><p>a flocking laboratory — same engine as the CLI, running live</p></header>
+<main>
+  <section class="stage">
+    <canvas id="c" width="900" height="560" aria-label="flock simulation"></canvas>
+    <div class="bar">
+      <button id="play" class="on" title="space">⏸ Pause</button>
+      <button id="stepb">Step</button>
+      <button id="reset">Reset</button>
+      <span class="seg" role="group" aria-label="click tool">
+        <button data-tool="select" class="on">Inspect</button><button data-tool="predator">+ Predator</button><button data-tool="obstacle">+ Obstacle</button><button data-tool="erase">Erase</button>
+      </span>
+      <button id="trails">Trails</button>
+      <span class="hint" id="hint">click an agent to see who it follows</span>
+    </div>
+    <div id="msg" role="status"></div>
+  </section>
+  <aside>
+    <div class="card">
+      <h2>Live order</h2>
+      <div class="stats">
+        <div class="stat"><small>polarization</small><b id="sPol">–</b></div>
+        <div class="stat"><small>largest cluster</small><b id="sLar">–</b></div>
+        <div class="stat"><small>angular momentum</small><b id="sAng">–</b></div>
+        <div class="stat"><small>caught</small><b id="sCau">0</b></div>
+      </div>
+      <canvas class="spark" id="spark" width="600" height="112"></canvas>
+      <div class="legend"><span><i style="background:#5ec8ff"></i>polarization</span><span><i style="background:#ffb454"></i>largest cluster</span></div>
+    </div>
+    <div class="card">
+      <h2>Neighbourhood</h2>
+      <div class="bar" style="margin:0 0 6px">
+        <span class="seg"><button data-mode="metric" class="on">metric radius</button><button data-mode="topological">k nearest</button></span>
+        <span class="seg"><button data-bd="torus" class="on">torus</button><button data-bd="wall">walls</button></span>
+      </div>
+      <div id="sliders"></div>
+    </div>
+    <div class="card">
+      <h2>Presets &amp; state</h2>
+      <div class="bar" style="margin:0">
+        <button id="presetTuned" title="parameters found by the genetic tuner (node murmur.js tune)">GA-tuned</button>
+        <button id="presetDefault">Defaults</button>
+        <button id="presetHot">Disordered</button>
+        <button id="save">Save</button>
+        <button id="load">Load</button>
+      </div>
+      <input type="file" id="file" accept="application/json" hidden>
+    </div>
+  </aside>
+</main>
+<script src="engine.js"></script>
+<script>
+(() => {
+  'use strict';
+  const { Flock, DEFAULTS } = Murmur;
+  const W = 900, H = 560;
+  const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+  const spark = document.getElementById('spark'), sctx = spark.getContext('2d');
+  const $ = (id) => document.getElementById(id);
+  const msg = (t) => { $('msg').textContent = t || ''; };
+  const BASE = { n: 220, width: W, height: H, seed: 7 };
+  // parameters found by `node murmur.js tune` (see README); values are what the GA returned
+  const TUNED = { wSep: 0.716, wAli: 2.805, wCoh: 1.041, sepR: 28.069, radius: 78.505, k: 6, wFlee: 2.927 };
+  const HOT = { noise: 0.6, wAli: 0.6 };
+
+  let flock = new Flock({ ...BASE }), running = true, trails = false, tool = 'select', selected = -1;
+  const hist = { pol: [], lar: [] };
+
+  const SL = [
+    ['n', 'agents', 10, 800, 1, 'n'], ['radius', 'radius', 15, 160, 1], ['k', 'k nearest', 1, 20, 1],
+    ['sepR', 'separation', 4, 40, 1], ['wSep', 'w separate', 0, 4, .05], ['wAli', 'w align', 0, 4, .05], ['wCoh', 'w cohere', 0, 4, .05],
+    ['noise', 'noise', 0, 1.2, .01], ['maxSpeed', 'speed', 20, 140, 1], ['wFlee', 'w flee', 0, 8, .1],
+  ];
+  const inputs = {};
+  const box = $('sliders');
+  for (const [key, label, lo, hi, step] of SL) {
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<label for="sl_${key}">${label}</label><input id="sl_${key}" type="range" min="${lo}" max="${hi}" step="${step}"><output></output>`;
+    box.appendChild(row);
+    const inp = row.querySelector('input'), out = row.querySelector('output');
+    inputs[key] = { inp, out };
+    inp.addEventListener('input', () => {
+      const v = Number(inp.value);
+      try {
+        if (key === 'n') flock.resize(v);
+        else if (key === 'maxSpeed') flock.setParams({ maxSpeed: v, minSpeed: Math.min(flock.p.minSpeed, v), predSpeed: v * 1.1 });
+        else flock.setParams({ [key]: v });
+        msg('');
+      } catch (e) { msg(e.message); }
+      out.textContent = fmt(v);
+    });
+  }
+  const fmt = (v) => (Number.isInteger(v) ? String(v) : (+v).toFixed(2));
+  function syncSliders() {
+    for (const [key] of SL) { const v = key === 'n' ? flock.n : flock.p[key]; inputs[key].inp.value = v; inputs[key].out.textContent = fmt(v); }
+    document.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === flock.p.mode));
+    document.querySelectorAll('[data-bd]').forEach((b) => b.classList.toggle('on', b.dataset.bd === flock.p.boundary));
+  }
+  function apply(patch) { try { flock.setParams(patch); msg(''); } catch (e) { msg(e.message); } syncSliders(); }
+
+  document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => apply({ mode: b.dataset.mode })));
+  document.querySelectorAll('[data-bd]').forEach((b) => b.addEventListener('click', () => apply({ boundary: b.dataset.bd })));
+  document.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => {
+    tool = b.dataset.tool; document.querySelectorAll('[data-tool]').forEach((x) => x.classList.toggle('on', x === b));
+    $('hint').textContent = { select: 'click an agent to see who it follows', predator: 'click to drop a predator', obstacle: 'click to drop a pillar', erase: 'click a pillar to remove it; click a predator to remove all' }[tool];
+  }));
+  $('play').addEventListener('click', togglePlay);
+  function togglePlay() { running = !running; $('play').textContent = running ? '⏸ Pause' : '▶ Play'; $('play').classList.toggle('on', running); }
+  $('stepb').addEventListener('click', () => { if (running) togglePlay(); flock.step(); draw(true); });
+  $('reset').addEventListener('click', () => { const p = { ...flock.p }; flock = new Flock(p); hist.pol.length = hist.lar.length = 0; selected = -1; syncSliders(); });
+  $('trails').addEventListener('click', (e) => { trails = !trails; e.currentTarget.classList.toggle('on', trails); ctx.fillStyle = '#070b14'; ctx.fillRect(0, 0, W, H); });
+  $('presetTuned').addEventListener('click', () => apply({ ...TUNED, noise: 0.05 }));
+  $('presetDefault').addEventListener('click', () => apply({ ...DEFAULTS, n: flock.n, width: W, height: H, seed: flock.p.seed }));
+  $('presetHot').addEventListener('click', () => apply(HOT));
+  window.addEventListener('keydown', (e) => { if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') { e.preventDefault(); togglePlay(); } });
+
+  $('save').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(flock.snapshot())], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `murmur-step${flock.step_n}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000); msg(`saved · state hash ${flock.hash()}`);
+  });
+  $('load').addEventListener('click', () => $('file').click());
+  $('file').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    try { const f2 = Flock.restore(JSON.parse(await f.text())); flock = f2; flock.setParams({ width: flock.p.width, height: flock.p.height }); syncSliders(); msg(`loaded step ${flock.step_n} · hash ${flock.hash()}`); }
+    catch (err) { msg('could not load snapshot: ' + err.message); }
+    e.target.value = '';
+  });
+
+  // pointer
+  function pos(ev) { const r = canvas.getBoundingClientRect(); return [(ev.clientX - r.left) / r.width * W, (ev.clientY - r.top) / r.height * H]; }
+  canvas.addEventListener('pointerdown', (ev) => {
+    const [x, y] = pos(ev);
+    try {
+      if (tool === 'predator') flock.addPredator(x, y);
+      else if (tool === 'obstacle') flock.addObstacle(x, y, 22 + Math.random() * 14);
+      else if (tool === 'erase') { if (!flock.removeObstacleAt(x, y)) flock.clearPredators(); }
+      else {
+        let best = -1, bd = 22 * 22;
+        for (let i = 0; i < flock.n; i++) { const [dx, dy] = flock.delta(x, y, flock.x[i], flock.y[i]); const d = dx * dx + dy * dy; if (d < bd) { bd = d; best = i; } }
+        selected = best;
+      }
+    } catch (e) { msg(e.message); }
+  });
+
+  function hue(i) { const a = Math.atan2(flock.vy[i], flock.vx[i]); return (a / Math.PI * 180 + 360) % 360; }
+  function draw(force) {
+    ctx.globalAlpha = 1;
+    if (trails) { ctx.fillStyle = 'rgba(7,11,20,.14)'; ctx.fillRect(0, 0, W, H); } else { ctx.fillStyle = '#070b14'; ctx.fillRect(0, 0, W, H); }
+    for (const o of flock.obstacles) {
+      ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, 7); ctx.fillStyle = '#1b2640'; ctx.fill(); ctx.strokeStyle = '#3b4f7e'; ctx.lineWidth = 2; ctx.stroke();
+    }
+    // neighbours of selected agent
+    if (selected >= 0 && selected < flock.n) {
+      flock.rebuildIndex();
+      const nb = [], d2 = [];
+      if (flock.p.mode === 'metric') {
+        flock.queryRadius(selected, flock.p.radius, nb, d2);
+        ctx.beginPath(); ctx.arc(flock.x[selected], flock.y[selected], flock.p.radius, 0, 7); ctx.strokeStyle = 'rgba(94,200,255,.35)'; ctx.setLineDash([5, 5]); ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
+      } else flock.queryKNN(selected, flock.p.k, nb, d2);
+      ctx.strokeStyle = 'rgba(94,200,255,.8)'; ctx.lineWidth = 1.2;
+      for (const j of nb) {
+        const [dx, dy] = flock.delta(flock.x[selected], flock.y[selected], flock.x[j], flock.y[j]);
+        ctx.beginPath(); ctx.moveTo(flock.x[selected], flock.y[selected]); ctx.lineTo(flock.x[selected] + dx, flock.y[selected] + dy); ctx.stroke();
+      }
+      $('hint').textContent = `agent #${selected} follows ${nb.length} neighbour${nb.length === 1 ? '' : 's'} (${flock.p.mode})`;
+    }
+    for (let i = 0; i < flock.n; i++) {
+      const a = Math.atan2(flock.vy[i], flock.vx[i]), x = flock.x[i], y = flock.y[i], s = i === selected ? 7 : 4.6;
+      ctx.fillStyle = i === selected ? '#ffffff' : `hsl(${hue(i)},80%,62%)`;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(a) * s * 1.5, y + Math.sin(a) * s * 1.5);
+      ctx.lineTo(x + Math.cos(a + 2.5) * s, y + Math.sin(a + 2.5) * s);
+      ctx.lineTo(x + Math.cos(a - 2.5) * s, y + Math.sin(a - 2.5) * s);
+      ctx.closePath(); ctx.fill();
+    }
+    for (const p of flock.predators) {
+      const a = Math.atan2(p.vy, p.vx);
+      ctx.fillStyle = p.cool > 0 ? '#a04050' : '#ff6b81';
+      ctx.beginPath(); ctx.moveTo(p.x + Math.cos(a) * 15, p.y + Math.sin(a) * 15); ctx.lineTo(p.x + Math.cos(a + 2.5) * 10, p.y + Math.sin(a + 2.5) * 10); ctx.lineTo(p.x + Math.cos(a - 2.5) * 10, p.y + Math.sin(a - 2.5) * 10); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, flock.p.fearR, 0, 7); ctx.strokeStyle = 'rgba(255,107,129,.12)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+  }
+
+  function updateStats() {
+    const m = flock.metrics();
+    $('sPol').textContent = m.polarization.toFixed(2); $('sLar').textContent = (m.largestFrac * 100).toFixed(0) + '%';
+    $('sAng').textContent = m.angularMomentum.toFixed(2); $('sCau').textContent = m.caught;
+    hist.pol.push(m.polarization); hist.lar.push(m.largestFrac);
+    if (hist.pol.length > 300) { hist.pol.shift(); hist.lar.shift(); }
+    const w = spark.width, h = spark.height;
+    sctx.clearRect(0, 0, w, h); sctx.strokeStyle = '#26324f'; sctx.lineWidth = 1;
+    for (const f of [0.25, 0.5, 0.75]) { sctx.beginPath(); sctx.moveTo(0, h * f); sctx.lineTo(w, h * f); sctx.stroke(); }
+    for (const [arr, col] of [[hist.lar, '#ffb454'], [hist.pol, '#5ec8ff']]) {
+      sctx.beginPath(); sctx.strokeStyle = col; sctx.lineWidth = 2.5;
+      arr.forEach((v, i) => { const x = i / 299 * w, y = h - 4 - v * (h - 8); i ? sctx.lineTo(x, y) : sctx.moveTo(x, y); });
+      sctx.stroke();
+    }
+  }
+
+  let acc = 0, last = performance.now(), frame = 0;
+  function loop(now) {
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    if (running) {
+      acc += dt;
+      let n = 0;
+      while (acc >= flock.p.dt && n < 3) { flock.step(); acc -= flock.p.dt; n++; }
+      if (acc > 0.2) acc = 0;
+    }
+    draw();
+    if (++frame % 6 === 0) updateStats();
+    requestAnimationFrame(loop);
+  }
+  syncSliders();
+  window.murmur = { get flock() { return flock; } };   // handy for the console / automated checks
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

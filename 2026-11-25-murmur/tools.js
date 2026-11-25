@@ -124,7 +124,10 @@ function tune({ generations = 8, popSize = 14, seed = 5, base = {}, evalOpts = {
   }
   pop.sort((a, b) => b.fit - a.fit);
   history.push({ gen: generations, best: pop[0].fit, mean: mean(pop.map((p) => p.fit)) });
-  return { best: pop[0].genes, bestFitness: pop[0].fit, baselineFitness: baseline, history };
+  // generalisation check on seeds the tuner never saw
+  const held = { seeds: [101, 102, 103], steps: 400 };
+  const heldOut = { best: fitness(pop[0].genes, { base, ...held }), baseline: fitness(dflt, { base, ...held }) };
+  return { best: pop[0].genes, bestFitness: pop[0].fit, baselineFitness: baseline, heldOut, history };
 }
 
 // -------------------------------------------------------------------- SVG
