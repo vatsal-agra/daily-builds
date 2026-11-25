@@ -36,7 +36,9 @@ test('exact kNN == brute force incl. tie-breaking, sparse and dense, torus+wall'
 test('kNN with duplicate positions and zero-agent / single-agent flocks do not crash', () => {
   const f = new Flock({ n: 6, seed: 1 }); place(f, [[10, 10], [10, 10], [10, 10], [300, 200], [300, 200], [590, 390]]);
   const out = [], d2 = []; f.queryKNN(0, 3, out, d2);
-  assert.deepEqual(out, [1, 2, 3 === 3 ? 3 : 3].slice(0, 2).concat([out[2]]));
+  assert.deepEqual(out.slice(0, 2), [1, 2], 'co-located agents tie-break by index');
+  assert.deepEqual(out, f.bruteKNN(0, 3).map((e) => e[0]));
+  assert.equal(out[2], 5, 'third nearest wraps across the torus seam (590,390)');
   assert.equal(new Flock({ n: 0 }).run(5).polarization(), 0);
   const one = new Flock({ n: 1 }); one.run(10); assert.equal(one.meanNNDist(), 0);
 });
@@ -135,7 +137,12 @@ test('snapshot → JSON → restore continues bit-identically', () => {
 test('restore rejects corrupt snapshots', () => {
   const s = new Flock({ n: 5 }).snapshot();
   assert.throws(() => Flock.restore(null)); assert.throws(() => Flock.restore({ ...s, v: 2 }));
-  assert.throws(() => Flock.restore({ ...s, x: s.x.slice(1) })); assert.throws(() => Flock.restore({ ...s, vy: s.vy.map(() => NaN) }));
+  assert.throws(() => Flock.restore({ ...s, x: s.x.slice(1) }));
+  const { obstacles, ...noObs } = s; assert.throws(() => Flock.restore(noObs), /obstacles/);
+  assert.throws(() => Flock.restore({ ...s, predators: [{ x: 'a' }] }), /predators/);
+  assert.throws(() => Flock.restore({ ...s, obstacles: [{ x: 1, y: 1, r: -2 }] }), /obstacles/);
+  assert.throws(() => Flock.restore({ ...s, step: -1 }), /counters/);
+  assert.throws(() => Flock.restore({ ...s, p: { ...s.p, n: 3 } }), /corrupt/); assert.throws(() => Flock.restore({ ...s, vy: s.vy.map(() => NaN) }));
 });
 
 test('parameter validation rejects nonsense', () => {

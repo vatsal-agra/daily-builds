@@ -541,6 +541,11 @@
     static restore(s) {
       if (!s || s.v !== 1 || !s.p || !Array.isArray(s.x)) throw new Error('Murmur: not a valid snapshot');
       const n = s.p.n;
+      if (!Number.isInteger(n) || n < 0) throw new Error('Murmur: corrupt snapshot (bad n)');
+      if (!Number.isInteger(s.step) || s.step < 0 || !Number.isInteger(s.caught) || s.caught < 0 || !Number.isFinite(s.rng)) throw new Error('Murmur: corrupt snapshot (counters)');
+      const finite = (o, keys) => o && typeof o === 'object' && keys.every((k) => Number.isFinite(o[k]));
+      if (!Array.isArray(s.obstacles) || !s.obstacles.every((o) => finite(o, ['x', 'y', 'r']) && o.r > 0)) throw new Error('Murmur: corrupt snapshot field obstacles');
+      if (!Array.isArray(s.predators) || !s.predators.every((o) => finite(o, ['x', 'y', 'vx', 'vy', 'cool']))) throw new Error('Murmur: corrupt snapshot field predators');
       for (const k of ['x', 'y', 'vx', 'vy']) {
         if (!Array.isArray(s[k]) || s[k].length !== n || !s[k].every(Number.isFinite)) throw new Error('Murmur: corrupt snapshot field ' + k);
       }

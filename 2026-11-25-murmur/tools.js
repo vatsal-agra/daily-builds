@@ -39,12 +39,13 @@ function noiseSweep({ noises, reps = 3, base = {}, burn = 300, window = 150, con
 function densitySweep({ ns, modes = ['metric', 'topological'], reps = 3, base = {}, burn = 300, window = 150 } = {}) {
   const rows = [];
   for (const n of ns) for (const mode of modes) {
-    const pol = [], fr = [], cl = [];
+    const pol = [], fr = [], cl = [], nn = [];
     for (let r = 0; r < reps; r++) {
+      // the same seed per rep for both modes → paired comparison
       const m = measure({ ...base, n, mode, seed: 7000 + r }, { burn, window });
-      pol.push(m.polarization); fr.push(m.largestFrac); cl.push(m.clusters);
+      pol.push(m.polarization); fr.push(m.largestFrac); cl.push(m.clusters); nn.push(m.nnDist);
     }
-    rows.push({ n, mode, polarization: mean(pol), largestFrac: mean(fr), clusters: mean(cl), reps });
+    rows.push({ n, mode, polarization: mean(pol), largestFrac: mean(fr), largestStd: std(fr), clusters: mean(cl), nnDist: mean(nn), reps });
   }
   return rows;
 }

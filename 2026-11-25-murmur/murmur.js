@@ -31,6 +31,13 @@ function parseArgs(argv) {
   }
   return o;
 }
+const CLI_FLAGS = new Set(['out', 'reps', 'steps', 'every', 'ns', 'noises', 'predators', 'snapshot', 'expect', 'gens', 'pop', 'help']);
+function checkFlags(args) {
+  for (const k of Object.keys(args)) {
+    if (k === '_' || CLI_FLAGS.has(k) || k in DEFAULTS) continue;
+    throw new Error(`unknown option --${k} (run "node murmur.js help")`);
+  }
+}
 function engineOpts(args) {
   const o = {};
   for (const k of Object.keys(DEFAULTS)) {
@@ -57,7 +64,10 @@ function listArg(args, k, d) {
   if (!l.length || l.some((v) => !Number.isFinite(v))) throw new Error(`--${k} expects comma-separated numbers (got ${args[k]})`);
   return l;
 }
-function outDir(args) { const d = args.out || 'out'; fs.mkdirSync(d, { recursive: true }); return d; }
+function outDir(args) {
+  if (args.out === true) throw new Error('--out expects a directory path');
+  const d = args.out || 'out'; fs.mkdirSync(d, { recursive: true }); return d;
+}
 const f3 = (v) => v.toFixed(3);
 
 function cmdRun(args) {
@@ -76,7 +86,8 @@ function cmdRun(args) {
 
 function cmdSweep(args) {
   const noises = listArg(args, 'noises', [0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.45, 0.6, 0.9, 1.3]);
-  const base = engineOpts(args); delete base.noise;
+  const base = engineOpts(args);
+  if (base.noise !== undefined) throw new Error('--noise conflicts with sweep (use --noises a,b,c)');
   if (base.n === undefined) base.n = 200;
   const rows = T.noiseSweep({ noises, reps: intArg(args, 'reps', 3, 1), base, burn: intArg(args, 'steps', 300), window: 150 });
   console.log('noise   polarization ±std   largest-cluster');
@@ -90,13 +101,15 @@ function cmdSweep(args) {
 
 function cmdCompare(args) {
   const ns = listArg(args, 'ns', [60, 120, 240, 480]).map((v) => Math.round(v));
-  const base = engineOpts(args); delete base.n; delete base.mode;
-  const rows = T.densitySweep({ ns, reps: intArg(args, 'reps', 3, 1), base });
-  console.log('n     mode          polariz  largest  clusters');
-  for (const r of rows) console.log(`${String(r.n).padEnd(5)} ${r.mode.padEnd(13)} ${f3(r.polarization).padEnd(8)} ${f3(r.largestFrac).padEnd(8)} ${r.clusters.toFixed(1)}`);
+  const base = engineOpts(args);
+  if (base.n !== undefined || base.mode !== undefined) throw new Error('compare sets n and mode itself (use --ns a,b,c)');
+  if (ns.some((v) => v < 2)) throw new Error('--ns values must be >= 2');
+  const rows = T.densitySweep({ ns, reps: intArg(args, 'reps', 5, 1), base });
+  console.log('n     mode          polariz  largest ±std     clusters  mean-NN');
+  for (const r of rows) console.log(`${String(r.n).padEnd(5)} ${r.mode.padEnd(13)} ${f3(r.polarization).padEnd(8)} ${f3(r.largestFrac)} ±${f3(r.largestStd).padEnd(8)} ${r.clusters.toFixed(1).padEnd(9)} ${r.nnDist.toFixed(1)}`);
   const d = outDir(args);
   fs.writeFileSync(path.join(d, 'compare.csv'), T.toCSV(rows));
-  const pick = (mode, key) => rows.filter((r) => r.mode === mode).map((r) => [r.n, r[key], 0]);
+  const pick = (mode, key) => rows.filter((r) => r.mode === mode).map((r) => [r.n, r[key], key === 'largestFrac' ? r.largestStd : 0]);
   fs.writeFileSync(path.join(d, 'compare.svg'), T.svgChart({ title: 'Cohesion vs density: metric radius vs 7-nearest', xlabel: 'flock size N (fixed area)', ylabel: 'largest-cluster fraction',
     series: [{ name: 'metric', color: '#ff6b81', pts: pick('metric', 'largestFrac') }, { name: 'topological', color: '#5ee6a8', pts: pick('topological', 'largestFrac') }] }));
   console.log(`wrote ${d}/compare.csv, ${d}/compare.svg`);
@@ -167,7 +180,7 @@ function main() {
   const table = { run: cmdRun, sweep: cmdSweep, compare: cmdCompare, hunt: cmdHunt, tune: cmdTune, bench: cmdBench, replay: cmdReplay };
   if (!cmd || cmd === 'help' || args.help) { console.log(USAGE); return; }
   if (!table[cmd]) { console.error(`unknown command "${cmd}"\n\n${USAGE}`); process.exitCode = 64; return; }
-  try { table[cmd](args); } catch (e) { console.error('error: ' + e.message); process.exitCode = 1; }
+  try { checkFlags(args); table[cmd](args); } catch (e) { console.error('error: ' + e.message); process.exitCode = 1; }
 }
 if (require.main === module) main();
 module.exports = { parseArgs, engineOpts };
