@@ -149,6 +149,9 @@ func ResolveStrategy(t *Tree, spec string, solveIters int) (Profile, error) {
 	if _, ok := botPrefs[spec]; ok {
 		return t.BotProfile(spec)
 	}
+	if _, err := os.Stat(spec); err != nil && !strings.ContainsAny(spec, "/\\.") {
+		return nil, fmt.Errorf("unknown strategy %q: use 'solved', a bot (%s) or a strategy JSON file", spec, strings.Join(BotNames(), ", "))
+	}
 	f, err := LoadStrategy(spec)
 	if err != nil {
 		return nil, err

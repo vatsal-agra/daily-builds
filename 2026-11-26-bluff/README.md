@@ -1,6 +1,6 @@
 # Bluff — poker game-theory lab (Go)
 
-**Status: Phase 2 complete (core build).** See [PLAN.md](PLAN.md) for the full plan.
+**Status: Phase 3 complete (adversarial review — see [REVIEW.md](REVIEW.md)).** See [PLAN.md](PLAN.md).
 
 Working now (required features):
 1. **CFR+ solver** for Kuhn and Leduc poker (`bluff solve leduc`) — Leduc converges to the known game value −0.0856.

@@ -17,6 +17,9 @@ func cmdEquity(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if *n < 1 {
+		return fmt.Errorf("-n must be ≥ 1")
+	}
 	if len(pos) < 2 {
 		return fmt.Errorf("usage: bluff equity [-board Ah7d2c] [-dead ..] <range1> <range2> [...]\n  e.g. bluff equity AhAs KdKc    |   bluff equity \"QQ+,AKs\" random")
 	}

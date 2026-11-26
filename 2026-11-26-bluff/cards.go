@@ -82,36 +82,29 @@ func straightTop(mask uint32) int {
 	return -1
 }
 
-func pack(ranks ...int) uint32 {
-	var s uint32
-	for i := 0; i < 5; i++ {
-		s <<= 4
-		if i < len(ranks) {
-			s |= uint32(ranks[i])
-		}
-	}
-	return s
-}
-
-// topRanks returns up to n highest ranks set in mask, descending, excluding ranks in skip.
-func topRanks(mask uint32, n int) []int {
-	var out []int
-	for r := 12; r >= 0 && len(out) < n; r-- {
+// build packs head (nh ranks already shifted in) followed by the nk highest ranks of mask,
+// left-aligned into five nibbles.
+func build(head uint32, nh int, mask uint32, nk int) uint32 {
+	s := head
+	n := nh
+	for r := 12; r >= 0 && nk > 0; r-- {
 		if mask>>uint(r)&1 == 1 {
-			out = append(out, r)
+			s = s<<4 | uint32(r)
+			n++
+			nk--
 		}
 	}
-	return out
+	return s << uint(4*(5-n))
 }
 
-// Eval scores 5 to 7 cards; higher is better. Equal scores tie.
+// Eval scores 5 to 7 cards; higher is better. Equal scores tie. It does not allocate.
 func Eval(cards []int) uint32 {
-	var cnt [13]int
+	var cnt [13]uint8
 	var suitMask [4]uint32
-	var suitCnt [4]int
+	var suitCnt [4]uint8
 	var all uint32
 	for _, c := range cards {
-		r, s := c/4, c%4
+		r, s := c>>2, c&3
 		cnt[r]++
 		suitMask[s] |= 1 << uint(r)
 		suitCnt[s]++
@@ -120,54 +113,54 @@ func Eval(cards []int) uint32 {
 	for s := 0; s < 4; s++ {
 		if suitCnt[s] >= 5 {
 			if top := straightTop(suitMask[s]); top >= 0 {
-				return uint32(StraightFlush)<<20 | pack(top)
+				return uint32(StraightFlush)<<20 | build(uint32(top), 1, 0, 0)
 			}
-			return uint32(Flush)<<20 | pack(topRanks(suitMask[s], 5)...)
+			return uint32(Flush)<<20 | build(0, 0, suitMask[s], 5)
 		}
 	}
-	var quad, trips, pairs []int
+	quad, t1, t2, p1, p2 := -1, -1, -1, -1, -1
 	for r := 12; r >= 0; r-- {
-		switch {
-		case cnt[r] == 4:
-			quad = append(quad, r)
-		case cnt[r] == 3:
-			trips = append(trips, r)
-		case cnt[r] == 2:
-			pairs = append(pairs, r)
+		switch cnt[r] {
+		case 4:
+			if quad < 0 {
+				quad = r
+			}
+		case 3:
+			if t1 < 0 {
+				t1 = r
+			} else if t2 < 0 {
+				t2 = r
+			}
+		case 2:
+			if p1 < 0 {
+				p1 = r
+			} else if p2 < 0 {
+				p2 = r
+			}
 		}
-	}
-	kickers := func(n int, excl ...int) []int {
-		m := all
-		for _, e := range excl {
-			m &^= 1 << uint(e)
-		}
-		return topRanks(m, n)
 	}
 	switch {
-	case len(quad) > 0:
-		return uint32(Quads)<<20 | pack(append([]int{quad[0]}, kickers(1, quad[0])...)...)
-	case len(trips) > 0 && (len(trips) > 1 || len(pairs) > 0):
-		second := -1
-		if len(trips) > 1 {
-			second = trips[1]
+	case quad >= 0:
+		return uint32(Quads)<<20 | build(uint32(quad), 1, all&^(1<<uint(quad)), 1)
+	case t1 >= 0 && (t2 >= 0 || p1 >= 0):
+		second := t2
+		if p1 > second {
+			second = p1
 		}
-		if len(pairs) > 0 && pairs[0] > second {
-			second = pairs[0]
-		}
-		return uint32(FullHouse)<<20 | pack(trips[0], second)
+		return uint32(FullHouse)<<20 | build(uint32(t1)<<4|uint32(second), 2, 0, 0)
 	}
 	if top := straightTop(all); top >= 0 {
-		return uint32(Straight)<<20 | pack(top)
+		return uint32(Straight)<<20 | build(uint32(top), 1, 0, 0)
 	}
 	switch {
-	case len(trips) > 0:
-		return uint32(Trips)<<20 | pack(append([]int{trips[0]}, kickers(2, trips[0])...)...)
-	case len(pairs) >= 2:
-		return uint32(TwoPair)<<20 | pack(append([]int{pairs[0], pairs[1]}, kickers(1, pairs[0], pairs[1])...)...)
-	case len(pairs) == 1:
-		return uint32(OnePair)<<20 | pack(append([]int{pairs[0]}, kickers(3, pairs[0])...)...)
+	case t1 >= 0:
+		return uint32(Trips)<<20 | build(uint32(t1), 1, all&^(1<<uint(t1)), 2)
+	case p2 >= 0:
+		return uint32(TwoPair)<<20 | build(uint32(p1)<<4|uint32(p2), 2, all&^(1<<uint(p1)|1<<uint(p2)), 1)
+	case p1 >= 0:
+		return uint32(OnePair)<<20 | build(uint32(p1), 1, all&^(1<<uint(p1)), 3)
 	}
-	return uint32(HighCard)<<20 | pack(topRanks(all, 5)...)
+	return uint32(HighCard)<<20 | build(0, 0, all, 5)
 }
 
 // DescribeScore gives a human-readable hand name.

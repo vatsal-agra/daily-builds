@@ -140,6 +140,9 @@ func cmdExploit(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if *iters < 1 {
+		return fmt.Errorf("-iters must be ≥ 1")
+	}
 	prof, err := ResolveStrategy(t, pos[1], *iters)
 	if err != nil {
 		return err
@@ -166,6 +169,9 @@ func cmdShow(args []string, out io.Writer) error {
 	_, t, err := loadGame(pos[0])
 	if err != nil {
 		return err
+	}
+	if *iters < 1 {
+		return fmt.Errorf("-iters must be ≥ 1")
 	}
 	prof, err := ResolveStrategy(t, *spec, *iters)
 	if err != nil {

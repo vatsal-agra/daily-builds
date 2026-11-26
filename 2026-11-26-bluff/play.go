@@ -18,7 +18,7 @@ type Describer interface {
 	Reveal() string
 }
 
-func narrate(hist string, kuhn bool) string {
+func narrate(hist string, kuhn bool, seat int) string {
 	if hist == "" {
 		return "(no actions yet)"
 	}
@@ -27,39 +27,42 @@ func narrate(hist string, kuhn bool) string {
 	for ri, r := range rounds {
 		bet := false
 		for i := 0; i < len(r); i++ {
-			who := "P0"
-			if i%2 == 1 {
-				who = "P1"
+			who := "You"
+			if i%2 != seat {
+				who = "Opponent"
 			}
 			var act string
 			switch r[i] {
 			case 'p':
 				if bet {
-					act = "folds"
+					act = "fold"
 				} else {
-					act = "checks"
+					act = "check"
 				}
 			case 'f':
-				act = "folds"
+				act = "fold"
 			case 'c':
 				if bet {
-					act = "calls"
+					act = "call"
 				} else {
-					act = "checks"
+					act = "check"
 				}
 			case 'b', 'r':
 				switch {
 				case bet && kuhn:
-					act = "calls"
+					act = "call"
 				case bet:
-					act = "raises"
+					act = "raise"
 				default:
-					act = "bets"
+					act = "bet"
 				}
 				bet = true
 			}
-			if bet && (r[i] == 'c' || r[i] == 'p' || (kuhn && r[i] == 'b' && act == "calls")) {
+			if bet && (r[i] == 'c' || r[i] == 'p' || (kuhn && r[i] == 'b' && act == "call")) {
 				bet = false
+			}
+			if who != "You" {
+				act += "s"
 			}
 			parts = append(parts, who+" "+act)
 		}
@@ -71,7 +74,8 @@ func narrate(hist string, kuhn bool) string {
 }
 
 func (n kuhnNode) View(seat int) string {
-	return fmt.Sprintf("Your card: %s   Action: %s", kuhnCards[n.c[seat]], narrate(n.hist, true))
+	pot := 2 + strings.Count(n.hist, "b") // each bet or call adds one chip
+	return fmt.Sprintf("Your card: %s   Pot: %d   Action: %s", kuhnCards[n.c[seat]], pot, narrate(n.hist, true, seat))
 }
 func (n kuhnNode) Reveal() string {
 	return fmt.Sprintf("P0 had %s, P1 had %s", kuhnCards[n.c[0]], kuhnCards[n.c[1]])
@@ -83,7 +87,7 @@ func (n leducNode) View(seat int) string {
 		board = leducRanks[n.board/2]
 	}
 	return fmt.Sprintf("Your card: %s   Board: %s   Pot: %d (you put in %d, opponent %d)\n   Action: %s",
-		leducRanks[n.hole[seat]/2], board, n.contrib[0]+n.contrib[1], n.contrib[seat], n.contrib[1-seat], narrate(n.hist, false))
+		leducRanks[n.hole[seat]/2], board, n.contrib[0]+n.contrib[1], n.contrib[seat], n.contrib[1-seat], narrate(n.hist, false, seat))
 }
 func (n leducNode) Reveal() string {
 	b := "—"
@@ -151,6 +155,9 @@ func PlaySession(cfg PlayConfig, in io.Reader, out io.Writer) (float64, int, err
 			for chosen < 0 {
 				fmt.Fprintf(out, "  your move [%s]> ", optionList(acts))
 				if !sc.Scan() {
+					if err := sc.Err(); err != nil {
+						return total, hands, fmt.Errorf("reading input: %w", err)
+					}
 					quit = true
 					break
 				}
@@ -254,7 +261,7 @@ func sampleChance(rng *rand.Rand, n Node) int {
 func printHint(out io.Writer, t *Tree, prof Profile, si int) {
 	s := t.Sets[si]
 	vals := t.ActionValues(prof, si)
-	fmt.Fprintf(out, "  hint — equilibrium play here (info set %s):\n", s.Key)
+	fmt.Fprintf(out, "  hint — equilibrium play here (info set %s). EV = your expected final result for the hand in chips, antes included:\n", s.Key)
 	best := 0
 	for a := range vals {
 		if vals[a] > vals[best] {
@@ -337,6 +344,12 @@ func cmdPlay(args []string, out io.Writer, in io.Reader) error {
 	if len(pos) != 1 {
 		return fmt.Errorf("usage: bluff play <kuhn|leduc> [-strategy S] [-seat 0|1] [-hands N]")
 	}
+	if *hands < 0 {
+		return fmt.Errorf("-hands must be ≥ 0")
+	}
+	if *iters < 1 {
+		return fmt.Errorf("-iters must be ≥ 1")
+	}
 	if *seat < -1 || *seat > 1 {
 		return fmt.Errorf("-seat must be -1, 0 or 1")
 	}
@@ -373,6 +386,9 @@ func cmdMatch(args []string, out io.Writer) error {
 	}
 	if len(pos) != 1 {
 		return fmt.Errorf("usage: bluff match <kuhn|leduc> -vs BOT [-hands N]")
+	}
+	if *iters < 1 {
+		return fmt.Errorf("-iters must be ≥ 1")
 	}
 	g, t, err := loadGame(pos[0])
 	if err != nil {

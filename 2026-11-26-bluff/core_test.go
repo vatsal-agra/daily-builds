@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"math/rand"
 	"strings"
 	"testing"
 )
@@ -303,5 +304,67 @@ func TestEquityErrors(t *testing.T) {
 	}
 	if _, err := Equity([][]Combo{a, c}, EquityOpts{Board: hand(t, "7d2c")}); err == nil {
 		t.Fatal("2-card board")
+	}
+}
+
+func TestSevenCardEvalEqualsBestFiveOfSeven(t *testing.T) {
+	rng := rand.New(rand.NewSource(99))
+	deck := make([]int, 52)
+	for i := range deck {
+		deck[i] = i
+	}
+	for trial := 0; trial < 60000; trial++ {
+		rng.Shuffle(52, func(i, j int) { deck[i], deck[j] = deck[j], deck[i] })
+		seven := deck[:7]
+		want := uint32(0)
+		for skip1 := 0; skip1 < 7; skip1++ {
+			for skip2 := skip1 + 1; skip2 < 7; skip2++ {
+				var five []int
+				for i, c := range seven {
+					if i != skip1 && i != skip2 {
+						five = append(five, c)
+					}
+				}
+				if v := Eval(five); v > want {
+					want = v
+				}
+			}
+		}
+		if got := Eval(seven); got != want {
+			t.Fatalf("7-card eval %x != best-5 %x for %v", got, want, seven)
+		}
+	}
+}
+
+func TestRegressionLeducAntesAndFoldSentinel(t *testing.T) {
+	tr, _ := Compile(Leduc{})
+	nit, _ := tr.BotProfile("nit")
+	if e, _, _ := tr.Exploitability(nit); !near(e, 1, 1e-9) {
+		t.Fatalf("a bot that folds to everything must lose exactly the 1-chip ante: %v", e)
+	}
+	// a check-down showdown with both players calling stations wins/loses only the ante
+	st, _ := tr.BotProfile("station")
+	if v := tr.Value(st); !near(v, 0, 1e-9) {
+		t.Fatalf("station mirror should be 0, got %v", v)
+	}
+}
+
+func TestResolveStrategyErrors(t *testing.T) {
+	tr, _ := Compile(Kuhn{})
+	if _, err := ResolveStrategy(tr, "nobody", 10); err == nil || !strings.Contains(err.Error(), "station") {
+		t.Fatalf("expected helpful error, got %v", err)
+	}
+}
+
+func TestCLIValidation(t *testing.T) {
+	bad := [][]string{
+		{"play", "kuhn", "-hands", "-1"}, {"equity", "-n", "-5", "AA", "KK"}, {"solve", "kuhn", "-iters", "0"},
+		{"match", "kuhn", "-hands", "0"}, {"exploit", "kuhn", "solved", "-iters", "0"}, {"nope"},
+	}
+	for _, a := range bad {
+		var sb strings.Builder
+		if err := runTo(a, &sb, strings.NewReader("")); err == nil {
+			t.Errorf("%v should fail", a)
+		}
 	}
 }
