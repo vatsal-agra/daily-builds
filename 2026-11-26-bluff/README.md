@@ -3,7 +3,7 @@
 Bluff **solves** small poker games to Nash equilibrium with CFR+, **proves** how close any strategy
 is to perfect with an exact best-response engine, **computes** Texas Hold'em equities for hands and
 ranges, **solves heads-up push/fold** charts for any stack depth, and lets you **play** the solved
-strategy while it explains its choices. Go standard library only; one static binary; ~2,500 lines.
+strategy while it explains its choices. Go standard library only; one static binary; ~3,700 lines including tests.
 
 ```
 $ bluff solve leduc
