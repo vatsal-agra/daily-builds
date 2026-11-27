@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fathom — Minesweeper with exact odds</title>
+<link rel="stylesheet" href="style.css">
+<!--INLINE_CSS-->
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span><div><h1>Fathom</h1><p>minesweeper with exact odds</p></div></div>
+    <div class="controls">
+      <label>Level
+        <select id="level">
+          <option value="beginner">Beginner 9×9 · 10</option>
+          <option value="intermediate">Intermediate 16×16 · 40</option>
+          <option value="expert" selected>Expert 30×16 · 99</option>
+          <option value="custom">Custom…</option>
+        </select>
+      </label>
+      <span id="customBox" class="custom" hidden>
+        <input id="cw" type="number" min="2" max="60" value="12" aria-label="width"> ×
+        <input id="ch" type="number" min="2" max="40" value="12" aria-label="height"> ·
+        <input id="cm" type="number" min="1" value="20" aria-label="mines">
+      </span>
+      <label>Seed <input id="seed" type="text" value="" placeholder="random" spellcheck="false"></label>
+      <label class="check"><input id="noguess" type="checkbox"> No-guess board</label>
+      <button id="newgame" class="primary">New game</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="boardwrap">
+      <div class="statusbar">
+        <div class="stat"><span class="lbl">Mines left</span><span id="minesLeft" class="val">0</span></div>
+        <div id="state" class="state" role="status" aria-live="polite">Ready</div>
+        <div class="stat right"><span class="lbl">Time</span><span id="timer" class="val">0</span></div>
+      </div>
+      <div id="board" class="board" role="grid" aria-label="Minesweeper board"></div>
+      <div class="hint-line" id="hintLine">Left-click reveals · right-click (or long-press) flags · click a number to chord</div>
+    </section>
+
+    <aside class="panel">
+      <div class="card">
+        <h2>Solver</h2>
+        <div class="btnrow">
+          <button id="hint">Hint <kbd>H</kbd></button>
+          <button id="step">Step <kbd>S</kbd></button>
+          <button id="auto">Auto</button>
+        </div>
+        <div class="btnrow">
+          <button id="flagmines">Flag sure mines</button>
+          <button id="flagmode" aria-pressed="false" title="Tap-to-flag mode for touch screens">Flag mode</button>
+        </div>
+        <label class="check"><input id="heat" type="checkbox" checked> Probability heat-map <kbd>P</kbd></label>
+        <label class="check"><input id="autoguess" type="checkbox"> Auto may guess</label>
+        <div id="advice" class="advice">Make a first move to wake the solver.</div>
+      </div>
+
+      <div class="card">
+        <h2>Inspector</h2>
+        <div id="inspect" class="inspect">Hover a hidden cell.</div>
+        <dl id="stats" class="stats"></dl>
+      </div>
+
+      <div class="card" id="reportCard" hidden>
+        <h2>Luck report</h2>
+        <div id="report"></div>
+      </div>
+
+      <div class="legend">
+        <span>safe</span><span class="ramp"></span><span>mine</span>
+      </div>
+    </aside>
+  </main>
+</div>
+<script type="module" src="app.js"></script>
+<!--INLINE_JS-->
+</body>
+</html>

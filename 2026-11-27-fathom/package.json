@@ -1,0 +1,15 @@
+{
+  "name": "fathom",
+  "version": "1.0.0",
+  "description": "Minesweeper with an exact probabilistic solver, no-guess generator and luck analyzer",
+  "type": "module",
+  "bin": { "fathom": "src/cli.js" },
+  "scripts": {
+    "test": "node --test "test/*.test.js"",
+    "build": "node build.js",
+    "serve": "node serve.js",
+    "bench": "node src/cli.js bench",
+    "demo": "bash test/demo.sh"
+  },
+  "license": "MIT"
+}
