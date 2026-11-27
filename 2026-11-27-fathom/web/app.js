@@ -322,12 +322,14 @@ window.addEventListener('keydown', e => {
   else if (k === ' ' && hovered >= 0) { e.preventDefault(); onCell(hovered, 'reveal'); }
 });
 
-// initial state from URL hash
-(function init() {
+// initial state from URL hash (also re-applied when the user pastes a new link into an open tab)
+function applyHash() {
   const p = new URLSearchParams(location.hash.slice(1));
   const d = p.get('d');
-  if (d && DIFFICULTIES[d]) els.level.value = d;
+  if (d && DIFFICULTIES[d]) { els.level.value = d; els.customBox.hidden = true; }
   else if (d && /^\d+x\d+x\d+$/.test(d)) { const [w, h, m] = d.split('x').map(Number); els.level.value = 'custom'; els.cw.value = w; els.ch.value = h; els.cm.value = m; els.customBox.hidden = false; }
-  if (p.get('ng') === '1') els.noguess.checked = true;
+  els.noguess.checked = p.get('ng') === '1';
   newRound(p.get('seed') || undefined);
-})();
+}
+window.addEventListener('hashchange', applyHash); // replaceState (our own updates) does not fire this
+applyHash();

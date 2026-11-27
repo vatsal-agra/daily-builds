@@ -120,3 +120,16 @@ test('ordinary random boards usually DO need guesses (so the generator is doing 
   }
   assert.ok(needGuess >= 8, `expected many guess-requiring expert boards, got ${needGuess}/20`);
 });
+
+test('chord does nothing when flags exceed the number (over-flagged) or on zeros/hidden cells', () => {
+  const g = Game.fromLayout(5, 5, [0, 24]);
+  g.reveal(6); // a "1" next to the corner mine
+  assert.equal(g.adj[6], 1);
+  const hid = g.nb[6].filter(j => g.state[j] === HIDDEN);
+  assert.ok(hid.length >= 2);
+  g.toggleFlag(hid[0]); g.toggleFlag(hid[1]);
+  const before = g.revealedCount;
+  assert.deepEqual(g.chord(6).opened, []);
+  assert.equal(g.revealedCount, before);
+  assert.deepEqual(g.chord(12).opened, [], 'chord on a hidden cell is a no-op');
+});
