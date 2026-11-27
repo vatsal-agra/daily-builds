@@ -1,6 +1,7 @@
 import { DIFFICULTIES, HIDDEN, REVEALED, FLAGGED } from '../src/board.js';
 import { newGame } from '../src/generator.js';
 import { solve, chooseMove } from '../src/solver.js';
+import { analyzeGame } from '../src/analysis.js';
 
 const $ = id => document.getElementById(id);
 const els = {
@@ -136,6 +137,7 @@ function paint() {
 }
 
 function renderStats(c) {
+  if (game.status === 'won' || game.status === 'lost') { els.stats.innerHTML = ''; return; }
   if (!c || !c.res) {
     els.stats.innerHTML = c && c.error ? `<dt>Solver</dt><dd>${c.error}</dd>` : '';
     return;
@@ -266,7 +268,19 @@ function toggleAuto() {
 
 window.addEventListener('resize', () => { if (game) { const size = Math.max(22, Math.min(38, Math.floor((Math.max(280, els.board.parentElement.clientWidth - 30) - 16 - game.w * 2) / game.w))); els.board.style.setProperty('--cell', size + 'px'); } });
 
-function onGameEnd() { /* luck report is attached in phase 4 */ }
+function onGameEnd() {
+  const a = analyzeGame(moves, game.status);
+  const pct = x => (x * 100).toFixed(x < 0.1 ? 1 : 0) + '%';
+  const rows = a.worst.map(m => `<tr><td>${xy(m.cell)}</td><td>${pct(m.p)}</td><td>${m.boom ? 'detonated' : 'survived'}</td></tr>`).join('');
+  els.report.innerHTML = `<div class="verdict ${a.tone === 'good' ? 'good' : a.tone === 'bad' ? 'bad' : ''}"><b>${a.verdict}</b></div>
+    <table><tr><th>Scored moves</th><td>${a.moves}</td></tr>
+    <tr><th>Risks taken</th><td>${a.risks}</td></tr>
+    <tr><th>P(survive all risks)</th><td>${pct(a.survival)}</td></tr>
+    <tr><th>Risk while a sure move existed</th><td>${a.reckless}</td></tr>
+    <tr><th>Clearly worse-than-best guesses</th><td>${a.suboptimal}</td></tr></table>
+    ${rows ? `<table><tr><th>Riskiest clicks</th><th>Mine odds</th><th></th></tr>${rows}</table>` : ''}`;
+  els.reportCard.hidden = false;
+}
 
 // ---------- wiring ----------
 let pressTimer = null, pressed = false;

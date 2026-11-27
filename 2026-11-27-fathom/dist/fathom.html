@@ -1,0 +1,1110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fathom — Minesweeper with exact odds</title>
+<style>
+:root {
+  --bg0: #060b14; --bg1: #0b1424; --panel: #101c31; --panel2: #15243d; --line: #1f3355;
+  --ink: #e6eefb; --muted: #8aa0c4; --accent: #38d0c0; --accent2: #5aa2ff; --danger: #ff5d73; --ok: #54e08a;
+  --cell: 30px;
+  --hidden: #1a2b49; --hidden-hi: #22385f; --open: #0a1220;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; background: radial-gradient(1200px 700px at 50% -10%, #12234a 0%, var(--bg1) 45%, var(--bg0) 100%) fixed; color: var(--ink);
+  font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; min-height: 100%; }
+.app { max-width: 1400px; margin: 0 auto; padding: 18px 16px 40px; }
+.top { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.brand { display: flex; gap: 12px; align-items: center; }
+.brand h1 { margin: 0; font-size: 26px; letter-spacing: .04em; font-weight: 700; }
+.brand p { margin: 0; color: var(--muted); font-size: 13px; }
+.logo { width: 38px; height: 38px; border-radius: 50%; background:
+  radial-gradient(circle at 35% 30%, #7ff3e6 0 8%, transparent 9%),
+  radial-gradient(circle at 50% 50%, #0b1424 0 38%, transparent 39%),
+  conic-gradient(from 0deg, #38d0c0, #5aa2ff, #38d0c0); box-shadow: 0 0 22px #38d0c055; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+label { color: var(--muted); font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+select, input[type=text], input[type=number] { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font: inherit; }
+input[type=text] { width: 120px; } input[type=number] { width: 58px; }
+.custom { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
+.check { cursor: pointer; user-select: none; } .check input { accent-color: var(--accent); width: 16px; height: 16px; }
+button { background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 9px; padding: 8px 13px; font: inherit; cursor: pointer; transition: .12s; }
+button:hover:not(:disabled) { border-color: var(--accent2); background: #1b2f52; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button[aria-pressed=true] { background: #17406a; border-color: var(--accent2); }
+button.primary { background: linear-gradient(135deg, #1fb8a8, #3a86ff); border: 0; font-weight: 600; color: #021018; }
+button.primary:hover { filter: brightness(1.1); }
+kbd { font: 11px ui-monospace, monospace; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 22px; align-items: start; }
+@media (max-width: 980px) { .stage { grid-template-columns: 1fr; } }
+.boardwrap { background: linear-gradient(180deg, var(--panel), #0d1829); border: 1px solid var(--line); border-radius: 16px; padding: 14px; overflow-x: auto; box-shadow: 0 20px 60px #0008; }
+.statusbar { display: flex; align-items: center; justify-content: space-between; margin: 0 auto 12px; gap: 12px; min-width: 260px; }
+.stat { display: flex; flex-direction: column; } .stat.right { align-items: flex-end; }
+.lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.val { font: 700 26px ui-monospace, "SF Mono", Menlo, monospace; color: var(--accent); font-variant-numeric: tabular-nums; }
+.state { font-weight: 600; padding: 6px 14px; border-radius: 999px; background: #0a1424; border: 1px solid var(--line); }
+.state.won { color: var(--ok); border-color: var(--ok); } .state.lost { color: var(--danger); border-color: var(--danger); }
+.board { display: grid; width: max-content; margin: 0 auto; gap: 2px; padding: 8px; background: #050a13; border-radius: 12px; border: 1px solid var(--line); touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.c { width: var(--cell); height: var(--cell); border-radius: 5px; display: flex; align-items: center; justify-content: center;
+  font: 700 calc(var(--cell) * .52) ui-monospace, "SF Mono", Menlo, monospace; cursor: pointer; position: relative; transition: background .15s, transform .08s; }
+.c.h { background: var(--hidden); box-shadow: inset 0 1px 0 #ffffff14, inset 0 -2px 0 #0006; }
+.c.h:hover { background: var(--hidden-hi); transform: translateY(-1px); }
+.c.o { background: var(--open); cursor: default; box-shadow: inset 0 0 0 1px #14233c; }
+.c.o.num { cursor: pointer; }
+.c .pct { font-size: calc(var(--cell) * .34); font-weight: 600; color: #fff; text-shadow: 0 1px 2px #000a; letter-spacing: -.02em; }
+.c.flag::after { content: ""; width: 38%; height: 52%; background: linear-gradient(90deg, var(--danger) 0 70%, transparent 70%); clip-path: polygon(0 0, 100% 28%, 0 56%, 0 100%, 0 100%); border-left: 2px solid #ffd7dc; }
+.c.int { filter: saturate(.55) brightness(.9); }
+.c.sure-safe { outline: 2px solid var(--ok); outline-offset: -2px; }
+.c.sure-mine { outline: 2px dashed var(--danger); outline-offset: -2px; }
+.c.sure-mine .pct { color: #ffd7dc; font-size: calc(var(--cell) * .5); }
+.c.hint { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 #38d0c0aa; } 50% { box-shadow: 0 0 0 5px #38d0c000, 0 0 16px 2px #38d0c0; } }
+.c.mine { background: #3a1420; color: var(--danger); } .c.boom { background: var(--danger); color: #fff; }
+.c.wrongflag { background: #3a2a14; }
+.c.wrongflag::before { content: "✕"; color: #ffb454; position: absolute; font-size: calc(var(--cell) * .5); }
+.n1 { color: #5ec2ff; } .n2 { color: #6be38f; } .n3 { color: #ff7a8a; } .n4 { color: #a58bff; }
+.n5 { color: #ffb454; } .n6 { color: #4fd1c5; } .n7 { color: #e2e8f0; } .n8 { color: #94a3b8; }
+.hint-line { text-align: center; color: var(--muted); font-size: 12px; margin-top: 10px; }
+.panel { display: flex; flex-direction: column; gap: 14px; }
+.card { background: linear-gradient(180deg, var(--panel), #0d1829); border: 1px solid var(--line); border-radius: 14px; padding: 14px 15px; }
+.card h2 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); font-weight: 600; }
+.btnrow { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; } .btnrow button { flex: 1; padding: 8px 6px; white-space: nowrap; }
+.card .check { display: flex; margin: 6px 0; }
+.advice { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #0a1424; border: 1px solid var(--line); font-size: 13.5px; }
+.advice b { color: var(--accent); }
+.inspect { min-height: 40px; font-size: 14px; } .inspect .big { font: 700 28px ui-monospace, monospace; color: var(--accent2); }
+.stats { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 10px 0 0; font-size: 12.5px; }
+.stats dt { color: var(--muted); } .stats dd { margin: 0; text-align: right; font-family: ui-monospace, monospace; }
+.legend { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; padding: 0 4px; }
+.ramp { flex: 1; height: 10px; border-radius: 6px; background: linear-gradient(90deg, hsl(150 68% 30%), hsl(48 68% 30%), hsl(0 68% 36%)); }
+#report table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+#report td, #report th { padding: 3px 4px; text-align: left; border-bottom: 1px solid #1a2c4a; } #report th { color: var(--muted); font-weight: 500; }
+#report .verdict { font-size: 14px; margin-bottom: 4px; } #report .good { color: var(--ok); } #report .bad { color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span><div><h1>Fathom</h1><p>minesweeper with exact odds</p></div></div>
+    <div class="controls">
+      <label>Level
+        <select id="level">
+          <option value="beginner">Beginner 9×9 · 10</option>
+          <option value="intermediate">Intermediate 16×16 · 40</option>
+          <option value="expert" selected>Expert 30×16 · 99</option>
+          <option value="custom">Custom…</option>
+        </select>
+      </label>
+      <span id="customBox" class="custom" hidden>
+        <input id="cw" type="number" min="2" max="60" value="12" aria-label="width"> ×
+        <input id="ch" type="number" min="2" max="40" value="12" aria-label="height"> ·
+        <input id="cm" type="number" min="1" value="20" aria-label="mines">
+      </span>
+      <label>Seed <input id="seed" type="text" value="" placeholder="random" spellcheck="false"></label>
+      <label class="check"><input id="noguess" type="checkbox"> No-guess board</label>
+      <button id="newgame" class="primary">New game</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="boardwrap">
+      <div class="statusbar">
+        <div class="stat"><span class="lbl">Mines left</span><span id="minesLeft" class="val">0</span></div>
+        <div id="state" class="state" role="status" aria-live="polite">Ready</div>
+        <div class="stat right"><span class="lbl">Time</span><span id="timer" class="val">0</span></div>
+      </div>
+      <div id="board" class="board" role="grid" aria-label="Minesweeper board"></div>
+      <div class="hint-line" id="hintLine">Left-click reveals · right-click (or long-press) flags · click a number to chord</div>
+    </section>
+
+    <aside class="panel">
+      <div class="card">
+        <h2>Solver</h2>
+        <div class="btnrow">
+          <button id="hint">Hint <kbd>H</kbd></button>
+          <button id="step">Step <kbd>S</kbd></button>
+          <button id="auto">Auto</button>
+        </div>
+        <div class="btnrow">
+          <button id="flagmines">Flag sure mines</button>
+          <button id="flagmode" aria-pressed="false" title="Tap-to-flag mode for touch screens">Flag mode</button>
+        </div>
+        <label class="check"><input id="heat" type="checkbox"> Probability heat-map <kbd>P</kbd></label>
+        <label class="check"><input id="autoguess" type="checkbox"> Auto may guess</label>
+        <div id="advice" class="advice">Make a first move to wake the solver.</div>
+      </div>
+
+      <div class="card">
+        <h2>Inspector</h2>
+        <div id="inspect" class="inspect">Hover a hidden cell.</div>
+        <dl id="stats" class="stats"></dl>
+      </div>
+
+      <div class="card" id="reportCard" hidden>
+        <h2>Luck report</h2>
+        <div id="report"></div>
+      </div>
+
+      <div class="legend">
+        <span>safe</span><span class="ramp"></span><span>mine</span>
+      </div>
+    </aside>
+  </main>
+</div>
+<script type="module">
+// ---- src/rng.js ----
+// Seeded PRNG (mulberry32) and string-seed hashing. Deterministic across Node and browsers.
+
+function hashSeed(str) {
+  // FNV-1a 32-bit
+  let h = 0x811c9dc5;
+  const s = String(str);
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function makeRng(seed) {
+  let a = (typeof seed === 'number' ? seed : hashSeed(seed)) >>> 0;
+  return function rng() {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** In-place Fisher–Yates shuffle using rng. */
+function shuffle(arr, rng) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+  return arr;
+}
+
+// ---- src/board.js ----
+// Minesweeper game engine.
+
+const HIDDEN = 0, REVEALED = 1, FLAGGED = 2;
+
+const DIFFICULTIES = {
+  beginner: { w: 9, h: 9, mines: 10 },
+  intermediate: { w: 16, h: 16, mines: 40 },
+  expert: { w: 30, h: 16, mines: 99 },
+};
+
+function validateConfig({ w, h, mines }) {
+  if (!Number.isInteger(w) || !Number.isInteger(h) || w < 2 || h < 2 || w > 100 || h > 100)
+    throw new RangeError('width/height must be integers in 2..100');
+  if (!Number.isInteger(mines) || mines < 1) throw new RangeError('mines must be a positive integer');
+  if (mines > w * h - 1) throw new RangeError(`too many mines: max ${w * h - 1} for ${w}x${h}`);
+}
+
+function neighborTable(w, h) {
+  const nb = new Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const list = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < w && ny < h) list.push(ny * w + nx);
+    }
+    nb[y * w + x] = list;
+  }
+  return nb;
+}
+
+/**
+ * Choose mine positions with a safe zone around `first` (the cell and, when the
+ * board is roomy enough, all its neighbours). Returns a sorted array of indices.
+ */
+function placeMines(w, h, mines, first, rng) {
+  validateConfig({ w, h, mines });
+  const nb = neighborTable(w, h);
+  let banned = new Set([first, ...nb[first]]);
+  if (w * h - banned.size < mines) banned = new Set([first]);
+  const pool = [];
+  for (let i = 0; i < w * h; i++) if (!banned.has(i)) pool.push(i);
+  if (pool.length < mines) throw new RangeError('not enough room for mines');
+  shuffle(pool, rng);
+  return pool.slice(0, mines).sort((a, b) => a - b);
+}
+
+class Game {
+  /**
+   * @param {{w:number,h:number,mines:number,seed?:string|number,layout?:number[]}} cfg
+   * If `layout` (array of mine indices) is given the board is fixed from the start;
+   * otherwise mines are placed on the first reveal so the first click is always safe.
+   */
+  constructor(cfg) {
+    const { w, h, mines } = cfg;
+    validateConfig({ w, h, mines });
+    this.w = w; this.h = h; this.mines = mines; this.n = w * h;
+    this.seed = cfg.seed ?? 'fathom';
+    this.nb = neighborTable(w, h);
+    this.state = new Uint8Array(this.n);
+    this.mine = new Uint8Array(this.n);
+    this.adj = new Uint8Array(this.n);
+    this.placed = false;
+    this.status = 'ready'; // ready | playing | won | lost
+    this.revealedCount = 0;
+    this.flagCount = 0;
+    this.exploded = -1;
+    this.layoutProvider = cfg.layoutProvider || null; // (first)=>number[]
+    if (cfg.layout) this.#applyLayout(cfg.layout);
+  }
+
+  static fromLayout(w, h, layout, seed) {
+    return new Game({ w, h, mines: layout.length, layout, seed });
+  }
+
+  #applyLayout(layout) {
+    const set = new Set(layout);
+    if (set.size !== this.mines) throw new RangeError('layout must contain exactly `mines` distinct cells');
+    for (const i of set) {
+      if (!Number.isInteger(i) || i < 0 || i >= this.n) throw new RangeError('layout cell out of range');
+      this.mine[i] = 1;
+    }
+    for (let i = 0; i < this.n; i++) {
+      let c = 0;
+      for (const j of this.nb[i]) c += this.mine[j];
+      this.adj[i] = c;
+    }
+    this.placed = true;
+  }
+
+  idx(x, y) { return y * this.w + x; }
+
+  /** Reveal a cell. Returns {opened:number[], boom:boolean}. */
+  reveal(i) {
+    if (!Number.isInteger(i) || i < 0 || i >= this.n) throw new RangeError('cell out of range');
+    if (this.status === 'won' || this.status === 'lost') return { opened: [], boom: false };
+    if (this.state[i] !== HIDDEN) return { opened: [], boom: false };
+    if (!this.placed) {
+      const layout = this.layoutProvider
+        ? this.layoutProvider(i)
+        : placeMines(this.w, this.h, this.mines, i, makeRng(`${this.seed}|${this.w}x${this.h}x${this.mines}`));
+      this.#applyLayout(layout);
+    }
+    this.status = 'playing';
+    if (this.mine[i]) {
+      this.state[i] = REVEALED; this.exploded = i; this.status = 'lost';
+      return { opened: [i], boom: true };
+    }
+    const opened = this.#flood(i);
+    this.#checkWin();
+    return { opened, boom: false };
+  }
+
+  #flood(start) {
+    const opened = [];
+    const stack = [start];
+    while (stack.length) {
+      const c = stack.pop();
+      if (this.state[c] === REVEALED) continue;
+      if (this.state[c] === FLAGGED && c !== start) continue; // flood never opens a flagged cell
+      this.state[c] = REVEALED; this.revealedCount++; opened.push(c);
+      if (this.adj[c] === 0) for (const j of this.nb[c]) if (this.state[j] !== REVEALED) stack.push(j);
+    }
+    return opened;
+  }
+
+  #checkWin() {
+    if (this.revealedCount === this.n - this.mines && this.status === 'playing') {
+      this.status = 'won';
+      for (let i = 0; i < this.n; i++) if (this.mine[i] && this.state[i] !== FLAGGED) { this.state[i] = FLAGGED; this.flagCount++; }
+    }
+  }
+
+  toggleFlag(i) {
+    if (!Number.isInteger(i) || i < 0 || i >= this.n) throw new RangeError('cell out of range');
+    if (this.status === 'won' || this.status === 'lost') return false;
+    if (this.state[i] === REVEALED) return false;
+    if (this.state[i] === FLAGGED) { this.state[i] = HIDDEN; this.flagCount--; }
+    else { this.state[i] = FLAGGED; this.flagCount++; }
+    return true;
+  }
+
+  /** Chord: if a revealed number has exactly that many flags around it, reveal the other neighbours. */
+  chord(i) {
+    if (this.state[i] !== REVEALED || this.adj[i] === 0) return { opened: [], boom: false };
+    let flags = 0;
+    for (const j of this.nb[i]) if (this.state[j] === FLAGGED) flags++;
+    if (flags !== this.adj[i]) return { opened: [], boom: false };
+    const opened = []; let boom = false;
+    for (const j of this.nb[i]) {
+      if (this.state[j] !== HIDDEN) continue;
+      const r = this.reveal(j);
+      opened.push(...r.opened); boom = boom || r.boom;
+      if (this.status === 'lost') break;
+    }
+    return { opened, boom };
+  }
+
+  /** Solver-facing view: -1 for hidden/flagged (flags are never trusted), else the revealed number. */
+  view() {
+    const v = new Int8Array(this.n);
+    for (let i = 0; i < this.n; i++) v[i] = this.state[i] === REVEALED && !this.mine[i] ? this.adj[i] : -1;
+    return v;
+  }
+
+  /** ASCII rendering for the CLI. */
+  render(revealAll = false) {
+    const rows = [];
+    for (let y = 0; y < this.h; y++) {
+      let r = '';
+      for (let x = 0; x < this.w; x++) {
+        const i = this.idx(x, y), s = this.state[i];
+        let ch;
+        if (revealAll || this.status === 'lost' && this.mine[i] && s !== FLAGGED) ch = this.mine[i] ? '*' : (this.adj[i] || '.');
+        else if (s === FLAGGED) ch = 'F';
+        else if (s === HIDDEN) ch = '#';
+        else ch = this.mine[i] ? 'X' : (this.adj[i] || '.');
+        r += ch + ' ';
+      }
+      rows.push(r.trimEnd());
+    }
+    return rows.join('\n');
+  }
+}
+
+// ---- src/solver.js ----
+// Exact Minesweeper probability engine.
+//
+// Given the numbers currently showing on a board and the total mine count, compute for
+// every hidden cell the exact probability that it holds a mine, under the uniform
+// distribution over all mine placements consistent with what is showing.
+//
+//  1. Hidden cells touching a revealed number are the *frontier*; all other hidden cells
+//     are the *interior* (unconstrained except through the global mine total).
+//  2. The frontier splits into independent connected *components* (cells linked by sharing a
+//     constraint). Each component is enumerated exactly by backtracking with constraint
+//     pruning, tallying, for each mine count k, the number of solutions and how many of them
+//     put a mine on each cell.
+//  3. Components are convolved over k, and each total frontier mine count f is weighted by
+//     C(U, M-f) — the number of ways to scatter the remaining mines over the U interior cells.
+//     (If a component exceeds the node budget it is relaxed — see `exact` in the result.)
+//  4. All arithmetic on counts is BigInt, so there is no floating-point drift; a probability
+//     is exactly 0 or 1 iff the cell is *certain*.
+//
+// Flags are deliberately ignored: a player's flag is a belief, not information.
+
+const nbCache = new Map();
+function neighbors(w, h) {
+  const key = w + 'x' + h;
+  let t = nbCache.get(key);
+  if (!t) { t = neighborTable(w, h); nbCache.set(key, t); }
+  return t;
+}
+
+class InconsistentBoard extends Error {
+  constructor(msg) { super(msg); this.name = 'InconsistentBoard'; }
+}
+
+const SCALE = 10n ** 30n;
+function ratio(a, b) {
+  if (a === 0n) return 0;
+  if (a >= b) return 1;
+  const p = Number((a * SCALE) / b) / 1e30;
+  return Math.min(Math.max(p, 1e-30), 1 - 1e-15);
+}
+
+/** Row of binomials C(U, r) for r = 0..maxR as BigInt (0n beyond U). */
+function binomRow(U, maxR) {
+  const row = new Array(maxR + 1).fill(0n);
+  row[0] = 1n;
+  for (let r = 0; r < maxR; r++) {
+    if (r >= U) break;
+    row[r + 1] = (row[r] * BigInt(U - r)) / BigInt(r + 1);
+  }
+  return row;
+}
+
+/** Enumerate all solutions of one component. Returns {N:number[], tally:Float64Array[], nodes, truncated}. */
+function enumerateComponent(cells, cons, maxNodes, mineCap) {
+  const m = cells.length;
+  const local = new Map(cells.map((c, i) => [c, i]));
+  const consOf = cells.map(() => []);
+  const need = new Int32Array(cons.length), unk = new Int32Array(cons.length);
+  cons.forEach((k, ci) => {
+    need[ci] = k.need; unk[ci] = k.cells.length;
+    for (const c of k.cells) consOf[local.get(c)].push(ci);
+  });
+  // Order: BFS through constraints starting from the most constrained cell, to prune early.
+  const order = [], seen = new Uint8Array(m), consSeen = new Uint8Array(cons.length);
+  const lcons = cons.map(k => k.cells.map(c => local.get(c)));
+  const startOrder = [...Array(m).keys()].sort((a, b) => consOf[b].length - consOf[a].length || a - b);
+  for (const s of startOrder) {
+    if (seen[s]) continue;
+    seen[s] = 1; const q = [s];
+    while (q.length) {
+      const c = q.shift(); order.push(c);
+      for (const ci of consOf[c]) {
+        if (consSeen[ci]) continue; consSeen[ci] = 1;
+        for (const d of lcons[ci]) if (!seen[d]) { seen[d] = 1; q.push(d); }
+      }
+    }
+  }
+  const N = new Array(m + 1).fill(0);
+  const tally = Array.from({ length: m + 1 }, () => null);
+  const assign = new Int8Array(m);
+  let nodes = 0, truncated = false;
+
+  function rec(d, mines) {
+    if (truncated) return;
+    if (d === m) {
+      N[mines]++;
+      let t = tally[mines];
+      if (!t) t = tally[mines] = new Float64Array(m);
+      for (let i = 0; i < m; i++) if (assign[i]) t[i]++;
+      return;
+    }
+    if (++nodes > maxNodes) { truncated = true; return; }
+    const c = order[d];
+    for (let v = 0; v <= 1; v++) {
+      if (v && mines + 1 > mineCap) continue;
+      let ok = true, done = 0;
+      const list = consOf[c];
+      for (; done < list.length; done++) {
+        const ci = list[done];
+        need[ci] -= v; unk[ci]--;
+        if (need[ci] < 0 || need[ci] > unk[ci]) { ok = false; done++; break; }
+      }
+      if (ok) { assign[c] = v; rec(d + 1, mines + v); assign[c] = 0; }
+      for (let t = 0; t < done; t++) { const ci = list[t]; need[ci] += v; unk[ci]++; }
+      if (truncated) return;
+    }
+  }
+  rec(0, 0);
+  return { N, tally, nodes, truncated, local };
+}
+
+/**
+ * @param {Int8Array|number[]} view  -1 = hidden (or flagged), 0..8 = revealed number
+ * @returns result with prob (Float64Array, NaN on revealed cells), certainSafe, certainMine, exact...
+ */
+function solve(view, w, h, totalMines, opts = {}) {
+  const maxNodes = opts.maxNodes ?? 5_000_000;
+  const nb = neighbors(w, h);
+  const n = w * h;
+  if (view.length !== n) throw new RangeError('view size does not match board');
+  const prob = new Float64Array(n).fill(NaN);
+
+  // Build constraints (deduplicated by cell set).
+  const consMap = new Map();
+  const isFrontier = new Uint8Array(n);
+  let hiddenCount = 0;
+  for (let i = 0; i < n; i++) {
+    if (view[i] < 0) { hiddenCount++; continue; }
+    const hid = nb[i].filter(j => view[j] < 0);
+    if (view[i] > hid.length) throw new InconsistentBoard(`cell ${i} shows ${view[i]} but has only ${hid.length} hidden neighbours`);
+    if (hid.length === 0) continue;
+    const key = hid.join(',') + ':' + view[i];
+    if (!consMap.has(key)) consMap.set(key, { cells: hid, need: view[i] });
+    for (const j of hid) isFrontier[j] = 1;
+  }
+  const cons = [...consMap.values()];
+  // Conflicting duplicate constraints (same cells, different need) are caught by enumeration (no solutions).
+
+  const frontier = [], interior = [];
+  for (let i = 0; i < n; i++) if (view[i] < 0) (isFrontier[i] ? frontier : interior).push(i);
+  const M = totalMines;
+  if (M < 0 || M > hiddenCount) throw new InconsistentBoard('mine total impossible for number of hidden cells');
+
+  // Connected components over frontier cells.
+  const parent = new Map(frontier.map(c => [c, c]));
+  const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  for (const k of cons) for (let i = 1; i < k.cells.length; i++) parent.set(find(k.cells[i]), find(k.cells[0]));
+  const groups = new Map();
+  for (const c of frontier) { const r = find(c); if (!groups.has(r)) groups.set(r, { cells: [], cons: [] }); groups.get(r).cells.push(c); }
+  for (const k of cons) groups.get(find(k.cells[0])).cons.push(k);
+
+  let nodes = 0, exact = true;
+  const comps = [];
+  const approx = []; // components we could not enumerate
+  for (const g of groups.values()) {
+    const e = enumerateComponent(g.cells, g.cons, maxNodes, M);
+    nodes += e.nodes;
+    if (e.truncated) { exact = false; approx.push(g); continue; }
+    comps.push({ ...g, ...e });
+  }
+
+  // Relaxation for components too big to enumerate: drop their constraints and treat their cells as
+  // unconstrained. The real solution set is a subset of the relaxed one, so every *certain* cell of the
+  // relaxed model is still certain in reality; only probabilities (and certainty for these cells) are lost.
+  const approxCells = new Set();
+  for (const g of approx) for (const c of g.cells) approxCells.add(c);
+  const pool = interior.concat([...approxCells]);
+  const U = pool.length;
+
+  // Convolve component mine-count distributions.
+  const toBig = arr => arr.map(x => BigInt(x));
+  const convolve = (A, B) => {
+    const out = new Array(A.length + B.length - 1).fill(0n);
+    for (let i = 0; i < A.length; i++) if (A[i]) for (let j = 0; j < B.length; j++) if (B[j]) out[i + j] += A[i] * B[j];
+    return out;
+  };
+  const compN = comps.map(c => { const a = toBig(c.N); while (a.length > 1 && a[a.length - 1] === 0n) a.pop(); return a; });
+  const convOf = skip => {
+    let acc = [1n];
+    compN.forEach((a, i) => { if (i !== skip) acc = convolve(acc, a); });
+    return acc;
+  };
+  const all = convOf(-1);
+  const C = binomRow(U, M);
+  let Z = 0n, interiorNum = 0n;
+  for (let f = 0; f < all.length && f <= M; f++) {
+    if (!all[f]) continue;
+    const r = M - f;
+    const w_ = all[f] * C[r];
+    Z += w_; interiorNum += w_ * BigInt(r);
+  }
+  if (Z === 0n) throw new InconsistentBoard('no mine placement is consistent with this board');
+
+  let certainSafe = [], certainMine = [];
+  for (let ci = 0; ci < comps.length; ci++) {
+    const comp = comps[ci];
+    const others = convOf(ci);
+    for (let li = 0; li < comp.cells.length; li++) {
+      const cell = comp.cells[li];
+      let wt = 0n;
+      for (let k = 0; k < comp.tally.length; k++) {
+        const t = comp.tally[k];
+        if (!t || !t[li]) continue;
+        const cnt = BigInt(t[li]);
+        for (let j = 0; j < others.length; j++) {
+          if (!others[j]) continue;
+          const r = M - k - j;
+          if (r < 0 || r > U) continue;
+          wt += cnt * others[j] * C[r];
+        }
+      }
+      prob[cell] = ratio(wt, Z);
+    }
+  }
+  if (U > 0) {
+    const p = ratio(interiorNum, Z * BigInt(U));
+    for (const c of pool) prob[c] = p;
+  }
+  // Components we could not enumerate: fall back to a local estimate and flag the result inexact.
+  for (const g of approx) for (const c of g.cells) {
+    let s = 0, cnt = 0;
+    for (const k of g.cons) if (k.cells.includes(c)) { s += k.need / k.cells.length; cnt++; }
+    prob[c] = cnt ? Math.min(0.999, Math.max(0.001, s / cnt)) : 0.5;
+  }
+  for (let i = 0; i < n; i++) {
+    if (view[i] >= 0) continue;
+    if (approxCells.has(i)) continue;
+    if (prob[i] === 0) certainSafe.push(i);
+    else if (prob[i] === 1) certainMine.push(i);
+  }
+  return {
+    prob, certainSafe, certainMine, exact,
+    stats: { w, h, hidden: hiddenCount, frontier: frontier.length, interior: interior.length, approxCells: approxCells.size, components: groups.size, nodes, solutions: Z },
+  };
+}
+
+/**
+ * Pick the next move from a solve() result.
+ * @returns {{kind:'safe'|'guess'|'none', cells:number[], p:number}}
+ */
+function chooseMove(result, view, w, h) {
+  if (result.certainSafe.length) return { kind: 'safe', cells: result.certainSafe.slice(), p: 0 };
+  const nb = neighbors(w, h);
+  let best = -1, bestP = Infinity, bestZ = -1;
+  for (let i = 0; i < view.length; i++) {
+    if (view[i] >= 0) continue;
+    const p = result.prob[i];
+    if (p >= 1) continue;
+    // Tie-break: probability the cell would be a zero (opens an area), approximated by independence.
+    let z = 1 - p;
+    for (const j of nb[i]) if (view[j] < 0) z *= 1 - result.prob[j];
+    if (p < bestP - 1e-12 || (Math.abs(p - bestP) <= 1e-12 && z > bestZ + 1e-12)) { best = i; bestP = p; bestZ = z; }
+  }
+  if (best < 0) return { kind: 'none', cells: [], p: 1 };
+  return { kind: 'guess', cells: [best], p: bestP };
+}
+
+/** Brute-force reference: enumerate every placement of M mines over hidden cells. For tests only (tiny boards). */
+function bruteForce(view, w, h, M) {
+  const nb = neighbors(w, h);
+  const hidden = []; for (let i = 0; i < view.length; i++) if (view[i] < 0) hidden.push(i);
+  const tallies = new Map(hidden.map(c => [c, 0]));
+  let total = 0;
+  const chosen = new Uint8Array(view.length);
+  const check = () => {
+    for (let i = 0; i < view.length; i++) {
+      if (view[i] < 0) continue;
+      let c = 0; for (const j of nb[i]) c += chosen[j];
+      if (c !== view[i]) return false;
+    }
+    return true;
+  };
+  (function rec(pos, left) {
+    if (left === 0) { if (check()) { total++; for (const c of hidden) if (chosen[c]) tallies.set(c, tallies.get(c) + 1); } return; }
+    if (hidden.length - pos < left) return;
+    for (let k = pos; k < hidden.length; k++) { chosen[hidden[k]] = 1; rec(k + 1, left - 1); chosen[hidden[k]] = 0; }
+  })(0, M);
+  return { total, prob: new Map(hidden.map(c => [c, total ? tallies.get(c) / total : NaN])) };
+}
+
+// ---- src/generator.js ----
+// Board generation and solver self-play.
+
+
+
+/**
+ * Let the solver play `game` to the end (or until stuck when guessing is disallowed).
+ * The first click must already have been made (game.status === 'playing') or `first` provided.
+ * Returns {won, guesses, steps, log} where log lists each decision: {kind, cell, p}.
+ */
+function autoPlay(game, { allowGuess = true, first = null, maxSteps = 100000 } = {}) {
+  const log = [];
+  let guesses = 0, steps = 0, stuck = false;
+  if (game.status === 'ready') {
+    const f = first ?? Math.floor(game.n / 2);
+    game.reveal(f); log.push({ kind: 'first', cell: f, p: (game.mines) / game.n });
+  }
+  while (game.status === 'playing' && steps++ < maxSteps) {
+    const view = game.view();
+    const res = solve(view, game.w, game.h, game.mines);
+    const mv = chooseMove(res, view, game.w, game.h);
+    if (mv.kind === 'none') { stuck = true; break; }
+    if (mv.kind === 'safe') {
+      for (const c of mv.cells) { game.reveal(c); log.push({ kind: 'safe', cell: c, p: 0 }); if (game.status !== 'playing') break; }
+    } else {
+      if (!allowGuess) { stuck = true; break; }
+      guesses++;
+      game.reveal(mv.cells[0]); log.push({ kind: 'guess', cell: mv.cells[0], p: mv.p });
+    }
+  }
+  return { won: game.status === 'won', guesses, steps, stuck, log };
+}
+
+/**
+ * Generate a layout for which the first click at `first` opens a region and the whole board is then
+ * solvable by *certain* deductions alone (including the global mine-count). Rejection sampling driven by
+ * the seeded RNG, so the result is a pure function of (w,h,mines,first,seed).
+ */
+function generateNoGuess(w, h, mines, first, seed, { maxAttempts = 5000, timeBudgetMs = 3000 } = {}) {
+  const t0 = Date.now();
+  const rng = makeRng(`${seed}|ng|${w}x${h}x${mines}|${first}`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (attempt > 1 && Date.now() - t0 > timeBudgetMs) break;
+    const layout = placeMines(w, h, mines, first, rng);
+    const g = Game.fromLayout(w, h, layout, seed);
+    // Require that the first click opens something bigger than itself, to avoid dull "1-cell" starts.
+    g.reveal(first);
+    if (g.status !== 'playing' && g.status !== 'won') continue;
+    if (g.status === 'playing' && g.revealedCount < 2 && g.n > 25) continue;
+    const r = autoPlay(g, { allowGuess: false, first });
+    if (r.won) return { layout, attempts: attempt };
+  }
+  return null;
+}
+
+/** A Game whose layout is produced on the first click (so the first click is always safe, and optionally no-guess). */
+function newGame({ w, h, mines, seed = 'fathom', noGuess = false, maxAttempts, timeBudgetMs }) {
+  const game = new Game({ w, h, mines, seed });
+  if (noGuess) {
+    game.layoutProvider = first => {
+      const r = generateNoGuess(w, h, mines, first, seed, { maxAttempts, timeBudgetMs });
+      if (!r) {
+        game.noGuessFailed = true; // surfaced to UI/CLI: we fell back to a plain safe-first-click board
+        return placeMines(w, h, mines, first, makeRng(`${seed}|fallback|${first}`));
+      }
+      game.attempts = r.attempts;
+      return r.layout;
+    };
+  }
+  return game;
+}
+
+// ---- src/analysis.js ----
+// Luck analyzer: grades a finished game against the exact odds each move was taken at.
+//
+// A "move" is {cell, p, bestP, hadSafe, first, boom}: p is the exact probability that the revealed
+// cell was a mine in the position where it was clicked; bestP the lowest risk available anywhere;
+// hadSafe whether a certainly-safe cell existed.
+
+const EPS = 1e-9;
+
+/**
+ * @param {Array} moves
+ * @param {'won'|'lost'} outcome
+ */
+function analyzeGame(moves, outcome) {
+  const scored = moves.filter(m => !m.first && m.p !== null);
+  const risks = scored.filter(m => m.p > EPS);
+  let survival = 1;
+  for (const m of risks) survival *= 1 - m.p;
+  // A move that detonated has p of dying on that very click; survival of the *others* is what luck compares.
+  const totalRisk = risks.reduce((a, m) => a + m.p, 0);
+
+  // Reckless: took a risk while a certain move existed. Suboptimal: a guess clearly riskier than the best available.
+  const reckless = risks.filter(m => m.hadSafe);
+  const suboptimal = risks.filter(m => !m.hadSafe && m.bestP !== null && m.p - m.bestP > 0.02);
+  const worst = risks.slice().sort((a, b) => b.p - a.p).slice(0, 3);
+
+  let verdict, tone;
+  if (outcome === 'lost') {
+    const dying = moves.find(m => m.boom);
+    const pDie = dying ? dying.p : null;
+    if (reckless.length || suboptimal.length) { verdict = 'Avoidable: a better move was available.'; tone = 'bad'; }
+    else if (pDie !== null && pDie < 0.2) { verdict = `Unlucky: the fatal click was only a ${(pDie * 100).toFixed(1)}% risk.`; tone = 'good'; }
+    else if (pDie !== null && pDie >= 0.2) { verdict = `Forced gamble: the fatal click was a ${(pDie * 100).toFixed(0)}% risk with no better option.`; tone = 'neutral'; }
+    else verdict = 'Lost.';
+  } else {
+    if (survival < 0.35) { verdict = `Lucky: surviving every risk had only a ${(survival * 100).toFixed(0)}% chance.`; tone = 'good'; }
+    else if (!risks.length) { verdict = 'Pure logic: no risk taken at all.'; tone = 'good'; }
+    else { verdict = 'Solid win.'; tone = 'good'; }
+    if (reckless.length || suboptimal.length) verdict += ' (Some risks were avoidable.)';
+  }
+  return {
+    moves: scored.length, risks: risks.length, survival, totalRisk,
+    reckless: reckless.length, suboptimal: suboptimal.length, worst, verdict, tone,
+  };
+}
+
+// ---- web/app.js ----
+
+
+
+
+const $ = id => document.getElementById(id);
+const els = {
+  level: $('level'), customBox: $('customBox'), cw: $('cw'), ch: $('ch'), cm: $('cm'), seed: $('seed'), noguess: $('noguess'),
+  newgame: $('newgame'), board: $('board'), minesLeft: $('minesLeft'), timer: $('timer'), state: $('state'), hintLine: $('hintLine'),
+  hint: $('hint'), step: $('step'), auto: $('auto'), flagmines: $('flagmines'), flagmode: $('flagmode'), heat: $('heat'),
+  autoguess: $('autoguess'), advice: $('advice'), inspect: $('inspect'), stats: $('stats'), reportCard: $('reportCard'), report: $('report'),
+};
+
+let game = null, cfg = null, cells = [], ver = 0, cache = null, hintCells = new Set(), moves = [];
+let timerId = null, startedAt = 0, autoId = null, hovered = -1, flagMode = false;
+
+// ---------- helpers ----------
+function randomSeed() { return Math.random().toString(36).slice(2, 8); }
+function fmtBig(b) {
+  const s = b.toString();
+  if (s.length <= 9) return s;
+  return s[0] + '.' + s.slice(1, 3) + 'e+' + (s.length - 1);
+}
+function fmtPct(p) {
+  if (p === 0) return '0%';
+  if (p === 1) return '100%';
+  const v = p * 100;
+  if (v < 0.1) return '<0.1%';
+  if (v > 99.9) return '>99.9%';
+  return (v < 10 ? v.toFixed(1) : Math.round(v)) + '%';
+}
+function xy(i) { return `(${(i % game.w) + 1}, ${Math.floor(i / game.w) + 1})`; }
+function heatColor(p) { const hue = Math.round(150 * (1 - Math.sqrt(p))); return `hsl(${hue} 68% ${p > 0.5 ? 36 : 30}%)`; }
+
+function readConfig() {
+  let base;
+  if (els.level.value === 'custom') {
+    base = { w: +els.cw.value, h: +els.ch.value, mines: +els.cm.value };
+  } else base = { ...DIFFICULTIES[els.level.value] };
+  return base;
+}
+
+// ---------- solver cache ----------
+function currentSolve() {
+  if (!game || game.status === 'ready') return null;
+  if (cache && cache.ver === ver) return cache;
+  try {
+    const view = game.view();
+    const res = solve(view, game.w, game.h, game.mines);
+    const move = chooseMove(res, view, game.w, game.h);
+    res.frontierSet = new Set();
+    for (let i = 0; i < game.n; i++) if (view[i] < 0 && game.nb[i].some(j => view[j] >= 0)) res.frontierSet.add(i);
+    cache = { ver, view, res, move };
+  } catch (e) {
+    cache = { ver, error: e.message };
+  }
+  return cache;
+}
+
+// ---------- game lifecycle ----------
+function newRound(seedOverride) {
+  stopAuto(); clearInterval(timerId); timerId = null;
+  const c = readConfig();
+  let seed = (seedOverride ?? els.seed.value.trim()) || randomSeed();
+  try {
+    game = newGame({ ...c, seed, noGuess: els.noguess.checked, maxAttempts: 4000 });
+  } catch (e) {
+    els.advice.innerHTML = `<b>Invalid setup:</b> ${e.message}`;
+    return;
+  }
+  cfg = { ...c, seed, noGuess: els.noguess.checked };
+  els.seed.value = seed;
+  history.replaceState(null, '', `#d=${els.level.value === 'custom' ? `${c.w}x${c.h}x${c.mines}` : els.level.value}&seed=${encodeURIComponent(seed)}${cfg.noGuess ? '&ng=1' : ''}`);
+  ver++; cache = null; hintCells = new Set(); moves = []; startedAt = 0; els.timer.textContent = '0';
+  els.reportCard.hidden = true;
+  buildBoard();
+  els.advice.textContent = 'Make a first move to wake the solver. The first click is always safe.';
+  els.hintLine.textContent = 'Left-click reveals · right-click (or long-press) flags · click a number to chord';
+  paint();
+}
+
+function buildBoard() {
+  const b = els.board;
+  b.textContent = '';
+  const avail = Math.max(280, b.parentElement.clientWidth - 30);
+  const size = Math.max(22, Math.min(38, Math.floor((avail - 16 - game.w * 2) / game.w)));
+  b.style.setProperty('--cell', size + 'px');
+  b.style.gridTemplateColumns = `repeat(${game.w}, var(--cell))`;
+  cells = [];
+  for (let i = 0; i < game.n; i++) {
+    const d = document.createElement('div');
+    d.className = 'c h'; d.dataset.i = i; d.setAttribute('role', 'gridcell');
+    b.appendChild(d); cells.push(d);
+  }
+}
+
+function paint() {
+  const c = currentSolve();
+  const showHeat = els.heat.checked && c && c.res && game.status === 'playing';
+  const safe = c && c.res ? new Set(c.res.certainSafe) : new Set();
+  const mineSet = c && c.res ? new Set(c.res.certainMine) : new Set();
+  for (let i = 0; i < game.n; i++) {
+    const d = cells[i], s = game.state[i];
+    let cls = 'c', html = '', style = '';
+    if (s === REVEALED) {
+      if (game.mine[i]) { cls += ' o ' + (i === game.exploded ? 'boom' : 'mine'); html = '✹'; }
+      else { cls += ' o'; if (game.adj[i]) { cls += ` num n${game.adj[i]}`; html = game.adj[i]; } }
+    } else if (s === FLAGGED) {
+      cls += ' h flag';
+      if (game.status === 'lost' && !game.mine[i]) cls += ' wrongflag';
+    } else {
+      cls += ' h';
+      if (game.status === 'lost' && game.mine[i]) { cls += ' mine'; html = '✹'; }
+      else if (showHeat && c.res) {
+        const p = c.res.prob[i];
+        if (!Number.isNaN(p)) {
+          style = `background:${heatColor(p)}`;
+          if (safe.has(i)) { cls += ' sure-safe'; html = '<span class="pct">✓</span>'; }
+          else if (mineSet.has(i)) { cls += ' sure-mine'; html = '<span class="pct">!</span>'; }
+          else if (!c.res.frontierSet.has(i)) cls += ' int';
+          else if (parseInt(getComputedStyle(els.board).getPropertyValue('--cell')) >= 26) html = `<span class="pct">${Math.min(99, Math.round(p * 100)) || '<1'}</span>`;
+        }
+      }
+    }
+    if (hintCells.has(i)) cls += ' hint';
+    d.className = cls; d.innerHTML = html; d.style.cssText = style;
+    d.setAttribute('aria-label', `row ${Math.floor(i / game.w) + 1} column ${(i % game.w) + 1}, ${s === FLAGGED ? 'flagged' : s === HIDDEN ? 'hidden' : game.adj[i] ? game.adj[i] + ' adjacent' : 'empty'}`);
+  }
+  els.minesLeft.textContent = game.mines - game.flagCount;
+  const st = { ready: 'Ready', playing: 'Playing', won: 'Cleared!', lost: 'Detonated' }[game.status];
+  els.state.textContent = st; els.state.className = 'state ' + game.status;
+  els.hint.disabled = els.step.disabled = els.flagmines.disabled = game.status !== 'playing';
+  els.auto.textContent = autoId ? 'Stop' : 'Auto';
+  els.auto.disabled = game.status !== 'playing' && !autoId;
+  renderStats(c);
+  if (hovered >= 0) inspectCell(hovered);
+}
+
+function renderStats(c) {
+  if (game.status === 'won' || game.status === 'lost') { els.stats.innerHTML = ''; return; }
+  if (!c || !c.res) {
+    els.stats.innerHTML = c && c.error ? `<dt>Solver</dt><dd>${c.error}</dd>` : '';
+    return;
+  }
+  const s = c.res.stats;
+  els.stats.innerHTML = [
+    ['Hidden cells', s.hidden], ['Frontier', s.frontier], ['Interior', s.interior], ['Components', s.components],
+    ['Consistent layouts', fmtBig(s.solutions)], ['Search nodes', s.nodes.toLocaleString()],
+    ['Sure safe / mines', `${c.res.certainSafe.length} / ${c.res.certainMine.length}`],
+    ['Exact', c.res.exact ? 'yes' : 'approximate'],
+  ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+}
+
+function inspectCell(i) {
+  const c = currentSolve();
+  if (!game || game.state[i] === REVEALED) { els.inspect.textContent = 'Hover a hidden cell.'; return; }
+  if (!c || !c.res) { els.inspect.innerHTML = `Cell ${xy(i)} — prior chance <span class="big">${fmtPct(game.mines / game.n)}</span>`; return; }
+  const p = c.res.prob[i];
+  const kind = c.res.certainSafe.includes(i) ? 'certainly safe' : c.res.certainMine.includes(i) ? 'certainly a mine'
+    : (c.res.stats.interior && !isFrontierCell(c, i) ? 'unconstrained region' : 'on the frontier');
+  els.inspect.innerHTML = `Cell ${xy(i)} — <span class="big">${fmtPct(p)}</span> mine<br><small>${kind}</small>`;
+}
+function isFrontierCell(c, i) { return game.nb[i].some(j => c.view[j] >= 0); }
+
+// ---------- actions ----------
+function afterMove(note) {
+  ver++; cache = null; hintCells = new Set();
+  if (game.status === 'playing' && !timerId) {
+    startedAt = Date.now();
+    timerId = setInterval(() => { els.timer.textContent = Math.min(999, Math.floor((Date.now() - startedAt) / 1000)); }, 250);
+  }
+  if (game.status === 'won' || game.status === 'lost') {
+    clearInterval(timerId); timerId = null; stopAuto();
+    if (startedAt) els.timer.textContent = Math.min(999, Math.floor((Date.now() - startedAt) / 1000));
+  }
+  paint();
+  if (game.status === 'playing') adviseFromCache(note);
+  else if (game.status === 'won') els.advice.innerHTML = '<b>Cleared.</b> ' + (note || '');
+  else els.advice.innerHTML = '<b>Boom.</b> ' + (note || '');
+  if (game.status === 'won' || game.status === 'lost') onGameEnd();
+}
+
+function adviseFromCache(prefix = '') {
+  const c = currentSolve();
+  if (!c) return;
+  if (c.error) { els.advice.innerHTML = `${prefix} <b>Solver:</b> ${c.error}`; return; }
+  const m = c.move;
+  const pre = (prefix ? prefix + ' ' : '') + (c.res.exact ? '' : '<b>Huge frontier:</b> odds are approximate in places, certain moves remain sound. ');
+  if (m.kind === 'safe') els.advice.innerHTML = `${pre}<b>${m.cells.length}</b> cell${m.cells.length > 1 ? 's are' : ' is'} certainly safe. Press Hint to see them.`;
+  else if (m.kind === 'guess') els.advice.innerHTML = `${pre}<b>No certain move.</b> Best guess is ${xy(m.cells[0])} at <b>${fmtPct(m.p)}</b> mine risk.`;
+  else els.advice.textContent = pre;
+}
+
+/** Reveal one cell, recording the exact risk the player took. */
+function doReveal(i, via = 'click') {
+  if (game.state[i] !== HIDDEN) return;
+  const c = game.status === 'ready' ? null : currentSolve();
+  const p = c && c.res ? c.res.prob[i] : null;
+  const bestP = c && c.res ? Math.min(...[...c.res.prob].filter(x => !Number.isNaN(x))) : null;
+  const hadSafe = c && c.res ? c.res.certainSafe.length > 0 : false;
+  const r = game.reveal(i);
+  moves.push({ cell: i, p: p ?? (game.status === 'lost' ? 1 : 0), bestP, hadSafe, via, first: p === null, boom: r.boom });
+  return r;
+}
+
+function onCell(i, how) {
+  if (!game || game.status === 'won' || game.status === 'lost') return;
+  stopAuto();
+  if (how === 'flag') { if (game.toggleFlag(i)) { ver++; cache = null; paint(); adviseFromCache(); } return; }
+  if (game.state[i] === REVEALED) {
+    // chord one cell at a time so every reveal is scored against the position it was actually taken in
+    let flags = 0; for (const j of game.nb[i]) if (game.state[j] === FLAGGED) flags++;
+    if (!game.adj[i] || flags !== game.adj[i]) return;
+    for (const j of game.nb[i]) {
+      if (game.state[j] !== HIDDEN) continue;
+      doReveal(j, 'chord');
+      if (game.status === 'lost') break;
+      ver++; cache = null;
+    }
+    afterMove(); return;
+  }
+  if (game.state[i] === FLAGGED) return;
+  if (flagMode) { game.toggleFlag(i); ver++; cache = null; paint(); return; }
+  doReveal(i);
+  afterMove(game.noGuessFailed && game.status === 'playing' && moves.length === 1 ? 'No-guess board not found for this setup in time — this one may need guesses.' : '');
+}
+
+function hint() {
+  const c = currentSolve();
+  if (!c || !c.move) return;
+  hintCells = new Set(c.move.cells);
+  paint(); adviseFromCache();
+}
+
+function step() {
+  const c = currentSolve();
+  if (!c || !c.move || c.move.kind === 'none') return false;
+  const m = c.move;
+  const note = m.kind === 'guess' ? `Solver guessed ${xy(m.cells[0])} at ${fmtPct(m.p)} risk.` : '';
+  for (const i of m.cells) { if (game.state[i] === HIDDEN) doReveal(i, 'solver'); if (game.status !== 'playing') break; ver++; cache = null; }
+  afterMove(note);
+  return true;
+}
+
+function flagSureMines() {
+  const c = currentSolve();
+  if (!c || !c.res) return;
+  let n = 0;
+  for (const i of c.res.certainMine) if (game.state[i] === HIDDEN) { game.toggleFlag(i); n++; }
+  ver++; cache = null; paint();
+  els.advice.innerHTML = n ? `Flagged <b>${n}</b> certain mine${n > 1 ? 's' : ''}.` : 'No new certain mines to flag.';
+}
+
+function stopAuto() { if (autoId) { clearInterval(autoId); autoId = null; } }
+function toggleAuto() {
+  if (autoId) { stopAuto(); paint(); return; }
+  if (game.status === 'ready') return;
+  autoId = setInterval(() => {
+    if (game.status !== 'playing') { stopAuto(); paint(); return; }
+    const c = currentSolve();
+    if (c && c.move && c.move.kind === 'guess' && !els.autoguess.checked) {
+      stopAuto(); paint(); adviseFromCache('Auto paused: it would have to guess.'); return;
+    }
+    if (!step()) stopAuto();
+  }, 140);
+  paint();
+}
+
+window.addEventListener('resize', () => { if (game) { const size = Math.max(22, Math.min(38, Math.floor((Math.max(280, els.board.parentElement.clientWidth - 30) - 16 - game.w * 2) / game.w))); els.board.style.setProperty('--cell', size + 'px'); } });
+
+function onGameEnd() {
+  const a = analyzeGame(moves, game.status);
+  const pct = x => (x * 100).toFixed(x < 0.1 ? 1 : 0) + '%';
+  const rows = a.worst.map(m => `<tr><td>${xy(m.cell)}</td><td>${pct(m.p)}</td><td>${m.boom ? 'detonated' : 'survived'}</td></tr>`).join('');
+  els.report.innerHTML = `<div class="verdict ${a.tone === 'good' ? 'good' : a.tone === 'bad' ? 'bad' : ''}"><b>${a.verdict}</b></div>
+    <table><tr><th>Scored moves</th><td>${a.moves}</td></tr>
+    <tr><th>Risks taken</th><td>${a.risks}</td></tr>
+    <tr><th>P(survive all risks)</th><td>${pct(a.survival)}</td></tr>
+    <tr><th>Risk while a sure move existed</th><td>${a.reckless}</td></tr>
+    <tr><th>Clearly worse-than-best guesses</th><td>${a.suboptimal}</td></tr></table>
+    ${rows ? `<table><tr><th>Riskiest clicks</th><th>Mine odds</th><th></th></tr>${rows}</table>` : ''}`;
+  els.reportCard.hidden = false;
+}
+
+// ---------- wiring ----------
+let pressTimer = null, pressed = false;
+els.board.addEventListener('contextmenu', e => { e.preventDefault(); const t = e.target.closest('.c'); if (t) onCell(+t.dataset.i, 'flag'); });
+els.board.addEventListener('pointerdown', e => {
+  const t = e.target.closest('.c'); if (!t) return;
+  pressed = false;
+  if (e.pointerType === 'touch') pressTimer = setTimeout(() => { pressed = true; onCell(+t.dataset.i, 'flag'); }, 420);
+});
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => els.board.addEventListener(ev, () => clearTimeout(pressTimer)));
+els.board.addEventListener('click', e => {
+  const t = e.target.closest('.c'); if (!t) return;
+  if (pressed) { pressed = false; return; }
+  onCell(+t.dataset.i, 'reveal');
+});
+els.board.addEventListener('auxclick', e => { if (e.button === 1) { e.preventDefault(); const t = e.target.closest('.c'); if (t) onCell(+t.dataset.i, 'reveal'); } });
+els.board.addEventListener('mouseover', e => { const t = e.target.closest('.c'); if (t) { hovered = +t.dataset.i; if (game) inspectCell(hovered); } });
+els.board.addEventListener('mouseleave', () => { hovered = -1; els.inspect.textContent = 'Hover a hidden cell.'; });
+
+els.newgame.addEventListener('click', () => newRound());
+els.level.addEventListener('change', () => { els.customBox.hidden = els.level.value !== 'custom'; newRound(); });
+els.noguess.addEventListener('change', () => newRound());
+els.seed.addEventListener('keydown', e => { if (e.key === 'Enter') newRound(); });
+[els.cw, els.ch, els.cm].forEach(x => x.addEventListener('change', () => newRound()));
+els.heat.addEventListener('change', () => paint());
+els.hint.addEventListener('click', hint);
+els.step.addEventListener('click', () => { stopAuto(); step(); });
+els.auto.addEventListener('click', toggleAuto);
+els.flagmines.addEventListener('click', flagSureMines);
+els.flagmode.addEventListener('click', () => { flagMode = !flagMode; els.flagmode.setAttribute('aria-pressed', flagMode); });
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.ctrlKey || e.metaKey) return;
+  const k = e.key.toLowerCase();
+  if (k === 'h' && game.status === 'playing') hint();
+  else if (k === 's' && game.status === 'playing') { stopAuto(); step(); }
+  else if (k === 'p') { els.heat.checked = !els.heat.checked; paint(); }
+  else if (k === 'n') newRound();
+  else if (k === 'f' && hovered >= 0) onCell(hovered, 'flag');
+  else if (k === ' ' && hovered >= 0) { e.preventDefault(); onCell(hovered, 'reveal'); }
+});
+
+// initial state from URL hash
+(function init() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  const d = p.get('d');
+  if (d && DIFFICULTIES[d]) els.level.value = d;
+  else if (d && /^\d+x\d+x\d+$/.test(d)) { const [w, h, m] = d.split('x').map(Number); els.level.value = 'custom'; els.cw.value = w; els.ch.value = h; els.cm.value = m; els.customBox.hidden = false; }
+  if (p.get('ng') === '1') els.noguess.checked = true;
+  newRound(p.get('seed') || undefined);
+})();
+</script>
+</body>
+</html>
