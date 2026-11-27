@@ -36,9 +36,11 @@ export function autoPlay(game, { allowGuess = true, first = null, maxSteps = 100
  * solvable by *certain* deductions alone (including the global mine-count). Rejection sampling driven by
  * the seeded RNG, so the result is a pure function of (w,h,mines,first,seed).
  */
-export function generateNoGuess(w, h, mines, first, seed, { maxAttempts = 5000 } = {}) {
+export function generateNoGuess(w, h, mines, first, seed, { maxAttempts = 5000, timeBudgetMs = 3000 } = {}) {
+  const t0 = Date.now();
   const rng = makeRng(`${seed}|ng|${w}x${h}x${mines}|${first}`);
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (attempt > 1 && Date.now() - t0 > timeBudgetMs) break;
     const layout = placeMines(w, h, mines, first, rng);
     const g = Game.fromLayout(w, h, layout, seed);
     // Require that the first click opens something bigger than itself, to avoid dull "1-cell" starts.
@@ -52,11 +54,11 @@ export function generateNoGuess(w, h, mines, first, seed, { maxAttempts = 5000 }
 }
 
 /** A Game whose layout is produced on the first click (so the first click is always safe, and optionally no-guess). */
-export function newGame({ w, h, mines, seed = 'fathom', noGuess = false, maxAttempts }) {
+export function newGame({ w, h, mines, seed = 'fathom', noGuess = false, maxAttempts, timeBudgetMs }) {
   const game = new Game({ w, h, mines, seed });
   if (noGuess) {
     game.layoutProvider = first => {
-      const r = generateNoGuess(w, h, mines, first, seed, { maxAttempts });
+      const r = generateNoGuess(w, h, mines, first, seed, { maxAttempts, timeBudgetMs });
       if (!r) {
         game.noGuessFailed = true; // surfaced to UI/CLI: we fell back to a plain safe-first-click board
         return placeMines(w, h, mines, first, makeRng(`${seed}|fallback|${first}`));

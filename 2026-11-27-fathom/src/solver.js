@@ -12,6 +12,7 @@
 //     put a mine on each cell.
 //  3. Components are convolved over k, and each total frontier mine count f is weighted by
 //     C(U, M-f) — the number of ways to scatter the remaining mines over the U interior cells.
+//     (If a component exceeds the node budget it is relaxed — see `exact` in the result.)
 //  4. All arithmetic on counts is BigInt, so there is no floating-point drift; a probability
 //     is exactly 0 or 1 iff the cell is *certain*.
 //
@@ -113,7 +114,7 @@ function enumerateComponent(cells, cons, maxNodes, mineCap) {
  * @returns result with prob (Float64Array, NaN on revealed cells), certainSafe, certainMine, exact...
  */
 export function solve(view, w, h, totalMines, opts = {}) {
-  const maxNodes = opts.maxNodes ?? 20_000_000;
+  const maxNodes = opts.maxNodes ?? 5_000_000;
   const nb = neighbors(w, h);
   const n = w * h;
   if (view.length !== n) throw new RangeError('view size does not match board');
@@ -137,7 +138,6 @@ export function solve(view, w, h, totalMines, opts = {}) {
 
   const frontier = [], interior = [];
   for (let i = 0; i < n; i++) if (view[i] < 0) (isFrontier[i] ? frontier : interior).push(i);
-  const U = interior.length;
   const M = totalMines;
   if (M < 0 || M > hiddenCount) throw new InconsistentBoard('mine total impossible for number of hidden cells');
 
@@ -158,6 +158,14 @@ export function solve(view, w, h, totalMines, opts = {}) {
     if (e.truncated) { exact = false; approx.push(g); continue; }
     comps.push({ ...g, ...e });
   }
+
+  // Relaxation for components too big to enumerate: drop their constraints and treat their cells as
+  // unconstrained. The real solution set is a subset of the relaxed one, so every *certain* cell of the
+  // relaxed model is still certain in reality; only probabilities (and certainty for these cells) are lost.
+  const approxCells = new Set();
+  for (const g of approx) for (const c of g.cells) approxCells.add(c);
+  const pool = interior.concat([...approxCells]);
+  const U = pool.length;
 
   // Convolve component mine-count distributions.
   const toBig = arr => arr.map(x => BigInt(x));
@@ -206,7 +214,7 @@ export function solve(view, w, h, totalMines, opts = {}) {
   }
   if (U > 0) {
     const p = ratio(interiorNum, Z * BigInt(U));
-    for (const c of interior) prob[c] = p;
+    for (const c of pool) prob[c] = p;
   }
   // Components we could not enumerate: fall back to a local estimate and flag the result inexact.
   for (const g of approx) for (const c of g.cells) {
@@ -216,12 +224,13 @@ export function solve(view, w, h, totalMines, opts = {}) {
   }
   for (let i = 0; i < n; i++) {
     if (view[i] >= 0) continue;
-    if (prob[i] === 0 && exact) certainSafe.push(i);
-    else if (prob[i] === 1 && exact) certainMine.push(i);
+    if (approxCells.has(i)) continue;
+    if (prob[i] === 0) certainSafe.push(i);
+    else if (prob[i] === 1) certainMine.push(i);
   }
   return {
     prob, certainSafe, certainMine, exact,
-    stats: { w, h, hidden: hiddenCount, frontier: frontier.length, interior: U, components: groups.size, nodes, solutions: Z },
+    stats: { w, h, hidden: hiddenCount, frontier: frontier.length, interior: interior.length, approxCells: approxCells.size, components: groups.size, nodes, solutions: Z },
   };
 }
 

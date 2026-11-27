@@ -70,7 +70,7 @@ function newRound(seedOverride) {
   cfg = { ...c, seed, noGuess: els.noguess.checked };
   els.seed.value = seed;
   history.replaceState(null, '', `#d=${els.level.value === 'custom' ? `${c.w}x${c.h}x${c.mines}` : els.level.value}&seed=${encodeURIComponent(seed)}${cfg.noGuess ? '&ng=1' : ''}`);
-  ver++; cache = null; hintCells = new Set(); moves = []; startedAt = 0;
+  ver++; cache = null; hintCells = new Set(); moves = []; startedAt = 0; els.timer.textContent = '0';
   els.reportCard.hidden = true;
   buildBoard();
   els.advice.textContent = 'Make a first move to wake the solver. The first click is always safe.';
@@ -117,12 +117,13 @@ function paint() {
           if (safe.has(i)) { cls += ' sure-safe'; html = '<span class="pct">✓</span>'; }
           else if (mineSet.has(i)) { cls += ' sure-mine'; html = '<span class="pct">!</span>'; }
           else if (!c.res.frontierSet.has(i)) cls += ' int';
-          else if (parseInt(getComputedStyle(els.board).getPropertyValue('--cell')) >= 26) html = `<span class="pct">${p < 0.995 ? Math.max(0, Math.round(p * 100)) || (p > 0 ? '<1' : 0) : 100}</span>`;
+          else if (parseInt(getComputedStyle(els.board).getPropertyValue('--cell')) >= 26) html = `<span class="pct">${Math.min(99, Math.round(p * 100)) || '<1'}</span>`;
         }
       }
     }
     if (hintCells.has(i)) cls += ' hint';
     d.className = cls; d.innerHTML = html; d.style.cssText = style;
+    d.setAttribute('aria-label', `row ${Math.floor(i / game.w) + 1} column ${(i % game.w) + 1}, ${s === FLAGGED ? 'flagged' : s === HIDDEN ? 'hidden' : game.adj[i] ? game.adj[i] + ' adjacent' : 'empty'}`);
   }
   els.minesLeft.textContent = game.mines - game.flagCount;
   const st = { ready: 'Ready', playing: 'Playing', won: 'Cleared!', lost: 'Detonated' }[game.status];
@@ -182,7 +183,7 @@ function adviseFromCache(prefix = '') {
   if (!c) return;
   if (c.error) { els.advice.innerHTML = `${prefix} <b>Solver:</b> ${c.error}`; return; }
   const m = c.move;
-  const pre = prefix ? prefix + ' ' : '';
+  const pre = (prefix ? prefix + ' ' : '') + (c.res.exact ? '' : '<b>Huge frontier:</b> odds are approximate in places, certain moves remain sound. ');
   if (m.kind === 'safe') els.advice.innerHTML = `${pre}<b>${m.cells.length}</b> cell${m.cells.length > 1 ? 's are' : ' is'} certainly safe. Press Hint to see them.`;
   else if (m.kind === 'guess') els.advice.innerHTML = `${pre}<b>No certain move.</b> Best guess is ${xy(m.cells[0])} at <b>${fmtPct(m.p)}</b> mine risk.`;
   else els.advice.textContent = pre;
@@ -219,7 +220,7 @@ function onCell(i, how) {
   if (game.state[i] === FLAGGED) return;
   if (flagMode) { game.toggleFlag(i); ver++; cache = null; paint(); return; }
   doReveal(i);
-  afterMove();
+  afterMove(game.noGuessFailed && game.status === 'playing' && moves.length === 1 ? 'No-guess board not found for this setup in time — this one may need guesses.' : '');
 }
 
 function hint() {
@@ -262,6 +263,8 @@ function toggleAuto() {
   }, 140);
   paint();
 }
+
+window.addEventListener('resize', () => { if (game) { const size = Math.max(22, Math.min(38, Math.floor((Math.max(280, els.board.parentElement.clientWidth - 30) - 16 - game.w * 2) / game.w))); els.board.style.setProperty('--cell', size + 'px'); } });
 
 function onGameEnd() { /* luck report is attached in phase 4 */ }
 

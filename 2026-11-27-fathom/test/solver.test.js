@@ -83,3 +83,23 @@ test('chooseMove prefers certain-safe cells, else lowest probability', () => {
   if (r.certainSafe.length) assert.equal(m.kind, 'safe');
   else { assert.equal(m.kind, 'guess'); assert.equal(m.p, Math.min(...[...r.prob].filter(x => !Number.isNaN(x)))); }
 });
+
+test('budget overflow relaxes instead of throwing; certain deductions stay sound', () => {
+  let sawInexact = 0;
+  for (let s = 0; s < 12; s++) {
+    const g = new Game({ w: 30, h: 16, mines: 150, seed: 'inx' + s });
+    g.reveal(250);
+    for (let k = 0; k < 40 && g.status === 'playing'; k++) {
+      const view = g.view();
+      const r = solve(view, g.w, g.h, g.mines, { maxNodes: 300 }); // tiny budget forces truncation
+      if (!r.exact) sawInexact++;
+      for (const c of r.certainSafe) assert.equal(g.mine[c], 0, 'certain-safe must really be safe');
+      for (const c of r.certainMine) assert.equal(g.mine[c], 1, 'certain-mine must really be a mine');
+      for (let i = 0; i < g.n; i++) if (view[i] < 0) assert.ok(r.prob[i] >= 0 && r.prob[i] <= 1);
+      const m = chooseMove(r, view, g.w, g.h);
+      if (m.kind === 'none') break;
+      g.reveal(m.cells[0]);
+    }
+  }
+  assert.ok(sawInexact > 0, 'truncation path was exercised');
+});
