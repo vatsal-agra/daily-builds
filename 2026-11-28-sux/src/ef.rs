@@ -34,7 +34,10 @@ impl EliasFano {
                 return Err(Error::Invalid(format!("value {m} not below universe {universe}")));
             }
         }
-        let l = if n == 0 || universe <= n as u64 { 0 } else { 63 - (universe / n as u64).leading_zeros() };
+        // An empty sequence is sized as if it had one element, so the unary part stays O(n + 1)
+        // bits instead of O(universe).
+        let nn = n.max(1) as u64;
+        let l = if universe <= nn { 0 } else { 63 - (universe / nn).leading_zeros() };
         let mut low = BitVec::new();
         let hi_len = n + (universe >> l) as usize + 1;
         let mut high = BitVec::zeros(hi_len);

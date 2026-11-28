@@ -137,6 +137,8 @@ impl FmIndex {
         (lo, hi)
     }
 
+    /// Number of occurrences. The empty pattern occurs at every one of the n+1 positions
+    /// (including the end), so `count(b"") == len() + 1`.
     pub fn count(&self, pat: &[u8]) -> usize {
         let (lo, hi) = self.search(pat);
         hi - lo
@@ -148,17 +150,17 @@ impl FmIndex {
         self.c[k as usize] + self.bwt.rank(k, row)
     }
 
-    /// Text position of the suffix at `row`.
-    fn locate_row(&self, mut row: usize) -> usize {
-        let mut steps = 0;
-        loop {
+    /// Text position of the suffix at `row`. In a valid index a sampled row is reached
+    /// within `sample_rate` LF steps; anything longer means the index is corrupt.
+    fn locate_row(&self, mut row: usize) -> Result<usize> {
+        for steps in 0..self.sample_rate {
             if self.sa_marked.get(row) {
-                let idx = self.sa_marked.rank1(row);
-                return self.sa_samples[idx] as usize * self.sample_rate + steps;
+                let pos = self.sa_samples[self.sa_marked.rank1(row)] as usize * self.sample_rate + steps;
+                return if pos <= self.n { Ok(pos) } else { Err(Error::Corrupt("located position beyond text".into())) };
             }
             row = self.lf(row);
-            steps += 1;
         }
+        Err(Error::Corrupt("suffix-array sampling inconsistent (index is corrupt)".into()))
     }
 
     /// All start positions of `pat` (sorted ascending). Empty pattern -> error.
@@ -167,15 +169,18 @@ impl FmIndex {
             return Err(Error::Invalid("empty pattern".into()));
         }
         let (lo, hi) = self.search(pat);
-        let mut v: Vec<usize> = (lo..hi).map(|r| self.locate_row(r)).collect();
+        let mut v = (lo..hi).map(|r| self.locate_row(r)).collect::<Result<Vec<usize>>>()?;
         v.sort_unstable();
         Ok(v)
     }
 
     /// Reconstruct text[start..end) from the index alone.
     pub fn extract(&self, start: usize, end: usize) -> Result<Vec<u8>> {
-        if start > end || end > self.n {
-            return Err(Error::Invalid(format!("range {start}..{end} outside text of length {}", self.n)));
+        if start > end {
+            return Err(Error::Invalid(format!("start {start} is after end {end}")));
+        }
+        if end > self.n {
+            return Err(Error::Invalid(format!("end {end} is beyond the text length {}", self.n)));
         }
         if start == end {
             return Ok(Vec::new());
@@ -186,7 +191,9 @@ impl FmIndex {
         let mut out = Vec::with_capacity(end - start);
         while pos > start {
             let k = self.bwt.access(row).unwrap();
-            debug_assert!(k != 0, "hit sentinel while extracting");
+            if k == 0 {
+                return Err(Error::Corrupt("hit the sentinel while extracting (index is corrupt)".into()));
+            }
             pos -= 1;
             if pos < end {
                 out.push(self.alphabet[k as usize - 1]);

@@ -66,13 +66,31 @@ fn run(mut args: Vec<String>) -> Result<()> {
         return Ok(());
     }
     let cmd = args.remove(0);
+    // Everything after `--` is positional, so patterns like "-c" stay searchable.
+    let tail = match args.iter().position(|a| a == "--") {
+        Some(i) => {
+            let t = args.split_off(i + 1);
+            args.pop();
+            t
+        }
+        None => Vec::new(),
+    };
+    let opt_o = take_opt(&mut args, &["-o", "--output"])?;
+    let opt_sample = take_opt(&mut args, &["--sample"])?;
+    let opt_n = take_opt(&mut args, &["-n"])?;
+    let flag_z = take_flag(&mut args, "-z");
+    let flag_c = take_flag(&mut args, "-c");
+    if let Some(bad) = args.iter().find(|a| a.len() > 1 && a.starts_with('-')) {
+        return Err(Error::Invalid(format!("unknown option '{bad}' (use `--` before a pattern that starts with '-')")));
+    }
+    args.extend(tail);
     let out = std::io::stdout();
     let mut out = std::io::BufWriter::new(out.lock());
     match cmd.as_str() {
         "index" => {
-            let output = take_opt(&mut args, &["-o", "--output"])?.ok_or_else(|| Error::Invalid("index needs -o <index.sux>".into()))?;
-            let compressed = take_flag(&mut args, "-z");
-            let sample = take_opt(&mut args, &["--sample"])?.map(|s| num(&s, "--sample")).transpose()?.unwrap_or(32);
+            let output = opt_o.clone().ok_or_else(|| Error::Invalid("index needs -o <index.sux>".into()))?;
+            let compressed = flag_z;
+            let sample = opt_sample.as_deref().map(|s| num(s, "--sample")).transpose()?.unwrap_or(32);
             let [input] = args.as_slice() else { return Err(Error::Invalid("index takes exactly one input (file or -)".into())) };
             let mut text = Vec::new();
             if input == "-" {
@@ -83,7 +101,10 @@ fn run(mut args: Vec<String>) -> Result<()> {
             let t0 = std::time::Instant::now();
             let fm = FmIndex::build_with(&text, sample, compressed)?;
             let bytes = fm.save_bytes();
-            std::fs::write(&output, &bytes).map_err(|e| Error::Io(format!("{output}: {e}")))?;
+            // Write-then-rename so a crash or full disk never leaves a half-written index.
+            let tmp = format!("{output}.tmp");
+            std::fs::write(&tmp, &bytes).map_err(|e| Error::Io(format!("{tmp}: {e}")))?;
+            std::fs::rename(&tmp, &output).map_err(|e| Error::Io(format!("{output}: {e}")))?;
             writeln!(
                 out,
                 "indexed {} ({} lines) -> {} : {} ({:.0}% of original) in {:.2?}",
@@ -96,8 +117,8 @@ fn run(mut args: Vec<String>) -> Result<()> {
             )?;
         }
         "grep" => {
-            let count_only = take_flag(&mut args, "-c");
-            let max = take_opt(&mut args, &["-n"])?.map(|s| num(&s, "-n")).transpose()?;
+            let count_only = flag_c;
+            let max = opt_n.as_deref().map(|s| num(s, "-n")).transpose()?;
             let [idx, pat] = args.as_slice() else { return Err(Error::Invalid("grep <index.sux> <pattern>".into())) };
             let fm = load(idx)?;
             let hits = fm.grep(pat.as_bytes())?;
@@ -126,7 +147,7 @@ fn run(mut args: Vec<String>) -> Result<()> {
             writeln!(out, "{}", load(idx)?.count(pat.as_bytes()))?;
         }
         "locate" => {
-            let max = take_opt(&mut args, &["-n"])?.map(|s| num(&s, "-n")).transpose()?;
+            let max = opt_n.as_deref().map(|s| num(s, "-n")).transpose()?;
             let [idx, pat] = args.as_slice() else { return Err(Error::Invalid("locate <index.sux> <pattern>".into())) };
             let pos = load(idx)?.locate(pat.as_bytes())?;
             for p in pos.iter().take(max.unwrap_or(usize::MAX)) {

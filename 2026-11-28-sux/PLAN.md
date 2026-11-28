@@ -4,8 +4,8 @@
 Succinct data structures store data in (nearly) the information-theoretic minimum
 of space while still answering queries in O(1)–O(log n) *without decompressing*.
 Sux builds the classic stack from the ground up and wires it into something you can
-actually use: a **compressed full-text index** you can `grep` that is *smaller than
-the file it indexes* and can regenerate the original text from itself alone.
+actually use: a **compressed full-text index** you can `grep`, that stores *no copy of the text* and
+can regenerate any part of it from itself alone (and, with RRR levels, shrinks below the file size).
 
 ## Why it's interesting
 - It is the machinery behind genome aligners (BWA, Bowtie), Lucene's posting lists
