@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 use sux::fm::FmIndex;
+use sux::louds::Louds;
 use sux::util::{Error, Result};
 
 const USAGE: &str = "sux — succinct data structures toolkit
@@ -12,6 +13,12 @@ USAGE:
   sux extract <index.sux> <start> <end>             bytes [start, end) of the original text
   sux line   <index.sux> <number>                   a single line (1-based)
   sux info   <index.sux>                            sizes and parameters
+  sux trie build <words.txt|-> -o <t.trie>          LOUDS trie of the lines of a file
+  sux trie lookup <t.trie> <word>                   dense id of a word (exit 1 if absent)
+  sux trie key <t.trie> <id>                        word with this id
+  sux trie complete <t.trie> <prefix> [-n MAX]      words starting with prefix, sorted
+  sux trie info <t.trie>
+  sux bench [--quick]                               measured bits/item and ns/query for every structure
 ";
 
 fn die(msg: impl std::fmt::Display) -> ! {
@@ -80,6 +87,7 @@ fn run(mut args: Vec<String>) -> Result<()> {
     let opt_n = take_opt(&mut args, &["-n"])?;
     let flag_z = take_flag(&mut args, "-z");
     let flag_c = take_flag(&mut args, "-c");
+    let flag_quick = take_flag(&mut args, "--quick");
     if let Some(bad) = args.iter().find(|a| a.len() > 1 && a.starts_with('-')) {
         return Err(Error::Invalid(format!("unknown option '{bad}' (use `--` before a pattern that starts with '-')")));
     }
@@ -180,6 +188,74 @@ fn run(mut args: Vec<String>) -> Result<()> {
             writeln!(out, "BWT levels       : {}", if fm.is_compressed() { "RRR-compressed" } else { "plain" })?;
             writeln!(out, "on disk          : {} ({:.1}% of text)", human(disk), 100.0 * disk as f64 / fm.len().max(1) as f64)?;
             writeln!(out, "in memory (bits) : {:.2} bits/char", fm.total_bits() as f64 / fm.len().max(1) as f64)?;
+        }
+        "trie" => {
+            if args.is_empty() {
+                return Err(Error::Invalid("trie needs a subcommand: build|lookup|key|complete|info".into()));
+            }
+            let sub = args.remove(0);
+            let load_t = |p: &str| -> Result<Louds> {
+                Louds::load_bytes(&std::fs::read(p).map_err(|e| Error::Io(format!("{p}: {e}")))?)
+                    .map_err(|e| match e { Error::Corrupt(m) => Error::Corrupt(format!("{p}: {m}")), o => o })
+            };
+            match (sub.as_str(), args.as_slice()) {
+                ("build", [input]) => {
+                    let output = opt_o.clone().ok_or_else(|| Error::Invalid("trie build needs -o <t.trie>".into()))?;
+                    let mut data = Vec::new();
+                    if input == "-" {
+                        std::io::stdin().read_to_end(&mut data)?;
+                    } else {
+                        data = std::fs::read(input).map_err(|e| Error::Io(format!("{input}: {e}")))?;
+                    }
+                    let words: Vec<&[u8]> = data.split(|&b| b == b'\n').map(|l| l.strip_suffix(b"\r").unwrap_or(l)).filter(|l| !l.is_empty()).collect();
+                    let t = Louds::build(&words);
+                    let bytes = t.save_bytes();
+                    let tmp = format!("{output}.tmp");
+                    std::fs::write(&tmp, &bytes).map_err(|e| Error::Io(format!("{tmp}: {e}")))?;
+                    std::fs::rename(&tmp, &output).map_err(|e| Error::Io(format!("{output}: {e}")))?;
+                    writeln!(out, "{} distinct words, {} trie nodes -> {} ({}; input {})", t.len(), t.num_nodes(), output, human(bytes.len()), human(data.len()))?;
+                }
+                ("lookup", [t, w]) => match load_t(t)?.id_of(w.as_bytes()) {
+                    Some(id) => writeln!(out, "{id}")?,
+                    None => {
+                        out.flush()?;
+                        std::process::exit(1);
+                    }
+                },
+                ("key", [t, id]) => {
+                    let id = num(id, "id")?;
+                    let k = load_t(t)?.key_of(id).ok_or_else(|| Error::Invalid(format!("id {id} out of range")))?;
+                    out.write_all(&k)?;
+                    writeln!(out)?;
+                }
+                ("complete", [t, p]) => {
+                    let max = opt_n.as_deref().map(|s| num(s, "-n")).transpose()?.unwrap_or(20);
+                    let trie = load_t(t)?;
+                    let res = trie.complete(p.as_bytes(), max);
+                    for k in &res {
+                        out.write_all(k)?;
+                        writeln!(out)?;
+                    }
+                    if res.len() == max {
+                        let total = trie.count_prefix(p.as_bytes());
+                        if total > max {
+                            writeln!(out, "… {} more", total - max)?;
+                        }
+                    }
+                }
+                ("info", [t]) => {
+                    let trie = load_t(t)?;
+                    writeln!(out, "words : {}\nnodes : {}\nbits/word (in memory): {:.1}", trie.len(), trie.num_nodes(), trie.total_bits() as f64 / trie.len().max(1) as f64)?;
+                }
+                _ => return Err(Error::Invalid("usage: trie build <file> -o <t.trie> | lookup <t.trie> <word> | key <t.trie> <id> | complete <t.trie> <prefix> | info <t.trie>".into())),
+            }
+        }
+        "bench" => {
+            let scale = if flag_quick { 0.05 } else { 1.0 };
+            if !args.is_empty() {
+                return Err(Error::Invalid(format!("bench takes only --quick, got '{}'", args[0])));
+            }
+            write!(out, "{}", sux::bench::render(&sux::bench::run(scale)))?;
         }
         other => return Err(Error::Invalid(format!("unknown command '{other}' (try `sux help`)"))),
     }

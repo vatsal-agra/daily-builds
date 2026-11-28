@@ -91,3 +91,38 @@ fn compressed_index_and_stdin_and_empty_file() {
     assert_eq!(sux(&["grep", &eidx, "x"]).status.code(), Some(1));
     assert_eq!(out(&sux(&["extract", &eidx, "0", "0"])), "\n");
 }
+
+#[test]
+fn trie_subcommands() {
+    let words = tmp("words.txt");
+    let t = tmp("w.trie");
+    std::fs::write(&words, "banana\nband\nbandana\r\n\ncan\nband\napple\n").unwrap();
+    let o = sux(&["trie", "build", &words, "-o", &t]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert!(out(&o).starts_with("5 distinct words"));
+    assert_eq!(out(&sux(&["trie", "complete", &t, "ban"])), "banana\nband\nbandana\n");
+    assert_eq!(out(&sux(&["trie", "complete", &t, "ban", "-n", "1"])), "banana\n… 2 more\n");
+    assert_eq!(out(&sux(&["trie", "complete", &t, "zzz"])), "");
+    let id = out(&sux(&["trie", "lookup", &t, "can"])).trim().to_string();
+    assert_eq!(out(&sux(&["trie", "key", &t, &id])).trim(), "can");
+    assert_eq!(sux(&["trie", "lookup", &t, "cat"]).status.code(), Some(1));
+    assert_eq!(sux(&["trie", "key", &t, "99"]).status.code(), Some(1));
+    assert_eq!(sux(&["trie", "nope"]).status.code(), Some(1));
+    assert!(out(&sux(&["trie", "info", &t])).contains("words : 5"));
+    // an FM index is not a trie file
+    let txt = tmp("n.txt");
+    let idx = tmp("n.sux");
+    std::fs::write(&txt, "x\n").unwrap();
+    sux(&["index", &txt, "-o", &idx]);
+    let o = sux(&["trie", "info", &idx]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&o.stderr).contains("bad magic"));
+}
+
+#[test]
+fn bench_command_runs() {
+    let o = sux(&["bench", "--quick"]);
+    assert!(o.status.success());
+    assert!(out(&o).contains("EliasFano") && out(&o).contains("ns/query"));
+    assert_eq!(sux(&["bench", "extra"]).status.code(), Some(1));
+}

@@ -1,5 +1,5 @@
 # Sux
-Status: **Phase 3 (adversarial review) complete** — 9 findings fixed, see [REVIEW.md](REVIEW.md). Succinct data structures + compressed full-text index in Rust, zero dependencies. See [PLAN.md](PLAN.md).
+Status: **Phase 4 (stretch + polish) complete** — LOUDS trie, RRR, and a measured `sux bench` added on top of the core. See [PLAN.md](PLAN.md), [REVIEW.md](REVIEW.md).
 
 Built and tested so far (all differential-tested against naive oracles — `cargo test --release`):
 - **Rank/select bitvector** (rank9 directory, sampled select0/select1)
