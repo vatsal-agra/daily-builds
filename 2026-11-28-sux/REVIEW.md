@@ -31,3 +31,7 @@ Regression tests live in `tests/hostile.rs` and `tests/cli.rs`.
 
 ## Gate: fresh run-through
 `cargo test --release` (all suites) green, and every reproduction above re-run against the fixed build produces the fixed behaviour.
+
+## Phase 5 verification notes
+- `cargo test --release`: 33 tests across 7 suites, plus `./demo.sh` (28 end-to-end checks against `grep -nF`, `grep -ob`, `dd`, `sed`, `tail`, `sort`).
+- Mutation check (6 injected bugs): EF bucket compare, wavelet child-range, RRR decode boundary → caught by failures; LOUDS parent formula → caught (the suite hangs on the broken `key_of`); two survivors are *equivalent* mutants (the select0 padding mask is unreachable behind the `k < count_zeros` guard; sampling `extract` from a later row is merely slower, still correct).
