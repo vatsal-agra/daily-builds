@@ -1,0 +1,16 @@
+[package]
+name = "sux"
+version = "0.1.0"
+edition = "2021"
+description = "Succinct data structures: rank/select, Elias-Fano, wavelet matrix, FM-index, LOUDS, RRR"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "sux"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+debug = false
